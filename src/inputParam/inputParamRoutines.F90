@@ -4114,7 +4114,6 @@ contains
         timeSpectralGridsNotWritten = .true.
 
         ! Additional Paramters Requiring Defaults
-        use_ANKProfiling = .False.
         printIterations = .True. 
         routineFailed = .False.
         fatalFail = .False.

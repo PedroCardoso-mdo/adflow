@@ -585,7 +585,6 @@ module inputPhysics
     integer(kind=intType) :: rvfN
     logical :: rvfB
     logical :: useQCR, useRotationSA, useft2SA, use_SABCM
-    logical :: use_ANKProfiling
     logical :: SABCM_Exp
     logical :: wallFunctions, wallDistanceNeeded
 

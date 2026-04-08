@@ -561,10 +561,6 @@ contains
         use communication
         use inputTimeSpectral
         use utils, only: EChk
-        use ankProfiling, only: ankNow, ankProfIsActive, ankProfAddSectionNoCall, &
-            ANK_SEC_WHALO2_PACK_IN_ANK, ANK_SEC_WHALO2_POST_IN_ANK, &
-            ANK_SEC_WHALO2_LOCAL_IN_ANK, ANK_SEC_WHALO2_UNPACK_IN_ANK, &
-            ANK_SEC_WHALO2_RECV_IN_ANK, ANK_SEC_WHALO2_SEND_IN_ANK
         implicit none
         !
         !      Subroutine arguments.
@@ -583,14 +579,6 @@ contains
         integer(kind=intType) :: nVar, mm
         integer(kind=intType) :: i, j, k, ii, jj
         integer(kind=intType) :: d1, i1, j1, k1, d2, i2, j2, k2
-        real(kind=alwaysRealType) :: tPack, tPost, tLocal, tUnpack, tRecv, tSend, tStage
-
-        tPack = 0.0_alwaysRealType
-        tPost = 0.0_alwaysRealType
-        tLocal = 0.0_alwaysRealType
-        tUnpack = 0.0_alwaysRealType
-        tRecv = 0.0_alwaysRealType
-        tSend = 0.0_alwaysRealType
 
         ! Send the variables. The data is first copied into
         ! the send buffer after which the buffer is sent asap.
@@ -607,7 +595,6 @@ contains
             ! Copy the data in the correct part of the send buffer.
 
             jj = ii
-            if (ankProfIsActive()) tStage = ankNow()
             !DIR$ NOVECTOR
             do j = 1, commPattern(level)%nsend(i)
 
@@ -627,15 +614,12 @@ contains
                     jj = jj + 1
                 end do
             end do
-            if (ankProfIsActive()) tPack = tPack + (ankNow() - tStage)
 
             ! Send the data.
 
-            if (ankProfIsActive()) tStage = ankNow()
             call mpi_isend(sendBuffer(ii), size, adflow_real, procID, &
                            procID, ADflow_comm_world, sendRequests(i), &
                            ierr)
-            if (ankProfIsActive()) tPost = tPost + (ankNow() - tStage)
             call EChk(ierr, __FILE__, __LINE__)
 
             ! Set ii to jj for the next processor.
@@ -657,10 +641,8 @@ contains
 
             ! Post the receive.
 
-            if (ankProfIsActive()) tStage = ankNow()
             call mpi_irecv(recvBuffer(ii), size, adflow_real, procID, &
                            myID, ADflow_comm_world, recvRequests(i), ierr)
-            if (ankProfIsActive()) tPost = tPost + (ankNow() - tStage)
             call EChk(ierr, __FILE__, __LINE__)
 
             ! And update ii.
@@ -671,7 +653,6 @@ contains
 
         ! Copy the local data.
 
-        if (ankProfIsActive()) tStage = ankNow()
         !DIR$ NOVECTOR
         localCopy: do i = 1, internal(level)%ncopy
 
@@ -695,7 +676,6 @@ contains
             end do
 
         end do localCopy
-    if (ankProfIsActive()) tLocal = tLocal + (ankNow() - tStage)
 
         ! Complete the nonblocking receives in an arbitrary sequence and
         ! copy the variables from the buffer into the halo's.
@@ -705,14 +685,11 @@ contains
 
             ! Complete any of the requests.
 
-            if (ankProfIsActive()) tStage = ankNow()
             call mpi_waitany(size, recvRequests, index, mpiStatus, ierr)
-            if (ankProfIsActive()) tRecv = tRecv + (ankNow() - tStage)
             call EChk(ierr, __FILE__, __LINE__)
 
             ! Copy the data just arrived in the halo's.
 
-            if (ankProfIsActive()) tStage = ankNow()
             ii = index
             jj = nVar * commPattern(level)%nrecvCum(ii - 1)
             !DIR$ NOVECTOR
@@ -730,26 +707,14 @@ contains
                     flowDoms(d2, level, sps)%realCommVars(k)%var(i2, j2, k2) = recvBuffer(jj)
                 end do
             end do
-            if (ankProfIsActive()) tUnpack = tUnpack + (ankNow() - tStage)
         end do completeRecvs
 
         ! Complete the nonblocking sends.
 
         size = commPattern(level)%nProcSend
         do i = 1, commPattern(level)%nProcSend
-            if (ankProfIsActive()) tStage = ankNow()
             call mpi_waitany(size, sendRequests, index, mpiStatus, ierr)
-            if (ankProfIsActive()) tSend = tSend + (ankNow() - tStage)
         end do
-
-        if (ankProfIsActive()) then
-            call ankProfAddSectionNoCall(ANK_SEC_WHALO2_PACK_IN_ANK, tPack, tPack, 0.0_alwaysRealType)
-            call ankProfAddSectionNoCall(ANK_SEC_WHALO2_POST_IN_ANK, tPost, tPost, 0.0_alwaysRealType)
-            call ankProfAddSectionNoCall(ANK_SEC_WHALO2_LOCAL_IN_ANK, tLocal, tLocal, 0.0_alwaysRealType)
-            call ankProfAddSectionNoCall(ANK_SEC_WHALO2_UNPACK_IN_ANK, tUnpack, tUnpack, 0.0_alwaysRealType)
-            call ankProfAddSectionNoCall(ANK_SEC_WHALO2_RECV_IN_ANK, tRecv, tRecv, 0.0_alwaysRealType)
-            call ankProfAddSectionNoCall(ANK_SEC_WHALO2_SEND_IN_ANK, tSend, tSend, 0.0_alwaysRealType)
-        end if
 
     end subroutine whalo1to1RealGeneric
 

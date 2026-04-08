@@ -68,8 +68,7 @@ module blockette
 contains
 
     subroutine blocketteRes(useDissApprox, useViscApprox, useUpdateIntermed, useFlowRes, useTurbRes, useSpatial, &
-                            useStoreWall, famLists, funcValues, forces, bcDataNames, bcDataValues, bcDataFamLists, &
-                            totalTimeOut, commTimeOut)
+                            useStoreWall, famLists, funcValues, forces, bcDataNames, bcDataValues, bcDataFamLists)
 
         ! Copy the values from blockPointers (assumed set) into the
         ! blockette
@@ -98,22 +97,6 @@ contains
         use inputOverset, only: oversetUpdateMode
         use oversetCommUtilities, only: updateOversetConnectivity
         use actuatorRegionData, only: nActuatorRegions
-        use ankProfiling, only: ankNow, ankProfIsActive, ankProfGetContext, ankProfAddSection, &
-                    ankProfIncrementCounter, ANK_SEC_BLOCKETTERES_TOTAL_IN_ANK, &
-                    ANK_SEC_BLOCKETTERES_COMPUTE_IN_ANK, ANK_SEC_BLOCKETTERES_COMM_IN_ANK, &
-                    ANK_SEC_BLOCKETTERES_PREP_IN_ANK, &
-                    ANK_SEC_BLOCKETTERES_IN_FORMJAC, ANK_SEC_BLOCKETTERES_IN_MATMULT, &
-                    ANK_SEC_BLOCKETTERES_IN_MATMULT_IN_KSPSOLVE, &
-                    ANK_SEC_BLOCKETTERES_IN_MATMULT_OUTSIDE_KSPSOLVE, &
-                    ANK_SEC_BLOCKETTERES_IN_UNSTEADY, ANK_SEC_BLOCKETTERES_IN_LINESEARCH, &
-                    ANK_SEC_BLOCKETTERES_IN_FINALRES, ANK_SEC_WHALO2_TOTAL_IN_ANK, &
-                    ANK_SEC_BLOCKETTERES_IN_TURBUPDATE, &
-                    ANK_CNT_N_BLOCKETTERES_TOTAL, ANK_CNT_N_BLOCKETTERES_FORMJAC, &
-                    ANK_CNT_N_BLOCKETTERES_MATMULT, ANK_CNT_N_BLOCKETTERES_UNSTEADY, &
-                    ANK_CNT_N_BLOCKETTERES_LINESEARCH, ANK_CNT_N_BLOCKETTERES_FINALRES, &
-                    ANK_CNT_N_WHALO2, ANK_CTX_FORMJAC, ANK_CTX_MATMULT, ANK_CTX_UNSTEADY, &
-                    ANK_CTX_LINESEARCH, ANK_CTX_FINALRES, ANK_CTX_MATMULT_IN_KSPSOLVE, &
-                    ANK_CTX_MATMULT_OUTSIDE_KSPSOLVE, ANK_CTX_TURBUPDATE
         implicit none
 
         ! Input/Output
@@ -125,38 +108,11 @@ contains
         real(kind=realType), optional, dimension(:), intent(in) :: bcDataValues
         integer(kind=intType), optional, dimension(:, :) :: bcDataFamLists
         real(kind=realType), intent(out), optional, dimension(:, :, :) :: forces
-        real(kind=alwaysRealType), intent(out), optional :: totalTimeOut, commTimeOut
 
         ! Misc
         logical :: dissApprox, viscApprox, updateIntermed, flowRes, turbRes, spatial, storeWall
         integer(kind=intType) :: nn, sps, fSize, lstart, lend, iRegion
         real(kind=realType) :: pLocal
-        real(kind=alwaysRealType) :: tStart, tCommStart, tPrepStart, totalTime, commTime, computeTime, prepTime
-        integer(kind=intType) :: callContext
-
-        totalTime = 0.0_alwaysRealType
-        commTime = 0.0_alwaysRealType
-        prepTime = 0.0_alwaysRealType
-
-        if (ankProfIsActive()) then
-            tStart = ankNow()
-            commTime = 0.0_alwaysRealType
-            callContext = ankProfGetContext()
-            call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_TOTAL, 1_intType)
-
-            select case (callContext)
-            case (ANK_CTX_FORMJAC)
-                call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_FORMJAC, 1_intType)
-            case (ANK_CTX_MATMULT, ANK_CTX_MATMULT_IN_KSPSOLVE, ANK_CTX_MATMULT_OUTSIDE_KSPSOLVE)
-                call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_MATMULT, 1_intType)
-            case (ANK_CTX_UNSTEADY)
-                call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_UNSTEADY, 1_intType)
-            case (ANK_CTX_LINESEARCH)
-                call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_LINESEARCH, 1_intType)
-            case (ANK_CTX_FINALRES)
-                call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_FINALRES, 1_intType)
-            end select
-        end if
 
         ! Set the defaults. The default is to compute the full, exact,
         ! RANS residual without updating the spatial values or the local
@@ -240,7 +196,6 @@ contains
         end if
 
         ! Compute the required derived values and apply the BCs
-        if (ankProfIsActive()) tPrepStart = ankNow()
         do sps = 1, nTimeIntervalsSpectral
             do nn = 1, nDom
                 call setPointers(nn, currentLevel, sps)
@@ -272,7 +227,6 @@ contains
 
             end do
         end do
-        if (ankProfIsActive()) prepTime = prepTime + (ankNow() - tPrepStart)
 
         ! Compute the ranges of the residuals we are dealing with:
         if (flowRes .and. turbRes) then
@@ -289,21 +243,13 @@ contains
         end if
 
         ! Exchange values
-        if (ankProfIsActive()) tCommStart = ankNow()
         call whalo2(1_intType, lStart, lEnd, .True., .True., .True.)
-        if (ankProfIsActive()) then
-            totalTime = ankNow() - tCommStart
-            commTime = commTime + totalTime
-            call ankProfAddSection(ANK_SEC_WHALO2_TOTAL_IN_ANK, totalTime, 0.0_alwaysRealType, totalTime)
-            call ankProfIncrementCounter(ANK_CNT_N_WHALO2, 1_intType)
-        end if
 
         ! Need to re-apply the BCs. The reason is that BC halos behind
         ! interpolated cells need to be recomputed with their new
         ! interpolated values from actual compute cells. Only needed for
         ! overset.
         if (oversetPresent) then
-            if (ankProfIsActive()) tPrepStart = ankNow()
             do sps = 1, nTimeIntervalsSpectral
                 do nn = 1, nDom
                     call setPointers(nn, currentLevel, sps)
@@ -314,7 +260,6 @@ contains
                     call applyAllBC_block(.True.)
                 end do
             end do
-            if (ankProfIsActive()) prepTime = prepTime + (ankNow() - tPrepStart)
         end if
 
         ! Main loop for the residual...This is where the blockette magic happens.
@@ -350,39 +295,6 @@ contains
             end do
         end if
 
-        if (ankProfIsActive()) then
-            totalTime = ankNow() - tStart
-            computeTime = max(0.0_alwaysRealType, totalTime - commTime)
-
-            call ankProfAddSection(ANK_SEC_BLOCKETTERES_TOTAL_IN_ANK, totalTime, computeTime, commTime)
-            call ankProfAddSection(ANK_SEC_BLOCKETTERES_COMPUTE_IN_ANK, computeTime, computeTime, 0.0_alwaysRealType)
-            call ankProfAddSection(ANK_SEC_BLOCKETTERES_COMM_IN_ANK, commTime, 0.0_alwaysRealType, commTime)
-            call ankProfAddSection(ANK_SEC_BLOCKETTERES_PREP_IN_ANK, prepTime, prepTime, 0.0_alwaysRealType)
-
-            select case (callContext)
-            case (ANK_CTX_FORMJAC)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_FORMJAC, totalTime, computeTime, commTime)
-            case (ANK_CTX_MATMULT)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_MATMULT, totalTime, computeTime, commTime)
-            case (ANK_CTX_MATMULT_IN_KSPSOLVE)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_MATMULT, totalTime, computeTime, commTime)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_MATMULT_IN_KSPSOLVE, totalTime, computeTime, commTime)
-            case (ANK_CTX_MATMULT_OUTSIDE_KSPSOLVE)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_MATMULT, totalTime, computeTime, commTime)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_MATMULT_OUTSIDE_KSPSOLVE, totalTime, computeTime, commTime)
-            case (ANK_CTX_UNSTEADY)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_UNSTEADY, totalTime, computeTime, commTime)
-            case (ANK_CTX_LINESEARCH)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_LINESEARCH, totalTime, computeTime, commTime)
-            case (ANK_CTX_FINALRES)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_FINALRES, totalTime, computeTime, commTime)
-            case (ANK_CTX_TURBUPDATE)
-                call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_TURBUPDATE, totalTime, computeTime, commTime)
-            end select
-        end if
-
-        if (present(totalTimeOut)) totalTimeOut = totalTime
-        if (present(commTimeOut)) commTimeOut = commTime
     end subroutine blocketteRes
 
     subroutine blocketteResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall)
@@ -416,8 +328,6 @@ contains
         use utils, only: setPointers, EChk
         use turbUtils, only: computeEddyViscosity
         use oversetData, only: oversetPresent
-        use ankProfiling, only: ankNow, ankProfIsActive, ankProfAddSection, ANK_SEC_BLOCKETTERESCORE_TOTAL_IN_ANK, &
-                ANK_SEC_BLOCKETTERES_COPY_IN_ANK
 
         implicit none
 
@@ -426,10 +336,6 @@ contains
 
         ! Working:
         integer(kind=intType) :: i, j, k, l, lStart, lEnd
-        real(kind=alwaysRealType) :: tStart, totalTime, copyTime, tCopyStart
-
-        if (ankProfIsActive()) tStart = ankNow()
-        copyTime = 0.0_alwaysRealType
 
         ! Compute the ranges of the residuals we are dealing with:
         if (flowRes .and. turbRes) then
@@ -446,7 +352,7 @@ contains
         end if
 
         ! Block loop over the owned cells
-        !$OMP parallel do private(i,j,k,l,tCopyStart) collapse(2) reduction(+:copyTime)
+        !$OMP parallel do private(i,j,k,l) collapse(2)
         do kk = 2, bkl, BS
             do jj = 2, bjl, BS
                 do ii = 2, bil, BS
@@ -763,7 +669,6 @@ contains
 
                     ! Now we can just set the part of dw we computed
                     ! (owned cells only) and we're done!
-                    if (ankProfIsActive()) tCopyStart = ankNow()
                     do l = lStart, lEnd
                         do k = 2, kl
                             do j = 2, jl
@@ -773,7 +678,6 @@ contains
                             end do
                         end do
                     end do
-                    if (ankProfIsActive()) copyTime = copyTime + (ankNow() - tCopyStart)
 
                     ! Also copy out the intermediate variables if asked for them
                     ! we need these to be updated in main memory because
@@ -783,7 +687,6 @@ contains
                     ! arrays in main memory. The time step is required
                     ! for the ANK and MG solver steps.
                     intermed: if (updateIntermed) then
-                        if (ankProfIsActive()) tCopyStart = ankNow()
                         ! time step
                         do k = 2, kl
                             do j = 2, jl
@@ -842,8 +745,6 @@ contains
                             end do
                         end if visc
 
-                        if (ankProfIsActive()) copyTime = copyTime + (ankNow() - tCopyStart)
-
                     end if intermed
 
                 end do
@@ -851,11 +752,6 @@ contains
         end do
         !$OMP END PARALLEL DO
 
-        if (ankProfIsActive()) then
-            totalTime = ankNow() - tStart
-            call ankProfAddSection(ANK_SEC_BLOCKETTERESCORE_TOTAL_IN_ANK, totalTime, totalTime, 0.0_alwaysRealType)
-            call ankProfAddSection(ANK_SEC_BLOCKETTERES_COPY_IN_ANK, copyTime, copyTime, 0.0_alwaysRealType)
-        end if
     end subroutine blocketteResCore
 
     subroutine blockResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall, nn, sps)
