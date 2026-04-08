@@ -1,0 +1,625 @@
+Warning: Option '--html' is not supported with '-C' option.
+Profiling started.
+[mdo-lab:2882349] MCW rank 0 bound to socket 0[core 0[hwt 0]]: [B/././././././././././././././.]
+[mdo-lab:2882349] MCW rank 1 bound to socket 0[core 1[hwt 0]]: [./B/./././././././././././././.]
+#
+# ADflow, multiblock structured flow solver
+#
+# This code solves the 3D RANS, laminar NS or Euler equations
+# on multiblock structured hexahedral grids.
+# This is a parallel executable running on 2 processors.
+# It has been compiled with the following options:
+# - Optimized mode.
+# - Size of standard integers: 4 bytes.
+# - Size of standard floating point types: 8 bytes.
+# - With cgns support
+# - With support for signals.
+#
++----------------------------------------+
+|          All ADFLOW Options:           |
++----------------------------------------+
+{'ADPC': False,
+ 'ANKADPC': False,
+ 'ANKAMGLevels': 2,
+ 'ANKAMGNSmooth': 1,
+ 'ANKASMOverlap': 1,
+ 'ANKASMOverlapCoarse': 0,
+ 'ANKCFL0': 5.0,
+ 'ANKCFLCutback': 0.5,
+ 'ANKCFLExponent': 0.5,
+ 'ANKCFLFactor': 10.0,
+ 'ANKCFLLimit': 100000.0,
+ 'ANKCFLMin': 1.0,
+ 'ANKCFLReset': True,
+ 'ANKCharTimeStepType': 'VLR',
+ 'ANKConstCFLStep': 0.4,
+ 'ANKCoupledSwitchTol': 1e-16,
+ 'ANKGlobalPreconditioner': 'additive Schwarz',
+ 'ANKInnerPreconIts': 1,
+ 'ANKInnerPreconItsCoarse': 1,
+ 'ANKJacobianLag': 10,
+ 'ANKLinResMax': 0.1,
+ 'ANKLinearSolveBuffer': 0.01,
+ 'ANKLinearSolveTol': 0.05,
+ 'ANKMaxIter': 40,
+ 'ANKNSubiterTurb': 1,
+ 'ANKOuterPreconIts': 1,
+ 'ANKPCILUFill': 2,
+ 'ANKPCILUFillCoarse': 0,
+ 'ANKPCUpdateCutoff': 1e-16,
+ 'ANKPCUpdateTol': 0.5,
+ 'ANKPCUpdateTolAfterCutoff': 0.0001,
+ 'ANKPhysicalLSTol': 0.2,
+ 'ANKPhysicalLSTolTurb': 0.99,
+ 'ANKSecondOrdSwitchTol': 1e-16,
+ 'ANKStepFactor': 1.0,
+ 'ANKStepMin': 0.01,
+ 'ANKSubspaceSize': -1,
+ 'ANKSwitchTol': 1000.0,
+ 'ANKTurbCFLScale': 1.0,
+ 'ANKTurbKSPDebug': False,
+ 'ANKUnsteadyLSTol': 1.0,
+ 'ANKUseApproxSA': False,
+ 'ANKUseFullVisc': True,
+ 'ANKUseMatrixFree': True,
+ 'ANKUseTurbDADI': True,
+ 'ASMOverlap': 1,
+ 'ASMOverlapCoarse': 0,
+ 'CFL': 1.7,
+ 'CFLCoarse': 1.0,
+ 'CFLLimit': 1.5,
+ 'GMRESOrthogonalizationType': 'modified Gram-Schmidt',
+ 'ILUFill': 2,
+ 'ILUFillCoarse': 0,
+ 'L2Convergence': 1e-05,
+ 'L2ConvergenceCoarse': 0.01,
+ 'L2ConvergenceRel': 1e-16,
+ 'MGCycle': 'sg',
+ 'MGStartLevel': -1,
+ 'NKADPC': False,
+ 'NKAMGLevels': 2,
+ 'NKAMGNSmooth': 1,
+ 'NKASMOverlap': 1,
+ 'NKASMOverlapCoarse': 0,
+ 'NKFixedStep': 0.25,
+ 'NKGlobalPreconditioner': 'additive Schwarz',
+ 'NKInnerPreconIts': 1,
+ 'NKInnerPreconItsCoarse': 1,
+ 'NKJacobianLag': 20,
+ 'NKLS': 'cubic',
+ 'NKLinearSolveTol': 0.3,
+ 'NKOuterPreconIts': 1,
+ 'NKPCILUFill': 2,
+ 'NKPCILUFillCoarse': 0,
+ 'NKSubspaceSize': 60,
+ 'NKSwitchTol': 1e-06,
+ 'NKUseEW': True,
+ 'NKViscPC': False,
+ 'RKReset': False,
+ 'SABCM_Const1': 0.002,
+ 'SABCM_Const2': 0.02,
+ 'SABCM_S0_tanh': 0.5,
+ 'SABCM_TU': 0.5,
+ 'SABCM_fsmooth': 0.08,
+ 'SABCM_maxsmooth': 50.0,
+ 'TSStability': False,
+ 'acousticScaleFactor': 0.08164,
+ 'adjointAMGLevels': 2,
+ 'adjointAMGNSmooth': 1,
+ 'adjointDivTol': 100000.0,
+ 'adjointL2Convergence': 1e-06,
+ 'adjointL2ConvergenceAbs': 1e-16,
+ 'adjointL2ConvergenceRel': 1e-16,
+ 'adjointMaxIter': 500,
+ 'adjointMaxL2DeviationFactor': 1.0,
+ 'adjointMonitorStep': 10,
+ 'adjointSolver': 'GMRES',
+ 'adjointSubspaceSize': 100,
+ 'alphaFollowing': True,
+ 'alphaMode': False,
+ 'altitudeMode': False,
+ 'applyAdjointPCSubspaceSize': 20,
+ 'applyPCSubspaceSize': 10,
+ 'approxPC': True,
+ 'backgroundVolScale': 1.0,
+ 'betaMode': False,
+ 'blockSplitting': True,
+ 'cavExponent': 0,
+ 'cavSensorOffset': 0.0,
+ 'cavSensorSharpness': 10.0,
+ 'cavitationNumber': 1.4,
+ 'closedSurfaceFamilies': None,
+ 'coarseDiscretization': 'central plus scalar dissipation',
+ 'computeCavitation': False,
+ 'computeSepSensorKs': False,
+ 'coupledSolution': False,
+ 'cpMinRho': 100.0,
+ 'cutCallback': None,
+ 'debugZipper': False,
+ 'deltaT': 0.01,
+ 'designSurfaceFamily': None,
+ 'discretization': 'central plus scalar dissipation',
+ 'dissContMagnitude': 1.0,
+ 'dissContMidpoint': 3.0,
+ 'dissContSharpness': 3.0,
+ 'dissipationLumpingParameter': 6.0,
+ 'dissipationScalingExponent': 0.67,
+ 'eddyVisInfRatio': 0.009,
+ 'equationMode': 'steady',
+ 'equationType': 'RANS',
+ 'eulerWallTreatment': 'linear pressure extrapolation',
+ 'explicitSurfaceCallback': None,
+ 'firstRun': True,
+ 'flowType': 'external',
+ 'forcesAsTractions': True,
+ 'frozenTurbulence': False,
+ 'globalPreconditioner': 'additive Schwarz',
+ 'gridFile': 'vmesh_L2.cgns',
+ 'gridPrecision': 'double',
+ 'gridPrecisionSurface': 'single',
+ 'infChangeCorrection': True,
+ 'infChangeCorrectionTol': 1e-12,
+ 'infChangeCorrectionType': 'offset',
+ 'innerPreconIts': 1,
+ 'innerPreconItsCoarse': 1,
+ 'isoVariables': [],
+ 'isosurface': {},
+ 'liftIndex': 3,
+ 'limiter': 'van Albada',
+ 'loadBalanceIter': 10,
+ 'loadImbalance': 0.1,
+ 'localPreconditioner': 'ILU',
+ 'lowSpeedPreconditioner': False,
+ 'machMode': False,
+ 'matrixOrdering': 'RCM',
+ 'maxL2DeviationFactor': 1.0,
+ 'meshMaxSkewness': 1.0,
+ 'meshSurfaceFamily': None,
+ 'monitorVariables': ['resrho', 'cl', 'cd'],
+ 'nCycles': 10000,
+ 'nCyclesCoarse': 500,
+ 'nFloodIter': -1,
+ 'nRKReset': 5,
+ 'nRefine': 10,
+ 'nSaveSurface': 1,
+ 'nSaveVolume': 1,
+ 'nSubiter': 1,
+ 'nSubiterTurb': 3,
+ 'nTimeStepsCoarse': 48,
+ 'nTimeStepsFine': 400,
+ 'nearWallDist': 0.1,
+ 'numberSolutions': True,
+ 'outerPreconIts': 3,
+ 'outputDirectory': 'output',
+ 'outputSurfaceFamily': 'allSurfaces',
+ 'overlapFactor': 0.9,
+ 'oversetDebugPrint': False,
+ 'oversetLoadBalance': True,
+ 'oversetPriority': {},
+ 'oversetProjTol': 1e-12,
+ 'oversetUpdateMode': 'frozen',
+ 'pMode': False,
+ 'partitionLikeNProc': -1,
+ 'partitionOnly': False,
+ 'preconditionerSide': 'right',
+ 'printAllOptions': True,
+ 'printBadlySkewedCells': False,
+ 'printIntro': True,
+ 'printIterations': True,
+ 'printNegativeVolumes': False,
+ 'printTiming': True,
+ 'printWarnings': True,
+ 'qMode': False,
+ 'rMode': False,
+ 'recomputeOverlapMatrix': True,
+ 'resAveraging': 'alternate',
+ 'restartAdjoint': True,
+ 'restartFile': None,
+ 'restrictionRelaxation': 0.8,
+ 'selfZipCutoff': 120.0,
+ 'sepSensorKsOffset': 0.0,
+ 'sepSensorKsPhi': 90.0,
+ 'sepSensorKsRho': 1000.0,
+ 'sepSensorKsSharpness': 25.0,
+ 'sepSensorOffset': 0.0,
+ 'sepSensorSharpness': 10.0,
+ 'setMonitor': True,
+ 'skipAfterFailedAdjoint': True,
+ 'smoothParameter': 1.5,
+ 'smoother': 'DADI',
+ 'solutionPrecision': 'single',
+ 'solutionPrecisionSurface': 'single',
+ 'storeConvHist': True,
+ 'storeRindLayer': True,
+ 'surfaceVariables': ['rho',
+                      'p',
+                      'vx',
+                      'vy',
+                      'vz',
+                      'cp',
+                      'mach',
+                      'cf',
+                      'cfx',
+                      'cfy',
+                      'cfz',
+                      'yplus',
+                      'blank'],
+ 'timeAccuracy': 2,
+ 'timeIntegrationScheme': 'BDF',
+ 'timeIntervals': 1,
+ 'timeLimit': -1.0,
+ 'turbResScale': 10000.0,
+ 'turbulenceModel': 'SA',
+ 'turbulenceOrder': 'first order',
+ 'turbulenceProduction': 'strain',
+ 'updateWallAssociations': False,
+ 'useALE': True,
+ 'useANKSolver': True,
+ 'useApproxWallDistance': True,
+ 'useBlockettes': True,
+ 'useDiagTSPC': True,
+ 'useDissContinuation': False,
+ 'useExternalDynamicMesh': False,
+ 'useGridMotion': False,
+ 'useLinResMonitor': False,
+ 'useMatrixFreedrdw': True,
+ 'useNKSolver': True,
+ 'useOversetWallScaling': False,
+ 'useQCR': False,
+ 'useRotationSA': False,
+ 'useSkewnessCheck': False,
+ 'useTSInterpolatedGridVelocity': False,
+ 'useWallFunctions': False,
+ 'useZipperMesh': True,
+ 'use_SABCM': False,
+ 'useft2SA': True,
+ 'verifyExtra': True,
+ 'verifySpatial': True,
+ 'verifyState': True,
+ 'vis2': 0.25,
+ 'vis2Coarse': 0.5,
+ 'vis4': 0.0156,
+ 'viscPC': False,
+ 'viscWallTreatment': 'constant pressure extrapolation',
+ 'viscousSurfaceVelocities': True,
+ 'volumeVariables': ['vort',
+                     'vortx',
+                     'vorty',
+                     'vortz',
+                     'cp',
+                     'mach',
+                     'macht',
+                     'eddy',
+                     'eddyratio',
+                     'resrho',
+                     'rhoe',
+                     'resturb',
+                     'blank'],
+ 'wallDistCutoff': 1e+20,
+ 'windAxis': False,
+ 'writeSolutionDigits': 3,
+ 'writeSolutionEachIter': False,
+ 'writeSurfaceSolution': True,
+ 'writeTecplotSurfaceSolution': True,
+ 'writeVolumeSolution': True,
+ 'zipperSurfaceFamily': None}
+-> Alpha... 0.000000 
+#
+#                      Warning
+# It is assumed that the grid is given in meters.
+#
+#
+# Specified load imbalance tolerance 0.100 achieved.
+# Continuing with 0.010 load imbalance for the cells and 0.010 for the faces
+#
+#
+# Grid level: 1, Total number of cells: 943104
+#
++--------------------------------------------------+
+  CGNS Surface Families by Boundary Condition Type
++--------------------------------------------------+
+| Wall Types           : wing 
+| Inflow Types         : 
+| Outflow Types        : 
+| Symmetry Types       : sym 
+| Farfield Types       : far 
+| Overset Types        : 
++--------------------------------------------------+
++--------------------------------------------------+
+|
+| Initialization Times:
+|
+| Library Load Time             :      0.018 sec
+| Set Defaults Time             :      0.001 sec
+| Base Class Init Time          :      0.001 sec
+| Introductory Time             :      0.001 sec
+| Partitioning Time             :      0.015 sec
+| Preprocessing Time            :      5.136 sec
+| Family Setup Time             :      0.000 sec
+| Cut Callback Time             :      0.000 sec
+| Explicit Surface Cut Time     :      0.000 sec
+| Overset Preprocessing Time    :      0.001 sec
+| Initialize Flow Time          :      0.062 sec
+|
+| Total Init Time               :      5.236 sec
++--------------------------------------------------+
+
++------------------------------------------------------------------------------+
+| pyADFLOW Warning: 'zipperSurfaceFamily' option was not given. Using all wall |
+| boundary conditions for the zipper mesh.                                     |
++------------------------------------------------------------------------------+
+
++----------------------------------------------------------------------+
+|  Switching to Aero Problem: wing                                     |
++----------------------------------------------------------------------+
+-> Alpha... 1.800000 
++----------------------------------------+
+|      All Modified ADFLOW Options:      |
++----------------------------------------+
+{'ANKCharTimeStepType': 'VLR',
+ 'L2Convergence': 1e-05,
+ 'NKSwitchTol': 1e-06,
+ 'acousticScaleFactor': 0.08164,
+ 'gridFile': 'vmesh_L2.cgns',
+ 'liftIndex': 3,
+ 'monitorVariables': ['resrho', 'cl', 'cd'],
+ 'nCycles': 10000,
+ 'outputDirectory': 'output',
+ 'surfaceVariables': ['rho',
+                      'p',
+                      'vx',
+                      'vy',
+                      'vz',
+                      'cp',
+                      'mach',
+                      'cf',
+                      'cfx',
+                      'cfy',
+                      'cfz',
+                      'yplus',
+                      'blank'],
+ 'turbResScale': 10000.0,
+ 'useNKSolver': True,
+ 'volumeVariables': ['vort',
+                     'vortx',
+                     'vorty',
+                     'vortz',
+                     'cp',
+                     'mach',
+                     'macht',
+                     'eddy',
+                     'eddyratio',
+                     'resrho',
+                     'rhoe',
+                     'resturb',
+                     'blank'],
+ 'writeTecplotSurfaceSolution': True}
+ saSource inputPhysics values:
+   useft2SA       =  T
+   useRotationSA  =  F
+   turbProd       =            1
+   equations      =            3
+   use_SABCM      =  F
+   SABCM_Const1   =    2.0000000000000000E-003
+   SABCM_Const2   =    2.0000000000000000E-002
+   SABCM_TU       =   0.50000000000000000     
+   SABCM_S0_tanh  =   0.50000000000000000     
+   SABCM_fsmooth  =    8.0000000000000002E-002
+   SABCM_maxsmooth=    50.000000000000000     
+ saSource inputPhysics values:
+   useft2SA       =  T
+   useRotationSA  =  F
+   turbProd       =            1
+   equations      =            3
+   use_SABCM      =  F
+   SABCM_Const1   =    2.0000000000000000E-003
+   SABCM_Const2   =    2.0000000000000000E-002
+   SABCM_TU       =   0.50000000000000000     
+   SABCM_S0_tanh  =   0.50000000000000000     
+   SABCM_fsmooth  =    8.0000000000000002E-002
+   SABCM_maxsmooth=    50.000000000000000     
+#
+# Grid 1: Performing 10000 iterations, unless converged earlier. Minimum required iteration before NK switch:      5. Switch to NK at totalR of:   2.14E+00
+#
+#------------------------------------------------------------------------------------------------------------------------------------------------------------
+#  Grid  | Iter | Iter |  Iter  |   CFL   | Step | Lin  |        Res rho         |         C_lift         |        C_drag          |        totalRes        |
+#  level |      | Tot  |  Type  |         |      | Res  |                        |                        |                        |                        |
+#------------------------------------------------------------------------------------------------------------------------------------------------------------
+      1       0      0     None     ----    ----   ----   6.0530406274369955E+02   9.3778675296777372E-03   4.6460427872661775E-01   2.1431787191374796E+06 
+      1       1      4     *ANK   5.00E+00  1.00  0.029   4.5486056911566138E+01   2.8166592216208541E+00   2.3760909480704591E+00   1.7748412151509136E+05 
+      1       2     14     *ANK   4.13E+01  1.00  0.042   1.6683806108838525E+01   8.0474457576472358E-01   3.3263836428941862E-01   5.9722936768130974E+04 
+      1       3     26     *ANK   1.90E+02  1.00  0.047   1.4296470725235674E+01   4.9240387448067424E-01   7.2834386721007768E-02   5.0472101831972614E+04 
+      1       4     38      ANK   1.90E+02  1.00  0.049   2.4875087591120786E+00   5.5505194697590277E-01   6.5868967959846897E-02   8.5933594754054393E+03 
+      1       5     56     *ANK   1.37E+03  1.00  0.047   2.1726457778532358E+00   7.0860975251021419E-01   5.5105286724922001E-02   8.0281771911186079E+03 
+      1       6     75      ANK   1.37E+03  1.00  0.048   1.4255013281051747E+00   7.9066154880964801E-01   5.0337574704819338E-02   5.1550792619162066E+03 
+      1       7    100      ANK   1.37E+03  1.00  0.048   1.5229785158607148E+00   8.6284193891044991E-01   4.3188023927572414E-02   5.4705850632459533E+03 
+      1       8    128      ANK   1.37E+03  1.00  0.048   2.6222061064732500E+00   9.0289513395206078E-01   3.8183032591361021E-02   9.2901366909278313E+03 
+      1       9    142      ANK   1.37E+03  1.00  0.047   9.2659016068980227E-01   9.0857556507945714E-01   3.8195652323002628E-02   3.2898439854095591E+03 
+      1      10    163     *ANK   5.66E+03  1.00  0.049   2.3708458332192257E+00   9.3114861531758142E-01   3.5689642288920839E-02   8.3927330741810511E+03 
+      1      11    174      ANK   5.66E+03  1.00  0.050   6.1134003581601515E-01   9.3350911754143606E-01   3.6409691217943706E-02   2.1787527558775755E+03 
+      1      12    207      ANK   5.66E+03  1.00  0.050   2.2430960987176132E+00   9.3907241657107954E-01   3.5021197493914781E-02   7.9374543323547841E+03 
+      1      13    218      ANK   5.66E+03  1.00  0.046   6.4715418019782178E-01   9.3860903437824728E-01   3.5438716974220151E-02   2.2942358716614999E+03 
+      1      14    247      ANK   5.66E+03  1.00  0.048   9.4128716883562336E-01   9.3621550046829849E-01   3.4870541974656784E-02   3.3320456361413785E+03 
+      1      15    265      ANK   5.66E+03  1.00  0.050   5.7124435183413813E-01   9.3354526303651097E-01   3.4777178367617172E-02   2.0233098674247694E+03 
+      1      16    289      ANK   5.66E+03  1.00  0.048   6.3123252300571986E-01   9.2873466072004973E-01   3.4277651185255421E-02   2.2351549043400482E+03 
+      1      17    312      ANK   5.66E+03  1.00  0.048   6.0818492501893573E-01   9.2313013057816584E-01   3.3911856827847475E-02   2.1534639800175987E+03 
+      1      18    333      ANK   5.66E+03  1.00  0.050   7.2779054186600256E-01   9.1770400183658107E-01   3.3586764319742710E-02   2.5757430992642066E+03 
+      1      19    351      ANK   5.66E+03  1.00  0.047   6.1607932043370606E-01   9.1330258052497126E-01   3.3357523260938965E-02   2.1809050090891715E+03 
+      1      20    361     *ANK   1.23E+04  1.00  0.044   5.4084898219853950E-01   9.1018888289218181E-01   3.3218364115305647E-02   1.9149911251585534E+03 
+      1      21    375      ANK   1.23E+04  1.00  0.047   6.2693715556865981E-01   9.0613977782235344E-01   3.3039813594873117E-02   2.2189313102635374E+03 
+      1      22    391      ANK   1.23E+04  1.00  0.047   5.9184942996971923E-01   9.0253985182622276E-01   3.2898934813512686E-02   2.0951000055415543E+03 
+      1      23    410      ANK   1.23E+04  1.00  0.048   7.0227268669256981E-01   8.9815880942391435E-01   3.2761345895836499E-02   2.4856981380510283E+03 
+      1      24    427      ANK   1.23E+04  1.00  0.048   6.1737458802672252E-01   8.9521090757255517E-01   3.2719838629828232E-02   2.1859371720902686E+03 
+      1      25    447      ANK   1.23E+04  1.00  0.048   5.8057767850412323E-01   8.9309447053278146E-01   3.2717442493098825E-02   2.0557633074444575E+03 
+      1      26    466      ANK   1.23E+04  1.00  0.050   4.4381050244681874E-01   8.9162006734092558E-01   3.2737488442714950E-02   1.5723959493663717E+03 
+      1      27    490      ANK   1.23E+04  1.00  0.048   6.2353164903404290E-01   8.8956968825402749E-01   3.2759346894726843E-02   2.2072257949706668E+03 
+      1      28    507      ANK   1.23E+04  1.00  0.047   4.8713455124755140E-01   8.8872754992445924E-01   3.2795256194527694E-02   1.7247951589793163E+03 
+      1      29    527      ANK   1.23E+04  1.00  0.050   5.1291901480443669E-01   8.8795445234074344E-01   3.2820032740920775E-02   1.8158052619679804E+03 
+      1      30    534     *ANK   1.81E+04  1.00  0.048   2.6876254941817729E-01   8.8772415849109920E-01   3.2833565031239631E-02   9.5331650580159896E+02 
+      1      31    576      ANK   1.81E+04  1.00  0.050   4.7133259880542683E-01   8.8720902986122563E-01   3.2845985542913812E-02   1.6689219225901325E+03 
+      1      32    586      ANK   1.81E+04  1.00  0.049   2.3095358739122321E-01   8.8701625174039567E-01   3.2868825384401543E-02   8.1927906035694537E+02 
+      1      33    612     *ANK   6.40E+04  1.00  0.050   4.0834469470717133E-01   8.8672649403660375E-01   3.2866238285614927E-02   1.4462833844285660E+03 
+      1      34    622      ANK   6.40E+04  1.00  0.049   2.0400567607702974E-01   8.8662239835962142E-01   3.2877420070865436E-02   7.2387369002541595E+02 
+      1      35    642      ANK   6.40E+04  1.00  0.049   2.8487051649433054E-01   8.8644625464443949E-01   3.2868296800643890E-02   1.0093127207071260E+03 
+      1      36    656      ANK   6.40E+04  1.00  0.043   2.0427184607157717E-01   8.8636612843722307E-01   3.2871348663175100E-02   7.2435853594208379E+02 
+      1      37    674      ANK   6.40E+04  1.00  0.049   2.1354765041025417E-01   8.8629167132280617E-01   3.2864199326672831E-02   7.5744798298267438E+02 
+      1      38    690      ANK   6.40E+04  1.00  0.049   1.5155853906889491E-01   8.8622735938975805E-01   3.2862871357954411E-02   5.3881453686840541E+02 
+      1      39    714      ANK   6.40E+04  1.00  0.049   1.5587842533779017E-01   8.8611744993021557E-01   3.2855678338662826E-02   5.5532202222119190E+02 
+      1      40    732      ANK   6.40E+04  1.00  0.047   9.4767871076083282E-02   8.8603136230540147E-01   3.2854263244458851E-02   3.3930676517490861E+02 
+      1      41    748     *ANK   1.00E+05  1.00  0.046   8.0348014956072078E-02   8.8595069913427071E-01   3.2850629835611080E-02   2.8770540967899757E+02 
+      1      42    766      ANK   1.00E+05  1.00  0.048   7.5200837287128425E-02   8.8586552255663675E-01   3.2848173406457785E-02   2.6861670330549128E+02 
+      1      43    804      ANK   1.00E+05  1.00  0.049   9.2349495495490430E-02   8.8575512987867111E-01   3.2844189040640043E-02   3.2828654183221687E+02 
+      1      44    842      ANK   1.00E+05  1.00  0.049   9.3403865503158365E-02   8.8561419226556315E-01   3.2842742180288036E-02   3.3313942014227808E+02 
+      1      45    880      ANK   1.00E+05  1.00  0.050   9.6566345491453195E-02   8.8541933707487386E-01   3.2838326800223479E-02   3.4800363273983191E+02 
+      1      46    909      ANK   1.00E+05  1.00  0.049   5.9039731399082758E-02   8.8533279180246816E-01   3.2838483926927356E-02   2.1761624000550543E+02 
+      1      47    945      ANK   1.00E+05  1.00  0.047   7.9629228401023183E-02   8.8521448483221299E-01   3.2840259034758887E-02   2.9433716153605673E+02 
+      1      48    968      ANK   1.00E+05  1.00  0.050   4.7036502082494214E-02   8.8517644529226458E-01   3.2840053291254452E-02   1.7889479156751221E+02 
+      1      49    996      ANK   1.00E+05  1.00  0.047   5.2311718016293508E-02   8.8514445224999216E-01   3.2841575387215112E-02   1.9515931545844492E+02 
+#------------------------------------------------------------------------------------------------------------------------------------------------------------
+#  Grid  | Iter | Iter |  Iter  |   CFL   | Step | Lin  |        Res rho         |         C_lift         |        C_drag          |        totalRes        |
+#  level |      | Tot  |  Type  |         |      | Res  |                        |                        |                        |                        |
+#------------------------------------------------------------------------------------------------------------------------------------------------------------
+      1      50   1020      ANK   1.00E+05  1.00  0.049   5.0607283925544110E-02   8.8511492302909167E-01   3.2842392752402180E-02   1.8725016750295211E+02 
+      1      51   1039     *ANK   1.00E+05  1.00  0.048   5.0626981900364652E-02   8.8509468847390582E-01   3.2842662114765109E-02   1.8526420324437021E+02 
+      1      52   1057      ANK   1.00E+05  1.00  0.049   4.5396261217078293E-02   8.8506830201960074E-01   3.2842770029919456E-02   1.6544930556164181E+02 
+      1      53   1075      ANK   1.00E+05  1.00  0.048   4.1063242119557919E-02   8.8504722126594260E-01   3.2843347211221931E-02   1.4895992540888051E+02 
+      1      54   1093      ANK   1.00E+05  1.00  0.050   3.7116493940248879E-02   8.8504353785330880E-01   3.2843920017826364E-02   1.3413184551718712E+02 
+      1      55   1111      ANK   1.00E+05  1.00  0.048   3.3906827780768339E-02   8.8503816326588969E-01   3.2844306158376059E-02   1.2219646166070878E+02 
+      1      56   1128      ANK   1.00E+05  1.00  0.050   2.9097711389928633E-02   8.8502405161869468E-01   3.2844482562173885E-02   1.0493159352385081E+02 
+      1      57   1145      ANK   1.00E+05  1.00  0.046   2.6739210709690143E-02   8.8502466386974288E-01   3.2844689305134810E-02   9.6291932755049316E+01 
+      1      58   1161      ANK   1.00E+05  1.00  0.046   2.2210074738643497E-02   8.8501304083661725E-01   3.2844927270874208E-02   8.0174174180339662E+01 
+      1      59   1176     *ANK   1.00E+05  1.00  0.045   1.9558295091949909E-02   8.8501361953610003E-01   3.2844919190210008E-02   7.0570916173752622E+01 
+      1      60   1191      ANK   1.00E+05  1.00  0.044   1.6887983212097859E-02   8.8501060184816605E-01   3.2845050281071458E-02   6.0908112565578577E+01 
+      1      61   1206      ANK   1.00E+05  1.00  0.044   1.4314599590805572E-02   8.8500340816972534E-01   3.2845182491105053E-02   5.1611717164279462E+01 
+      1      62   1221      ANK   1.00E+05  1.00  0.049   1.2445605533284356E-02   8.8500299475373256E-01   3.2845119546086564E-02   4.4789085867277578E+01 
+      1      63   1237      ANK   1.00E+05  1.00  0.047   1.0662816661136542E-02   8.8500104342960029E-01   3.2845158857674021E-02   3.8324815615557583E+01 
+      1      64   1253     *ANK   1.00E+05  1.00  0.048   9.2384255910864053E-03   8.8499587477983788E-01   3.2845265436730962E-02   3.3176031933975366E+01 
+      1      65   1270      ANK   1.00E+05  1.00  0.049   9.2693469208991637E-03   8.8499622855077076E-01   3.2845223369035524E-02   3.3162054238747643E+01 
+      1      66   1288      ANK   1.00E+05  1.00  0.044   8.6000104753554928E-03   8.8499208269637009E-01   3.2845216543676281E-02   3.0768386293098278E+01 
+      1      67   1306      ANK   1.00E+05  1.00  0.047   7.9531167901601956E-03   8.8498964857579043E-01   3.2845240310964349E-02   2.8476152425687548E+01 
+      1      68   1325      ANK   1.00E+05  1.00  0.046   8.2293161110947206E-03   8.8498833164320723E-01   3.2845273852528903E-02   2.9441024322946486E+01 
+      1      69   1343      ANK   1.00E+05  1.00  0.049   6.8884724383536482E-03   8.8498633443118158E-01   3.2845277735251394E-02   2.4737917510962447E+01 
+      1      70   1362      ANK   1.00E+05  1.00  0.048   7.3608700721799133E-03   8.8498407226017106E-01   3.2845287084838241E-02   2.6382306130126210E+01 
+      1      71   1380      ANK   1.00E+05  1.00  0.047   6.2264373803295392E-03   8.8498323030421888E-01   3.2845333127136687E-02   2.2389530772801766E+01 
+      1      72   1399      ANK   1.00E+05  1.00  0.044   6.6512944655675709E-03   8.8498231129461469E-01   3.2845355719703248E-02   2.3848501374320765E+01 
+      1      73   1417      ANK   1.00E+05  1.00  0.044   5.4504306535257977E-03   8.8498088531066366E-01   3.2845369729321672E-02   1.9606071251063621E+01 
+#
+# Writing grid file(s):
+#    output/wing_000_vol.cgns
+# Grid file(s) written
+#
+#
+# Writing volume solution file(s):
+#    output/wing_000_vol.cgns
+# Volume solution file(s) written
+#
+#
+# Writing surface solution file(s):
+#    output/wing_000_surf.cgns
+# Surface solution file(s) written
+#
+#
+# Writing slices file(s): 
+#    output/wing_000_slices.dat
+# Slices file(s) written
+#
+#
+# Writing lift distribution file(s):
+#    output/wing_000_lift.dat
+# Lift distribution file(s) written
+#
+#
+# Writing tecplot surface file(s):
+#    output/wing_000_surf.plt
+# Tecplot surface file(s) written
+#
++-------------------------------------------------+
+|
+| Solution Timings:
+|
+| Set AeroProblem Time          :      0.009 sec
+| Solution Time                 :    687.951 sec
+| Write Solution Time           :      0.414 sec
+| Stability Parameter Time      :      0.000 sec
+|
+| Total Call Time               :    688.374 sec
++--------------------------------------------------+
+-> Alpha... 1.800000 
++---------------------------------------------------+
+|
+| Function Timings:
+|
+| Function AeroProblem Time     :      0.008 sec
+| Function Evaluation Time      :      0.001 sec
+| User Function Evaluation Time :      0.000 sec
+|
+| Total Function Evaluation Time:      0.008 sec
++--------------------------------------------------+
+{'wing_cd': 0.03284536972932167, 'wing_cl': 0.8849808853106634}
+ 
+================ ANK Profiling Report (MPI max/avg) ================
+Wall-clock interpretation: use max_* as the primary parallel metric.
+Comm columns only include directly measured communication timings.
+ 
+1. ANKStep major sections
+name                                           calls    max_total     avg_total    max_compute   avg_compute   max_comm      avg_comm
+                                   ANKStep_total      146   6.8672E+02   6.8648E+02   6.7340E+02   6.7335E+02   1.3411E+01   1.3123E+01
+                              computeTimeStepMat      146   1.6224E+01   1.6224E+01   1.6036E+01   1.5947E+01   3.6581E-01   2.7706E-01
+                           FormJacobianANK_total       24   8.7221E+01   8.7219E+01   8.7062E+01   8.6763E+01   7.5443E-01   4.5634E-01
+              -->FormJacobianANK_residuals_total       24   8.3534E+01   8.3477E+01   8.3376E+01   8.3020E+01   7.5443E-01   4.5634E-01
+                                -->PCSetup_total       24   6.5352E-01   6.5203E-01   6.5352E-01   6.5203E-01   0.0000E+00   0.0000E+00
+                              KSPSolve_ANK_total      146   5.1468E+02   5.1413E+02   5.0369E+02   5.0311E+02   1.1057E+01   1.1021E+01
+                      -->MatMult_in_KSPSolve_ANK     2542   2.7451E+02   2.6686E+02   2.6345E+02   2.5584E+02   1.1057E+01   1.1021E+01
+                       -->outside_KSPSolve_total      146   1.5487E+01   1.5364E+01   1.5487E+01   1.5364E+01   0.0000E+00   0.0000E+00
+                 -->MatMult_outside_KSPSolve_ANK      146   1.5335E+01   1.5222E+01   1.4685E+01   1.4585E+01   6.5023E-01   6.3677E-01
+                         -->matrixAssembly_total      146   2.2098E-04   2.0808E-04   2.2098E-04   2.0808E-04   0.0000E+00   0.0000E+00
+                            -->physicality_total      146   9.4398E-01   5.2022E-01   9.4398E-01   5.2022E-01   0.0000E+00   0.0000E+00
+                            -->stateUpdate_total      146   3.8176E-01   3.8162E-01   3.8176E-01   3.8162E-01   0.0000E+00   0.0000E+00
+                                -->vecNorm_total      292   2.5377E-01   1.7273E-01   2.5377E-01   1.7273E-01   0.0000E+00   0.0000E+00
+                              ANK_localOps_total        0   1.8122E+01   1.7667E+01   1.8122E+01   1.7667E+01   0.0000E+00   0.0000E+00
+                     computeUnsteadyResANK_total      146   1.6125E+01   1.6047E+01   1.5459E+01   1.5406E+01   6.6638E-01   6.4089E-01
+  -->computeUnsteadyResANK_timeStepMatMult_total      146   5.5982E-01   5.5534E-01   5.5982E-01   5.5534E-01   0.0000E+00   0.0000E+00
+           -->computeUnsteadyResANK_vecOps_total      146   4.1698E-01   4.0442E-01   4.1698E-01   4.0442E-01   0.0000E+00   0.0000E+00
+                          -->ANKLineSearch_total        0   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00
+                         ANK_finalResidual_total      146   1.9280E+01   1.9014E+01   1.8535E+01   1.8286E+01   7.4438E-01   7.2818E-01
+                            ANK_turbUpdate_total      146   1.6185E+01   1.6171E+01   1.6185E+01   1.6171E+01   0.0000E+00   0.0000E+00
+ 
+1b. Parent closure check (avg columns, additive check)
+sum(parent avg_total/avg_compute/avg_comm):   6.8648E+02   6.7335E+02   1.3123E+01
+ANKStep avg_total/avg_compute/avg_comm:   6.8648E+02   6.7335E+02   1.3123E+01
+difference (ANKStep - parent_sum):   3.6261E-04   3.6261E-04  -1.7764E-15
+ 
+2. Residual totals inside ANKStep
+name                                           calls    max_total     avg_total    max_compute   avg_compute   max_comm      avg_comm
+                       blocketteRes_total_in_ANK     2982   3.1053E+02   3.0233E+02   2.9740E+02   2.8929E+02   1.3128E+01   1.3037E+01
+                     blocketteRes_compute_in_ANK     2982   2.9740E+02   2.8929E+02   2.9740E+02   2.8929E+02   0.0000E+00   0.0000E+00
+                        blocketteRes_comm_in_ANK     2982   1.3128E+01   1.3037E+01   0.0000E+00   0.0000E+00   1.3128E+01   1.3037E+01
+ 
+3. Residual totals by calling context
+name                                           calls    max_total     avg_total    max_compute   avg_compute   max_comm      avg_comm
+                 blocketteRes_in_FormJacobianANK        0   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00
+             blocketteRes_in_MatMult_in_KSPSolve     2542   2.6149E+02   2.5373E+02   2.5043E+02   2.4271E+02   1.1057E+01   1.1021E+01
+        blocketteRes_in_MatMult_outside_KSPSolve      146   1.4324E+01   1.4239E+01   1.3674E+01   1.3602E+01   6.5023E-01   6.3677E-01
+           blocketteRes_in_computeUnsteadyResANK      146   1.5173E+01   1.5087E+01   1.4507E+01   1.4446E+01   6.6638E-01   6.4089E-01
+                   blocketteRes_in_ANKLineSearch        0   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00
+               blocketteRes_in_ANK_finalResidual      146   1.9279E+01   1.9014E+01   1.8535E+01   1.8286E+01   7.4438E-01   7.2818E-01
+                  blocketteRes_in_ANK_turbUpdate        0   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00   0.0000E+00
+ 
+4. Key counters
+n_ANKStep           146
+n_FormJacobianANK            24
+n_PCSetup_ANK            24
+n_KSPSolve_ANK           146
+n_GMRES_iter_ANK          2542
+n_MatMult_ANK          2688
+n_PCApply_ANK             0
+n_GMRES_orthog_ANK             0
+n_blocketteRes_total_in_ANK          2982
+n_blocketteRes_in_FormJacobianANK             0
+n_blocketteRes_in_MatMult_ANK          2688
+n_blocketteRes_in_computeUnsteadyResANK           146
+n_blocketteRes_in_ANKLineSearch             0
+n_blocketteRes_in_ANK_finalResidual           146
+n_whalo2_in_ANK          2982
+=====================================================================
+Generated Cumulative data file path: /home/mdo/MDOLab_3_v2/adflow- 2.12.2 dev 128/Run/results_bs_sweep/bs_4/results_smt_off_pure_mpi/np_2_omp_1/mem_np2_omp1.csv

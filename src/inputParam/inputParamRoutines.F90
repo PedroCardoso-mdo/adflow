@@ -742,6 +742,7 @@ contains
         volWriteResRho = .true.
         volWriteResMom = .false.
         volWriteResRhoe = .false.
+        volWriteTgamma = .true.
 
         ! Set the values which depend on the equations to be solved.
 
@@ -2087,8 +2088,6 @@ contains
         ! kPresent and eddyModel to .False., which indicates an inviscid
         ! computation. For ns and rans this will be corrected.
 
-        rsaCw1 = rsaCb1/(rsaK**2) + (1._realType + rsaCb2)/rsaCb3
-
         nwf = 5
         nt1 = 6
 
@@ -2370,6 +2369,10 @@ contains
         surfWriteCavitation = .false.
         surfWriteAxisMoment = .false.
         surfWriteGC = .false.
+        surfWriteTgamma1 = .true.
+        surfWriteTgamma2 = .true.
+        surfWriteTgamma5 = .true.
+        surfWriteTgamma10 = .true.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2509,6 +2512,22 @@ contains
                 surfWriteAxisMoment = .true.
                 nVarSpecified = nVarSpecified + 1
 
+            case ("tgamma1")
+                surfWriteTgamma1 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("tgamma2")
+                surfWriteTgamma2 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("tgamma5")
+                surfWriteTgamma5 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("tgamma10")
+                surfWriteTgamma10 = .true.
+                nVarSpecified = nVarSpecified + 1
+
             case ("gc")
                 surfWriteGC = .True.
                 nVarSpecified = nVarSpecified + 1
@@ -2589,6 +2608,7 @@ contains
         volWriteGC = .false.
         volWriteStatus = .false.
         volWriteIntermittency = .false.
+        volWriteTgamma = .true.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2738,6 +2758,10 @@ contains
 
             case ("intermittency")
                 volWriteIntermittency = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("tgamma")
+                volWriteTgamma = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default
@@ -3384,6 +3408,18 @@ contains
             wallDistanceNeeded = .false.
             updateWallDistanceUnsteady = .false.
 
+        end if
+
+        ! SABCM introduces an additional wall-distance sensitivity path in SA
+        ! through Re_theta. In the current adjoint implementation this path
+        ! is propagated through the approximate wall-distance reverse routine.
+        if (equations == RANSEquations .and. turbModel == spalartAllmaras .and. &
+            use_SABCM .and. .not. useApproxWallDistance) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "SABCM requires useApproxWallDistance=.true. for consistent wall-distance adjoint sensitivities")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
         end if
         !
         !       Parallelization parameters. Set the minimum load imbalance to
@@ -4078,7 +4114,8 @@ contains
         timeSpectralGridsNotWritten = .true.
 
         ! Additional Paramters Requiring Defaults
-        printIterations = .True.
+        use_ANKProfiling = .False.
+        printIterations = .True. 
         routineFailed = .False.
         fatalFail = .False.
         lumpedDiss = .False.

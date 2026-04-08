@@ -174,6 +174,16 @@ module cgnsNames
 
     character(len=maxCGNSNameLen), parameter :: &
         cgnsIntermittency = "Intermittency"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTgamma = "Tgamma"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTgamma1 = "Tgamma_1CellAboveWall"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTgamma2 = "Tgamma_2CellsAboveWall"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTgamma5 = "Tgamma_5CellsAboveWall"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTgamma10 = "Tgamma_10CellsAboveWall"
 
 !
 !       Residual names.
