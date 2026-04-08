@@ -170,6 +170,10 @@ contains
         if (surfWriteSepSensorKs) nSolVar = nSolVar + 1
         if (surfWriteSepSensorKsArea) nSolVar = nSolVar + 1
         if (surfWriteCavitation) nSolVar = nSolVar + 1
+        if (surfWriteTgamma1) nSolVar = nSolVar + 1
+        if (surfWriteTgamma2) nSolVar = nSolVar + 1
+        if (surfWriteTgamma5) nSolVar = nSolVar + 1
+        if (surfWriteTgamma10) nSolVar = nSolVar + 1
         if (surfWriteGC) nSolVar = nSolVar + 1
 
     end subroutine numberOfSurfSolVariables
@@ -225,6 +229,7 @@ contains
         if (volWriteGC) nVolSolvar = nVolSolvar + 1
         if (volWriteStatus) nVolSolvar = nVolSolvar + 1
         if (volWriteIntermittency) nVolDiscrVar = nVolDiscrVar + 1
+        if (volWriteTgamma) nVolDiscrVar = nVolDiscrVar + 1
 
         ! Check the discrete variables.
 
@@ -571,6 +576,11 @@ contains
             solNames(nn) = cgnsIntermittency
         end if
 
+        if (volWriteTgamma) then
+            nn = nn + 1
+            solNames(nn) = cgnsTgamma
+        end if
+
     end subroutine volSolNames
 
     subroutine surfSolNames(solNames)
@@ -731,6 +741,26 @@ contains
         if (surfWriteAxisMoment) then
             nn = nn + 1
             solNames(nn) = cgnsAxisMoment
+        end if
+
+        if (surfWriteTgamma1) then
+            nn = nn + 1
+            solNames(nn) = cgnsTgamma1
+        end if
+
+        if (surfWriteTgamma2) then
+            nn = nn + 1
+            solNames(nn) = cgnsTgamma2
+        end if
+
+        if (surfWriteTgamma5) then
+            nn = nn + 1
+            solNames(nn) = cgnsTgamma5
+        end if
+
+        if (surfWriteTgamma10) then
+            nn = nn + 1
+            solNames(nn) = cgnsTgamma10
         end if
 
         if (surfWriteGC) then
@@ -1325,6 +1355,18 @@ contains
                 end do
             end if
 
+        case (cgnstgamma)
+            do k = kBeg, kEnd
+                kk = max(2_intType, k); kk = min(kl, kk)
+                do j = jBeg, jEnd
+                    jj = max(2_intType, j); jj = min(jl, jj)
+                    do i = iBeg, iEnd
+                        ii = max(2_intType, i); ii = min(il, ii)
+                        wIO(i, j, k, 1) = Tgamma(ii, jj, kk)
+                    end do
+                end do
+            end do
+
         case (cgnsShock)
 
             do k = kBeg, kEnd
@@ -1434,7 +1476,7 @@ contains
         !      Local variables.
         !
         integer(kind=intType) :: i, j, k, ior, jor
-        integer(kind=intType) :: ii, jj, mm, iiMax, jjMax
+        integer(kind=intType) :: ii, jj, mm, iiMax, jjMax, normalOffset
 
         integer(kind=intType), dimension(2, 2) :: rangeFace
         integer(kind=intType), dimension(3, 2) :: rangeCell
@@ -2371,6 +2413,52 @@ contains
                 !print*, sensor
             end do
         end do
+
+        case (cgnsTgamma1, cgnsTgamma2, cgnsTgamma5, cgnsTgamma10)
+
+        select case (solName)
+        case (cgnsTgamma1)
+            normalOffset = 1_intType
+        case (cgnsTgamma2)
+            normalOffset = 2_intType
+        case (cgnsTgamma5)
+            normalOffset = 5_intType
+        case (cgnsTgamma10)
+            normalOffset = 10_intType
+        end select
+
+        do j = rangeFace(2, 1), rangeFace(2, 2)
+            if (present(jBeg) .and. present(jEnd) .and. useRindLayer) then
+                jor = j + subface_jBegOr - 1
+                if (jor == jBeg) then
+                    jj = j + 1
+                else if (jor == jEnd + 1) then
+                    jj = j - 1
+                else
+                    jj = j
+                end if
+            else
+                jj = j
+            end if
+
+            do i = rangeFace(1, 1), rangeFace(1, 2)
+                if (present(iBeg) .and. present(iEnd) .and. useRindLayer) then
+                    ior = i + subface_iBegOr - 1
+                    if (ior == iBeg) then
+                        ii = i + 1
+                    else if (ior == iEnd + 1) then
+                        ii = i - 1
+                    else
+                        ii = i
+                    end if
+                else
+                    ii = i
+                end if
+
+                nn = nn + 1
+                buffer(nn) = getTgammaAtSurfaceOffset(ii, jj, normalOffset)
+            end do
+        end do
         end select varName
 
     contains
@@ -2407,6 +2495,43 @@ contains
             !       (half*(rhoInfDim)*(uInfDim2 + rot_speed2))
             !       The local velocity term includes the rotational components!
         end subroutine computeCoeffPressure
+
+        real(kind=realType) function getTgammaAtSurfaceOffset(faceI, faceJ, cellOffset)
+            implicit none
+
+            integer(kind=intType), intent(in) :: faceI, faceJ, cellOffset
+
+            integer(kind=intType) :: iCell, jCell, kCell
+
+            select case (faceID)
+            case (iMin)
+                iCell = min(max(1_intType + cellOffset, 2_intType), il)
+                jCell = faceI
+                kCell = faceJ
+            case (iMax)
+                iCell = max(min(il - cellOffset + 1_intType, il), 2_intType)
+                jCell = faceI
+                kCell = faceJ
+            case (jMin)
+                iCell = faceI
+                jCell = min(max(1_intType + cellOffset, 2_intType), jl)
+                kCell = faceJ
+            case (jMax)
+                iCell = faceI
+                jCell = max(min(jl - cellOffset + 1_intType, jl), 2_intType)
+                kCell = faceJ
+            case (kMin)
+                iCell = faceI
+                jCell = faceJ
+                kCell = min(max(1_intType + cellOffset, 2_intType), kl)
+            case (kMax)
+                iCell = faceI
+                jCell = faceJ
+                kCell = max(min(kl - cellOffset + 1_intType, kl), 2_intType)
+            end select
+
+            getTgammaAtSurfaceOffset = Tgamma(iCell, jCell, kCell)
+        end function getTgammaAtSurfaceOffset
 
     end subroutine storeSurfsolInBuffer
 

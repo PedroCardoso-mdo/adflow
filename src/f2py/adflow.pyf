@@ -1174,6 +1174,15 @@ python module libadflow
          logical :: userotationsa
          logical :: useft2sa
          logical :: wallfunctions
+         logical :: use_sabcm
+         logical :: sabcm_exp
+         logical :: use_ankprofiling
+         real(kind=realtype) :: sabcm_const1
+         real(kind=realtype) :: sabcm_const2
+         real(kind=realtype) :: sabcm_tu
+         real(kind=realtype) :: sabcm_s0_tanh
+         real(kind=realtype) :: sabcm_fsmooth
+         real(kind=realtype) :: sabcm_maxsmooth
          real(kind=realtype) :: mach
          real(kind=realtype) :: machcoef
          real(kind=realtype) :: machgrid
@@ -1206,18 +1215,6 @@ python module libadflow
          real(kind=realtype) :: cavitationnumber
          real(kind=realtype) :: cpmin_rho
          real(kind=realtype) :: sepsenmaxrho
-         real(kind=realtype) :: sakappa
-         real(kind=realtype) :: sacb1
-         real(kind=realtype) :: sacb2
-         real(kind=realtype) :: sasigma
-         real(kind=realtype) :: sacv1
-         real(kind=realtype) :: sacw2
-         real(kind=realtype) :: sacw3
-         real(kind=realtype) :: sact1
-         real(kind=realtype) :: sact2
-         real(kind=realtype) :: sact3
-         real(kind=realtype) :: sact4
-         real(kind=realtype) :: sacrot
        end module inputphysics
 
        module inputadjoint ! in :adflow:../modules/inputParam.f90

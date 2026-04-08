@@ -3479,6 +3479,8 @@ contains
         ! Wall distance for the turbulence models.
 
         d2Wall => flowDoms(nn, mm, ll)%d2Wall
+        intermittency => flowDoms(nn, mm, ll)%intermittency
+        Tgamma => flowDoms(nn, mm, ll)%Tgamma
         filterDES => flowDoms(nn, mm, ll)%filterDES  ! eran-des
 
         ! Arrays used for the implicit treatment of the turbulent wall
