@@ -17,6 +17,7 @@ contains
         use turbMod
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use sa
+        use saGammaRetheta
         use kw
         use kt
         use SST
@@ -45,6 +46,8 @@ contains
             select case (turbModel)
             case (spalartAllmaras)
                 call unsteadyTurbSpectral(itu1, itu1)
+            case (spalartallmarasnoft2gammaretheta)
+                call unsteadyTurbSpectral(itu1, itu3)
             case (komegaWilcox, komegaModified, menterSST, ktau)
                 call unsteadyTurbSpectral(itu1, itu2)
             case (v2f)
@@ -67,6 +70,9 @@ contains
 
                     case (spalartAllmaras)
                         call sa_block(.false.)
+
+                    case (spalartallmarasnoft2gammaretheta)
+                        call saGammaRetheta_block(.false.)
 
                     case (komegaWilcox, komegaModified)
                         call kw_block(.false.)
@@ -139,6 +145,9 @@ contains
 
                 case (spalartAllmaras)
                     call sa_block(.True.)
+
+                case (spalartallmarasnoft2gammaretheta)
+                    call saGammaRetheta_block(.True.)
 
                 case (komegaWilcox, komegaModified)
                     call kw_block(.True.)

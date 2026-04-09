@@ -10,16 +10,16 @@ Adjoint
 
 .. toctree::
     :maxdepth: 2
-
+    
     adjoint
+    
 
-
-Differentiation
+Differentiation 
 ---------------
 
 .. toctree::
     :maxdepth: 2
-
+    
     autodiff
 
 

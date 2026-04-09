@@ -300,12 +300,8 @@ end module inputIteration
 
 module inputCostFunctions
     use constants
-    logical :: computeSepSensorKs
-    real(kind=realtype) :: sepSensorOffset
-    real(kind=realtype) :: sepSensorKsOffset
-    real(kind=realtype) :: sepSensorKsPhi
-    real(kind=realtype) :: sepSensorSharpness
-    real(kind=realtype) :: sepSensorKsSharpness
+    real(kind=realtype) :: sepSensorOffset = zero
+    real(kind=realtype) :: sepSensorSharpness = 10.0_realType
     real(kind=realtype) :: cavSensorOffset
     real(kind=realtype) :: cavSensorSharpness
     integer(kind=inttype) :: cavExponent
@@ -576,11 +572,6 @@ module inputPhysics
     ! cpmin_rho            The rho parameter used with the KS-based cavitation sensor.
     ! cpmin_family         The cpmin for a given surface family that does not use
     !                      KS-aggregation, but rather an exact min computation.
-    ! sepSenMaxRho           The rho parameter used with the KS-based separation sensor.
-    ! sepSenMaxFamily     The maximum sepsensor value for a given surface family that does not use
-    !                      KS-aggregation, but rather an exact max computation.
-    ! SAKappa, SAcb1, SAcb2, SAsigma, SAcv1, SAcw2, SAcw3, SAct1, SAct2, SAct3, SAct4, SAcrot
-    !                      Spalart-Allmaras turbulence model constants
 
     integer(kind=intType) :: equations, equationMode, flowType
     integer(kind=intType) :: turbModel, cpModel, turbProd
@@ -607,10 +598,6 @@ module inputPhysics
     real(kind=realType) :: cavitationnumber
     real(kind=realType) :: cpmin_rho
     real(kind=realType), dimension(:), allocatable :: cpmin_family
-    real(kind=realType) :: sepSenMaxRho
-    real(kind=realType), dimension(:), allocatable :: sepSenMaxFamily
-    real(kind=realType) :: SAKappa, SAcb1, SAcb2, SAsigma, SAcv1
-    real(kind=realType) :: SAcw2, SAcw3, SAct1, SAct2, SAct3, SAct4, SAcrot
 
 #ifndef USE_TAPENADE
     real(kind=realType) :: alphad, betad

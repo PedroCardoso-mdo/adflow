@@ -29,6 +29,7 @@ python module libadflow
          integer(kind=inttype) parameter,optional :: komegamodified=5_inttype
          integer(kind=inttype) parameter,optional :: ktau=6_inttype
          integer(kind=inttype) parameter,optional :: mentersst=7_inttype
+         integer(kind=inttype) parameter,optional :: spalartallmarasnoft2gammaretheta=8_inttype
          integer(kind=inttype) parameter,optional :: v2f=10_inttype
          integer(kind=inttype) parameter,optional :: strain=1_inttype
          integer(kind=inttype) parameter,optional :: vorticity=2_inttype
@@ -185,8 +186,6 @@ python module libadflow
          integer(kind=inttype) parameter,optional :: costfunccoflifty=100
          integer(kind=inttype) parameter,optional :: costfunccofliftz=101
          integer(kind=inttype) parameter,optional :: costfuncmavgvi=102
-         integer(kind=inttype) parameter,optional :: costfuncsepsensorks=103
-         integer(kind=inttype) parameter,optional :: costfuncsepsensorksarea=104
        end module constants
 
        module utils
@@ -1205,19 +1204,6 @@ python module libadflow
          integer(kind=inttype) :: liftindex
          real(kind=realtype) :: cavitationnumber
          real(kind=realtype) :: cpmin_rho
-         real(kind=realtype) :: sepsenmaxrho
-         real(kind=realtype) :: sakappa
-         real(kind=realtype) :: sacb1
-         real(kind=realtype) :: sacb2
-         real(kind=realtype) :: sasigma
-         real(kind=realtype) :: sacv1
-         real(kind=realtype) :: sacw2
-         real(kind=realtype) :: sacw3
-         real(kind=realtype) :: sact1
-         real(kind=realtype) :: sact2
-         real(kind=realtype) :: sact3
-         real(kind=realtype) :: sact4
-         real(kind=realtype) :: sacrot
        end module inputphysics
 
        module inputadjoint ! in :adflow:../modules/inputParam.f90
@@ -1400,12 +1386,8 @@ python module libadflow
 
        module inputcostfunctions ! in :test:costFunctions.F90
          use constants
-         logical::computesepsensorks
          real(kind=realtype) sepsensoroffset
-         real(kind=realtype) sepsensorksoffset
          real(kind=realtype) sepsensorsharpness
-         real(kind=realtype) sepsensorkssharpness
-         real(kind=realtype) sepsensorksphi
          real(kind=realtype) cavsensoroffset
          real(kind=realtype) cavsensorsharpness
          integer(kind=inttype) cavexponent

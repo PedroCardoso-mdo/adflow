@@ -1,0 +1,272 @@
+rm -fr temp_reverse
+mkdir -p temp_reverse
+make -f Makefile_tapenade preprocess_reverse
+make[1]: Entering directory '/home/mdo/MDOLab_3_v2/adflow-2.11.0_original/src/adjoint'
+Preprocessing all input files for reverse mode AD...
+mkdir -p preprocess_reverse
+Preprocessing ../adjoint/adjointExtra.F90
+Preprocessing ../modules/surfaceFamilies.F90
+Preprocessing ../modules/monitor.f90
+Preprocessing ../modules/diffSizes.f90
+Preprocessing ../modules/block.F90
+Preprocessing ../modules/inputParam.F90
+Preprocessing ../modules/constants.F90
+Preprocessing ../modules/precision_tapenade.f90
+Preprocessing ../modules/iteration.f90
+Preprocessing ../modules/section.f90
+Preprocessing ../modules/communication.F90
+Preprocessing ../modules/paramTurb.F90
+Preprocessing ../modules/cgnsGrid.F90
+Preprocessing ../modules/CpCurveFits.f90
+Preprocessing ../modules/blockPointers.F90
+Preprocessing ../modules/BCPointers.F90
+Preprocessing ../modules/flowVarRefState.F90
+Preprocessing ../modules/wallDistanceData.F90
+Preprocessing ../modules/actuatorRegionData.F90
+Preprocessing ../modules/overset.F90
+Preprocessing ../modules/cgnsNames.f90
+Preprocessing ../modules/su_cgns.F90
+Preprocessing ../modules/BCDataMod.F90
+Preprocessing ../solver/BCRoutines.F90
+Preprocessing ../solver/fluxes.F90
+Preprocessing ../solver/solverUtils.F90
+Preprocessing ../solver/residuals.F90
+Preprocessing ../solver/surfaceIntegrations.F90
+Preprocessing ../solver/zipperIntegrations.F90
+Preprocessing ../solver/ALEUtils.F90
+Preprocessing ../solver/actuatorRegion.F90
+Preprocessing ../initFlow/initializeFlow.F90
+Preprocessing ../turbulence/turbUtils.F90
+Preprocessing ../turbulence/turbBCRoutines.F90
+Preprocessing ../turbulence/turbMod.F90
+Preprocessing ../turbulence/sa.F90
+Preprocessing ../utils/flowUtils.F90
+Preprocessing ../utils/utils.F90
+Preprocessing ../utils/sorting.F90
+Preprocessing ../overset/oversetUtilities.F90
+Preprocessing ../wallDistance/wallDistance.F90
+Preprocessing ../bcdata/BCData.F90
+make[1]: Leaving directory '/home/mdo/MDOLab_3_v2/adflow-2.11.0_original/src/adjoint'
+/home/mdo/packages_v2/tapenade_3.16/bin/tapenade \
+-html \
+-head " flowUtils%adjustInflowAngle(alpha, beta)>(veldirfreestream, dragdirection, liftdirection) initializeFlow%referenceState(mach, machcoef, pInfDim, TinfDim, rhoInfDim, velDirFreestream) > (mach, machcoef, pInfDim, TinfDim, rhoInfDim, velDirFreeStream, pRef, rhoRef, Tref, muRef, timeRef, pInf, pinfCorr, rhoInf, uInf, rGas, muInf,  winf) bcData%BCDataIsoThermalwall(bcVarArray, Tref) > (BCData%TNS_wall, Tref) bcData%BCDataSubsonicInflow(bcVarArray, muRef, Pref, rhoRef, Tref, Href, wInf) > (bcData%PtInlet, bcData%ttInlet, bcData%htInlet, bcData%turbInlet, muRef, Pref, rhoRef, Tref, Href, wInf) bcData%BCDataSubsonicOutflow(bcVarArray, Pref) > (bcData%Ps,  Pref) bcData%BCDataSupersonicInflow(bcVarArray, muRef, rhoRef, Pref, uRef, wInf, pInfCorr) > (bcData%rho, bcData%velx, bcData%vely, bcData%velz, bcData%ps, bcData%turbInlet, muRef, rhoRef, Pref, uRef, wInf, pInfCorr) actuatorRegion%computeActuatorRegionVolume(vol, actuatorRegions%volLocal) > (vol, actuatorRegions%volLocal) adjointExtra%xhalo_block(x) > (x) adjointExtra%volume_block(x) > (x, vol) adjointExtra%metric_block(x) > (x, si, sj, sk) wallDistance%updateWallDistancesQuickly(x, xSurf, d2wall) > (x, xSurf, d2wall) adjointExtra%boundaryNormals(si, sj, sk) > (si, sj, sk, bcdata%norm) flowUtils%computePressureSimple(w, pInfCorr) > (w, pInfCorr, p) flowUtils%computeLamViscosity(w, p, Tref, muRef, rGas) > (w, p, Tref, muRef, rGas, rlv) flowUtils%computeEtotBlock(w, p) > (w, p) turbUtils%computeEddyViscosity(w,rlv)>(w,rlv,rev) BCRoutines%bcSymm1stHalo(ww1, ww2, pp1, pp2, rlv1, rlv2, rev1, rev2, bcData%norm) > (ww1, ww2, pp1, pp2, rlv1, rlv2, rev1, rev2, bcData%norm) BCRoutines%bcSymm2ndHalo(ww0, ww3, pp0, pp3, rlv0, rlv3, rev0, rev3, bcData%norm) > (ww0, ww3, pp0, pp3, rlv0, rlv3, rev0, rev3, bcData%norm) BCRoutines%bcSymmPolar1stHalo(xx, ww1, ww2, pp1, pp2, rlv1, rlv2, rev1, rev2) > (xx, ww1, ww2, pp1, pp2, rlv1, rlv2, rev1, rev2) BCRoutines%bcSymmPolar2ndHalo(xx, ww0, ww3, pp0, pp3, rlv0, rlv3, rev0, rev3) > (xx, ww0, ww3, pp0, pp3, rlv0, rlv3, rev0, rev3) BCRoutines%bcNSWallAdiabatic(ww0, ww1, ww2, pp0, pp1, pp2, pp3, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%uSlip) > (ww0, ww1, ww2, pp0, pp1, pp2, pp3, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%uSlip) BCRoutines%bcNSWallIsothermal(ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, rGas, BCData%TNS_Wall, bcData%uSlip) > (ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, rGas, BCData%TNS_Wall, bcData%uSlip) BCRoutines%bcFarField(ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, pInfCorr, wInf, bcData%norm, bcData%rface) > (ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, pInfCorr, wInf, bcData%norm, bcData%rface) BCRoutines%bcEulerWall(ww0, ww1, ww2, pp0, pp1, pp2, pp3, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%norm, ssi, ssj, ssk, ss) > (ww0, ww1, ww2, pp0, pp1, pp2, pp3, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%norm, ssi, ssj, ssk, ss) BCRoutines%bcSubsonicInflow(ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%norm, bcData%PtInlet, bcData%ttInlet, bcData%htInlet) > (ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%norm, bcData%PtInlet, bcData%ttInlet, bcData%htInlet) BCRoutines%bcSubsonicOutflow(ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%norm, bcData%Ps) > (ww0, ww1, ww2, pp0, pp1, pp2, rlv0, rlv1, rlv2, rev0, rev1, rev2, bcData%norm, bcData%Ps) turbBCRoutines%applyAllTurbBCThisBlock(rev, w, bvtj1, bvtj2, bvtk1, bvtk2, bvti1, bvti2) > (rev, w) turbBCRoutines%bcTurbTreatment(w, rlv, d2wall, winf) > (w, rlv, d2wall, winf, bvtj1, bvtj2, bvtk1, bvtk2, bvti1, bvti2) solverUtils%timeStep_block(w, pInfCorr, rhoInf, si, sj, sk, sFaceI, sFaceJ, sFaceK, p, radi, radj, radk, dtl, rlv, rev, vol) > (w, pInfCorr, rhoInf, si, sj, sk, sFaceI, sFaceJ, sFaceK, p, radi, radj, radk, dtl, rlv, rev, vol) sa%saSource(w, rlv, vol, si, sj, sk, timeRef, d2wall) > (w, rlv, vol, si, sj, sk, timeREf, scratch) turbutils%turbAdvection(w, vol, si, sj, sk, scratch, sfacei, sfacej, sfacek) > (w, vol, si, sj, sk, scratch, sfacei, sfacej, sfacek) sa%saViscous(w, vol, si, sj, sk, rlv, scratch) > (w, vol, si, sj, sk, rlv, scratch) sa%saResScale(scratch, dw) > (dw) residuals%sourceTerms_block(w, pref, uref, plocal, dw, vol, actuatorRegions%force, actuatorRegions%heat, actuatorRegions%volume) > (w, pref, uref, plocal, dw, vol, actuatorRegions%force, actuatorRegions%heat, actuatorRegions%volume) residuals%initres_block(dw, fw, flowDoms%w, flowDoms%vol, dscalar, dvector) > (dw, fw, flowDoms%w, flowDoms%vol, dscalar, dvector) fluxes%inviscidCentralFlux(w, timeRef, vol, si, sj, sk, p, dw, sfacei, sfacej, sfacek) > (w, timeRef, vol, si, sj, sk, p, dw, sfacei, sfacej, sfacek) fluxes%inviscidDissFluxScalar(w, pInfCorr, rhoInf, p, radi, radj, radk, fw) > (w, pInfCOrr, rhoInf, p, radi, radj, radk, fw) fluxes%inviscidDissFluxMatrix(w, pInfCorr, si, sj, sk, p, fw, sfacei, sfacej, sfacek) > (w, pInfCorr, si, sj, sk, p, fw, sfacei, sfacej, sfacek) fluxes%inviscidDissFluxScalarApprox(w, p, radi, radj, radk, fw, rhoinf, pinfcorr) > (w, p, fw) fluxes%inviscidDissFluxMatrixApprox(w, p, fw, pinfcorr, sfacei, sfacej, sfacek, si, sj, sk) > (w, p, fw, pinfcorr, sfacei, sfacej, sfacek, si, sj, sk) fluxes%inviscidUpwindFlux(w, si, sj, sk, p, fw, sfacei, sfacej, sfacek) > (w, si, sj, sk, p, fw, sfacei, sfacej, sfacek) flowUtils%computeSpeedOfSoundSquared(w, p) > (w, p, aa) flowUtils%allNodalGradients(w, vol, si, sj, sk, aa, ux, uy, uz, vx, vy, vz, wx, wy, wz, qx, qy, qz) > (w, vol, si, sj, sk, aa, ux, uy, uz, vx, vy, vz, wx, wy, wz, qx, qy, qz) fluxes%viscousFlux(w, x, si, sj, sk, rlv, rev, aa, ux, uy, uz, vx, vy, vz, wx, wy, wz, qx, qy, qz, fw, viscsubface%tau, viscSubface%q) > (w, x, si, sj, sk, fw, viscsubface%tau, viscSubface%q) fluxes%viscousFluxApprox(w, x, rlv, rev, aa, fw, si, sj, sk) > (w, x, fw) adjointExtra%sumDwandFw(fw, dw) > (dw) adjointExtra%resScale(dw) > (dw) surfaceIntegrations%wallIntegrationFace(Pinf, Pref, ww2, pp1, pp2, xx, ssi, velDirFreeStream, pointRef, machCoef, viscSubface%tau, localValues, BCData%Fp, bcData%Fv, BCData%area, localValues) > (Pinf, Pref, ww2, pp1, pp2, xx, ssi, velDirFreeStream, pointRef, machCoef, viscSubface%tau, localValues, BCdata%Fp, bcData%Fv, BCData%area, localValues) surfaceIntegrations%flowIntegrationFace(Pref, rhoRef, timeRef, TRef, rGas, ww1, ww2, pp1, pp2, xx, ssi, pointRef, localValues) > (Pref, rhoRef, timeRef, TRef, rGas, ww1, ww2, pp1, pp2, xx, ssi, pointRef, localValues) zipperIntegrations%wallIntegrationZipper(vars, pointRef, localValues) > (vars, pointRef, localValues) zipperIntegrations%flowIntegrationZipper(vars, Pref, rhoRef, timeRef, TRef, rGas, pointRef, localValues) > (vars, Pref, rhoRef, timeRef, TRef, rGas, pointRef, localValues) surfaceIntegrations%getCostFunctions(globalVals, liftDirection, dragDirection, pRef, rhoRef, machCoef) > (liftDirection, dragDirection, pRef, rhoRef, machCoef, funcValues) oversetUtilities%newtonUpdate(xCen, blk, frac) > (blk, frac) oversetUtilities%fracToWeights(frac) > (weights) solverutils%slipVelocitiesFineLevel_block(pinf, timeref, rhoinf, veldirfreestream, machgrid, bcdata%uslip, flowDoms%x) > (veldirfreestream, bcdata%uslip, flowDoms%x) solverutils%normalvelocities_block(sfacei, sfacej, sfacek, si, sj, sk, bcdata%rface) > (sfacei, sfacej, sfacek, si, sj, sk, bcdata%rface) solverutils%gridVelocitiesFineLevel_block(flowDoms%x, si, sj, sk, s, sfacei, sfacej, sfacek, velDirFreestream, pinf, timeref, rhoinf, machgrid) > (flowDoms%x, si, sj, sk, s, sfacei, sfacej, sfacek, velDirFreestream) solverutils%cellFaceVelocities(xc, rotCenter, rotRate, velxGrid, velyGrid, velzGrid, derivRotationMatrix, sc) > (xc, velxGrid, velyGrid, velzGrid, derivRotationMatrix, sc) " \
+-reverse \
+-adjvarname %d \
+-adjfuncname %_b \
+-adjmodulename %_b \
+-msglevel 30 \
+-noisize \
+-i4 -dr8 -r8 \
+-outputdirectory temp_reverse \
+preprocess_reverse/adjointExtra.F90 preprocess_reverse/surfaceFamilies.F90 preprocess_reverse/monitor.f90 preprocess_reverse/diffSizes.f90 preprocess_reverse/block.F90 preprocess_reverse/inputParam.F90 preprocess_reverse/constants.F90 preprocess_reverse/precision_tapenade.f90 preprocess_reverse/iteration.f90 preprocess_reverse/section.f90 preprocess_reverse/communication.F90 preprocess_reverse/paramTurb.F90 preprocess_reverse/cgnsGrid.F90 preprocess_reverse/CpCurveFits.f90 preprocess_reverse/blockPointers.F90 preprocess_reverse/BCPointers.F90 preprocess_reverse/flowVarRefState.F90 preprocess_reverse/wallDistanceData.F90 preprocess_reverse/actuatorRegionData.F90 preprocess_reverse/overset.F90 preprocess_reverse/cgnsNames.f90 preprocess_reverse/su_cgns.F90 preprocess_reverse/BCDataMod.F90 preprocess_reverse/BCRoutines.F90 preprocess_reverse/fluxes.F90 preprocess_reverse/solverUtils.F90 preprocess_reverse/residuals.F90 preprocess_reverse/surfaceIntegrations.F90 preprocess_reverse/zipperIntegrations.F90 preprocess_reverse/ALEUtils.F90 preprocess_reverse/actuatorRegion.F90 preprocess_reverse/initializeFlow.F90 preprocess_reverse/turbUtils.F90 preprocess_reverse/turbBCRoutines.F90 preprocess_reverse/turbMod.F90 preprocess_reverse/sa.F90 preprocess_reverse/flowUtils.F90 preprocess_reverse/utils.F90 preprocess_reverse/sorting.F90 preprocess_reverse/oversetUtilities.F90 preprocess_reverse/wallDistance.F90 preprocess_reverse/BCData.F90
+Tapenade 3.16 (develop) - 22 Aug 2023 15:51 - Java 11.0.27 Linux
+@@ TAPENADE_HOME=/home/mdo/packages_v2/tapenade_3.16/bin/..
+@@ Options:  noISIZE i4 dr8 r8
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+Tool: (DD19) This combination of two declarations for symbol le is not implemented yet old:le: interface. nameTree:le(none(), none()) interfaceUnits:null functionDecls:null functionNames:(lessequalfringetype) contents:(moduleProcedure(lessequalfringetype)) new:le: interface. nameTree:ident:le interfaceUnits:null functionDecls:null functionNames:null contents:null
+Tool: (DD19) This combination of two declarations for symbol lt is not implemented yet old:lt: interface. nameTree:lt(none(), none()) interfaceUnits:null functionDecls:null functionNames:(lessfringetype) contents:(moduleProcedure(lessfringetype)) new:lt: interface. nameTree:ident:lt interfaceUnits:null functionDecls:null functionNames:null contents:null
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+Tool: (DD19) This combination of two declarations for symbol le is not implemented yet old:le: interface. nameTree:le(none(), none()) interfaceUnits:null functionDecls:null functionNames:(lessequaledgetype) contents:(moduleProcedure(lessequaledgetype)) new:le: interface. nameTree:ident:le interfaceUnits:null functionDecls:null functionNames:null contents:null
+Tool: (DD19) This combination of two declarations for symbol lt is not implemented yet old:lt: interface. nameTree:lt(none(), none()) interfaceUnits:null functionDecls:null functionNames:(lessedgetype) contents:(moduleProcedure(lessedgetype)) new:lt: interface. nameTree:ident:lt interfaceUnits:null functionDecls:null functionNames:null contents:null
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD28) Empty SAVE statement may save extra variables, please use "save::varname" 
+(DD17) Symbol cgnsrealtype is not defined in module constants
+(DD17) Symbol alwaysrealtype is not defined in module constants
+(DD15) Module adtdata is not defined
+(DD15) Module kdtree2_module is not defined
+(DD17) Symbol commtype is not defined in module communication
+(DD17) Symbol internalcommtype is not defined in module communication
+(DD17) Symbol adflow_comm_world is not defined in module communication
+(DD17) Symbol myid is not defined in module communication
+(DD17) Symbol familyexchange is not defined in module surfacefamilies
+(DD17) Symbol bcfamexchange is not defined in module surfacefamilies
+(DD17) Symbol myid is not defined in module communication
+(DD17) Symbol adflow_comm_world is not defined in module communication
+(TC21) No implicit rule available to complete the declaration of variable ntimeintervalsspectral
+(TC21) No implicit rule available to complete the declaration of variable nn
+(TC20) Variable adtelementtype is not declared
+(TC16) Type mismatch in named argument: kind=adtelementtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=adtelementtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=adtelementtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=adtelementtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=adtelementtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=adtelementtype expects an integer and is UNKNOWN
+(TC20) Variable cgnsrealtype is not declared
+(TC16) Type mismatch in named argument: kind=cgnsrealtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=cgnsrealtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=cgnsrealtype expects an integer and is UNKNOWN
+(TC20) Variable alwaysrealtype is not declared
+(TC16) Type mismatch in named argument: kind=alwaysrealtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=alwaysrealtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=alwaysrealtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=alwaysrealtype expects an integer and is UNKNOWN
+(TC20) Variable alwaysrealtype is not declared
+(TC16) Type mismatch in named argument: kind=alwaysrealtype expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=alwaysrealtype expects an integer and is UNKNOWN
+(TC20) Variable cgsize_t is not declared
+(TC16) Type mismatch in named argument: kind=cgsize_t expects an integer and is UNKNOWN
+(TC16) Type mismatch in named argument: kind=cgsize_t expects an integer and is UNKNOWN
+(TC62) Undeclared type: adttype
+(TC62) Undeclared type: adttype
+(TC62) Undeclared type: kdtree2
+(TC62) Undeclared type: kdtree2
+(TC19) Equality test on reals is not reliable
+(TC19) Equality test on reals is not reliable
+(TC19) Equality test on reals is not reliable
+(TC19) Equality test on reals is not reliable
+(TC19) Equality test on reals is not reliable
+(TC19) Equality test on reals is not reliable
+(TC19) Equality test on reals is not reliable
+(TC19) Equality test on reals is not reliable
+(DF03) variable rotationpoint[1] is used before initialized
+(DF03) variable rotationpoint[2] is used before initialized
+(DF03) variable rotationpoint[3] is used before initialized
+(AD08) Head routine gridvelocitiesfinelevel_block has remanent variables machgrid, rhoinf, timeref, pinf that one may want to declare as (in)dependents in case of repeated calls
+(AD08) Head routine slipvelocitiesfinelevel_block has remanent variables machgrid, rhoinf, timeref, pinf that one may want to declare as (in)dependents in case of repeated calls
+Command: Input variable(s) weights have their derivative modified in fractoweights: added to independents
+Command: Input variable(s) rhoRef have no differentiable influence in getcostfunctions: removed from independents
+Command: Output variable(s) rhoRef are not influenced differentiably in getcostfunctions: removed from dependents
+Command: Input variable(s) funcvalues have their derivative modified in getcostfunctions: added to independents
+Command: Input variable(s) *aa have their derivative modified in computespeedofsoundsquared: added to independents
+(AD08) Head routine invisciddissfluxscalarapprox has remanent variables pinfcorr, rhoinf that one may want to declare as (in)dependents in case of repeated calls
+Command: Input variable(s) fw, flowDoms.w, flowDoms.vol, dscalar, dvector have no differentiable influence in initres_block: removed from independents
+Command: Output variable(s) fw, flowDoms.w, flowDoms.vol, dscalar, dvector are not influenced differentiably in initres_block: removed from dependents
+Command: Input variable(s) *scratch have their derivative modified in sasource: added to independents
+Command: Input variable(s) *bvtj1, *bvtj2, *bvtk1, *bvtk2, *bvti1, *bvti2 have their derivative modified in bcturbtreatment: added to independents
+Command: Input variable(s) bcData.rface have no differentiable influence in bcfarfield: removed from independents
+Command: Output variable(s) bcData.rface are not influenced differentiably in bcfarfield: removed from dependents
+Command: Input variable(s) *rev have their derivative modified in computeeddyviscosity: added to independents
+Command: Input variable(s) *rlv have their derivative modified in computelamviscosity: added to independents
+Command: Input variable(s) *p have their derivative modified in computepressuresimple: added to independents
+Command: Input variable(s) *(*bcdata.norm) have their derivative modified in boundarynormals: added to independents
+Command: Input variable(s) *si, *sj, *sk have their derivative modified in metric_block: added to independents
+Command: Input variable(s) *vol have their derivative modified in volume_block: added to independents
+Command: Input variable(s) *(*bcdata.turbinlet), *(*bcdata.rho), *(*bcdata.velx), *(*bcdata.vely), *(*bcdata.velz), *(*bcdata.ps) have their derivative modified in bcdatasupersonicinflow: added to independents
+Command: Input variable(s) *(*bcdata.ps) have their derivative modified in bcdatasubsonicoutflow: added to independents
+Command: Input variable(s) *(*bcdata.ptinlet), *(*bcdata.ttinlet), *(*bcdata.htinlet), *(*bcdata.turbinlet) have their derivative modified in bcdatasubsonicinflow: added to independents
+Command: Input variable(s) *(*bcdata.tns_wall) have their derivative modified in bcdataisothermalwall: added to independents
+Command: Input variable(s) pinf, timeref, rhoinf, muref, tref, winf, muinf, uinf, pinfcorr, pref, rgas, rhoref have their derivative modified in referencestate: added to independents
+(AD08) Head routine adjustinflowangle has remanent variables liftdirection[1:3], dragdirection[1:3], beta, veldirfreestream[1:3], alpha that one may want to declare as (in)dependents in case of repeated calls
+Command: Input variable(s) veldirfreestream, dragdirection, liftdirection have their derivative modified in adjustinflowangle: added to independents
+Tool: (TypeSpec tree regeneration) null wrapped type
+Tool: (TypeSpec tree regeneration) null wrapped type
+Tool: (TypeSpec tree regeneration) null wrapped type
+Tool: (TypeSpec tree regeneration) null wrapped type
+Tool: (TypeSpec tree regeneration) null wrapped type
+Tool: (TypeSpec tree regeneration) null wrapped type
+@@ Created temp_reverse/tapenadehtml/adjointExtra_p.f90.html temp_reverse/tapenadehtml/surfaceFamilies_p.f90.html temp_reverse/tapenadehtml/monitor_p.f90.html temp_reverse/tapenadehtml/diffSizes_p.f90.html temp_reverse/tapenadehtml/block_p.f90.html temp_reverse/tapenadehtml/inputParam_p.f90.html temp_reverse/tapenadehtml/constants_p.f90.html temp_reverse/tapenadehtml/precision_tapenade_p.f90.html temp_reverse/tapenadehtml/iteration_p.f90.html temp_reverse/tapenadehtml/section_p.f90.html temp_reverse/tapenadehtml/communication_p.f90.html temp_reverse/tapenadehtml/paramTurb_p.f90.html temp_reverse/tapenadehtml/cgnsGrid_p.f90.html temp_reverse/tapenadehtml/CpCurveFits_p.f90.html temp_reverse/tapenadehtml/blockPointers_p.f90.html temp_reverse/tapenadehtml/BCPointers_p.f90.html temp_reverse/tapenadehtml/flowVarRefState_p.f90.html temp_reverse/tapenadehtml/wallDistanceData_p.f90.html temp_reverse/tapenadehtml/actuatorRegionData_p.f90.html temp_reverse/tapenadehtml/overset_p.f90.html temp_reverse/tapenadehtml/cgnsNames_p.f90.html temp_reverse/tapenadehtml/su_cgns_p.f90.html temp_reverse/tapenadehtml/BCDataMod_p.f90.html temp_reverse/tapenadehtml/BCRoutines_p.f90.html temp_reverse/tapenadehtml/fluxes_p.f90.html temp_reverse/tapenadehtml/solverUtils_p.f90.html temp_reverse/tapenadehtml/residuals_p.f90.html temp_reverse/tapenadehtml/surfaceIntegrations_p.f90.html temp_reverse/tapenadehtml/zipperIntegrations_p.f90.html temp_reverse/tapenadehtml/ALEUtils_p.f90.html temp_reverse/tapenadehtml/actuatorRegion_p.f90.html temp_reverse/tapenadehtml/initializeFlow_p.f90.html temp_reverse/tapenadehtml/turbUtils_p.f90.html temp_reverse/tapenadehtml/turbBCRoutines_p.f90.html temp_reverse/tapenadehtml/turbMod_p.f90.html temp_reverse/tapenadehtml/sa_p.f90.html temp_reverse/tapenadehtml/flowUtils_p.f90.html temp_reverse/tapenadehtml/utils_p.f90.html temp_reverse/tapenadehtml/sorting_p.f90.html temp_reverse/tapenadehtml/oversetUtilities_p.f90.html temp_reverse/tapenadehtml/wallDistance_p.f90.html temp_reverse/tapenadehtml/BCData_p.f90.html 
+Tool: (TypeSpec tree regeneration) null wrapped type
+@@ Created temp_reverse/adjointExtra_b.f90 temp_reverse/tapenadehtml/adjointExtra_b.f90.html temp_reverse/block_b.f90 temp_reverse/tapenadehtml/block_b.f90.html temp_reverse/inputParam_b.f90 temp_reverse/tapenadehtml/inputParam_b.f90.html temp_reverse/blockPointers_b.f90 temp_reverse/tapenadehtml/blockPointers_b.f90.html temp_reverse/BCPointers_b.f90 temp_reverse/tapenadehtml/BCPointers_b.f90.html temp_reverse/flowVarRefState_b.f90 temp_reverse/tapenadehtml/flowVarRefState_b.f90.html temp_reverse/wallDistanceData_b.f90 temp_reverse/tapenadehtml/wallDistanceData_b.f90.html temp_reverse/actuatorRegionData_b.f90 temp_reverse/tapenadehtml/actuatorRegionData_b.f90.html temp_reverse/overset_b.f90 temp_reverse/tapenadehtml/overset_b.f90.html temp_reverse/BCRoutines_b.f90 temp_reverse/tapenadehtml/BCRoutines_b.f90.html temp_reverse/fluxes_b.f90 temp_reverse/tapenadehtml/fluxes_b.f90.html temp_reverse/solverUtils_b.f90 temp_reverse/tapenadehtml/solverUtils_b.f90.html temp_reverse/residuals_b.f90 temp_reverse/tapenadehtml/residuals_b.f90.html temp_reverse/surfaceIntegrations_b.f90 temp_reverse/tapenadehtml/surfaceIntegrations_b.f90.html temp_reverse/zipperIntegrations_b.f90 temp_reverse/tapenadehtml/zipperIntegrations_b.f90.html temp_reverse/ALEUtils_b.f90 temp_reverse/tapenadehtml/ALEUtils_b.f90.html temp_reverse/actuatorRegion_b.f90 temp_reverse/tapenadehtml/actuatorRegion_b.f90.html temp_reverse/initializeFlow_b.f90 temp_reverse/tapenadehtml/initializeFlow_b.f90.html temp_reverse/turbUtils_b.f90 temp_reverse/tapenadehtml/turbUtils_b.f90.html temp_reverse/turbBCRoutines_b.f90 temp_reverse/tapenadehtml/turbBCRoutines_b.f90.html temp_reverse/sa_b.f90 temp_reverse/tapenadehtml/sa_b.f90.html temp_reverse/flowUtils_b.f90 temp_reverse/tapenadehtml/flowUtils_b.f90.html temp_reverse/utils_b.f90 temp_reverse/tapenadehtml/utils_b.f90.html temp_reverse/sorting_b.f90 temp_reverse/tapenadehtml/sorting_b.f90.html temp_reverse/oversetUtilities_b.f90 temp_reverse/tapenadehtml/oversetUtilities_b.f90.html temp_reverse/wallDistance_b.f90 temp_reverse/tapenadehtml/wallDistance_b.f90.html temp_reverse/BCData_b.f90 temp_reverse/tapenadehtml/BCData_b.f90.html 
+@@ Created temp_reverse/adjointExtra_b.msg
+ExtractFiles of filename /home/mdo/packages_v2/tapenade_3.16/bin/../build/libs/tapenadehtml.jar in directory temp_reverse//tapenadehtml/
+HTML Results in /home/mdo/MDOLab_3_v2/adflow-2.11.0_original/src/adjoint/temp_reverse/tapenadehtml/tapenade.html
+job is completed: total time 114.01 s
+make -f Makefile_tapenade autoedit_reverse
+make[1]: Entering directory '/home/mdo/MDOLab_3_v2/adflow-2.11.0_original/src/adjoint'
+Running autoedit on reverse mode AD files...
+python autoEdit/autoEditReverse.py temp_reverse outputReverse
+Directory of input source files  : temp_reverse
+Directory of output source files : outputReverse
+
+Parsing input file temp_reverse/turbBCRoutines_b.f90
+ Modified file saved outputReverse/turbBCRoutines_b.f90
+
+Parsing input file temp_reverse/sorting_b.f90
+
+Parsing input file temp_reverse/oversetUtilities_b.f90
+ Modified file saved outputReverse/oversetUtilities_b.f90
+
+Parsing input file temp_reverse/initializeFlow_b.f90
+ Modified file saved outputReverse/initializeFlow_b.f90
+
+Parsing input file temp_reverse/residuals_b.f90
+ Modified file saved outputReverse/residuals_b.f90
+
+Parsing input file temp_reverse/flowUtils_b.f90
+ Modified file saved outputReverse/flowUtils_b.f90
+
+Parsing input file temp_reverse/solverUtils_b.f90
+ Modified file saved outputReverse/solverUtils_b.f90
+
+Parsing input file temp_reverse/ALEUtils_b.f90
+ Modified file saved outputReverse/ALEUtils_b.f90
+
+Parsing input file temp_reverse/utils_b.f90
+ Modified file saved outputReverse/utils_b.f90
+
+Parsing input file temp_reverse/zipperIntegrations_b.f90
+ Modified file saved outputReverse/zipperIntegrations_b.f90
+
+Parsing input file temp_reverse/block_b.f90
+
+Parsing input file temp_reverse/BCData_b.f90
+ Modified file saved outputReverse/BCData_b.f90
+
+Parsing input file temp_reverse/actuatorRegion_b.f90
+ Modified file saved outputReverse/actuatorRegion_b.f90
+
+Parsing input file temp_reverse/turbUtils_b.f90
+ Modified file saved outputReverse/turbUtils_b.f90
+
+Parsing input file temp_reverse/surfaceIntegrations_b.f90
+ Modified file saved outputReverse/surfaceIntegrations_b.f90
+
+Parsing input file temp_reverse/wallDistanceData_b.f90
+
+Parsing input file temp_reverse/wallDistance_b.f90
+ Modified file saved outputReverse/wallDistance_b.f90
+
+Parsing input file temp_reverse/sa_b.f90
+ Modified file saved outputReverse/sa_b.f90
+
+Parsing input file temp_reverse/actuatorRegionData_b.f90
+
+Parsing input file temp_reverse/overset_b.f90
+
+Parsing input file temp_reverse/blockPointers_b.f90
+
+Parsing input file temp_reverse/BCPointers_b.f90
+
+Parsing input file temp_reverse/fluxes_b.f90
+ Modified file saved outputReverse/fluxes_b.f90
+
+Parsing input file temp_reverse/flowVarRefState_b.f90
+
+Parsing input file temp_reverse/inputParam_b.f90
+
+Parsing input file temp_reverse/BCRoutines_b.f90
+ Modified file saved outputReverse/BCRoutines_b.f90
+
+Parsing input file temp_reverse/adjointExtra_b.f90
+ Modified file saved outputReverse/adjointExtra_b.f90
+make[1]: Leaving directory '/home/mdo/MDOLab_3_v2/adflow-2.11.0_original/src/adjoint'
+make -f Makefile_tapenade clean_preprocess_reverse
+make[1]: Entering directory '/home/mdo/MDOLab_3_v2/adflow-2.11.0_original/src/adjoint'
+Deleting reverse mode AD residual preprocessed files...
+rm -rf preprocess_reverse
+make[1]: Leaving directory '/home/mdo/MDOLab_3_v2/adflow-2.11.0_original/src/adjoint'

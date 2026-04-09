@@ -411,3 +411,8 @@
 #define ispow2				__ispow2
 #define InitRandom			__InitRandom
 #define log2				__log2New
+
+
+
+
+

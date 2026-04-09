@@ -48,6 +48,10 @@ module cgnsNames
         cgnsTurbV2 = "TurbulentScalarV2"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsTurbF = "TurbulentScalarF"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTurbGamma = "Intermittency"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTurbRetheta = "TransitionRetheta"
 
     character(len=maxCGNSNameLen), parameter :: &
         cgnsVelX = "VelocityX"
@@ -191,6 +195,10 @@ module cgnsNames
     character(len=maxCGNSNameLen), parameter :: &
         cgnsResNu = "ResTurbulentSANuTilde"
     character(len=maxCGNSNameLen), parameter :: &
+        cgnsResGamma = "ResTransitionGamma"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsResRetheta = "ResTransitionRetheta"
+    character(len=maxCGNSNameLen), parameter :: &
         cgnsResK = "ResTurbulentEnergyKinetic"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsResOmega = "ResTurbulentDissipationRate"
@@ -217,6 +225,10 @@ module cgnsNames
         cgnsL2ResRhoE = "RSDEnergyStagnationDensityRMS"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsL2ResNu = "RSDTurbulentSANuTildeRMS"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsL2ResGamma = "RSDTransitionGammaRMS"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsL2ResRetheta = "RSDTransitionRethetaRMS"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsL2ResK = "RSDTurbulentEnergyKineticRMS"
     character(len=maxCGNSNameLen), parameter :: &
@@ -276,8 +288,6 @@ module cgnsNames
 !       Names of the "lift" force, separation sensor and cavitation
 !
     character(len=maxCGNSNameLen), parameter :: cgnsSepSensor = "SepSensor"
-    character(len=maxCGNSNameLen), parameter :: cgnsSepSensorKs = "SepSensorKs"
-    character(len=maxCGNSNameLen), parameter :: cgnsSepSensorKsArea = "SepSensorKsArea"
     character(len=maxCGNSNameLen), parameter :: cgnsCavitation = "Cavitation"
     character(len=maxCGNSNameLen), parameter :: cgnsAxisMoment = "AxisMoment"
 !

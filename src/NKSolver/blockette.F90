@@ -768,6 +768,7 @@ contains
         use inputPhysics, only: equationMode, equations, turbModel
         use residuals, only: initres_block
         use sa, only: sa_block
+        use saGammaRetheta, only: saGammaRetheta_block
         use adjointExtra, only: sumDwAndFw_block => sumDwAndFw
         use inputDiscretization, only: spaceDiscr
         use flowUtils, only: allNodalGradients_block => allNodalGradients, &
@@ -811,6 +812,8 @@ contains
             select case (turbModel)
             case (spalartAllmaras)
                 call sa_block(.true.)
+            case (spalartallmarasnoft2gammaretheta)
+                call saGammaRetheta_block(.true.)
             end select
         end if
 
@@ -1004,7 +1007,6 @@ contains
         integer(kind=intType) :: i, j, k
         real(kind=realType) :: term1Fact
 
-
         ! Set model constants
         cv13 = rsaCv1**3
         kar2Inv = one / (rsaK**2)
@@ -1183,7 +1185,6 @@ contains
         real(kind=realType) :: nutm, nutp, num, nup, cdm, cdp
         real(kind=realType) :: c1m, c1p, c10, b1, c1, d1, qs, nu
         integer(Kind=intType) :: i, j, k
-
 
         ! Set model constants
         cv13 = rsaCv1**3

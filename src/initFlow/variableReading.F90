@@ -1082,6 +1082,138 @@ contains
         end if
 
     end subroutine readTurbSA
+
+    subroutine readTurbSaGammaRetheta(nTypeMismatch)
+        !
+        !       readTurbSaGammaRetheta reads the SA variable using the
+        !       standard SA restart routine and then reads the additional
+        !       transition variables gamma and retheta. Missing transition
+        !       variables are set to free-stream values.
+        !
+        use constants
+        use cgnsNames
+        use communication, only: myid
+        use blockPointers, only: w, nbkLocal
+        use IOModule, only: IOVar
+        use utils, only: setCGNSRealType
+        use sorting, only: bsearchStrings
+        use flowVarRefState, only: wInf
+        implicit none
+        !
+        !      Subroutine argument.
+        !
+        integer(kind=intType), intent(inout) :: nTypeMismatch
+        !
+        !      Local variables.
+        !
+        integer :: realTypeCGNS, itu
+        integer(kind=intType) :: i, j, k, po, ip, jp, kp
+        integer(kind=intType) :: ii, nn
+        integer(kind=intType) :: iBeg, iEnd, jBeg, jEnd, kBeg, kEnd
+
+        logical, dimension(2) :: varPresent
+
+        integer, dimension(2) :: indW
+        real(kind=realType), dimension(2) :: turbScale
+        character(len=maxCGNSNameLen), dimension(2) :: namesVar
+
+        ! Read SA variable handling first.
+        call readTurbSA(nTypeMismatch)
+
+        ! Set the cell range to be copied from the buffer.
+        iBeg = lbound(buffer, 1); iEnd = ubound(buffer, 1)
+        jBeg = lbound(buffer, 2); jEnd = ubound(buffer, 2)
+        kBeg = lbound(buffer, 3); kEnd = ubound(buffer, 3)
+
+        realTypeCGNS = setCGNSRealType()
+
+        ! Set pointer offset and solution pointer.
+        po = IOVar(nbkLocal, solID)%pointerOffset
+        w => IOVar(nbkLocal, solID)%w
+
+        ! Names, indices and scales for extra transition variables.
+        indW(1) = itu2; namesVar(1) = cgnsTurbGamma
+        indW(2) = itu3; namesVar(2) = cgnsTurbRetheta
+
+        turbScale(1) = one
+        turbScale(2) = one
+
+        varPresent = .false.
+
+        ! Loop over the two transition variables.
+        varLoop: do ii = 1, 2
+
+            nn = bsearchStrings(namesVar(ii), varNames)
+
+            ! Alternate spelling for Retheta in some restart files.
+            if (ii == 2 .and. nn == 0) then
+                nn = bsearchStrings("TransitionReTheta", varNames)
+            end if
+
+            if (nn > 0) then
+
+                if (realTypeCGNS /= varTypes(nn)) &
+                    nTypeMismatch = nTypeMismatch + 1
+
+                call readRestartVariable(varNames(nn))
+
+                itu = indW(ii)
+                do k = kBeg, kEnd
+                    kp = k + po
+                    do j = jBeg, jEnd
+                        jp = j + po
+                        do i = iBeg, iEnd
+                            ip = i + po
+                            w(ip, jp, kp, itu) = turbScale(ii) * buffer(i, j, k)
+                        end do
+                    end do
+                end do
+
+                varPresent(ii) = .true.
+
+            else
+
+                ! Variable not present; use free-stream value.
+                itu = indW(ii)
+                do k = kBeg, kEnd
+                    kp = k + po
+                    do j = jBeg, jEnd
+                        jp = j + po
+                        do i = iBeg, iEnd
+                            ip = i + po
+                            w(ip, jp, kp, itu) = wInf(itu)
+                        end do
+                    end do
+                end do
+
+            end if
+
+        end do varLoop
+
+        ! Print warning in same style as other restart turbulence routines.
+        if ((myID == 0) .and. (nbkLocal == 1)) then
+            if (.not. all(varPresent)) then
+
+                print "(a)", "#"
+                print "(a)", "#                 Warning"
+
+                if (.not. varPresent(1)) then
+                    print "(a)", "# Transition variable Gamma (Intermittency) is not present in the restart file."
+                    print "(a)", "# It has been initialized to the free stream value."
+                end if
+
+                if (.not. varPresent(2)) then
+                    print "(a)", "# Transition variable Retheta is not present in the restart file."
+                    print "(a)", "# It has been initialized to the free stream value."
+                end if
+
+                print "(a)", "#"
+
+            end if
+        end if
+
+    end subroutine readTurbSaGammaRetheta
+
     subroutine readTurbV2f(nTypeMismatch)
         !
         !       readTurbV2f reads or constructs the four transport variables
@@ -1261,6 +1393,9 @@ contains
 
         case (spalartAllmaras, spalartAllmarasEdwards)
             call readTurbSA(nTypeMismatch)
+
+        case (spalartallmarasnoft2gammaretheta)
+            call readTurbSaGammaRetheta(nTypeMismatch)
 
             ! !===============================================================
 

@@ -88,7 +88,7 @@ class ADFLOW(AeroSolver):
         # Load the compiled module using MExt, allowing multiple
         # imports
         try:
-            _ = self.adflow
+            self.adflow
         except AttributeError:
             curDir = os.path.basename(os.path.dirname(os.path.realpath(__file__)))
             self.adflow = MExt.MExt("libadflow", curDir, debug=debug)._module
@@ -457,8 +457,8 @@ class ADFLOW(AeroSolver):
         # Now we need to search each localX in X to find the corresponding D
         try:
             from scipy.spatial import KDTree
-        except ImportError as err:
-            raise Error("scipy must be available to use setDisplacements") from err
+        except ImportError:
+            raise Error("scipy must be available to use setDisplacements")
         tree = KDTree(numpy.array(X))
         d, index = tree.query(localX)
         for j in range(len(localX)):
@@ -783,6 +783,7 @@ class ADFLOW(AeroSolver):
 
         Parameters
         ----------
+
         fileName : str
            Surface Plot 3D file (may have multiple zones) defining
            integration surface.
@@ -808,7 +809,8 @@ class ADFLOW(AeroSolver):
         # Check that the family name is not already defined:
         if familyName.lower() in self.families:
             raise Error(
-                "Cannot add integration surface with family name '%s'because the name it already exists." % familyName
+                "Cannot add integration surface with family name '%s'"
+                "because the name it already exists." % familyName
             )
 
         # Need to add an additional family so first figure out what
@@ -886,6 +888,7 @@ class ADFLOW(AeroSolver):
 
         Parameters
         ----------
+
         fileName : str
            Surface Plot 3D file (multiblock ascii) defining the closed
            region over which the integration is to be applied.
@@ -942,7 +945,7 @@ class ADFLOW(AeroSolver):
         # else.
         if familyName.lower() in self.families:
             raise Error(
-                "Cannot add ActuatorDiskRegion with family name '%s'because the name it already exists." % familyName
+                "Cannot add ActuatorDiskRegion with family name '%s'" "because the name it already exists." % familyName
             )
 
         # Need to add an additional family so first figure out what
@@ -1026,7 +1029,7 @@ class ADFLOW(AeroSolver):
         >>> def LoverD(funcs):
                 funcs['L/D'] = funcs['cl']/funcs['cd']
                 return funcs
-        >>> CFDSolver.addUserFunction("L/D", ["cl", "cd"], LoverD)
+        >>> CFDSolver.addUserFunction('L/D', ['cl','cd'], LoverD)
         """
         funcName = funcName.lower()
 
@@ -1036,11 +1039,11 @@ class ADFLOW(AeroSolver):
 
         # Now check that we've supplied at least 2 or more functions
         if len(functions) == 1:
-            raise Error("addUserFunction requries at least 2 existing functions to be provided")
+            raise Error("addUserFunction requries at least 2 existing functions" " to be provided")
         # Check that each of the functions are valid:
         for func in functions:
             if func not in self.adflowCostFunctions:
-                raise Error("Supplied  function %s to addUserFunction not known to ADflow" % func)
+                raise Error("Supplied  function %s to addUserFunction " "not know to ADflow" % func)
         self.adflowUserCostFunctions[funcName] = adflowUserFunc(funcName, functions, callBack)
 
         return funcName
@@ -1054,7 +1057,7 @@ class ADFLOW(AeroSolver):
         routine may be used to "change the name" of a function. For
         example,
 
-        >>> addFunction("cd", None, "super_cd")
+        >>> addFunction('cd', None, 'super_cd')
 
         will add a function that is the same as 'cd', but called
         'super_cd'.
@@ -1080,14 +1083,13 @@ class ADFLOW(AeroSolver):
 
     def addFunctions(self, funcNames, groupNames, names=None):
         """Add a series of new functions to ADflow. This is a vector version of
-        the addFunction() routine. See that routine for more documentation.
-        """
+        the addFunction() routine. See that routine for more documentation."""
 
         if names is None:
             names = [None] * len(funcNames)
 
         if len(funcNames) != len(groupNames) or len(funcNames) != len(names):
-            raise Error("funcNames, groupNames, and names all have to be lists of the same length")
+            raise Error("funcNames, groupNames, and names all have to be " "lists of the same length")
 
         newFuncNames = []
         for i in range(len(funcNames)):
@@ -1146,7 +1148,9 @@ class ADFLOW(AeroSolver):
             elif aeroProblem.liftIndex == 3:
                 rotations = [p, q, r]
             else:
-                raise Error("Invalid lift direction. Must be 2 or 3 for steady rotations and specifying an aeroProblem")
+                raise Error(
+                    "Invalid lift direction. Must be 2 or 3 for " "steady rotations and specifying an aeroProblem"
+                )
 
         else:
             rotations = rotRate
@@ -1425,7 +1429,7 @@ class ADFLOW(AeroSolver):
         Examples
         --------
         >>> CFDsolver(ap)
-        >>> CFDsolver.evalFunctions(ap1, funcs, ["cl", "cd"])
+        >>> CFDsolver.evalFunctions(ap1, funcs, ['cl', 'cd'])
         >>> hist = CFDSolver.getConvergenceHistory()
         >>> if MPI.COMM_WORLD.rank == 0:
         >>>     with open(os.path.join(output_dir, "convergence_history.pkl"), "wb") as f:
@@ -1559,7 +1563,7 @@ class ADFLOW(AeroSolver):
         --------
         >>> funcs = {}
         >>> CFDsolver(ap)
-        >>> CFDsolver.evalFunctions(ap1, funcs, ["cl", "cd"])
+        >>> CFDsolver.evalFunctions(ap1, funcs, ['cl', 'cd'])
         >>> funcs
         >>> # Result will look like (if aeroProblem, ap1, has name of 'wing'):
         >>> # {'wing_cl':0.501, 'wing_cd':0.02750}
@@ -1689,7 +1693,7 @@ class ADFLOW(AeroSolver):
         Examples
         --------
         >>> funcSens = {}
-        >>> CFDsolver.evalFunctionsSens(ap1, funcSens, ["cl", "cd"])
+        >>> CFDsolver.evalFunctionsSens(ap1, funcSens, ['cl', 'cd'])
         """
 
         # This is the one and only gateway to the getting derivatives
@@ -2561,7 +2565,9 @@ class ADFLOW(AeroSolver):
         funcName = "%s_%s" % (ap.name, sepName)
 
         if not self.getOption("rkreset") and self.getOption("usenksolver"):
-            ADFLOWWarning("RKReset option is not set. It is usually necessary for solveSep() when NK solver is used.")
+            ADFLOWWarning(
+                "RKReset option is not set. It is usually necessary " "for solveSep() when NK solver is used."
+            )
 
         # Solve first problem
         ap.alpha = alpha0
@@ -2671,6 +2677,7 @@ class ADFLOW(AeroSolver):
 
         Parameters
         ----------
+
         outputDir : str
             Use the supplied output directory
         baseName : str
@@ -3227,7 +3234,7 @@ class ADFLOW(AeroSolver):
 
         self._updateGeomInfo = True
         if self.mesh is None:
-            raise Error("Cannot set new surface coordinate locations without a mesh warping object present.")
+            raise Error("Cannot set new surface coordinate locations without a mesh" "warping object present.")
 
         # First get the surface coordinates of the meshFamily in case
         # the groupName is a subset, those values will remain unchanged.
@@ -3260,7 +3267,7 @@ class ADFLOW(AeroSolver):
 
         # See if the aeroProblem has adflowData already, if not, create.
         try:
-            _ = aeroProblem.adflowData
+            aeroProblem.adflowData
         except AttributeError:
             aeroProblem.adflowData = adflowFlowCase()
             aeroProblem.ptSetName = ptSetName
@@ -3452,7 +3459,7 @@ class ADFLOW(AeroSolver):
         # modified if they are different than the current option.
         AP = aeroProblem
         try:
-            _ = AP.savedOptions
+            AP.savedOptions
         except AttributeError:
             AP.savedOptions = {"adflow": {}}
 
@@ -3517,11 +3524,11 @@ class ADFLOW(AeroSolver):
 
         # Do some checking here for things that MUST be specified:
         if AP.mach is None:
-            raise Error("'mach' number must be specified in the aeroProblem for ADflow.")
+            raise Error("'mach' number must be specified in the aeroProblem" " for ADflow.")
         if areaRef is None:
-            raise Error("'areaRef' must be specified in aeroProblem for ADflow.")
+            raise Error("'areaRef' must be specified in aeroProblem" " for ADflow.")
         if chordRef is None:
-            raise Error("'chordRef' must be specified in aeroProblem for ADflow.")
+            raise Error("'chordRef' must be specified in aeroProblem" " for ADflow.")
 
         # Now set defaults
         if alpha is None:
@@ -4043,7 +4050,7 @@ class ADFLOW(AeroSolver):
 
     def releaseAdjointMemory(self):
         """
-        Release the PETSc Memory that have been allocated
+        release the PETSc Memory that have been allocated
         """
         if self.adjointSetup:
             self.adflow.adjointutils.destroypetscvars()
@@ -4053,7 +4060,7 @@ class ADFLOW(AeroSolver):
         # Remind the user they are using frozen turbulence.
         if self.getOption("frozenTurbulence") and self.myid == 0:
             self.getOption("equationType").lower() == "rans" and ADFLOWWarning(
-                "Turbulence is frozen!!! DERIVATIVES WILL BE WRONG!!! USE AT OWN RISK!!!"
+                "Turbulence is frozen!!! DERIVATIVES WILL BE WRONG!!! " "USE AT OWN RISK!!!"
             )
 
         # May be switching aeroProblems here
@@ -4123,8 +4130,7 @@ class ADFLOW(AeroSolver):
     def _processAeroDerivatives(self, dIda, dIdBC):
         """This internal furncion is used to convert the raw array ouput from
         the matrix-free product bwd routine into the required
-        dictionary format.
-        """
+        dictionary format."""
 
         funcsSens = {}
 
@@ -4194,8 +4200,7 @@ class ADFLOW(AeroSolver):
 
     def _setAeroDVs(self):
         """Do everything that is required to deal with aerodynamic
-        design variables in ADflow
-        """
+        design variables in ADflow"""
 
         DVsRequired = list(self.curAP.DVs.keys())
         for dv in DVsRequired:
@@ -4216,7 +4221,7 @@ class ADFLOW(AeroSolver):
                 pass
             else:
                 raise Error(
-                    "The design variable '%s' as specified in the aeroProblem cannot be used with ADflow." % key
+                    "The design variable '%s' as specified in the" " aeroProblem cannot be used with ADflow." % key
                 )
 
     def solveAdjointForRHS(self, inVec, relTol=None):
@@ -4287,7 +4292,7 @@ class ADFLOW(AeroSolver):
 
     def computeStabilityParameters(self):
         """
-        Run the stability derivative driver to compute the stability parameters
+        run the stability derivative driver to compute the stability parameters
         from the time spectral solution
         """
         self.adflow.utils.stabilityderivativedriver()
@@ -4494,8 +4499,7 @@ class ADFLOW(AeroSolver):
 
     def getResNorms(self):
         """Return the initial, starting and final Res Norms. Typically
-        used by an external solver.
-        """
+        used by an external solver."""
         return (
             numpy.real(self.adflow.iteration.totalr0),
             numpy.real(self.adflow.iteration.totalrstart),
@@ -4504,8 +4508,7 @@ class ADFLOW(AeroSolver):
 
     def setResNorms(self, initNorm=None, startNorm=None, finalNorm=None):
         """Set one of these norms if not None. Typlically used by an
-        external solver
-        """
+        external solver"""
         if initNorm is not None:
             self.adflow.iteration.totalr0 = initNorm
         if startNorm is not None:
@@ -4983,7 +4986,7 @@ class ADFLOW(AeroSolver):
                 # can't do it. xDVDeriv may be specified even when no
                 # mesh is present.
                 if xSDeriv:
-                    raise Error("Could not complete requested xSDeriv derivatives since no mesh is present")
+                    raise Error("Could not complete requested xSDeriv " "derivatives since no mesh is present")
 
             # Process all the way back to the DVs:
             if xDvDeriv:
@@ -5004,7 +5007,7 @@ class ADFLOW(AeroSolver):
                             )
                 else:
                     if self.comm.rank == 0:
-                        ADFLOWWarning("No mesh object is present. No geometric derivatives computed.")
+                        ADFLOWWarning("No mesh object is present. No geometric " "derivatives computed.")
 
                 # Include aero derivatives here:
                 xdvbar.update(self._processAeroDerivatives(extrabar, bcdatavaluesbar))
@@ -5143,8 +5146,7 @@ class ADFLOW(AeroSolver):
         that are on this processor. The reason this is different from
         getStateSize() is that if frozenTurbulence is used for RANS,
         the nonlinear system has 5+neq turb states per cell, while the
-        adjoint still has 5.
-        """
+        adjoint still has 5."""
         if self.getOption("frozenTurbulence"):
             nstate = self.adflow.flowvarrefstate.nwf
         else:
@@ -5158,8 +5160,7 @@ class ADFLOW(AeroSolver):
     def getSpatialSize(self):
         """Return the number of degrees of spatial degrees of freedom
         on this processor. This is (number of nodes)*(number of
-        spectral instances)*3
-        """
+        spectral instances)*3"""
 
         nnodes = self.adflow.adjointvars.nnodeslocal[0]
         ntime = self.adflow.inputtimespectral.ntimeintervalsspectral
@@ -5173,8 +5174,7 @@ class ADFLOW(AeroSolver):
 
     def getStates(self):
         """Return the states on this processor. Used in aerostructural
-        analysis
-        """
+        analysis"""
 
         return self.adflow.nksolver.getstates(self.getStateSize())
 
@@ -5348,8 +5348,7 @@ class ADFLOW(AeroSolver):
 
     def getAdjoint(self, objective):
         """Return the adjoint values for objective if they
-        exist. Otherwise just return zeros
-        """
+        exist. Otherwise just return zeros"""
 
         if objective in self.curAP.adflowData.adjoints:
             return self.curAP.adflowData.adjoints[objective]
@@ -5358,8 +5357,7 @@ class ADFLOW(AeroSolver):
 
     def getResidual(self, aeroProblem, res=None, releaseAdjointMemory=True):
         """Return the residual on this processor. Used in aerostructural
-        analysis
-        """
+        analysis"""
         self.setAeroProblem(aeroProblem, releaseAdjointMemory)
         if res is None:
             res = numpy.zeros(self.getStateSize())
@@ -5426,13 +5424,13 @@ class ADFLOW(AeroSolver):
 
     def _getSurfaceSize(self, groupName, includeZipper=True):
         """Internal routine to return the size of a particular surface. This
-        does *NOT* set the actual family group
-        """
+        does *NOT* set the actual family group"""
         if groupName is None:
             groupName = self.allFamilies
         if groupName not in self.families:
             raise Error(
-                "'%s' is not a family in the CGNS file or has not been added as a combination of families" % groupName
+                "'%s' is not a family in the CGNS file or has not been added"
+                " as a combination of families" % groupName
             )
 
         [nPts, nCells] = self.adflow.surfaceutils.getsurfacesize(self.families[groupName], includeZipper)
@@ -5602,7 +5600,8 @@ class ADFLOW(AeroSolver):
                     setValue = self.adflow.oversetapi.setblockpriority(blkName, value[blkName])
                     if not setValue and self.myid == 0:
                         ADFLOWWarning(
-                            "The block name %s was not found in the CGNS file and could not set it's priority" % blkName
+                            "The block name %s was not found in the CGNS file "
+                            "and could not set it's priority" % blkName
                         )
 
             # Special option has been set so return from function
@@ -5706,18 +5705,6 @@ class ADFLOW(AeroSolver):
             "infChangeCorrectionType": [str, ["offset", "rotate"]],
             "cavitationNumber": [float, 1.4],
             "cpMinRho": [float, 100.0],
-            "SAKappa": [float, 0.41],
-            "SAcb1": [float, 0.1355],
-            "SAcb2": [float, 0.622],
-            "SAsigma": [float, 0.66666666667],
-            "SAcv1": [float, 7.1],
-            "SAcw2": [float, 0.3],
-            "SAcw3": [float, 2.0],
-            "SAct1": [float, 1.0],
-            "SAct2": [float, 2.0],
-            "SAct3": [float, 1.2],
-            "SAct4": [float, 0.5],
-            "SAcrot": [float, 2.0],
             # Common Parameters
             "nCycles": [int, 2000],
             "timeLimit": [float, -1.0],
@@ -5923,13 +5910,8 @@ class ADFLOW(AeroSolver):
             "verifySpatial": [bool, True],
             "verifyExtra": [bool, True],
             # Function parmeters
-            "computeSepSensorKs": [bool, False],
-            "sepSensorKsRho": [float, 1000.0],
             "sepSensorOffset": [float, 0.0],
-            "sepSensorKsOffset": [float, 0.0],
             "sepSensorSharpness": [float, 10.0],
-            "sepSensorKsSharpness": [float, 25.0],
-            "sepSensorKsPhi": [float, 90.0],
             "cavSensorOffset": [float, 0.0],
             "cavSensorSharpness": [float, 10.0],
             "cavExponent": [int, 0],
@@ -5941,8 +5923,7 @@ class ADFLOW(AeroSolver):
     def _getImmutableOptions(self):
         """We define the list of options that *cannot* be changed after the
         object is created. ADflow will raise an error if a user tries to
-        change these. The strings for these options are placed in a set
-        """
+        change these. The strings for these options are placed in a set"""
 
         return (
             "gridfile",
@@ -6070,6 +6051,7 @@ class ADFLOW(AeroSolver):
             },
             "turbulencemodel": {
                 "sa": self.adflow.constants.spalartallmaras,
+                "SA-noft2-Gamma-Retheta": self.adflow.constants.spalartallmarasnoft2gammaretheta,
                 "sa-edwards": self.adflow.constants.spalartallmarasedwards,
                 "k-omega wilcox": self.adflow.constants.komegawilcox,
                 "k-omega modified": self.adflow.constants.komegamodified,
@@ -6118,18 +6100,6 @@ class ADFLOW(AeroSolver):
             "lowspeedpreconditioner": ["discr", "lowspeedpreconditioner"],
             "cavitationnumber": ["physics", "cavitationnumber"],
             "cpminrho": ["physics", "cpmin_rho"],
-            "sakappa": ["physics", "sakappa"],
-            "sacb1": ["physics", "sacb1"],
-            "sacb2": ["physics", "sacb2"],
-            "sasigma": ["physics", "sasigma"],
-            "sacv1": ["physics", "sacv1"],
-            "sacw2": ["physics", "sacw2"],
-            "sacw3": ["physics", "sacw3"],
-            "sact1": ["physics", "sact1"],
-            "sact2": ["physics", "sact2"],
-            "sact3": ["physics", "sact3"],
-            "sact4": ["physics", "sact4"],
-            "sacrot": ["physics", "sacrot"],
             # Common Parameters
             "ncycles": ["iter", "ncycles"],
             "timelimit": ["iter", "timelimit"],
@@ -6368,13 +6338,8 @@ class ADFLOW(AeroSolver):
             "verifyextra": ["adjoint", "verifyextra"],
             "usematrixfreedrdw": ["adjoint", "usematrixfreedrdw"],
             # Parameters for functions
-            "computesepsensorks": ["cost", "computesepsensorks"],
-            "sepsensorksrho": ["physics", "sepsenmaxrho"],
             "sepsensoroffset": ["cost", "sepsensoroffset"],
             "sepsensorsharpness": ["cost", "sepsensorsharpness"],
-            "sepsensorkssharpness": ["cost", "sepsensorkssharpness"],
-            "sepsensorksoffset": ["cost", "sepsensorksoffset"],
-            "sepsensorksphi": ["cost", "sepsensorksphi"],
             "cavsensoroffset": ["cost", "cavsensoroffset"],
             "cavsensorsharpness": ["cost", "cavsensorsharpness"],
             "cavexponent": ["cost", "cavexponent"],
@@ -6518,8 +6483,6 @@ class ADFLOW(AeroSolver):
             "clqdot": self.adflow.constants.costfuncclqdot,
             "cbend": self.adflow.constants.costfuncbendingcoef,
             "sepsensor": self.adflow.constants.costfuncsepsensor,
-            "sepsensorks": self.adflow.constants.costfuncsepsensorks,
-            "sepsensorksarea": self.adflow.constants.costfuncsepsensorksarea,
             "sepsensoravgx": self.adflow.constants.costfuncsepsensoravgx,
             "sepsensoravgy": self.adflow.constants.costfuncsepsensoravgy,
             "sepsensoravgz": self.adflow.constants.costfuncsepsensoravgz,
@@ -6651,8 +6614,7 @@ class ADFLOW(AeroSolver):
 
     def _createZipperMesh(self):
         """Internal routine for generating the zipper mesh. This operation is
-        postposted as long as possible and now it cannot wait any longer.
-        """
+        postposted as long as possible and now it cannot wait any longer."""
 
         # Verify if we already have previous failures, such as negative volumes
         self.adflow.killsignals.routinefailed = self.comm.allreduce(
@@ -6695,14 +6657,12 @@ class ADFLOW(AeroSolver):
 
     def _expandString(self, s):
         """Expand a supplied string 's' to be of the constants.maxstring
-        length so we can set them in fortran
-        """
+        length so we can set them in fortran"""
         return s + " " * (256 - len(s))
 
     def _createFortranStringArray(self, strList):
         """Setting arrays of strings in Fortran can be kinda nasty. This
-        takesa list of strings and returns the array
-        """
+        takesa list of strings and returns the array"""
 
         arr = numpy.zeros((len(strList), self.adflow.constants.maxcgnsnamelen), dtype="str")
         arr[:] = " "
@@ -6727,8 +6687,7 @@ class ADFLOW(AeroSolver):
 
     def _readPlot3DSurfFile(self, fileName, convertToTris=True, coordXfer=None):
         """Read a plot3d file and return the points and connectivity in
-        an unstructured mesh format
-        """
+        an unstructured mesh format"""
 
         pts = None
         conn = None
@@ -6838,7 +6797,7 @@ class adflowUserFunc(object):
         # Make sure the funcName was actually added:
         if self.funcName not in funcs:
             raise Error(
-                "The func '%s' (must be lower-case) was not supplied from user-supplied function." % self.funcName
+                "The func '%s' (must be lower-case) was " "not supplied from user-supplied function." % self.funcName
             )
 
     def evalFunctionsSens(self):

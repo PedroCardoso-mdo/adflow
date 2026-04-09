@@ -90,7 +90,13 @@ contains
                 nMon = nMon + 1; nMonSum = nMonSum + 1
                 monNames(nMon) = cgnsL2ResNu
 
-                ! Two equation models of the k-w family.
+            case (spalartallmarasnoft2gammaretheta)
+                nMon = nMon + 3; nMonSum = nMonSum + 3
+                monNames(nMon - 2) = cgnsL2ResNu
+                monNames(nMon - 1) = cgnsL2ResGamma
+                monNames(nMon) = cgnsL2ResRetheta
+
+                ! Tree equation models of the spalartallmarasnoft2gammaretheta family.
 
             case (komegaWilcox, komegaModified, menterSST)
                 nMon = nMon + 2; nMonSum = nMonSum + 2
@@ -179,6 +185,20 @@ contains
                 sortNumber(i) = 6
                 if (equations /= RANSEquations) then
                     sortNumber(i) = 10001
+                    nMonSum = nMonSum - 1
+                end if
+
+            case (cgnsL2ResGamma)
+                sortNumber(i) = 13
+                if (equations /= RANSEquations) then
+                    sortNumber(i) = 10008
+                    nMonSum = nMonSum - 1
+                end if
+
+            case (cgnsL2ResRetheta)
+                sortNumber(i) = 14
+                if (equations /= RANSEquations) then
+                    sortNumber(i) = 10009
                     nMonSum = nMonSum - 1
                 end if
 
@@ -297,9 +317,6 @@ contains
 
             case (cgnsAxisMoment)
                 sortNumber(i) = 116
-
-            case (cgnsSepSensorKsArea)
-                sortNumber(i) = 117
 
             case (cgnsHdiffMax)
                 sortNumber(i) = 201
@@ -1599,10 +1616,6 @@ contains
                 nMon = nMon + 1; nMonSum = nMonSum + 1
                 tmpNames(nMon) = cgnsSepSensor
 
-            case ("SepSensorKsArea")
-                nMon = nMon + 1; nMonSum = nMonSum + 1
-                tmpNames(nMon) = cgnsSepSensorKsArea
-
             case ("cavitation")
                 nMon = nMon + 1; nMonSum = nMonSum + 1
                 tmpNames(nMon) = cgnsCavitation
@@ -2087,8 +2100,6 @@ contains
         ! kPresent and eddyModel to .False., which indicates an inviscid
         ! computation. For ns and rans this will be corrected.
 
-        rsaCw1 = rsaCb1/(rsaK**2) + (1._realType + rsaCb2)/rsaCb3
-
         nwf = 5
         nt1 = 6
 
@@ -2135,6 +2146,15 @@ contains
 
                 eddyModel = .true.
                 if (wallFunctions) call initCurveFitDataSae
+
+                !===========================================================
+
+            case (spalartallmarasnoft2gammaretheta)
+                nw = 8
+                nt2 = 8
+
+                eddyModel = .true.
+                !if (wallFunctions) call initCurveFitDataSae
 
                 !===========================================================
 
@@ -2365,8 +2385,6 @@ contains
 
         surfWriteBlank = .false.
         surfWriteSepSensor = .false.
-        surfWriteSepSensorKs = .false.
-        surfWriteSepSensorKsArea = .false.
         surfWriteCavitation = .false.
         surfWriteAxisMoment = .false.
         surfWriteGC = .false.
@@ -2491,14 +2509,6 @@ contains
 
             case ("sepsensor")
                 surfWriteSepSensor = .true.
-                nVarSpecified = nVarSpecified + 1
-
-            case ("sepsensorks")
-                surfWriteSepSensorKs = .true.
-                nVarSpecified = nVarSpecified + 1
-
-            case ("sepsensorksarea")
-                surfWriteSepSensorKsArea = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case ("cavitation")
@@ -3445,6 +3455,10 @@ contains
             case (spalartAllmaras, spalartAllmarasEdwards)
                 eddyVisInfRatio = 0.009_realType
 
+            case (spalartallmarasnoft2gammaretheta)
+                eddyVisInfRatio = 1.0e-10_realType
+
+
             case default
                 eddyVisInfRatio = 0.1_realType
 
@@ -3726,17 +3740,6 @@ contains
                  "Memory allocation failure for &
                  &cpmin_family")
             cpmin_family = zero
-        end if
-
-        ! Allocate the memory for sepsenmaxfamily. We had to wait until
-        ! nTimeIntervalsSpectral was set.
-        if (.not. allocated(sepSenMaxFamily)) then
-            allocate (sepSenMaxFamily(nTimeIntervalsSpectral), stat=ierr)
-            if (ierr /= 0) &
-                 call terminate("checkInputParam", &
-                 "Memory allocation failure for &
-                 &sepSenMaxFamily")
-            sepSenMaxFamily = zero
         end if
 
     end subroutine checkInputParam
@@ -4090,6 +4093,8 @@ contains
         adjointPETScVarsAllocated = .False.
         adjointPETScPreProcVarsAllocated = .False.
         usematrixfreedrdw = .False.
+        sepSensorOffset = zero
+        sepSensorSharpness = 10_realType
     end subroutine setDefaultValues
 
     subroutine initializeIsoSurfaceVariables(values, nValues)

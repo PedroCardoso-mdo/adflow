@@ -265,3 +265,4 @@ contains
         end select
     end subroutine setBoundaryPointers
 end subroutine flagNearWallCells
+

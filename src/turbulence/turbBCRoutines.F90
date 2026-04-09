@@ -825,7 +825,6 @@ contains
         real(kind=realType), dimension(:, :, :), pointer :: bvt, ww2
         real(kind=realType), dimension(:, :), pointer :: rlv2, dd2Wall
 
-
         ! Determine the turbulence model used and loop over the faces
         ! of the subface and set the values of bmt and bvt for an
         ! implicit treatment.
@@ -873,6 +872,72 @@ contains
                 do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
                     do i = BCData(nn)%icBeg, BCData(nn)%icEnd
                         bmtk2(i, j, itu1, itu1) = one
+                    end do
+                end do
+            end select
+
+            !        ================================================================
+
+        case (spalartallmarasnoft2gammaretheta)
+
+            ! SA + transition model wall values:
+            ! nu~ = 0, gamma = 0, retheta uses zero-gradient.
+            ! Use linear relation wHalo = bvt - bmt*wInt.
+            select case (BCFaceID(nn))
+            case (iMin)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmti1(i, j, itu1, itu1) = one
+                        bmti1(i, j, itu2, itu2) = one
+                        bmti1(i, j, itu3, itu3) = -one
+                        bvti1(i, j, itu3) = zero
+                    end do
+                end do
+            case (iMax)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmti2(i, j, itu1, itu1) = one
+                        bmti2(i, j, itu2, itu2) = one
+                        bmti2(i, j, itu3, itu3) = -one
+                        bvti2(i, j, itu3) = zero
+                    end do
+                end do
+            case (jMin)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtj1(i, j, itu1, itu1) = one
+                        bmtj1(i, j, itu2, itu2) = one
+                        bmtj1(i, j, itu3, itu3) = -one
+                        bvtj1(i, j, itu3) = zero
+                    end do
+                end do
+            case (jMax)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtj2(i, j, itu1, itu1) = one
+                        bmtj2(i, j, itu2, itu2) = one
+                        bmtj2(i, j, itu3, itu3) = -one
+                        bvtj2(i, j, itu3) = zero
+                    end do
+                end do
+
+            case (kMin)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtk1(i, j, itu1, itu1) = one
+                        bmtk1(i, j, itu2, itu2) = one
+                        bmtk1(i, j, itu3, itu3) = -one
+                        bvtk1(i, j, itu3) = zero
+                    end do
+                end do
+
+            case (kMax)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtk2(i, j, itu1, itu1) = one
+                        bmtk2(i, j, itu2, itu2) = one
+                        bmtk2(i, j, itu3, itu3) = -one
+                        bvtk2(i, j, itu3) = zero
                     end do
                 end do
             end select

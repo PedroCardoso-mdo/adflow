@@ -46,7 +46,6 @@ contains
         real(kind=realType) :: nuInf, ktmp, uInf2
         real(kind=realType) :: vinf, zinf, tmp1(1), tmp2(1)
 
-
         ! Compute the dimensional viscosity from Sutherland's law
         muInfDim = muSuthDim &
                    * ((TSuthDim + SSuthDim) / (TInfDim + SSuthDim)) &
@@ -135,6 +134,14 @@ contains
             case (spalartAllmaras, spalartAllmarasEdwards)
 
                 wInf(itu1) = saNuKnownEddyRatio(eddyVisInfRatio, nuInf)
+
+                !=============================================================
+
+            case (spalartallmarasnoft2gammaretheta)
+
+                wInf(itu1) = saNuKnownEddyRatio(eddyVisInfRatio, nuInf)
+                wInf(itu2) = one
+                wInf(itu3) = 1000.0_realType
 
                 !=============================================================
 

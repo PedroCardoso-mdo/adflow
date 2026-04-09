@@ -1765,14 +1765,14 @@ contains
 
                 flowDoms(nn, 1, mm)%x = 0.0
 
-                !allocate xInit for all time spectral intervals for mesh warping
+                !allocate xInit for all time spectral intervals for meshwarping
 
                 if (ierr /= 0) &
                     call terminate("allocCoorFineGrid", &
                                    "Memory allocation failure for flowDoms%xInit")
                 !flowDoms(nn,1,mm)%xInit=0.0
                 !for the first grid also allocate xPlus and xMinus for the
-                !mesh warping verification...
+                !meshwarping verification...
             end do
 
             ! For a time accurate computation on deforming meshes, allocate

@@ -167,10 +167,8 @@ contains
         if (surfWriteForceInLiftDir) nSolVar = nSolVar + 1
         if (surfWriteBlank) nSolVar = nSolVar + 1
         if (surfWriteSepSensor) nSolVar = nSolVar + 1
-        if (surfWriteSepSensorKs) nSolVar = nSolVar + 1
-        if (surfWriteSepSensorKsArea) nSolVar = nSolVar + 1
-        if (surfWriteCavitation) nSolVar = nSolVar + 1
-        if (surfWriteGC) nSolVar = nSolVar + 1
+        if (surfWriteCavitation) nsolVar = nsolVar + 1
+        if (surfWriteGC) nsolVar = nsolVar + 1
 
     end subroutine numberOfSurfSolVariables
 
@@ -357,6 +355,11 @@ contains
             case (spalartAllmaras, spalartAllmarasEdwards)
                 solNames(itu1) = cgnsTurbSaNu
 
+            case (spalartallmarasnoft2gammaretheta)
+                solNames(itu1) = cgnsTurbSaNu
+                solNames(itu2) = cgnsTurbGamma
+                solNames(itu3) = cgnsTurbRetheta
+
             case (komegaWilcox, komegaModified, menterSST)
                 solNames(itu1) = cgnsTurbK
                 solNames(itu2) = cgnsTurbOmega
@@ -509,6 +512,16 @@ contains
             case (spalartAllmaras, spalartAllmarasEdwards)
                 nn = nn + 1
                 solNames(nn) = cgnsResNu
+
+            case (spalartallmarasnoft2gammaretheta)
+                nn = nn + 1
+                solNames(nn) = cgnsResNu
+
+                nn = nn + 1
+                solNames(nn) = cgnsResGamma
+
+                nn = nn + 1
+                solNames(nn) = cgnsResRetheta
 
             case (komegaWilcox, komegaModified, menterSST)
                 nn = nn + 1
@@ -713,16 +726,6 @@ contains
             solNames(nn) = cgnsSepSensor
         end if
 
-        if (surfWriteSepSensorKs) then
-            nn = nn + 1
-            solNames(nn) = cgnsSepSensorKs
-        end if
-
-        if (surfWriteSepSensorKsArea) then
-            nn = nn + 1
-            solNames(nn) = cgnsSepSensorKsArea
-        end if
-
         if (surfWriteCavitation) then
             nn = nn + 1
             solNames(nn) = cgnsCavitation
@@ -851,7 +854,7 @@ contains
                 end do
             end do
 
-        case (cgnsTurbOmega, cgnsTurbTau, cgnsTurbEpsilon)
+        case (cgnsTurbOmega, cgnsTurbTau, cgnsTurbEpsilon, cgnsTurbGamma)
             do k = kBeg, kEnd
                 do j = jBeg, jEnd
                     do i = iBeg, iEnd
@@ -860,7 +863,7 @@ contains
                 end do
             end do
 
-        case (cgnsTurbV2)
+        case (cgnsTurbV2, cgnsTurbRetheta)
             do k = kBeg, kEnd
                 do j = jBeg, jEnd
                     do i = iBeg, iEnd
@@ -1247,7 +1250,7 @@ contains
                 end do
             end do
 
-        case (cgnsResOmega, cgnsResTau, cgnsResEpsilon)
+        case (cgnsResOmega, cgnsResTau, cgnsResEpsilon, cgnsResGamma)
 
             do k = kBeg, kEnd
                 do j = jBeg, jEnd
@@ -1258,7 +1261,7 @@ contains
                 end do
             end do
 
-        case (cgnsResV2)
+        case (cgnsResV2, cgnsResRetheta)
 
             do k = kBeg, kEnd
                 do j = jBeg, jEnd
@@ -1448,8 +1451,6 @@ contains
         real(kind=realType) :: tauxx, tauyy, tauzz
         real(kind=realType) :: tauxy, tauxz, tauyz
         real(kind=realType) :: pm1, a, sensor, plocal, sensor1
-        real(kind=realType) :: vectTangential(3)
-        real(kind=realType) :: vectDotProductFsNormal
         real(kind=realType), dimension(3) :: norm, V
         real(kind=realType) :: coeffPressure
 
@@ -1498,9 +1499,8 @@ contains
 
             select case (solName)
 
-             case (cgnsSkinFmag, cgnsStanton, cgnsYplus, &
-                  cgnsSkinFx, cgnsSkinFy, cgnsSkinFz, cgnsForceInDragDir, cgnsForceInLiftDir, &
-                  cgnsSepSensor, cgnsSepSensorKs, cgnsSepSensorKsArea)
+            case (cgnsSkinFmag, cgnsStanton, cgnsYplus, &
+                  cgnsSkinFx, cgnsSkinFy, cgnsSkinFz, cgnsForceInDragDir, cgnsForceInLiftDir)
 
                 ! Update the counter and set this entry of buffer to 0.
 
@@ -2191,154 +2191,12 @@ contains
             end do
         end do
 
-        case (cgnsSepSensorKs)
-
-        do j = rangeFace(2, 1), rangeFace(2, 2)
-            if (present(jBeg) .and. present(jEnd) .and. (useRindLayer)) then
-                jor = j + jBegOr - 1
-                if (jor == jBeg) then
-                    jj = j + 1
-                else if (jor == jEnd + 1) then
-                    jj = j - 1
-                else
-                    jj = j
-                end if
-            else
-                jj = j
-
-            end if
-
-            do i = rangeFace(1, 1), rangeFace(1, 2)
-
-                if (present(iBeg) .and. present(iEnd) .and. (useRindLayer)) then
-                    ior = i + iBegor - 1
-                    if (ior == iBeg) then
-                        ii = i + 1
-                    else if (ior == iEnd + 1) then
-                        ii = i - 1
-                    else
-                        ii = i
-                    end if
-                else
-                    ii = i
-                end if
-
-                nn = nn + 1
-
-                ! Get normalized surface velocity:
-                v(1) = ww2(ii, jj, ivx)
-                v(2) = ww2(ii, jj, ivy)
-                v(3) = ww2(ii, jj, ivz)
-
-                ! Normalize
-                v = v / (sqrt(v(1)**2 + v(2)**2 + v(3)**2) + 1e-16)
-                mm = viscPointer(ii, jj)
-
-                norm(1) = BCData(mm)%norm(ii, jj, 1)
-                norm(2) = BCData(mm)%norm(ii, jj, 2)
-                norm(3) = BCData(mm)%norm(ii, jj, 3)
-
-                vectDotProductFsNormal = velDirFreeStream(1) * norm(1) + &
-                                         velDirFreeStream(2) * norm(2) + &
-                                         velDirFreeStream(3) * norm(3)
-
-                vectTangential(1) = velDirFreeStream(1) - vectDotProductFsNormal * norm(1)
-                vectTangential(2) = velDirFreeStream(2) - vectDotProductFsNormal * norm(2)
-                vectTangential(3) = velDirFreeStream(3) - vectDotProductFsNormal * norm(3)
-
-                vectTangential = vectTangential / (sqrt(vectTangential(1)**2 + vectTangential(2)**2 + &
-                                                        vectTangential(3)**2) + 1e-16)
-
-                ! computing separation sensor
-                ! velocity dot products
-                sensor = (v(1) * vectTangential(1) + v(2) * vectTangential(2) + &
-                          v(3) * vectTangential(3))
-
-                ! sepsensor value
-                sensor = (cos(degtorad * sepsensorksphi) - sensor) / &
-                         (-cos(degtorad * sepsensorksphi) + cos(zero) + 1e-16)
-
-                buffer(nn) = sensor
-            end do
-        end do
-
-        case (cgnsSepSensorKsArea)
-
-        do j = rangeFace(2, 1), rangeFace(2, 2)
-            if (present(jBeg) .and. present(jEnd) .and. (useRindLayer)) then
-                jor = j + jBegOr - 1
-                if (jor == jBeg) then
-                    jj = j + 1
-                else if (jor == jEnd + 1) then
-                    jj = j - 1
-                else
-                    jj = j
-                end if
-            else
-                jj = j
-
-            end if
-
-            do i = rangeFace(1, 1), rangeFace(1, 2)
-
-                if (present(iBeg) .and. present(iEnd) .and. (useRindLayer)) then
-                    ior = i + iBegor - 1
-                    if (ior == iBeg) then
-                        ii = i + 1
-                    else if (ior == iEnd + 1) then
-                        ii = i - 1
-                    else
-                        ii = i
-                    end if
-                else
-                    ii = i
-                end if
-
-                nn = nn + 1
-
-                ! Get normalized surface velocity:
-                v(1) = ww2(ii, jj, ivx)
-                v(2) = ww2(ii, jj, ivy)
-                v(3) = ww2(ii, jj, ivz)
-
-                ! Normalize
-                v = v / (sqrt(v(1)**2 + v(2)**2 + v(3)**2) + 1e-16)
-                mm = viscPointer(ii, jj)
-
-                norm(1) = BCData(mm)%norm(ii, jj, 1)
-                norm(2) = BCData(mm)%norm(ii, jj, 2)
-                norm(3) = BCData(mm)%norm(ii, jj, 3)
-
-                vectDotProductFsNormal = velDirFreeStream(1) * norm(1) + &
-                                         velDirFreeStream(2) * norm(2) + &
-                                         velDirFreeStream(3) * norm(3)
-
-                vectTangential(1) = velDirFreeStream(1) - vectDotProductFsNormal * norm(1)
-                vectTangential(2) = velDirFreeStream(2) - vectDotProductFsNormal * norm(2)
-                vectTangential(3) = velDirFreeStream(3) - vectDotProductFsNormal * norm(3)
-
-                vectTangential = vectTangential / (sqrt(vectTangential(1)**2 + vectTangential(2)**2 + &
-                                                        vectTangential(3)**2) + 1e-16)
-
-                ! computing separation sensor
-                ! velocity dot products
-                sensor = (v(1) * vectTangential(1) + v(2) * vectTangential(2) + &
-                          v(3) * vectTangential(3))
-
-                ! sepsensor value
-                sensor = (cos(degtorad * sepsensorksphi) - sensor) / &
-                         (-cos(degtorad * sepsensorksphi) + cos(zero) + 1e-16)
-
-                sensor = one / (one + exp(-2 * sepSensorKsSharpness * (sensor + sepSensorKsOffset)))
-
-                buffer(nn) = sensor
-            end do
-        end do
-
         case (cgnsSepSensor)
+
         do j = rangeFace(2, 1), rangeFace(2, 2)
             do i = rangeFace(1, 1), rangeFace(1, 2)
                 nn = nn + 1
+
                 ! Get normalized surface velocity:
                 v(1) = ww2(i, j, ivx)
                 v(2) = ww2(i, j, ivy)
@@ -2615,6 +2473,14 @@ contains
                 nn = nn + 1
                 solNames(nn) = cgnsTurbSaNu
 
+            case (spalartallmarasnoft2gammaretheta)
+                nn = nn + 1
+                solNames(nn) = cgnsTurbSaNu
+                nn = nn + 1
+                solNames(nn) = cgnsTurbGamma
+                nn = nn + 1
+                solNames(nn) = cgnsTurbRetheta
+
             case (komegaWilcox, komegaModified, menterSST)
                 nn = nn + 1
                 solNames(nn) = cgnsTurbK
@@ -2769,6 +2635,16 @@ contains
             case (spalartAllmaras, spalartAllmarasEdwards)
                 nn = nn + 1
                 solNames(nn) = cgnsResNu
+
+            case (spalartallmarasnoft2gammaretheta)
+                nn = nn + 1
+                solNames(nn) = cgnsResNu
+
+                nn = nn + 1
+                solNames(nn) = cgnsResGamma
+
+                nn = nn + 1
+                solNames(nn) = cgnsResRetheta
 
             case (komegaWilcox, komegaModified, menterSST)
                 nn = nn + 1

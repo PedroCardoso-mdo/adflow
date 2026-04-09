@@ -98,7 +98,7 @@ class TestSolve(reg_test_classes.RegTest):
                 "gridfile": gridFile,
                 "outputDirectory": os.path.join(baseDir, "../output_files"),
                 "writeVolumeSolution": False,
-                "writeSurfaceSolution": False,
+                "writeSurfaceSolution": True,
                 "blocksplitting": True,
                 "useblockettes": False,
                 "equationtype": "Euler",
