@@ -5628,6 +5628,18 @@ class ADFLOW(AeroSolver):
         # Set in the correct module
         setattr(module, variable, value)
 
+        # Enforce consistent SABCM/SA ft2 options before Fortran uses them.
+        if name in ["use_sabcm", "useft2sa"]:
+            use_sabcm = getattr(self.adflow.inputphysics, "use_sabcm")
+            useft2sa = getattr(self.adflow.inputphysics, "useft2sa")
+            if use_sabcm and useft2sa:
+                if self.myid == 0:
+                    ADFLOWWarning(
+                        "use_SABCM is enabled, so useft2SA must be False. "
+                        "Automatically setting useft2SA to False."
+                    )
+                setattr(self.adflow.inputphysics, "useft2sa", False)
+
     @staticmethod
     def _getDefaultOptions():
         defOpts = {

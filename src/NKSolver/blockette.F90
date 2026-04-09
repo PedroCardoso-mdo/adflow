@@ -20,6 +20,9 @@ module blockette
     ! Current indices into the original block
     integer(kind=intType) :: ii, jj, kk
 
+    ! Synchronize Tgamma storage only on update-intermediate residual calls.
+    logical :: storeTgamma
+
     ! Double halos
     real(kind=realType), dimension(0:bbib, 0:bbjb, 0:bbkb, 1:6) :: w
     real(kind=realType), dimension(0:bbib, 0:bbjb, 0:bbkb) :: P, gamma
@@ -133,6 +136,7 @@ contains
         turbRes = .True.
         spatial = .False.
         storeWall = .True.
+        storeTgamma = .False.
 
         ! Parse the input variables
         if (present(useDissApprox)) then
@@ -146,6 +150,8 @@ contains
         if (present(useUpdateIntermed)) then
             updateIntermed = useUpdateIntermed
         end if
+
+        storeTgamma = updateIntermed
 
         if (present(useFlowRes)) then
             flowRes = useFlowRes
@@ -1164,10 +1170,6 @@ contains
                     tTgamma = one
 
                     if (use_SABCM) then
-                        if (.not. printedInputPhysics) then
-                            if (myID == 0) print *, 'SABCM_Exp =', SABCM_Exp
-                            printedInputPhysics = .true.
-                        end if
                         ! Compute the three components of the vorticity vector.
                         ! Substract the part coming from the rotating frame.
 
@@ -1212,14 +1214,13 @@ contains
                             ! Reference formula: gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2)))
                             arg_gamma = sqrt(max(tterm1, zero)) + sqrt(max(tterm2, zero))
                             tTgamma = one - exp(-arg_gamma)
-                            tTgamma = min(max(tTgamma, zero), one)
                         else
                             ! Current tanh-based formula
                             arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
                             tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
                         end if
                                                                             
-                        Tgamma(i, j, k) = tTgamma
+                        if (storeTgamma) Tgamma(i, j, k) = tTgamma
                         ft2 = zero
                     end if
 
