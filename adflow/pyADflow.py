@@ -6543,6 +6543,9 @@ class ADFLOW(AeroSolver):
             turbModel = self.getOption("turbulencemodel")
             if turbModel == "SA":
                 self.setOption("turbresscale", 10000.0)
+            elif turbModel == "SA-noft2-Gamma-Retheta":
+                # nuTilde scale ~1e4, gamma scale ~10, ReThetaTilde scale ~1e4
+                self.setOption("turbresscale", [10000.0, 10.0, 10000.0])
             elif turbModel == "Menter SST":
                 self.setOption("turbresscale", [1e3, 1e-6])
             else:

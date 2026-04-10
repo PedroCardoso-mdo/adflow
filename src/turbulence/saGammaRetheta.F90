@@ -4,6 +4,10 @@ module saGammaReTheta
     ! model. It is slightly more modularized than the original which makes
     ! performing reverse mode AD simplier.
 
+    use constants, only: realType
+
+    real(kind=realType), dimension(:, :, :, :, :), allocatable :: qq
+
 contains
 
     subroutine saGammaReTheta_block(resOnly)
@@ -12,7 +16,7 @@ contains
         use blockPointers, only: il, jl, kl
         use inputTimeSpectral
         use iteration
-        use turbUtils, only: SSTEddyViscosity
+        use turbUtils, only: SSTEddyViscosity, turbAdvection, unsteadyTurbTerm, saEddyViscosity
         use turbBCRoutines, only: bcTurbTreatment, applyAllTurbBCThisBlock
         implicit none
 
@@ -334,10 +338,9 @@ contains
                         ! contribution. Clip qq to zero, if the total is negative.
 
                         qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), zero)
-                        qq(i, j, k, 2, 2)= zero
-                        qq(i, j, k, 2, 2)= zero
+                        qq(i, j, k, 2, 2) = zero
+                        qq(i, j, k, 3, 3) = zero
 #endif
-#ifdef TAPENADE_REVERSE
 #ifdef TAPENADE_REVERSE
                     end do
 #else
@@ -387,18 +390,23 @@ contains
 
         ! SA nonlinear correction
         real(kind=realType) :: cnud, cam, cap
+        real(kind=realType) :: nutm, nutp
 
         ! matrix coefficients
         real(kind=realType) :: c1m, c1p, c10
         real(kind=realType) :: c2m, c2p, c20
         real(kind=realType) :: c3m, c3p, c30
+        real(kind=realType) :: b1, c1, d1
+        real(kind=realType) :: b2, c2, d2
+        real(kind=realType) :: b3, c3, d3
 
         ! constants
-        real(kind=realType) :: cb3Inv
+        real(kind=realType) :: cb3Inv, cv13
 
         
 
         cb3Inv = one / rsaCb3
+        cv13 = rsaCv1**3
 
 
 
@@ -951,6 +959,7 @@ contains
         !  the negative value is taken, again to be consistent with the
         ! * flow equations. Also multiply by iblank so that no updates occur
         !  in holes or the overset boundary.
+        use constants
         use blockPointers
         implicit none
 
@@ -1010,17 +1019,12 @@ contains
         !
         integer(kind=intType) :: i, j, k, nn
         real(kind=realType) :: rblank, factor
-
-        real(kind=realType), dimension(2:il, 2:jl, 2:kl, 3, 3) :: qq
+        real(kind=realType), dimension(:, :, :, :), pointer :: dvt
 
         ! Set a couple of pointers to the correct entries in dw to
         ! make the code more readable.
 
         dvt => scratch(1:, 1:, 1:, idvt:)
-        prod => scratch(1:, 1:, 1:, iprod)
-        vort => prod
-        kwCD => scratch(1:, 1:, 1:, icd)
-        f1 => scratch(1:, 1:, 1:, if1SST)
 
 
         if (resOnly) return

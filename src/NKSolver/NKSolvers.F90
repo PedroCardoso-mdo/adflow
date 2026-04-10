@@ -2119,7 +2119,7 @@ contains
         use constants
         use inputPhysics, only: machInf => mach
         use blockPointers, only: volRef, w, dtl, gamma, p, aa
-        use flowVarRefState, only: viscous, nt1
+        use flowVarRefState, only: viscous, nt1, nt2
         use inputIteration, only: turbResScale
         use communication
         implicit none
@@ -2131,6 +2131,7 @@ contains
         real(kind=realType), dimension(nState, nState), intent(out) :: timeStepBlock
 
         ! Local variables
+        integer(kind=intType) :: l
         real(kind=realType) :: blendFactor, dtInv, rho, velX, velY, velZ
         real(kind=realType) :: speed, speedOfSound, mach, machSqr, machSqrTrunc, alpha, beta, tau, gammaMinusOne
         real(kind=realType) :: speedXY, sinTheta, cosTheta, sinAlpha, cosAlpha
@@ -2171,7 +2172,9 @@ contains
         if (ANK_coupled) then
             ! The turbulence variable can get a different CFL number, so we scale it by ANK_turbCFLScale.
             ! In addition, turbResScale is required because the turbulent residuals are scaled with it.
-            stateToCons(nt1, nt1) = turbResScale(1) / ANK_turbCFLScale
+            do l = nt1, nt2
+                stateToCons(l, l) = turbResScale(l - nt1 + 1) / ANK_turbCFLScale
+            end do
         end if
 
         if (ANK_charTimeStepType == 'None') then
@@ -2185,10 +2188,12 @@ contains
 
             ! Characteristic time-stepping is not applied to the turbulence equation
             if (ANK_coupled) then
-                timeStepBlock(6, 6) = one
-                streamToCart(6, 6) = one
-                symmToCons(nt1, 6) = one
-                consToSymm(6, nt1) = one
+                do l = nt1, nt2
+                    timeStepBlock(l, l) = one
+                    streamToCart(l, l) = one
+                    symmToCons(l, l) = one
+                    consToSymm(l, l) = one
+                end do
             end if
 
             ! Compute the speed of sound squared for inviscid flow
@@ -2959,7 +2964,7 @@ contains
                             ovv = one / volRef(i, j, k)
                             do l = nt1, nt2
                                 ii = ii + 1
-                                rvec_pointer(ii) = dw(i, j, k, l) * ovv * turbResScale(1)
+                                rvec_pointer(ii) = dw(i, j, k, l) * ovv * turbResScale(l - nt1 + 1)
                             end do
                         end do
                     end do

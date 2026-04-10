@@ -6027,6 +6027,7 @@ contains
                 case (cgnsL2resRho, cgnsL2resMomx, &
                       cgnsL2resMomy, cgnsL2resMomz, &
                       cgnsL2resRhoe, cgnsL2resNu, &
+                      cgnsL2resGamma, cgnsL2resRetheta, &
                       cgnsL2resK, cgnsL2resOmega, &
                       cgnsL2resTau, cgnsL2resEpsilon, &
                       cgnsL2resV2, cgnsL2resF, 'totalR')
@@ -6098,6 +6099,12 @@ contains
 
                 case (cgnsL2resNu)
                     write (*, "(a)", advance="no") "       Res nuturb       |"
+
+                case (cgnsL2resGamma)
+                    write (*, "(a)", advance="no") "       Res gamma        |"
+
+                case (cgnsL2resRetheta)
+                    write (*, "(a)", advance="no") "      Res retheta       |"
 
                 case (cgnsL2resK)
                     write (*, "(a)", advance="no") "       Res kturb        |"
@@ -6200,6 +6207,12 @@ contains
 
                 case (cgnsL2resNu)
                     write (*, "(a)", advance="no") "           Res nuturb            |"
+
+                case (cgnsL2resGamma)
+                    write (*, "(a)", advance="no") "           Res gamma             |"
+
+                case (cgnsL2resRetheta)
+                    write (*, "(a)", advance="no") "          Res retheta            |"
 
                 case (cgnsL2resK)
                     write (*, "(a)", advance="no") "           Res kturb             |"
@@ -6326,6 +6339,7 @@ contains
                 case (cgnsL2resRho, cgnsL2resMomx, &
                       cgnsL2resMomy, cgnsL2resMomz, &
                       cgnsL2resRhoe, cgnsL2resNu, &
+                      cgnsL2resGamma, cgnsL2resRetheta, &
                       cgnsL2resK, cgnsL2resOmega, &
                       cgnsL2resTau, cgnsL2resEpsilon, &
                       cgnsL2resV2, cgnsL2resF, 'totalR')

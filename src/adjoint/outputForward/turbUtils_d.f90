@@ -605,7 +605,8 @@ nadvloopspectral:do ii=1,nadv
         kend = kl
       end if
       select case  (turbmodel) 
-      case (spalartallmaras, spalartallmarasedwards) 
+      case (spalartallmaras, spalartallmarasedwards, &
+&     spalartallmarasnoft2gammaretheta) 
         call saeddyviscosity_d(ibeg, iend, jbeg, jend, kbeg, kend)
       case default
         if (associated(revd)) revd = 0.0_8
@@ -664,7 +665,8 @@ nadvloopspectral:do ii=1,nadv
         kend = kl
       end if
       select case  (turbmodel) 
-      case (spalartallmaras, spalartallmarasedwards) 
+      case (spalartallmaras, spalartallmarasedwards, &
+&     spalartallmarasnoft2gammaretheta) 
         call saeddyviscosity(ibeg, iend, jbeg, jend, kbeg, kend)
       end select
     end if

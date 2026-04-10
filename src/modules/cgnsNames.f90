@@ -49,7 +49,7 @@ module cgnsNames
     character(len=maxCGNSNameLen), parameter :: &
         cgnsTurbF = "TurbulentScalarF"
     character(len=maxCGNSNameLen), parameter :: &
-        cgnsTurbGamma = "Intermittency"
+        cgnsTurbGamma = "TransitionGamma"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsTurbRetheta = "TransitionRetheta"
 

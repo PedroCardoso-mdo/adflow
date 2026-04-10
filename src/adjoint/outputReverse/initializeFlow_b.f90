@@ -136,20 +136,26 @@ contains
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
 !=============================================================
         call pushcontrol3b(1)
+      case (spalartallmarasnoft2gammaretheta) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
+        winf(itu3) = 1000.0_realtype
+!=============================================================
+        call pushcontrol3b(2)
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         tmp = winf(itu1)/(eddyvisinfratio*nuinf)
         call pushreal8(winf(itu2))
         winf(itu2) = tmp
 !=============================================================
-        call pushcontrol3b(2)
+        call pushcontrol3b(3)
       case (ktau) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         tmp0 = eddyvisinfratio*nuinf/winf(itu1)
         call pushreal8(winf(itu2))
         winf(itu2) = tmp0
 !=============================================================
-        call pushcontrol3b(3)
+        call pushcontrol3b(4)
       case (v2f) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         tmp3 = 0.09_realtype*winf(itu1)**2/(eddyvisinfratio*nuinf)
@@ -160,12 +166,12 @@ contains
         winf(itu3) = tmp4
         call pushreal8(winf(itu4))
         winf(itu4) = 0.0_realtype
-        call pushcontrol3b(4)
+        call pushcontrol3b(5)
       case default
         call pushcontrol3b(0)
       end select
     else
-      call pushcontrol3b(5)
+      call pushcontrol3b(6)
     end if
 ! set the value of pinfcorr. in case a k-equation is present
 ! add 2/3 times rho*k.
@@ -214,6 +220,15 @@ contains
         winfd(itu1) = 0.0_8
         uinf2d = 0.0_8
       else
+        winfd(itu3) = 0.0_8
+        winfd(itu2) = 0.0_8
+        call sanuknowneddyratio_b(eddyvisinfratio, nuinf, nuinfd, winfd(&
+&                           itu1))
+        winfd(itu1) = 0.0_8
+        uinf2d = 0.0_8
+      end if
+    else if (branch .lt. 5) then
+      if (branch .eq. 3) then
         call popreal8(winf(itu2))
         tmpd = winfd(itu2)
         winfd(itu2) = 0.0_8
@@ -222,17 +237,17 @@ contains
         nuinfd = -(winf(itu1)*tempd0/nuinf)
         uinf2d = 1.5_realtype*turbintensityinf**2*winfd(itu1)
         winfd(itu1) = 0.0_8
+      else
+        call popreal8(winf(itu2))
+        tmpd0 = winfd(itu2)
+        winfd(itu2) = 0.0_8
+        tempd0 = eddyvisinfratio*tmpd0/winf(itu1)
+        nuinfd = tempd0
+        winfd(itu1) = winfd(itu1) - nuinf*tempd0/winf(itu1)
+        uinf2d = 1.5_realtype*turbintensityinf**2*winfd(itu1)
+        winfd(itu1) = 0.0_8
       end if
-    else if (branch .eq. 3) then
-      call popreal8(winf(itu2))
-      tmpd0 = winfd(itu2)
-      winfd(itu2) = 0.0_8
-      tempd0 = eddyvisinfratio*tmpd0/winf(itu1)
-      nuinfd = tempd0
-      winfd(itu1) = winfd(itu1) - nuinf*tempd0/winf(itu1)
-      uinf2d = 1.5_realtype*turbintensityinf**2*winfd(itu1)
-      winfd(itu1) = 0.0_8
-    else if (branch .eq. 4) then
+    else if (branch .eq. 5) then
       call popreal8(winf(itu4))
       winfd(itu4) = 0.0_8
       call popreal8(winf(itu3))
@@ -416,6 +431,11 @@ contains
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards) 
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+!=============================================================
+      case (spalartallmarasnoft2gammaretheta) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
+        winf(itu3) = 1000.0_realtype
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2

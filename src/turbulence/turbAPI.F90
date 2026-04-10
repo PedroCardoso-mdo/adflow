@@ -113,6 +113,7 @@ contains
         use iteration
         use turbMod
         use sa
+        use saGammaRetheta
         use kt
         use kw
         use SST

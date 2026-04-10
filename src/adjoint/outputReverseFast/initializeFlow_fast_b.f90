@@ -107,6 +107,11 @@ contains
       case (spalartallmaras, spalartallmarasedwards) 
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
 !=============================================================
+      case (spalartallmarasnoft2gammaretheta) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
+        winf(itu3) = 1000.0_realtype
+!=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         winf(itu2) = winf(itu1)/(eddyvisinfratio*nuinf)

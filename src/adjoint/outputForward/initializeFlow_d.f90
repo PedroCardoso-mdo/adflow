@@ -171,6 +171,14 @@ contains
         winfd(itu1) = sanuknowneddyratio_d(eddyvisinfratio, nuinf, &
 &         nuinfd, winf(itu1))
 !=============================================================
+      case (spalartallmarasnoft2gammaretheta) 
+        winfd(itu1) = sanuknowneddyratio_d(eddyvisinfratio, nuinf, &
+&         nuinfd, winf(itu1))
+        winfd(itu2) = 0.0_8
+        winf(itu2) = one
+        winfd(itu3) = 0.0_8
+        winf(itu3) = 1000.0_realtype
+!=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winfd(itu1) = turbintensityinf**2*1.5_realtype*uinf2d
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
@@ -329,6 +337,11 @@ contains
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards) 
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+!=============================================================
+      case (spalartallmarasnoft2gammaretheta) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
+        winf(itu3) = 1000.0_realtype
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
