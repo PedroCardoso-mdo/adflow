@@ -556,6 +556,7 @@ bocos:do nn=1,nbocos
     use constants
     use blockpointers
     use flowvarrefstate
+    use inputphysics, only : turbmodel
     implicit none
 !
 !      subroutine arguments.
@@ -597,8 +598,44 @@ bocos:do nn=1,nbocos
               bmtk2(i, j, l, l) = -one
             end select
           end do
-        else
+        else if (turbmodel .eq. spalartallmarasnoft2gammaretheta) then
 ! inflow. turbulent variables are prescribed.
+! sa-gamma-retheta model:
+! nu~ and retheta use linear extrapolation with
+! prescribed freestream value at the face.
+! gamma is dirichlet zero (gamma_g = -gamma_i).
+! since winf(itu2) = 0, bvt = 2*0 = 0 and bmt = 1
+! gives ghost = -interior, enforcing gamma = 0 at face.
+          do l=nt1,nt2
+            select case  (bcfaceid(nn)) 
+            case (imin) 
+              bvti1d(i, j, l) = two*winfd(l)
+              bvti1(i, j, l) = two*winf(l)
+              bmti1(i, j, l, l) = one
+            case (imax) 
+              bvti2d(i, j, l) = two*winfd(l)
+              bvti2(i, j, l) = two*winf(l)
+              bmti2(i, j, l, l) = one
+            case (jmin) 
+              bvtj1d(i, j, l) = two*winfd(l)
+              bvtj1(i, j, l) = two*winf(l)
+              bmtj1(i, j, l, l) = one
+            case (jmax) 
+              bvtj2d(i, j, l) = two*winfd(l)
+              bvtj2(i, j, l) = two*winf(l)
+              bmtj2(i, j, l, l) = one
+            case (kmin) 
+              bvtk1d(i, j, l) = two*winfd(l)
+              bvtk1(i, j, l) = two*winf(l)
+              bmtk1(i, j, l, l) = one
+            case (kmax) 
+              bvtk2d(i, j, l) = two*winfd(l)
+              bvtk2(i, j, l) = two*winf(l)
+              bmtk2(i, j, l, l) = one
+            end select
+          end do
+        else
+! all other models: simple prescribed ghost value.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 
@@ -638,6 +675,7 @@ bocos:do nn=1,nbocos
     use constants
     use blockpointers
     use flowvarrefstate
+    use inputphysics, only : turbmodel
     implicit none
 !
 !      subroutine arguments.
@@ -679,8 +717,38 @@ bocos:do nn=1,nbocos
               bmtk2(i, j, l, l) = -one
             end select
           end do
-        else
+        else if (turbmodel .eq. spalartallmarasnoft2gammaretheta) then
 ! inflow. turbulent variables are prescribed.
+! sa-gamma-retheta model:
+! nu~ and retheta use linear extrapolation with
+! prescribed freestream value at the face.
+! gamma is dirichlet zero (gamma_g = -gamma_i).
+! since winf(itu2) = 0, bvt = 2*0 = 0 and bmt = 1
+! gives ghost = -interior, enforcing gamma = 0 at face.
+          do l=nt1,nt2
+            select case  (bcfaceid(nn)) 
+            case (imin) 
+              bvti1(i, j, l) = two*winf(l)
+              bmti1(i, j, l, l) = one
+            case (imax) 
+              bvti2(i, j, l) = two*winf(l)
+              bmti2(i, j, l, l) = one
+            case (jmin) 
+              bvtj1(i, j, l) = two*winf(l)
+              bmtj1(i, j, l, l) = one
+            case (jmax) 
+              bvtj2(i, j, l) = two*winf(l)
+              bmtj2(i, j, l, l) = one
+            case (kmin) 
+              bvtk1(i, j, l) = two*winf(l)
+              bmtk1(i, j, l, l) = one
+            case (kmax) 
+              bvtk2(i, j, l) = two*winf(l)
+              bmtk2(i, j, l, l) = one
+            end select
+          end do
+        else
+! all other models: simple prescribed ghost value.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 

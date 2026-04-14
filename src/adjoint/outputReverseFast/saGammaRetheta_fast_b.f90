@@ -57,6 +57,982 @@ contains
     deallocate(qq)
   end subroutine sagammaretheta_block
 
+!  differentiation of source in reverse (adjoint) mode (with options noisize i4 dr8 r8):
+!   gradient     of useful results: *w *rlv *scratch
+!   with respect to varying inputs: *w *rlv *scratch
+!   rw status of diff variables: *w:incr *rlv:incr *scratch:in-out
+!   plus diff mem management of: w:in rlv:in scratch:in
+  subroutine source_fast_b()
+!
+!  source terms.
+!  determine the source term and its derivative w.r.t. nutilde
+!  for all internal cells of the block.
+!  remember that the sa field variable nutilde = w(i,j,k,itu1)
+    use blockpointers
+    use constants
+    use paramturb
+    use section
+    use inputphysics
+    use turbmod, only : dvt, vort, prod, kwcd, f1
+    use inputdiscretization, only : approxsa
+    use flowvarrefstate
+    use turbutils_fast_b, only : rethetatcorrelation, &
+&   rethetatcorrelation_fast_b, flengthcorrelation, &
+&   flengthcorrelation_fast_b, rethetaccorrelation, &
+&   rethetaccorrelation_fast_b, smoothminmax, smoothminmax_fast_b
+    implicit none
+! local parameters
+    real(kind=realtype), parameter :: f23=two*third
+! local variables.
+    integer(kind=inttype) :: i, j, k, nn, ii
+    real(kind=realtype) :: fv1, fv2, ft2
+    real(kind=realtype) :: fv1d, fv2d, ft2d
+    real(kind=realtype) :: ss, sst, nu, dist2inv, chi, chi2, chi3
+    real(kind=realtype) :: ssd, sstd, nud, chid, chi2d, chi3d
+    real(kind=realtype) :: rr, gg, gg6, termfw, fwsa, term1, term2
+    real(kind=realtype) :: rrd, ggd, gg6d, termfwd, fwsad, term1d, &
+&   term2d
+    real(kind=realtype) :: cv13, kar2inv, cw36, cb3inv
+    real(kind=realtype), parameter :: gammastatic=one
+    real(kind=realtype), parameter :: rethetastatic=one
+    real(kind=realtype) :: dfv1, dfv2, dft2, drr, dgg, dfw
+    real(kind=realtype) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
+    real(kind=realtype) :: uuxd, uuyd, uuzd, vvxd, vvyd, vvzd, wwxd, &
+&   wwyd, wwzd
+    real(kind=realtype) :: div2, fact, sxx, syy, szz, sxy, sxz, syz
+    real(kind=realtype) :: div2d, sxxd, syyd, szzd, sxyd, sxzd, syzd
+    real(kind=realtype) :: vortx, vorty, vortz
+    real(kind=realtype) :: vortxd, vortyd, vortzd
+    real(kind=realtype) :: omegax, omegay, omegaz
+    real(kind=realtype) :: strainmag2, strainprod, vortprod
+    real(kind=realtype) :: strainmag2d, strainprodd, vortprodd
+    real(kind=realtype), parameter :: xminn=1.e-10_realtype
+! gamma-retheta source term variables
+    real(kind=realtype) :: vortmag, strainmag
+    real(kind=realtype) :: vortmagd, strainmagd
+    real(kind=realtype) :: nutsa, rturb, gammalocal, rethetatilde
+    real(kind=realtype) :: nutsad, rturbd, gammalocald, rethetatilded
+    real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
+    real(kind=realtype) :: res_vald, rethetac_vald, flength_vald, &
+&   fturb_vald
+    real(kind=realtype) :: fonset, fonset1
+    real(kind=realtype) :: fonsetd, fonset1d
+    real(kind=realtype) :: vortlim, vortmaglim
+    real(kind=realtype) :: vortlimd, vortmaglimd
+    real(kind=realtype) :: pgamma, egamma
+    real(kind=realtype) :: pgammad, egammad
+    real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
+    real(kind=realtype) :: velmagd, velmag2d, timescaled, &
+&   rethetat_targetd
+    real(kind=realtype) :: thetabl, deltabl, fwake_val, fthetat
+    real(kind=realtype) :: thetabld, deltabld, fwake_vald, fthetatd
+    real(kind=realtype) :: pretheta, ydist
+    real(kind=realtype) :: prethetad
+    real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
+    real(kind=realtype) :: uxhatd, uyhatd, uzhatd, dudsd, &
+&   lambdathetalocald
+    intrinsic mod
+    intrinsic sqrt
+    intrinsic exp
+    intrinsic min
+    intrinsic max
+    intrinsic tanh
+    real(kind=realtype) :: y1
+    real(kind=realtype) :: y1d
+    real(kind=realtype) :: x1
+    real(kind=realtype) :: x1d
+    real(kind=realtype) :: x2
+    real(kind=realtype) :: x2d
+    real(kind=realtype) :: min1
+    real(kind=realtype) :: min1d
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max1d
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max2d
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max3d
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max4d
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max6
+    real(kind=realtype) :: max6d
+    real(kind=realtype) :: max7
+    real(kind=realtype) :: max7d
+    real(kind=realtype) :: max8
+    real(kind=realtype) :: max8d
+    real(kind=realtype) :: max9
+    real(kind=realtype) :: max9d
+    real(kind=realtype) :: max10
+    real(kind=realtype) :: max10d
+    real(kind=realtype) :: max11
+    real(kind=realtype) :: max11d
+    real(kind=realtype) :: max12
+    real(kind=realtype) :: max12d
+    real(kind=realtype) :: max13
+    real(kind=realtype) :: max13d
+    real(kind=realtype) :: max14
+    real(kind=realtype) :: max14d
+    real(kind=realtype) :: max15
+    real(kind=realtype) :: max15d
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: temp
+    real(kind=realtype) :: tempd
+    real(kind=realtype) :: temp0
+    real(kind=realtype) :: tempd0
+    real(kind=realtype) :: temp1
+    real(kind=realtype) :: tempd1
+    real(kind=realtype) :: temp2
+    real(kind=realtype) :: tempd2
+    integer :: branch
+! set model constants
+    cv13 = rsacv1**3
+    kar2inv = one/rsak**2
+    cw36 = rsacw3**6
+! determine the non-dimensional wheel speed of this block.
+    omegax = timeref*sections(sectionid)%rotrate(1)
+    omegay = timeref*sections(sectionid)%rotrate(2)
+    omegaz = timeref*sections(sectionid)%rotrate(3)
+! create switches to production term depending on the variable that
+! should be used
+    if (turbprod .eq. katolaunder) then
+      stop
+    else
+      strainmag2d = 0.0_8
+      ssd = 0.0_8
+!$bwd-of ii-loop 
+      do ii=0,nx*ny*nz-1
+        i = mod(ii, nx) + 2
+        j = mod(ii/nx, ny) + 2
+        k = ii/(nx*ny) + 2
+! compute the gradient of u in the cell center. use is made
+! of the fact that the surrounding normals sum up to zero,
+! such that the cell i,j,k does not give a contribution.
+! the gradient is scaled by the factor 2*vol.
+        uux = w(i+1, j, k, ivx)*si(i, j, k, 1) - w(i-1, j, k, ivx)*si(i-&
+&         1, j, k, 1) + w(i, j+1, k, ivx)*sj(i, j, k, 1) - w(i, j-1, k, &
+&         ivx)*sj(i, j-1, k, 1) + w(i, j, k+1, ivx)*sk(i, j, k, 1) - w(i&
+&         , j, k-1, ivx)*sk(i, j, k-1, 1)
+        uuy = w(i+1, j, k, ivx)*si(i, j, k, 2) - w(i-1, j, k, ivx)*si(i-&
+&         1, j, k, 2) + w(i, j+1, k, ivx)*sj(i, j, k, 2) - w(i, j-1, k, &
+&         ivx)*sj(i, j-1, k, 2) + w(i, j, k+1, ivx)*sk(i, j, k, 2) - w(i&
+&         , j, k-1, ivx)*sk(i, j, k-1, 2)
+        uuz = w(i+1, j, k, ivx)*si(i, j, k, 3) - w(i-1, j, k, ivx)*si(i-&
+&         1, j, k, 3) + w(i, j+1, k, ivx)*sj(i, j, k, 3) - w(i, j-1, k, &
+&         ivx)*sj(i, j-1, k, 3) + w(i, j, k+1, ivx)*sk(i, j, k, 3) - w(i&
+&         , j, k-1, ivx)*sk(i, j, k-1, 3)
+! idem for the gradient of v.
+        vvx = w(i+1, j, k, ivy)*si(i, j, k, 1) - w(i-1, j, k, ivy)*si(i-&
+&         1, j, k, 1) + w(i, j+1, k, ivy)*sj(i, j, k, 1) - w(i, j-1, k, &
+&         ivy)*sj(i, j-1, k, 1) + w(i, j, k+1, ivy)*sk(i, j, k, 1) - w(i&
+&         , j, k-1, ivy)*sk(i, j, k-1, 1)
+        vvy = w(i+1, j, k, ivy)*si(i, j, k, 2) - w(i-1, j, k, ivy)*si(i-&
+&         1, j, k, 2) + w(i, j+1, k, ivy)*sj(i, j, k, 2) - w(i, j-1, k, &
+&         ivy)*sj(i, j-1, k, 2) + w(i, j, k+1, ivy)*sk(i, j, k, 2) - w(i&
+&         , j, k-1, ivy)*sk(i, j, k-1, 2)
+        vvz = w(i+1, j, k, ivy)*si(i, j, k, 3) - w(i-1, j, k, ivy)*si(i-&
+&         1, j, k, 3) + w(i, j+1, k, ivy)*sj(i, j, k, 3) - w(i, j-1, k, &
+&         ivy)*sj(i, j-1, k, 3) + w(i, j, k+1, ivy)*sk(i, j, k, 3) - w(i&
+&         , j, k-1, ivy)*sk(i, j, k-1, 3)
+! and for the gradient of w.
+        wwx = w(i+1, j, k, ivz)*si(i, j, k, 1) - w(i-1, j, k, ivz)*si(i-&
+&         1, j, k, 1) + w(i, j+1, k, ivz)*sj(i, j, k, 1) - w(i, j-1, k, &
+&         ivz)*sj(i, j-1, k, 1) + w(i, j, k+1, ivz)*sk(i, j, k, 1) - w(i&
+&         , j, k-1, ivz)*sk(i, j, k-1, 1)
+        wwy = w(i+1, j, k, ivz)*si(i, j, k, 2) - w(i-1, j, k, ivz)*si(i-&
+&         1, j, k, 2) + w(i, j+1, k, ivz)*sj(i, j, k, 2) - w(i, j-1, k, &
+&         ivz)*sj(i, j-1, k, 2) + w(i, j, k+1, ivz)*sk(i, j, k, 2) - w(i&
+&         , j, k-1, ivz)*sk(i, j, k-1, 2)
+        wwz = w(i+1, j, k, ivz)*si(i, j, k, 3) - w(i-1, j, k, ivz)*si(i-&
+&         1, j, k, 3) + w(i, j+1, k, ivz)*sj(i, j, k, 3) - w(i, j-1, k, &
+&         ivz)*sj(i, j-1, k, 3) + w(i, j, k+1, ivz)*sk(i, j, k, 3) - w(i&
+&         , j, k-1, ivz)*sk(i, j, k-1, 3)
+! compute the components of the stress tensor.
+! the combination of the current scaling of the velocity
+! gradients (2*vol) and the definition of the stress tensor,
+! leads to the factor 1/(4*vol).
+        fact = fourth/vol(i, j, k)
+        if (turbprod .eq. strain) then
+          sxx = two*fact*uux
+          syy = two*fact*vvy
+          szz = two*fact*wwz
+          sxy = fact*(uuy+vvx)
+          sxz = fact*(uuz+wwx)
+          syz = fact*(vvz+wwy)
+! compute 2/3 * divergence of velocity squared
+          div2 = f23*(sxx+syy+szz)**2
+! compute strain production term
+          strainmag2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + &
+&           szz**2
+          strainprod = two*strainmag2 - div2
+          ss = sqrt(strainprod)
+          call pushcontrol2b(0)
+        else if (turbprod .eq. vorticity) then
+! compute the three components of the vorticity vector.
+! substract the part coming from the rotating frame.
+          vortx = two*fact*(wwy-vvz) - two*omegax
+          vorty = two*fact*(uuz-wwx) - two*omegay
+          vortz = two*fact*(vvx-uuy) - two*omegaz
+! compute the vorticity production term
+          vortprod = vortx**2 + vorty**2 + vortz**2
+! first take the square root of the production term to
+! obtain the correct production term for spalart-allmaras.
+! we do this to avoid if statements.
+          ss = sqrt(vortprod)
+          call pushcontrol2b(1)
+        else
+          call pushcontrol2b(2)
+        end if
+! compute the laminar kinematic viscosity, the inverse of
+! wall distance squared, the ratio chi (ratio of nutilde
+! and nu) and the functions fv1 and fv2. the latter corrects
+! the production term near a viscous wall.
+        nu = rlv(i, j, k)/w(i, j, k, irho)
+        dist2inv = one/d2wall(i, j, k)**2
+        chi = w(i, j, k, itu1)/nu
+        chi2 = chi*chi
+        chi3 = chi*chi2
+        fv1 = chi3/(chi3+cv13)
+        fv2 = one - chi/(one+chi*fv1)
+! the function ft2, which is designed to keep a laminar
+! solution laminar. when running in fully turbulent mode
+! this function should be set to 0.0.
+        if (useft2sa) then
+          ft2 = rsact3*exp(-(rsact4*chi2))
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          ft2 = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+! correct the production term to account for the influence
+! of the wall.
+        sst = ss + w(i, j, k, itu1)*fv2*kar2inv*dist2inv
+! add rotation term (userotationsa defined in inputparams.f90)
+        if (userotationsa) then
+          y1 = sqrt(two*strainmag2)
+          if (zero .gt. y1) then
+            min1 = y1
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          else
+            min1 = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          end if
+          sst = sst + rsacrot*min1
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        end if
+        if (sst .lt. xminn) then
+          sst = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          sst = sst
+        end if
+! compute the function fw. the argument rr is cut off at 10
+! to avoid numerical problems. this is ok, because the
+! asymptotical value of fw is then already reached.
+        rr = w(i, j, k, itu1)*kar2inv*dist2inv/sst
+        if (rr .gt. 10.0_realtype) then
+          rr = 10.0_realtype
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          rr = rr
+        end if
+        gg = rr + rsacw2*(rr**6-rr)
+        gg6 = gg**6
+        termfw = ((one+cw36)/(gg6+cw36))**sixth
+        fwsa = gg*termfw
+! compute the source term; some terms are saved for the
+! linearization. the source term is stored in scratch.
+        if (approxsa) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          term1 = zero
+        else
+          term1 = rsacb1*(one-ft2)*ss
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        end if
+        term2 = dist2inv*(kar2inv*rsacb1*((one-ft2)*fv2+ft2)-rsacw1*fwsa&
+&         )
+! ========================================================
+! gamma and retheta source terms (langtry-menter)
+! ========================================================
+! --- compute vorticity and strain magnitudes ---
+        vortx = two*fact*(wwy-vvz) - two*omegax
+        vorty = two*fact*(uuz-wwx) - two*omegay
+        vortz = two*fact*(vvx-uuy) - two*omegaz
+        if (vortx**2 + vorty**2 + vortz**2 .lt. xminn) then
+          max1 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          max1 = vortx**2 + vorty**2 + vortz**2
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        vortmag = sqrt(max1)
+        sxx = two*fact*uux
+        syy = two*fact*vvy
+        szz = two*fact*wwz
+        sxy = fact*(uuy+vvx)
+        sxz = fact*(uuz+wwx)
+        syz = fact*(vvz+wwy)
+        x1 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
+        if (x1 .lt. xminn) then
+          max2 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          max2 = x1
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        strainmag = sqrt(max2)
+! --- local variables ---
+        nutsa = w(i, j, k, itu1)*fv1
+        if (nu .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max3 = xminn
+        else
+          max3 = nu
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        rturb = nutsa/max3
+        if (w(i, j, k, itu2) .lt. zero) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          gammalocal = zero
+        else
+          gammalocal = w(i, j, k, itu2)
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        if (w(i, j, k, itu3) .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          rethetatilde = xminn
+        else
+          rethetatilde = w(i, j, k, itu3)
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        if (d2wall(i, j, k) .lt. xminn) then
+          ydist = xminn
+        else
+          ydist = d2wall(i, j, k)
+        end if
+        velmag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, &
+&         ivz)**2
+        if (velmag2 .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max4 = xminn
+        else
+          max4 = velmag2
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        velmag = sqrt(max4)
+        if (machcoef*reynolds .lt. xminn) then
+          max5 = xminn
+        else
+          max5 = machcoef*reynolds
+        end if
+! --- vorticity limiting ---
+        vortlim = machcoef*sqrt(max5)/20.0_realtype
+        vortmaglim = smoothminmax(vortmag, vortlim, rsagrvortlimp)
+        if (rlv(i, j, k) .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max6 = xminn
+        else
+          max6 = rlv(i, j, k)
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+! --- fonset (smooth tanh-based transition onset) ---
+        res_val = w(i, j, k, irho)*ydist**2*strainmag/max6
+        rethetac_val = rethetaccorrelation(rethetatilde)
+        if (rethetac_val .lt. xminn) then
+          rethetac_val = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          rethetac_val = rethetac_val
+        end if
+        fonset1 = sqrt((res_val/(rsagrfonsetc*rethetac_val))**2 + rturb&
+&         **2)
+        fonset = (tanh(rsagrfonsetk*(fonset1-rsagrfonsets))+one)*half
+! --- flength and fturb (modified) ---
+        flength_val = flengthcorrelation(rethetatilde)
+        fturb_val = (one-fonset)*exp(-rturb)
+        if (gammalocal .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max7 = xminn
+        else
+          max7 = gammalocal
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+! --- gamma production and destruction ---
+        if (w(i, j, k, irho)*velmag2 .lt. xminn) then
+          max8 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          max8 = w(i, j, k, irho)*velmag2
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+! --- retheta production (relaxation toward correlation) ---
+        timescale = 500.0_realtype*rlv(i, j, k)/max8
+        if (w(i, j, k, irho)*velmag .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max9 = xminn
+        else
+          max9 = w(i, j, k, irho)*velmag
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+! compute thetabl first (needed for lambdatheta)
+        thetabl = rethetatilde*rlv(i, j, k)/max9
+        if (velmag .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max10 = xminn
+        else
+          max10 = velmag
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+! compute local lambdatheta = (thetabl^2 / nu) * du/ds
+        uxhat = w(i, j, k, ivx)/max10
+        if (velmag .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max11 = xminn
+        else
+          max11 = velmag
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        uyhat = w(i, j, k, ivy)/max11
+        if (velmag .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          max12 = xminn
+        else
+          max12 = velmag
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        uzhat = w(i, j, k, ivz)/max12
+        duds = two*fact*(uxhat*(uxhat*uux+uyhat*uuy+uzhat*uuz)+uyhat*(&
+&         uxhat*vvx+uyhat*vvy+uzhat*vvz)+uzhat*(uxhat*wwx+uyhat*wwy+&
+&         uzhat*wwz))
+        if (nu .lt. xminn) then
+          max13 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          max13 = nu
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        lambdathetalocal = thetabl**2/max13*duds
+        if (lambdathetalocal .lt. -0.1_realtype) then
+          lambdathetalocal = -0.1_realtype
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          lambdathetalocal = lambdathetalocal
+        end if
+        if (lambdathetalocal .gt. 0.1_realtype) then
+          lambdathetalocal = 0.1_realtype
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          lambdathetalocal = lambdathetalocal
+        end if
+        arg1 = turbintensityinf*100.0_realtype
+        rethetat_target = rethetatcorrelation(arg1, lambdathetalocal)
+        if (velmag .lt. xminn) then
+          max14 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          max14 = velmag
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+! ftheta_t shielding: shields bl interior, allows
+! freestream to drive retheta toward correlation value
+        deltabl = 375.0_realtype*vortmag*ydist*thetabl/max14
+        if (deltabl .lt. xminn) then
+          deltabl = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          deltabl = deltabl
+        end if
+        fwake_val = exp(-(res_val/1.0e5_realtype))
+        x2 = fwake_val*exp(-((ydist/deltabl)**4))
+        if (x2 .gt. one) then
+          fthetat = one
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          fthetat = x2
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        if (timescale .lt. xminn) then
+          max15 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+        else
+          max15 = timescale
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+        end if
+        prethetad = scratchd(i, j, k, idvt+2)
+        scratchd(i, j, k, idvt+2) = 0.0_8
+        temp2 = (rethetat_target-rethetatilde)/max15
+        tempd2 = (one-fthetat)*rsagrcthetat*prethetad/max15
+        fthetatd = -(temp2*rsagrcthetat*prethetad)
+        rethetat_targetd = tempd2
+        rethetatilded = -tempd2
+        max15d = -(temp2*tempd2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          timescaled = 0.0_8
+        else
+          timescaled = max15d
+        end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          x2d = 0.0_8
+        else
+          x2d = fthetatd
+        end if
+        temp2 = ydist/deltabl
+        temp1 = -(temp2**4)
+        fwake_vald = exp(temp1)*x2d
+        deltabld = temp2**4*4*exp(temp1)*fwake_val*x2d/deltabl
+        res_vald = -(exp(-(res_val/1.0e5_realtype))*fwake_vald/&
+&         1.0e5_realtype)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) deltabld = 0.0_8
+        tempd2 = ydist*375.0_realtype*deltabld/max14
+        vortmagd = thetabl*tempd2
+        thetabld = vortmag*tempd2
+        max14d = -(vortmag*thetabl*tempd2/max14)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          velmagd = 0.0_8
+        else
+          velmagd = max14d
+        end if
+        call rethetatcorrelation_fast_b(arg1, lambdathetalocal, &
+&                                 lambdathetalocald, rethetat_targetd)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) lambdathetalocald = 0.0_8
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) lambdathetalocald = 0.0_8
+        thetabld = thetabld + 2*thetabl*duds*lambdathetalocald/max13
+        tempd2 = thetabl**2*lambdathetalocald/max13
+        dudsd = tempd2
+        max13d = -(duds*tempd2/max13)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          nud = 0.0_8
+        else
+          nud = max13d
+        end if
+        tempd1 = two*fact*dudsd
+        tempd0 = uxhat*tempd1
+        tempd = uyhat*tempd1
+        tempd2 = uzhat*tempd1
+        uxhatd = (uxhat*uux+uyhat*uuy+uzhat*uuz)*tempd1 + wwx*tempd2 + &
+&         vvx*tempd + uux*tempd0
+        uyhatd = (uxhat*vvx+uyhat*vvy+uzhat*vvz)*tempd1 + wwy*tempd2 + &
+&         vvy*tempd + uuy*tempd0
+        uzhatd = (uxhat*wwx+uyhat*wwy+uzhat*wwz)*tempd1 + wwz*tempd2 + &
+&         vvz*tempd + uuz*tempd0
+        wwxd = uxhat*tempd2
+        wwyd = uyhat*tempd2
+        wwzd = uzhat*tempd2
+        vvxd = uxhat*tempd
+        vvyd = uyhat*tempd
+        vvzd = uzhat*tempd
+        uuxd = uxhat*tempd0
+        uuyd = uyhat*tempd0
+        uuzd = uzhat*tempd0
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhatd/max12
+        max12d = -(w(i, j, k, ivz)*uzhatd/max12**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) velmagd = velmagd + max12d
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhatd/max11
+        max11d = -(w(i, j, k, ivy)*uyhatd/max11**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) velmagd = velmagd + max11d
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhatd/max10
+        max10d = -(w(i, j, k, ivx)*uxhatd/max10**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) velmagd = velmagd + max10d
+        rlvd(i, j, k) = rlvd(i, j, k) + rethetatilde*thetabld/max9
+        tempd1 = rlv(i, j, k)*thetabld/max9
+        rethetatilded = rethetatilded + tempd1
+        max9d = -(rethetatilde*tempd1/max9)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) then
+          wd(i, j, k, irho) = wd(i, j, k, irho) + velmag*max9d
+          velmagd = velmagd + w(i, j, k, irho)*max9d
+        end if
+        tempd1 = 500.0_realtype*timescaled/max8
+        rlvd(i, j, k) = rlvd(i, j, k) + tempd1
+        max8d = -(rlv(i, j, k)*tempd1/max8)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          velmag2d = 0.0_8
+        else
+          wd(i, j, k, irho) = wd(i, j, k, irho) + velmag2*max8d
+          velmag2d = w(i, j, k, irho)*max8d
+        end if
+        pgammad = scratchd(i, j, k, idvt+1)
+        egammad = -scratchd(i, j, k, idvt+1)
+        scratchd(i, j, k, idvt+1) = 0.0_8
+        tempd1 = (rsagrce2*gammalocal-one)*rsagrca2*egammad
+        fturb_vald = vortmaglim*gammalocal*tempd1
+        vortmaglimd = fturb_val*gammalocal*tempd1
+        temp0 = sqrt(max7)
+        temp1 = flength_val*fonset*vortmaglim
+        tempd = temp0*rsagrca1*pgammad
+        gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*rsagrca2*&
+&         egammad + fturb_val*vortmaglim*tempd1 - rsagrce1*temp1*tempd
+        if (max7 .eq. 0.0_8) then
+          max7d = 0.0_8
+        else
+          max7d = temp1*(one-rsagrce1*gammalocal)*rsagrca1*pgammad/(2.0*&
+&           temp0)
+        end if
+        tempd1 = (one-rsagrce1*gammalocal)*tempd
+        flength_vald = fonset*vortmaglim*tempd1
+        fonsetd = flength_val*vortmaglim*tempd1
+        vortmaglimd = vortmaglimd + flength_val*fonset*tempd1
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) gammalocald = gammalocald + max7d
+        fonsetd = fonsetd - exp(-rturb)*fturb_vald
+        call flengthcorrelation_fast_b(rethetatilde, rethetatilded, &
+&                                flength_vald)
+        fonset1d = rsagrfonsetk*(1.0-tanh(rsagrfonsetk*(fonset1-&
+&         rsagrfonsets))**2)*half*fonsetd
+        temp0 = res_val/(rsagrfonsetc*rethetac_val)
+        if (temp0**2 + rturb**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = fonset1d/(2.0*sqrt(temp0**2+rturb**2))
+        end if
+        rturbd = 2*rturb*tempd - exp(-rturb)*(one-fonset)*fturb_vald
+        tempd0 = 2*temp0*tempd/(rsagrfonsetc*rethetac_val)
+        res_vald = res_vald + tempd0
+        rethetac_vald = -(rsagrfonsetc*temp0*tempd0)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) rethetac_vald = 0.0_8
+        call rethetaccorrelation_fast_b(rethetatilde, rethetatilded, &
+&                                 rethetac_vald)
+        tempd0 = ydist**2*res_vald
+        wd(i, j, k, irho) = wd(i, j, k, irho) + strainmag*tempd0/max6
+        tempd = w(i, j, k, irho)*tempd0/max6
+        strainmagd = tempd
+        max6d = -(strainmag*tempd/max6)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) rlvd(i, j, k) = rlvd(i, j, k) + max6d
+        call smoothminmax_fast_b(vortmag, vortmagd, vortlim, vortlimd, &
+&                          rsagrvortlimp, vortmaglimd)
+        if (max4 .eq. 0.0_8) then
+          max4d = 0.0_8
+        else
+          max4d = velmagd/(2.0*sqrt(max4))
+        end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) velmag2d = velmag2d + max4d
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*w(i, j, k, ivx)*velmag2d
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*w(i, j, k, ivy)*velmag2d
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*w(i, j, k, ivz)*velmag2d
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) wd(i, j, k, itu3) = wd(i, j, k, itu3) + &
+&           rethetatilded
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) wd(i, j, k, itu2) = wd(i, j, k, itu2) + &
+&           gammalocald
+        nutsad = rturbd/max3
+        max3d = -(nutsa*rturbd/max3**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) nud = nud + max3d
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + fv1*nutsad
+        fv1d = w(i, j, k, itu1)*nutsad
+        if (max2 .eq. 0.0_8) then
+          max2d = 0.0_8
+        else
+          max2d = strainmagd/(2.0*sqrt(max2))
+        end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          x1d = 0.0_8
+        else
+          x1d = max2d
+        end if
+        tempd0 = two*x1d
+        sxxd = 2*sxx*x1d
+        syyd = 2*syy*x1d
+        szzd = 2*szz*x1d
+        sxyd = 2*sxy*tempd0
+        sxzd = 2*sxz*tempd0
+        syzd = 2*syz*tempd0
+        vvzd = vvzd + fact*syzd
+        wwyd = wwyd + fact*syzd
+        uuzd = uuzd + fact*sxzd
+        wwxd = wwxd + fact*sxzd
+        uuyd = uuyd + fact*sxyd
+        vvxd = vvxd + fact*sxyd
+        wwzd = wwzd + two*fact*szzd
+        vvyd = vvyd + two*fact*syyd
+        uuxd = uuxd + two*fact*sxxd
+        if (max1 .eq. 0.0_8) then
+          max1d = 0.0_8
+        else
+          max1d = vortmagd/(2.0*sqrt(max1))
+        end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          vortxd = 0.0_8
+          vortyd = 0.0_8
+          vortzd = 0.0_8
+        else
+          vortxd = 2*vortx*max1d
+          vortyd = 2*vorty*max1d
+          vortzd = 2*vortz*max1d
+        end if
+        tempd0 = two*fact*vortzd
+        vvxd = vvxd + tempd0
+        uuyd = uuyd - tempd0
+        tempd0 = two*fact*vortyd
+        uuzd = uuzd + tempd0
+        wwxd = wwxd - tempd0
+        tempd0 = two*fact*vortxd
+        wwyd = wwyd + tempd0
+        vvzd = vvzd - tempd0
+        temp = w(i, j, k, itu1)
+        tempd0 = w(i, j, k, itu1)*scratchd(i, j, k, idvt)
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + (term1+term2*temp)*&
+&         scratchd(i, j, k, idvt) + term2*tempd0
+        scratchd(i, j, k, idvt) = 0.0_8
+        term1d = tempd0
+        term2d = temp*tempd0
+        tempd0 = kar2inv*rsacb1*dist2inv*term2d
+        fwsad = -(rsacw1*dist2inv*term2d)
+        ft2d = (1.0-fv2)*tempd0
+        fv2d = (one-ft2)*tempd0
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          ft2d = ft2d - ss*rsacb1*term1d
+          ssd = ssd + (one-ft2)*rsacb1*term1d
+        end if
+        termfwd = gg*fwsad
+        temp0 = (one+cw36)/(cw36+gg6)
+        if (temp0 .le. 0.0_8 .and. (sixth .eq. 0.0_8 .or. sixth .ne. int&
+&           (sixth))) then
+          gg6d = 0.0_8
+        else
+          gg6d = -(temp0*sixth*temp0**(sixth-1)*termfwd/(cw36+gg6))
+        end if
+        ggd = termfw*fwsad + 6*gg**5*gg6d
+        rrd = (6*rr**5*rsacw2-rsacw2+1.0)*ggd
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) rrd = 0.0_8
+        tempd0 = kar2inv*dist2inv*rrd/sst
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + tempd0
+        sstd = -(w(i, j, k, itu1)*tempd0/sst)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) sstd = 0.0_8
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .ne. 0) then
+          min1d = rsacrot*sstd
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+          if (branch .eq. 0) then
+            y1d = min1d
+          else
+            y1d = 0.0_8
+          end if
+          if (.not.two*strainmag2 .eq. 0.0_8) strainmag2d = strainmag2d &
+&             + two*y1d/(2.0*sqrt(two*strainmag2))
+        end if
+        ssd = ssd + sstd
+        tempd0 = kar2inv*dist2inv*sstd
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + fv2*tempd0
+        fv2d = fv2d + w(i, j, k, itu1)*tempd0
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          chi2d = -(rsact4*exp(-(rsact4*chi2))*rsact3*ft2d)
+        else
+          chi2d = 0.0_8
+        end if
+        tempd = -(fv2d/(one+chi*fv1))
+        chid = tempd
+        tempd0 = -(chi*tempd/(one+chi*fv1))
+        fv1d = fv1d + chi*tempd0
+        tempd = fv1d/(cv13+chi3)
+        chi3d = (1.0-chi3/(cv13+chi3))*tempd
+        chi2d = chi2d + chi*chi3d
+        chid = chid + fv1*tempd0 + chi2*chi3d + 2*chi*chi2d
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + chid/nu
+        nud = nud - w(i, j, k, itu1)*chid/nu**2
+        temp = w(i, j, k, irho)
+        rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
+        wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+        call popcontrol2b(branch)
+        if (branch .eq. 0) then
+          if (strainprod .eq. 0.0_8) then
+            strainprodd = 0.0_8
+          else
+            strainprodd = ssd/(2.0*sqrt(strainprod))
+          end if
+          strainmag2d = strainmag2d + two*strainprodd
+          div2d = -strainprodd
+          sxy = fact*(uuy+vvx)
+          sxz = fact*(uuz+wwx)
+          syz = fact*(vvz+wwy)
+          tempd = two*strainmag2d
+          sxyd = 2*sxy*tempd
+          sxzd = 2*sxz*tempd
+          syzd = 2*syz*tempd
+          tempd = 2*(sxx+syy+szz)*f23*div2d
+          sxxd = 2*sxx*strainmag2d + tempd
+          syyd = 2*syy*strainmag2d + tempd
+          szzd = 2*szz*strainmag2d + tempd
+          vvzd = vvzd + fact*syzd
+          wwyd = wwyd + fact*syzd
+          uuzd = uuzd + fact*sxzd
+          wwxd = wwxd + fact*sxzd
+          uuyd = uuyd + fact*sxyd
+          vvxd = vvxd + fact*sxyd
+          wwzd = wwzd + two*fact*szzd
+          vvyd = vvyd + two*fact*syyd
+          uuxd = uuxd + two*fact*sxxd
+          strainmag2d = 0.0_8
+          ssd = 0.0_8
+        else if (branch .eq. 1) then
+          if (vortprod .eq. 0.0_8) then
+            vortprodd = 0.0_8
+          else
+            vortprodd = ssd/(2.0*sqrt(vortprod))
+          end if
+          vortxd = 2*vortx*vortprodd
+          vortyd = 2*vorty*vortprodd
+          vortzd = 2*vortz*vortprodd
+          tempd = two*fact*vortzd
+          vvxd = vvxd + tempd
+          uuyd = uuyd - tempd
+          tempd = two*fact*vortyd
+          uuzd = uuzd + tempd
+          wwxd = wwxd - tempd
+          tempd = two*fact*vortxd
+          wwyd = wwyd + tempd
+          vvzd = vvzd - tempd
+          ssd = 0.0_8
+        end if
+        wd(i, j, k-1, ivz) = wd(i, j, k-1, ivz) - sk(i, j, k-1, 3)*wwzd &
+&         - sk(i, j, k-1, 2)*wwyd - sk(i, j, k-1, 1)*wwxd
+        wd(i, j-1, k, ivz) = wd(i, j-1, k, ivz) - sj(i, j-1, k, 3)*wwzd &
+&         - sj(i, j-1, k, 2)*wwyd - sj(i, j-1, k, 1)*wwxd
+        wd(i, j, k+1, ivz) = wd(i, j, k+1, ivz) + sk(i, j, k, 3)*wwzd + &
+&         sk(i, j, k, 2)*wwyd + sk(i, j, k, 1)*wwxd
+        wd(i, j+1, k, ivz) = wd(i, j+1, k, ivz) + sj(i, j, k, 3)*wwzd + &
+&         sj(i, j, k, 2)*wwyd + sj(i, j, k, 1)*wwxd
+        wd(i-1, j, k, ivz) = wd(i-1, j, k, ivz) - si(i-1, j, k, 3)*wwzd &
+&         - si(i-1, j, k, 2)*wwyd - si(i-1, j, k, 1)*wwxd
+        wd(i+1, j, k, ivz) = wd(i+1, j, k, ivz) + si(i, j, k, 3)*wwzd + &
+&         si(i, j, k, 2)*wwyd + si(i, j, k, 1)*wwxd
+        wd(i, j, k-1, ivy) = wd(i, j, k-1, ivy) - sk(i, j, k-1, 3)*vvzd &
+&         - sk(i, j, k-1, 2)*vvyd - sk(i, j, k-1, 1)*vvxd
+        wd(i, j-1, k, ivy) = wd(i, j-1, k, ivy) - sj(i, j-1, k, 3)*vvzd &
+&         - sj(i, j-1, k, 2)*vvyd - sj(i, j-1, k, 1)*vvxd
+        wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + sk(i, j, k, 3)*vvzd + &
+&         sk(i, j, k, 2)*vvyd + sk(i, j, k, 1)*vvxd
+        wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + sj(i, j, k, 3)*vvzd + &
+&         sj(i, j, k, 2)*vvyd + sj(i, j, k, 1)*vvxd
+        wd(i-1, j, k, ivy) = wd(i-1, j, k, ivy) - si(i-1, j, k, 3)*vvzd &
+&         - si(i-1, j, k, 2)*vvyd - si(i-1, j, k, 1)*vvxd
+        wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + si(i, j, k, 3)*vvzd + &
+&         si(i, j, k, 2)*vvyd + si(i, j, k, 1)*vvxd
+        wd(i, j, k-1, ivx) = wd(i, j, k-1, ivx) - sk(i, j, k-1, 3)*uuzd &
+&         - sk(i, j, k-1, 2)*uuyd - sk(i, j, k-1, 1)*uuxd
+        wd(i, j-1, k, ivx) = wd(i, j-1, k, ivx) - sj(i, j-1, k, 3)*uuzd &
+&         - sj(i, j-1, k, 2)*uuyd - sj(i, j-1, k, 1)*uuxd
+        wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + sk(i, j, k, 3)*uuzd + &
+&         sk(i, j, k, 2)*uuyd + sk(i, j, k, 1)*uuxd
+        wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + sj(i, j, k, 3)*uuzd + &
+&         sj(i, j, k, 2)*uuyd + sj(i, j, k, 1)*uuxd
+        wd(i-1, j, k, ivx) = wd(i-1, j, k, ivx) - si(i-1, j, k, 3)*uuzd &
+&         - si(i-1, j, k, 2)*uuyd - si(i-1, j, k, 1)*uuxd
+        wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + si(i, j, k, 3)*uuzd + &
+&         si(i, j, k, 2)*uuyd + si(i, j, k, 1)*uuxd
+      end do
+    end if
+  end subroutine source_fast_b
+
   subroutine source()
 !
 !  source terms.
@@ -71,6 +1047,8 @@ contains
     use turbmod, only : dvt, vort, prod, kwcd, f1
     use inputdiscretization, only : approxsa
     use flowvarrefstate
+    use turbutils_fast_b, only : rethetatcorrelation, flengthcorrelation&
+&   , rethetaccorrelation, smoothminmax
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -89,13 +1067,43 @@ contains
     real(kind=realtype) :: omegax, omegay, omegaz
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
+! gamma-retheta source term variables
+    real(kind=realtype) :: vortmag, strainmag
+    real(kind=realtype) :: nutsa, rturb, gammalocal, rethetatilde
+    real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
+    real(kind=realtype) :: fonset, fonset1
+    real(kind=realtype) :: vortlim, vortmaglim
+    real(kind=realtype) :: pgamma, egamma
+    real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
+    real(kind=realtype) :: thetabl, deltabl, fwake_val, fthetat
+    real(kind=realtype) :: pretheta, ydist
+    real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
+    intrinsic tanh
     real(kind=realtype) :: y1
+    real(kind=realtype) :: x1
+    real(kind=realtype) :: x2
     real(kind=realtype) :: min1
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max6
+    real(kind=realtype) :: max7
+    real(kind=realtype) :: max8
+    real(kind=realtype) :: max9
+    real(kind=realtype) :: max10
+    real(kind=realtype) :: max11
+    real(kind=realtype) :: max12
+    real(kind=realtype) :: max13
+    real(kind=realtype) :: max14
+    real(kind=realtype) :: max15
+    real(kind=realtype) :: arg1
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -251,16 +1259,996 @@ contains
 &         )
         scratch(i, j, k, idvt) = (term1+term2*w(i, j, k, itu1))*w(i, j, &
 &         k, itu1)
-! placeholder equations for sa-gamma-retheta integration.
-! gamma and retheta are kept frozen at static values and
-! contribute zero to the source residual for now.
-        scratch(i, j, k, idvt+1) = scratch(i, j, k, idvt+1) + zero*(w(i&
-&         , j, k, itu2)-gammastatic)
-        scratch(i, j, k, idvt+2) = scratch(i, j, k, idvt+2) + zero*(w(i&
-&         , j, k, itu3)-rethetastatic)
+! ========================================================
+! gamma and retheta source terms (langtry-menter)
+! ========================================================
+! --- compute vorticity and strain magnitudes ---
+        vortx = two*fact*(wwy-vvz) - two*omegax
+        vorty = two*fact*(uuz-wwx) - two*omegay
+        vortz = two*fact*(vvx-uuy) - two*omegaz
+        if (vortx**2 + vorty**2 + vortz**2 .lt. xminn) then
+          max1 = xminn
+        else
+          max1 = vortx**2 + vorty**2 + vortz**2
+        end if
+        vortmag = sqrt(max1)
+        sxx = two*fact*uux
+        syy = two*fact*vvy
+        szz = two*fact*wwz
+        sxy = fact*(uuy+vvx)
+        sxz = fact*(uuz+wwx)
+        syz = fact*(vvz+wwy)
+        x1 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
+        if (x1 .lt. xminn) then
+          max2 = xminn
+        else
+          max2 = x1
+        end if
+        strainmag = sqrt(max2)
+! --- local variables ---
+        nutsa = w(i, j, k, itu1)*fv1
+        if (nu .lt. xminn) then
+          max3 = xminn
+        else
+          max3 = nu
+        end if
+        rturb = nutsa/max3
+        if (w(i, j, k, itu2) .lt. zero) then
+          gammalocal = zero
+        else
+          gammalocal = w(i, j, k, itu2)
+        end if
+        if (w(i, j, k, itu3) .lt. xminn) then
+          rethetatilde = xminn
+        else
+          rethetatilde = w(i, j, k, itu3)
+        end if
+        if (d2wall(i, j, k) .lt. xminn) then
+          ydist = xminn
+        else
+          ydist = d2wall(i, j, k)
+        end if
+        velmag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, &
+&         ivz)**2
+        if (velmag2 .lt. xminn) then
+          max4 = xminn
+        else
+          max4 = velmag2
+        end if
+        velmag = sqrt(max4)
+        if (machcoef*reynolds .lt. xminn) then
+          max5 = xminn
+        else
+          max5 = machcoef*reynolds
+        end if
+! --- vorticity limiting ---
+        vortlim = machcoef*sqrt(max5)/20.0_realtype
+        vortmaglim = smoothminmax(vortmag, vortlim, rsagrvortlimp)
+        if (rlv(i, j, k) .lt. xminn) then
+          max6 = xminn
+        else
+          max6 = rlv(i, j, k)
+        end if
+! --- fonset (smooth tanh-based transition onset) ---
+        res_val = w(i, j, k, irho)*ydist**2*strainmag/max6
+        rethetac_val = rethetaccorrelation(rethetatilde)
+        if (rethetac_val .lt. xminn) then
+          rethetac_val = xminn
+        else
+          rethetac_val = rethetac_val
+        end if
+        fonset1 = sqrt((res_val/(rsagrfonsetc*rethetac_val))**2 + rturb&
+&         **2)
+        fonset = (tanh(rsagrfonsetk*(fonset1-rsagrfonsets))+one)*half
+! --- flength and fturb (modified) ---
+        flength_val = flengthcorrelation(rethetatilde)
+        fturb_val = (one-fonset)*exp(-rturb)
+        if (gammalocal .lt. xminn) then
+          max7 = xminn
+        else
+          max7 = gammalocal
+        end if
+! --- gamma production and destruction ---
+        pgamma = rsagrca1*flength_val*fonset*vortmaglim*sqrt(max7)*(one-&
+&         rsagrce1*gammalocal)
+        egamma = rsagrca2*fturb_val*vortmaglim*gammalocal*(rsagrce2*&
+&         gammalocal-one)
+        scratch(i, j, k, idvt+1) = pgamma - egamma
+        if (w(i, j, k, irho)*velmag2 .lt. xminn) then
+          max8 = xminn
+        else
+          max8 = w(i, j, k, irho)*velmag2
+        end if
+! --- retheta production (relaxation toward correlation) ---
+        timescale = 500.0_realtype*rlv(i, j, k)/max8
+        if (w(i, j, k, irho)*velmag .lt. xminn) then
+          max9 = xminn
+        else
+          max9 = w(i, j, k, irho)*velmag
+        end if
+! compute thetabl first (needed for lambdatheta)
+        thetabl = rethetatilde*rlv(i, j, k)/max9
+        if (velmag .lt. xminn) then
+          max10 = xminn
+        else
+          max10 = velmag
+        end if
+! compute local lambdatheta = (thetabl^2 / nu) * du/ds
+        uxhat = w(i, j, k, ivx)/max10
+        if (velmag .lt. xminn) then
+          max11 = xminn
+        else
+          max11 = velmag
+        end if
+        uyhat = w(i, j, k, ivy)/max11
+        if (velmag .lt. xminn) then
+          max12 = xminn
+        else
+          max12 = velmag
+        end if
+        uzhat = w(i, j, k, ivz)/max12
+        duds = two*fact*(uxhat*(uxhat*uux+uyhat*uuy+uzhat*uuz)+uyhat*(&
+&         uxhat*vvx+uyhat*vvy+uzhat*vvz)+uzhat*(uxhat*wwx+uyhat*wwy+&
+&         uzhat*wwz))
+        if (nu .lt. xminn) then
+          max13 = xminn
+        else
+          max13 = nu
+        end if
+        lambdathetalocal = thetabl**2/max13*duds
+        if (lambdathetalocal .lt. -0.1_realtype) then
+          lambdathetalocal = -0.1_realtype
+        else
+          lambdathetalocal = lambdathetalocal
+        end if
+        if (lambdathetalocal .gt. 0.1_realtype) then
+          lambdathetalocal = 0.1_realtype
+        else
+          lambdathetalocal = lambdathetalocal
+        end if
+        arg1 = turbintensityinf*100.0_realtype
+        rethetat_target = rethetatcorrelation(arg1, lambdathetalocal)
+        if (velmag .lt. xminn) then
+          max14 = xminn
+        else
+          max14 = velmag
+        end if
+! ftheta_t shielding: shields bl interior, allows
+! freestream to drive retheta toward correlation value
+        deltabl = 375.0_realtype*vortmag*ydist*thetabl/max14
+        if (deltabl .lt. xminn) then
+          deltabl = xminn
+        else
+          deltabl = deltabl
+        end if
+        fwake_val = exp(-(res_val/1.0e5_realtype))
+        x2 = fwake_val*exp(-((ydist/deltabl)**4))
+        if (x2 .gt. one) then
+          fthetat = one
+        else
+          fthetat = x2
+        end if
+        if (timescale .lt. xminn) then
+          max15 = xminn
+        else
+          max15 = timescale
+        end if
+        pretheta = rsagrcthetat/max15*(rethetat_target-rethetatilde)*(&
+&         one-fthetat)
+        scratch(i, j, k, idvt+2) = pretheta
       end do
     end if
   end subroutine source
+
+!  differentiation of viscous in reverse (adjoint) mode (with options noisize i4 dr8 r8):
+!   gradient     of useful results: *w *rlv *scratch
+!   with respect to varying inputs: *w *rlv *scratch
+!   rw status of diff variables: *w:incr *rlv:incr *scratch:in-out
+!   plus diff mem management of: w:in rlv:in scratch:in
+  subroutine viscous_fast_b()
+!
+!  viscous term for sa variable.
+!  determine the viscous contribution to the residual
+!  for all internal cells of the block.
+    use constants
+    use blockpointers
+    use paramturb
+    implicit none
+    integer(kind=inttype) :: i, j, k, ii
+! viscosity variables
+    real(kind=realtype) :: nu, nu_m, nu_p
+    real(kind=realtype) :: nud, nu_md, nu_pd
+    real(kind=realtype) :: nut, nut_m, nut_p
+    real(kind=realtype) :: nutd, nut_md, nut_pd
+    real(kind=realtype) :: nu_tm, nu_tp
+    real(kind=realtype) :: nu_tmd, nu_tpd
+    real(kind=realtype) :: nutilde, nutilde_m, nutilde_p
+    real(kind=realtype) :: nutilded, nutilde_md, nutilde_pd
+! sa auxiliary functions
+    real(kind=realtype) :: chi, chi3
+    real(kind=realtype) :: chid, chi3d
+    real(kind=realtype) :: chi_m, chi3_m
+    real(kind=realtype) :: chi_md, chi3_md
+    real(kind=realtype) :: chi_p, chi3_p
+    real(kind=realtype) :: chi_pd, chi3_pd
+    real(kind=realtype) :: fv1, fv1_m, fv1_p
+    real(kind=realtype) :: fv1d, fv1_md, fv1_pd
+! geometry terms
+    real(kind=realtype) :: voli, volmi, volpi
+    real(kind=realtype) :: xm, ym, zm
+    real(kind=realtype) :: xp, yp, zp
+    real(kind=realtype) :: xa, ya, za
+    real(kind=realtype) :: ttm, ttp
+! diffusion coefficients
+    real(kind=realtype) :: num, nup
+    real(kind=realtype) :: numd, nupd
+    real(kind=realtype) :: cdm, cdp
+    real(kind=realtype) :: cdmd, cdpd
+    real(kind=realtype) :: cdm_gamma, cdp_gamma
+    real(kind=realtype) :: cdm_gammad, cdp_gammad
+    real(kind=realtype) :: cdm_rt, cdp_rt
+    real(kind=realtype) :: cdm_rtd, cdp_rtd
+! sa nonlinear correction
+    real(kind=realtype) :: cnud, cam, cap
+    real(kind=realtype) :: cnudd, camd, capd
+    real(kind=realtype) :: nutm, nutp
+    real(kind=realtype) :: nutmd, nutpd
+! matrix coefficients
+    real(kind=realtype) :: c1m, c1p, c10
+    real(kind=realtype) :: c1md, c1pd, c10d
+    real(kind=realtype) :: c2m, c2p, c20
+    real(kind=realtype) :: c2md, c2pd, c20d
+    real(kind=realtype) :: c3m, c3p, c30
+    real(kind=realtype) :: c3md, c3pd, c30d
+    real(kind=realtype) :: b1, c1, d1
+    real(kind=realtype) :: b2, c2, d2
+    real(kind=realtype) :: b3, c3, d3
+! constants
+    real(kind=realtype) :: cb3inv, cv13
+    intrinsic mod
+    intrinsic max
+    real(kind=realtype) :: temp
+    real(kind=realtype) :: tempd
+    integer :: branch
+    cb3inv = one/rsacb3
+    cv13 = rsacv1**3
+!$bwd-of ii-loop 
+    do ii=0,nx*ny*nz-1
+      i = mod(ii, nx) + 2
+      j = mod(ii/nx, ny) + 2
+      k = ii/(nx*ny) + 2
+      voli = one/vol(i, j, k)
+      volmi = two/(vol(i, j, k)+vol(i-1, j, k))
+      volpi = two/(vol(i, j, k)+vol(i+1, j, k))
+      xm = si(i-1, j, k, 1)*volmi
+      ym = si(i-1, j, k, 2)*volmi
+      zm = si(i-1, j, k, 3)*volmi
+      xp = si(i, j, k, 1)*volpi
+      yp = si(i, j, k, 2)*volpi
+      zp = si(i, j, k, 3)*volpi
+      xa = half*(si(i, j, k, 1)+si(i-1, j, k, 1))*voli
+      ya = half*(si(i, j, k, 2)+si(i-1, j, k, 2))*voli
+      za = half*(si(i, j, k, 3)+si(i-1, j, k, 3))*voli
+      ttm = xm*xa + ym*ya + zm*za
+      ttp = xp*xa + yp*ya + zp*za
+      cnud = -(rsacb2*w(i, j, k, itu1)*cb3inv)
+      cam = ttm*cnud
+      cap = ttp*cnud
+      nutm = half*(w(i-1, j, k, itu1)+w(i, j, k, itu1))
+      nutp = half*(w(i+1, j, k, itu1)+w(i, j, k, itu1))
+! ----- viscosities in cell (i,j,k)
+      nu = rlv(i, j, k)/w(i, j, k, irho)
+      nutilde = w(i, j, k, itu1)
+      chi = nutilde/nu
+      chi3 = chi*chi*chi
+      fv1 = chi3/(chi3+cv13)
+      nut = nutilde*fv1
+! ----- i-1 cell
+      nu_m = rlv(i-1, j, k)/w(i-1, j, k, irho)
+      nutilde_m = w(i-1, j, k, itu1)
+      chi_m = nutilde_m/nu_m
+      chi3_m = chi_m*chi_m*chi_m
+      fv1_m = chi3_m/(chi3_m+cv13)
+      nut_m = nutilde_m*fv1_m
+! ----- i+1 cell
+      nu_p = rlv(i+1, j, k)/w(i+1, j, k, irho)
+      nutilde_p = w(i+1, j, k, itu1)
+      chi_p = nutilde_p/nu_p
+      chi3_p = chi_p*chi_p*chi_p
+      fv1_p = chi3_p/(chi3_p+cv13)
+      nut_p = nutilde_p*fv1_p
+      num = half*(nu_m+nu)
+      nup = half*(nu_p+nu)
+      nu_tm = half*(nut_m+nut)
+      nu_tp = half*(nut_p+nut)
+!sa diffusion contribution
+      cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
+      cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
+!gamma diffusion contribution
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+!rethata diffusion contribution
+      cdm_rt = sigmatheta*(num+nu_tm)*ttm
+      cdp_rt = sigmatheta*(nup+nu_tp)*ttp
+      if (cdm + cam .lt. zero) then
+        c1m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c1m = cdm + cam
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp + cap .lt. zero) then
+        c1p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c1p = cdp + cap
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c10 = c1m + c1p
+      if (cdm_gamma .lt. zero) then
+        c2m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c2m = cdm_gamma
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp_gamma .lt. zero) then
+        c2p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c2p = cdp_gamma
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c20 = c2m + c2p
+      if (cdm_rt .lt. zero) then
+        c3m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c3m = cdm_rt
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp_rt .lt. zero) then
+        c3p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c3p = cdp_rt
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c30 = c3m + c3p
+      c30d = -(w(i, j, k, itu3)*scratchd(i, j, k, idvt+2))
+      c3md = w(i-1, j, k, itu3)*scratchd(i, j, k, idvt+2) + c30d
+      wd(i-1, j, k, itu3) = wd(i-1, j, k, itu3) + c3m*scratchd(i, j, k, &
+&       idvt+2)
+      c3pd = w(i+1, j, k, itu3)*scratchd(i, j, k, idvt+2) + c30d
+      wd(i+1, j, k, itu3) = wd(i+1, j, k, itu3) + c3p*scratchd(i, j, k, &
+&       idvt+2)
+      wd(i, j, k, itu3) = wd(i, j, k, itu3) - c30*scratchd(i, j, k, idvt&
+&       +2)
+      c2md = w(i-1, j, k, itu2)*scratchd(i, j, k, idvt+1)
+      wd(i-1, j, k, itu2) = wd(i-1, j, k, itu2) + c2m*scratchd(i, j, k, &
+&       idvt+1)
+      c2pd = w(i+1, j, k, itu2)*scratchd(i, j, k, idvt+1)
+      wd(i+1, j, k, itu2) = wd(i+1, j, k, itu2) + c2p*scratchd(i, j, k, &
+&       idvt+1)
+      c20d = -(w(i, j, k, itu2)*scratchd(i, j, k, idvt+1))
+      wd(i, j, k, itu2) = wd(i, j, k, itu2) - c20*scratchd(i, j, k, idvt&
+&       +1)
+      c1md = w(i-1, j, k, itu1)*scratchd(i, j, k, idvt)
+      wd(i-1, j, k, itu1) = wd(i-1, j, k, itu1) + c1m*scratchd(i, j, k, &
+&       idvt)
+      c1pd = w(i+1, j, k, itu1)*scratchd(i, j, k, idvt)
+      wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + c1p*scratchd(i, j, k, &
+&       idvt)
+      c10d = -(w(i, j, k, itu1)*scratchd(i, j, k, idvt))
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) - c10*scratchd(i, j, k, idvt&
+&       )
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdp_rtd = 0.0_8
+      else
+        cdp_rtd = c3pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdm_rtd = 0.0_8
+      else
+        cdm_rtd = c3md
+      end if
+      c2md = c2md + c20d
+      c2pd = c2pd + c20d
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdp_gammad = 0.0_8
+      else
+        cdp_gammad = c2pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdm_gammad = 0.0_8
+      else
+        cdm_gammad = c2md
+      end if
+      c1md = c1md + c10d
+      c1pd = c1pd + c10d
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdpd = 0.0_8
+        capd = 0.0_8
+      else
+        cdpd = c1pd
+        capd = c1pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdmd = 0.0_8
+        camd = 0.0_8
+      else
+        cdmd = c1md
+        camd = c1md
+      end if
+      cnudd = ttp*capd + ttm*camd
+      tempd = sigmatheta*ttp*cdp_rtd
+      nupd = tempd
+      nu_tpd = tempd + ttp*cdp_gammad/sigmaf
+      tempd = sigmatheta*ttm*cdm_rtd
+      numd = tempd
+      nu_tmd = tempd + ttm*cdm_gammad/sigmaf
+      tempd = ttp*cb3inv*cdpd
+      nupd = nupd + ttp*cdp_gammad + tempd
+      nutpd = (one+rsacb2)*tempd
+      tempd = ttm*cb3inv*cdmd
+      numd = numd + ttm*cdm_gammad + tempd
+      nutmd = (one+rsacb2)*tempd
+      nut_pd = half*nu_tpd
+      nutd = half*nu_tpd + half*nu_tmd
+      nut_md = half*nu_tmd
+      fv1_pd = nutilde_p*nut_pd
+      tempd = fv1_pd/(cv13+chi3_p)
+      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd
+      chi_pd = 3*chi_p**2*chi3_pd
+      nu_pd = half*nupd - nutilde_p*chi_pd/nu_p**2
+      nutilde_pd = fv1_p*nut_pd + chi_pd/nu_p
+      wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + nutilde_pd
+      temp = w(i+1, j, k, irho)
+      rlvd(i+1, j, k) = rlvd(i+1, j, k) + nu_pd/temp
+      wd(i+1, j, k, irho) = wd(i+1, j, k, irho) - rlv(i+1, j, k)*nu_pd/&
+&       temp**2
+      fv1_md = nutilde_m*nut_md
+      tempd = fv1_md/(cv13+chi3_m)
+      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd
+      chi_md = 3*chi_m**2*chi3_md
+      nu_md = half*numd - nutilde_m*chi_md/nu_m**2
+      nutilde_md = fv1_m*nut_md + chi_md/nu_m
+      wd(i-1, j, k, itu1) = wd(i-1, j, k, itu1) + nutilde_md
+      temp = w(i-1, j, k, irho)
+      rlvd(i-1, j, k) = rlvd(i-1, j, k) + nu_md/temp
+      wd(i-1, j, k, irho) = wd(i-1, j, k, irho) - rlv(i-1, j, k)*nu_md/&
+&       temp**2
+      fv1d = nutilde*nutd
+      tempd = fv1d/(cv13+chi3)
+      chi3d = (1.0-chi3/(cv13+chi3))*tempd
+      chid = 3*chi**2*chi3d
+      nud = half*nupd + half*numd - nutilde*chid/nu**2
+      nutilded = fv1*nutd + chid/nu
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) + nutilded
+      temp = w(i, j, k, irho)
+      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
+      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+      wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + half*nutpd
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) + half*nutpd + half*nutmd - &
+&       rsacb2*cb3inv*cnudd
+      wd(i-1, j, k, itu1) = wd(i-1, j, k, itu1) + half*nutmd
+    end do
+!$bwd-of ii-loop 
+    do ii=0,nx*ny*nz-1
+      i = mod(ii, nx) + 2
+      j = mod(ii/nx, ny) + 2
+      k = ii/(nx*ny) + 2
+      voli = one/vol(i, j, k)
+      volmi = two/(vol(i, j, k)+vol(i, j-1, k))
+      volpi = two/(vol(i, j, k)+vol(i, j+1, k))
+      xm = sj(i, j-1, k, 1)*volmi
+      ym = sj(i, j-1, k, 2)*volmi
+      zm = sj(i, j-1, k, 3)*volmi
+      xp = sj(i, j, k, 1)*volpi
+      yp = sj(i, j, k, 2)*volpi
+      zp = sj(i, j, k, 3)*volpi
+      xa = half*(sj(i, j, k, 1)+sj(i, j-1, k, 1))*voli
+      ya = half*(sj(i, j, k, 2)+sj(i, j-1, k, 2))*voli
+      za = half*(sj(i, j, k, 3)+sj(i, j-1, k, 3))*voli
+      ttm = xm*xa + ym*ya + zm*za
+      ttp = xp*xa + yp*ya + zp*za
+      cnud = -(rsacb2*w(i, j, k, itu1)*cb3inv)
+      cam = ttm*cnud
+      cap = ttp*cnud
+      nutm = half*(w(i, j-1, k, itu1)+w(i, j, k, itu1))
+      nutp = half*(w(i, j+1, k, itu1)+w(i, j, k, itu1))
+! ----- viscosities in cell (i,j,k)
+      nu = rlv(i, j, k)/w(i, j, k, irho)
+      nutilde = w(i, j, k, itu1)
+      chi = nutilde/nu
+      chi3 = chi*chi*chi
+      fv1 = chi3/(chi3+cv13)
+      nut = nutilde*fv1
+! ----- j-1 cell
+      nu_m = rlv(i, j-1, k)/w(i, j-1, k, irho)
+      nutilde_m = w(i, j-1, k, itu1)
+      chi_m = nutilde_m/nu_m
+      chi3_m = chi_m*chi_m*chi_m
+      fv1_m = chi3_m/(chi3_m+cv13)
+      nut_m = nutilde_m*fv1_m
+! ----- j+1 cell
+      nu_p = rlv(i, j+1, k)/w(i, j+1, k, irho)
+      nutilde_p = w(i, j+1, k, itu1)
+      chi_p = nutilde_p/nu_p
+      chi3_p = chi_p*chi_p*chi_p
+      fv1_p = chi3_p/(chi3_p+cv13)
+      nut_p = nutilde_p*fv1_p
+      num = half*(nu_m+nu)
+      nup = half*(nu_p+nu)
+      nu_tm = half*(nut_m+nut)
+      nu_tp = half*(nut_p+nut)
+!sa diffusion contribution
+      cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
+      cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
+!gamma diffusion contribution
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+!rethata diffusion contribution
+      cdm_rt = sigmatheta*(num+nu_tm)*ttm
+      cdp_rt = sigmatheta*(nup+nu_tp)*ttp
+      if (cdm + cam .lt. zero) then
+        c1m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c1m = cdm + cam
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp + cap .lt. zero) then
+        c1p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c1p = cdp + cap
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c10 = c1m + c1p
+      if (cdm_gamma .lt. zero) then
+        c2m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c2m = cdm_gamma
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp_gamma .lt. zero) then
+        c2p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c2p = cdp_gamma
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c20 = c2m + c2p
+      if (cdm_rt .lt. zero) then
+        c3m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c3m = cdm_rt
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp_rt .lt. zero) then
+        c3p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c3p = cdp_rt
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c30 = c3m + c3p
+      c30d = -(w(i, j, k, itu3)*scratchd(i, j, k, idvt+2))
+      c3md = w(i, j-1, k, itu3)*scratchd(i, j, k, idvt+2) + c30d
+      wd(i, j-1, k, itu3) = wd(i, j-1, k, itu3) + c3m*scratchd(i, j, k, &
+&       idvt+2)
+      c3pd = w(i, j+1, k, itu3)*scratchd(i, j, k, idvt+2) + c30d
+      wd(i, j+1, k, itu3) = wd(i, j+1, k, itu3) + c3p*scratchd(i, j, k, &
+&       idvt+2)
+      wd(i, j, k, itu3) = wd(i, j, k, itu3) - c30*scratchd(i, j, k, idvt&
+&       +2)
+      c2md = w(i, j-1, k, itu2)*scratchd(i, j, k, idvt+1)
+      wd(i, j-1, k, itu2) = wd(i, j-1, k, itu2) + c2m*scratchd(i, j, k, &
+&       idvt+1)
+      c2pd = w(i, j+1, k, itu2)*scratchd(i, j, k, idvt+1)
+      wd(i, j+1, k, itu2) = wd(i, j+1, k, itu2) + c2p*scratchd(i, j, k, &
+&       idvt+1)
+      c20d = -(w(i, j, k, itu2)*scratchd(i, j, k, idvt+1))
+      wd(i, j, k, itu2) = wd(i, j, k, itu2) - c20*scratchd(i, j, k, idvt&
+&       +1)
+      c1md = w(i, j-1, k, itu1)*scratchd(i, j, k, idvt)
+      wd(i, j-1, k, itu1) = wd(i, j-1, k, itu1) + c1m*scratchd(i, j, k, &
+&       idvt)
+      c1pd = w(i, j+1, k, itu1)*scratchd(i, j, k, idvt)
+      wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + c1p*scratchd(i, j, k, &
+&       idvt)
+      c10d = -(w(i, j, k, itu1)*scratchd(i, j, k, idvt))
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) - c10*scratchd(i, j, k, idvt&
+&       )
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdp_rtd = 0.0_8
+      else
+        cdp_rtd = c3pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdm_rtd = 0.0_8
+      else
+        cdm_rtd = c3md
+      end if
+      c2md = c2md + c20d
+      c2pd = c2pd + c20d
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdp_gammad = 0.0_8
+      else
+        cdp_gammad = c2pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdm_gammad = 0.0_8
+      else
+        cdm_gammad = c2md
+      end if
+      c1md = c1md + c10d
+      c1pd = c1pd + c10d
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdpd = 0.0_8
+        capd = 0.0_8
+      else
+        cdpd = c1pd
+        capd = c1pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdmd = 0.0_8
+        camd = 0.0_8
+      else
+        cdmd = c1md
+        camd = c1md
+      end if
+      cnudd = ttp*capd + ttm*camd
+      tempd = sigmatheta*ttp*cdp_rtd
+      nupd = tempd
+      nu_tpd = tempd + ttp*cdp_gammad/sigmaf
+      tempd = sigmatheta*ttm*cdm_rtd
+      numd = tempd
+      nu_tmd = tempd + ttm*cdm_gammad/sigmaf
+      tempd = ttp*cb3inv*cdpd
+      nupd = nupd + ttp*cdp_gammad + tempd
+      nutpd = (one+rsacb2)*tempd
+      tempd = ttm*cb3inv*cdmd
+      numd = numd + ttm*cdm_gammad + tempd
+      nutmd = (one+rsacb2)*tempd
+      nut_pd = half*nu_tpd
+      nutd = half*nu_tpd + half*nu_tmd
+      nut_md = half*nu_tmd
+      fv1_pd = nutilde_p*nut_pd
+      tempd = fv1_pd/(cv13+chi3_p)
+      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd
+      chi_pd = 3*chi_p**2*chi3_pd
+      nu_pd = half*nupd - nutilde_p*chi_pd/nu_p**2
+      nutilde_pd = fv1_p*nut_pd + chi_pd/nu_p
+      wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + nutilde_pd
+      temp = w(i, j+1, k, irho)
+      rlvd(i, j+1, k) = rlvd(i, j+1, k) + nu_pd/temp
+      wd(i, j+1, k, irho) = wd(i, j+1, k, irho) - rlv(i, j+1, k)*nu_pd/&
+&       temp**2
+      fv1_md = nutilde_m*nut_md
+      tempd = fv1_md/(cv13+chi3_m)
+      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd
+      chi_md = 3*chi_m**2*chi3_md
+      nu_md = half*numd - nutilde_m*chi_md/nu_m**2
+      nutilde_md = fv1_m*nut_md + chi_md/nu_m
+      wd(i, j-1, k, itu1) = wd(i, j-1, k, itu1) + nutilde_md
+      temp = w(i, j-1, k, irho)
+      rlvd(i, j-1, k) = rlvd(i, j-1, k) + nu_md/temp
+      wd(i, j-1, k, irho) = wd(i, j-1, k, irho) - rlv(i, j-1, k)*nu_md/&
+&       temp**2
+      fv1d = nutilde*nutd
+      tempd = fv1d/(cv13+chi3)
+      chi3d = (1.0-chi3/(cv13+chi3))*tempd
+      chid = 3*chi**2*chi3d
+      nud = half*nupd + half*numd - nutilde*chid/nu**2
+      nutilded = fv1*nutd + chid/nu
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) + nutilded
+      temp = w(i, j, k, irho)
+      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
+      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+      wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + half*nutpd
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) + half*nutpd + half*nutmd - &
+&       rsacb2*cb3inv*cnudd
+      wd(i, j-1, k, itu1) = wd(i, j-1, k, itu1) + half*nutmd
+    end do
+!$bwd-of ii-loop 
+    do ii=0,nx*ny*nz-1
+      i = mod(ii, nx) + 2
+      j = mod(ii/nx, ny) + 2
+      k = ii/(nx*ny) + 2
+!mesh geometry contribution
+      voli = one/vol(i, j, k)
+      volmi = two/(vol(i, j, k)+vol(i, j, k-1))
+      volpi = two/(vol(i, j, k)+vol(i, j, k+1))
+      xm = sk(i, j, k-1, 1)*volmi
+      ym = sk(i, j, k-1, 2)*volmi
+      zm = sk(i, j, k-1, 3)*volmi
+      xp = sk(i, j, k, 1)*volpi
+      yp = sk(i, j, k, 2)*volpi
+      zp = sk(i, j, k, 3)*volpi
+      xa = half*(sk(i, j, k, 1)+sk(i, j, k-1, 1))*voli
+      ya = half*(sk(i, j, k, 2)+sk(i, j, k-1, 2))*voli
+      za = half*(sk(i, j, k, 3)+sk(i, j, k-1, 3))*voli
+      ttm = xm*xa + ym*ya + zm*za
+      ttp = xp*xa + yp*ya + zp*za
+      cnud = -(rsacb2*w(i, j, k, itu1)*cb3inv)
+      cam = ttm*cnud
+      cap = ttp*cnud
+      nutm = half*(w(i, j, k-1, itu1)+w(i, j, k, itu1))
+      nutp = half*(w(i, j, k+1, itu1)+w(i, j, k, itu1))
+! ----- viscosities in cell (i,j,k)
+      nu = rlv(i, j, k)/w(i, j, k, irho)
+      nutilde = w(i, j, k, itu1)
+      chi = nutilde/nu
+      chi3 = chi*chi*chi
+      fv1 = chi3/(chi3+cv13)
+      nut = nutilde*fv1
+! ----- k-1 cell
+      nu_m = rlv(i, j, k-1)/w(i, j, k-1, irho)
+      nutilde_m = w(i, j, k-1, itu1)
+      chi_m = nutilde_m/nu_m
+      chi3_m = chi_m*chi_m*chi_m
+      fv1_m = chi3_m/(chi3_m+cv13)
+      nut_m = nutilde_m*fv1_m
+! ----- k+1 cell
+      nu_p = rlv(i, j, k+1)/w(i, j, k+1, irho)
+      nutilde_p = w(i, j, k+1, itu1)
+      chi_p = nutilde_p/nu_p
+      chi3_p = chi_p*chi_p*chi_p
+      fv1_p = chi3_p/(chi3_p+cv13)
+      nut_p = nutilde_p*fv1_p
+      num = half*(nu_m+nu)
+      nup = half*(nu_p+nu)
+      nu_tm = half*(nut_m+nut)
+      nu_tp = half*(nut_p+nut)
+!sa diffusion contribution
+      cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
+      cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
+!gamma diffusion contribution
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+!rethata diffusion contribution
+      cdm_rt = sigmatheta*(num+nu_tm)*ttm
+      cdp_rt = sigmatheta*(nup+nu_tp)*ttp
+      if (cdm + cam .lt. zero) then
+        c1m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c1m = cdm + cam
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp + cap .lt. zero) then
+        c1p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c1p = cdp + cap
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c10 = c1m + c1p
+      if (cdm_gamma .lt. zero) then
+        c2m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c2m = cdm_gamma
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp_gamma .lt. zero) then
+        c2p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c2p = cdp_gamma
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c20 = c2m + c2p
+      if (cdm_rt .lt. zero) then
+        c3m = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c3m = cdm_rt
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      if (cdp_rt .lt. zero) then
+        c3p = zero
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+      else
+        c3p = cdp_rt
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+      end if
+      c30 = c3m + c3p
+      c30d = -(w(i, j, k, itu3)*scratchd(i, j, k, idvt+2))
+      c3md = w(i, j, k-1, itu3)*scratchd(i, j, k, idvt+2) + c30d
+      wd(i, j, k-1, itu3) = wd(i, j, k-1, itu3) + c3m*scratchd(i, j, k, &
+&       idvt+2)
+      c3pd = w(i, j, k+1, itu3)*scratchd(i, j, k, idvt+2) + c30d
+      wd(i, j, k+1, itu3) = wd(i, j, k+1, itu3) + c3p*scratchd(i, j, k, &
+&       idvt+2)
+      wd(i, j, k, itu3) = wd(i, j, k, itu3) - c30*scratchd(i, j, k, idvt&
+&       +2)
+      c2md = w(i, j, k-1, itu2)*scratchd(i, j, k, idvt+1)
+      wd(i, j, k-1, itu2) = wd(i, j, k-1, itu2) + c2m*scratchd(i, j, k, &
+&       idvt+1)
+      c2pd = w(i, j, k+1, itu2)*scratchd(i, j, k, idvt+1)
+      wd(i, j, k+1, itu2) = wd(i, j, k+1, itu2) + c2p*scratchd(i, j, k, &
+&       idvt+1)
+      c20d = -(w(i, j, k, itu2)*scratchd(i, j, k, idvt+1))
+      wd(i, j, k, itu2) = wd(i, j, k, itu2) - c20*scratchd(i, j, k, idvt&
+&       +1)
+      c1md = w(i, j, k-1, itu1)*scratchd(i, j, k, idvt)
+      wd(i, j, k-1, itu1) = wd(i, j, k-1, itu1) + c1m*scratchd(i, j, k, &
+&       idvt)
+      c1pd = w(i, j, k+1, itu1)*scratchd(i, j, k, idvt)
+      wd(i, j, k+1, itu1) = wd(i, j, k+1, itu1) + c1p*scratchd(i, j, k, &
+&       idvt)
+      c10d = -(w(i, j, k, itu1)*scratchd(i, j, k, idvt))
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) - c10*scratchd(i, j, k, idvt&
+&       )
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdp_rtd = 0.0_8
+      else
+        cdp_rtd = c3pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdm_rtd = 0.0_8
+      else
+        cdm_rtd = c3md
+      end if
+      c2md = c2md + c20d
+      c2pd = c2pd + c20d
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdp_gammad = 0.0_8
+      else
+        cdp_gammad = c2pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdm_gammad = 0.0_8
+      else
+        cdm_gammad = c2md
+      end if
+      c1md = c1md + c10d
+      c1pd = c1pd + c10d
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdpd = 0.0_8
+        capd = 0.0_8
+      else
+        cdpd = c1pd
+        capd = c1pd
+      end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+      if (branch .eq. 0) then
+        cdmd = 0.0_8
+        camd = 0.0_8
+      else
+        cdmd = c1md
+        camd = c1md
+      end if
+      cnudd = ttp*capd + ttm*camd
+      tempd = sigmatheta*ttp*cdp_rtd
+      nupd = tempd
+      nu_tpd = tempd + ttp*cdp_gammad/sigmaf
+      tempd = sigmatheta*ttm*cdm_rtd
+      numd = tempd
+      nu_tmd = tempd + ttm*cdm_gammad/sigmaf
+      tempd = ttp*cb3inv*cdpd
+      nupd = nupd + ttp*cdp_gammad + tempd
+      nutpd = (one+rsacb2)*tempd
+      tempd = ttm*cb3inv*cdmd
+      numd = numd + ttm*cdm_gammad + tempd
+      nutmd = (one+rsacb2)*tempd
+      nut_pd = half*nu_tpd
+      nutd = half*nu_tpd + half*nu_tmd
+      nut_md = half*nu_tmd
+      fv1_pd = nutilde_p*nut_pd
+      tempd = fv1_pd/(cv13+chi3_p)
+      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd
+      chi_pd = 3*chi_p**2*chi3_pd
+      nu_pd = half*nupd - nutilde_p*chi_pd/nu_p**2
+      nutilde_pd = fv1_p*nut_pd + chi_pd/nu_p
+      wd(i, j, k+1, itu1) = wd(i, j, k+1, itu1) + nutilde_pd
+      temp = w(i, j, k+1, irho)
+      rlvd(i, j, k+1) = rlvd(i, j, k+1) + nu_pd/temp
+      wd(i, j, k+1, irho) = wd(i, j, k+1, irho) - rlv(i, j, k+1)*nu_pd/&
+&       temp**2
+      fv1_md = nutilde_m*nut_md
+      tempd = fv1_md/(cv13+chi3_m)
+      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd
+      chi_md = 3*chi_m**2*chi3_md
+      nu_md = half*numd - nutilde_m*chi_md/nu_m**2
+      nutilde_md = fv1_m*nut_md + chi_md/nu_m
+      wd(i, j, k-1, itu1) = wd(i, j, k-1, itu1) + nutilde_md
+      temp = w(i, j, k-1, irho)
+      rlvd(i, j, k-1) = rlvd(i, j, k-1) + nu_md/temp
+      wd(i, j, k-1, irho) = wd(i, j, k-1, irho) - rlv(i, j, k-1)*nu_md/&
+&       temp**2
+      fv1d = nutilde*nutd
+      tempd = fv1d/(cv13+chi3)
+      chi3d = (1.0-chi3/(cv13+chi3))*tempd
+      chid = 3*chi**2*chi3d
+      nud = half*nupd + half*numd - nutilde*chid/nu**2
+      nutilded = fv1*nutd + chid/nu
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) + nutilded
+      temp = w(i, j, k, irho)
+      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
+      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+      wd(i, j, k+1, itu1) = wd(i, j, k+1, itu1) + half*nutpd
+      wd(i, j, k, itu1) = wd(i, j, k, itu1) + half*nutpd + half*nutmd - &
+&       rsacb2*cb3inv*cnudd
+      wd(i, j, k-1, itu1) = wd(i, j, k-1, itu1) + half*nutmd
+    end do
+  end subroutine viscous_fast_b
 
   subroutine viscous()
 !
@@ -307,18 +2295,6 @@ contains
     real(kind=realtype) :: cb3inv, cv13
     intrinsic mod
     intrinsic max
-    real(kind=realtype) :: max1
-    real(kind=realtype) :: max2
-    real(kind=realtype) :: max3
-    real(kind=realtype) :: max4
-    real(kind=realtype) :: max5
-    real(kind=realtype) :: max6
-    real(kind=realtype) :: max7
-    real(kind=realtype) :: max8
-    real(kind=realtype) :: max9
-    real(kind=realtype) :: max10
-    real(kind=realtype) :: max11
-    real(kind=realtype) :: max12
     cb3inv = one/rsacb3
     cv13 = rsacv1**3
 !$ad ii-loop
@@ -519,79 +2495,6 @@ contains
 &       , k, itu2) - c20*w(i, j, k, itu2) + c2p*w(i, j+1, k, itu2)
       scratch(i, j, k, idvt+2) = scratch(i, j, k, idvt+2) + c3m*w(i, j-1&
 &       , k, itu3) - c30*w(i, j, k, itu3) + c3p*w(i, j+1, k, itu3)
-      b1 = -c1m
-      c1 = c10
-      d1 = -c1p
-! update the central jacobian. for nonboundary cells this
-! is simply c1. for boundary cells this is slightly more
-! complicated, because the boundary conditions are treated
-! implicitly and the off-diagonal terms b1 and d1 must be
-! taken into account.
-! the boundary conditions are only treated implicitly if
-! the diagonal dominance of the matrix is increased.
-      if (j .eq. 2) then
-        if (bmtj1(i, j, itu1, itu1) .lt. zero) then
-          max1 = zero
-        else
-          max1 = bmtj1(i, j, itu1, itu1)
-        end if
-        qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1 - b1*max1
-      else if (j .eq. jl) then
-        if (bmtj2(i, j, itu1, itu1) .lt. zero) then
-          max2 = zero
-        else
-          max2 = bmtj2(i, j, itu1, itu1)
-        end if
-        qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1 - d1*max2
-      else
-        qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1
-      end if
-!====================================================
-! gamma equation
-!====================================================
-      b2 = -c2m
-      c2 = c20
-      d2 = -c2p
-      if (j .eq. 2) then
-        if (bmtj1(i, j, itu2, itu2) .lt. zero) then
-          max3 = zero
-        else
-          max3 = bmtj1(i, j, itu2, itu2)
-        end if
-        qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2 - b2*max3
-      else if (j .eq. jl) then
-        if (bmtj2(i, j, itu2, itu2) .lt. zero) then
-          max4 = zero
-        else
-          max4 = bmtj2(i, j, itu2, itu2)
-        end if
-        qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2 - d2*max4
-      else
-        qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2
-      end if
-!====================================================
-! retheta equation
-!====================================================
-      b3 = -c3m
-      c3 = c30
-      d3 = -c3p
-      if (j .eq. 2) then
-        if (bmtj1(i, j, itu3, itu3) .lt. zero) then
-          max5 = zero
-        else
-          max5 = bmtj1(i, j, itu3, itu3)
-        end if
-        qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + c3 - b3*max5
-      else if (j .eq. jl) then
-        if (bmtj2(i, j, itu3, itu3) .lt. zero) then
-          max6 = zero
-        else
-          max6 = bmtj2(i, j, itu3, itu3)
-        end if
-        qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + c3 - d3*max6
-      else
-        qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + c3
-      end if
     end do
 !$ad ii-loop
 ! viscous terms in i-direction.
@@ -691,81 +2594,55 @@ contains
 &       , k, itu2) - c20*w(i, j, k, itu2) + c2p*w(i+1, j, k, itu2)
       scratch(i, j, k, idvt+2) = scratch(i, j, k, idvt+2) + c3m*w(i-1, j&
 &       , k, itu3) - c30*w(i, j, k, itu3) + c3p*w(i+1, j, k, itu3)
-      b1 = -c1m
-      c1 = c10
-      d1 = -c1p
-! update the central jacobian. for nonboundary cells this
-! is simply c1. for boundary cells this is slightly more
-! complicated, because the boundary conditions are treated
-! implicitly and the off-diagonal terms b1 and d1 must be
-! taken into account.
-! the boundary conditions are only treated implicitly if
-! the diagonal dominance of the matrix is increased.
-      if (i .eq. 2) then
-        if (bmti1(i, j, itu1, itu1) .lt. zero) then
-          max7 = zero
-        else
-          max7 = bmti1(i, j, itu1, itu1)
-        end if
-        qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1 - b1*max7
-      else if (i .eq. il) then
-        if (bmti2(i, j, itu1, itu1) .lt. zero) then
-          max8 = zero
-        else
-          max8 = bmti2(i, j, itu1, itu1)
-        end if
-        qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1 - d1*max8
-      else
-        qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1
-      end if
-!====================================================
-! gamma equation
-!====================================================
-      b2 = -c2m
-      c2 = c20
-      d2 = -c2p
-      if (i .eq. 2) then
-        if (bmti1(i, j, itu2, itu2) .lt. zero) then
-          max9 = zero
-        else
-          max9 = bmti1(i, j, itu2, itu2)
-        end if
-        qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2 - b2*max9
-      else if (i .eq. il) then
-        if (bmti2(i, j, itu2, itu2) .lt. zero) then
-          max10 = zero
-        else
-          max10 = bmti2(i, j, itu2, itu2)
-        end if
-        qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2 - d2*max10
-      else
-        qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2
-      end if
-!====================================================
-! retheta equation
-!====================================================
-      b3 = -c3m
-      c3 = c30
-      d3 = -c3p
-      if (i .eq. 2) then
-        if (bmti1(i, j, itu3, itu3) .lt. zero) then
-          max11 = zero
-        else
-          max11 = bmti1(i, j, itu3, itu3)
-        end if
-        qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + c3 - b3*max11
-      else if (i .eq. il) then
-        if (bmti2(i, j, itu3, itu3) .lt. zero) then
-          max12 = zero
-        else
-          max12 = bmti2(i, j, itu3, itu3)
-        end if
-        qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + c3 - d3*max12
-      else
-        qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + c3
-      end if
     end do
   end subroutine viscous
+
+!  differentiation of resscale in reverse (adjoint) mode (with options noisize i4 dr8 r8):
+!   gradient     of useful results: *dw
+!   with respect to varying inputs: *dw *scratch
+!   rw status of diff variables: *dw:in-out *scratch:out
+!   plus diff mem management of: dw:in scratch:in
+  subroutine resscale_fast_b()
+!
+!  multiply the residual by the volume and store this in dw; this
+! * is done for monitoring reasons only. the multiplication with the
+! * volume is present to be consistent with the flow residuals; also
+!  the negative value is taken, again to be consistent with the
+! * flow equations. also multiply by iblank so that no updates occur
+!  in holes or the overset boundary.
+    use constants
+    use blockpointers
+    implicit none
+! local variables
+    integer(kind=inttype) :: i, j, k, ii
+    real(kind=realtype) :: rblank
+    intrinsic mod
+    intrinsic real
+    intrinsic max
+    real(realtype) :: x1
+    if (associated(scratchd)) scratchd = 0.0_8
+!$bwd-of ii-loop 
+    do ii=0,nx*ny*nz-1
+      i = mod(ii, nx) + 2
+      j = mod(ii/nx, ny) + 2
+      k = ii/(nx*ny) + 2
+      x1 = real(iblank(i, j, k), realtype)
+      if (x1 .lt. zero) then
+        rblank = zero
+      else
+        rblank = x1
+      end if
+      scratchd(i, j, k, idvt+2) = scratchd(i, j, k, idvt+2) - volref(i, &
+&       j, k)*rblank*dwd(i, j, k, itu3)
+      dwd(i, j, k, itu3) = 0.0_8
+      scratchd(i, j, k, idvt+1) = scratchd(i, j, k, idvt+1) - volref(i, &
+&       j, k)*rblank*dwd(i, j, k, itu2)
+      dwd(i, j, k, itu2) = 0.0_8
+      scratchd(i, j, k, idvt) = scratchd(i, j, k, idvt) - volref(i, j, k&
+&       )*rblank*dwd(i, j, k, itu1)
+      dwd(i, j, k, itu1) = 0.0_8
+    end do
+  end subroutine resscale_fast_b
 
   subroutine resscale()
 !
@@ -802,7 +2679,7 @@ contains
 ! gamma
       dw(i, j, k, itu2) = -(volref(i, j, k)*scratch(i, j, k, idvt+1)*&
 &       rblank)
-! retheta_t
+! retheta
       dw(i, j, k, itu3) = -(volref(i, j, k)*scratch(i, j, k, idvt+2)*&
 &       rblank)
     end do
@@ -810,10 +2687,11 @@ contains
 
   subroutine sagammarethetasolve(resonly)
 !
-!       residual-first sa-gamma-retheta transport solve.
+!       point-implicit sa-gamma-retheta transport solve.
 !       the residual (source + advection + unsteady + viscous)
 !       is assembled for 3 equations and updates are applied
-!       explicitly without the sst adi solver path.
+!       using a point-implicit scheme (dividing by the diagonal
+!       of the jacobian qq), analogous to the sa dadi approach.
 !
     use blockpointers
     use constants
@@ -829,76 +2707,69 @@ contains
 !
 !      local variables.
 !
-    integer(kind=inttype) :: i, j, k, nn
-    real(kind=realtype) :: rblank, factor
-    real(kind=realtype), dimension(:, :, :, :), pointer :: dvt
+    integer(kind=inttype) :: i, j, k, m
+    real(kind=realtype) :: rblank, factor, delta, theta, wnew
     intrinsic real
     intrinsic max
-    intrinsic min
-    real(kind=realtype) :: y1
-! set a couple of pointers to the correct entries in dw to
-! make the code more readable.
-    dvt => scratch(1:, 1:, 1:, idvt:)
     if (resonly) then
       return
     else
-! explicit update only; implicit adi solver path intentionally removed.
+! for implicit relaxation, scale the diagonal by the cfl factor
+! (same as sa's sasolve: factor = 1 + (1-alfa)/alfa).
       factor = one
-      if (turbrelax .eq. turbrelaxexplicit) factor = alfaturb
+      if (turbrelax .eq. turbrelaximplicit) factor = one + (one-alfaturb&
+&         )/alfaturb
       do k=2,kl
         do j=2,jl
           do i=2,il
             rblank = real(iblank(i, j, k), realtype)
-            w(i, j, k, itu1) = w(i, j, k, itu1) + factor*dvt(i, j, k, 1)&
-&             *rblank
+! scale the diagonal jacobian for cfl-based damping
+            qq(i, j, k, 1, 1) = factor*qq(i, j, k, 1, 1)
+            qq(i, j, k, 2, 2) = factor*qq(i, j, k, 2, 2)
+            qq(i, j, k, 3, 3) = factor*qq(i, j, k, 3, 3)
+! sa equation: point-implicit update (divide by diagonal)
+            if (qq(i, j, k, 1, 1) .gt. zero) w(i, j, k, itu1) = w(i, j, &
+&               k, itu1) + scratch(i, j, k, idvt)*rblank/qq(i, j, k, 1, &
+&               1)
             if (w(i, j, k, itu1) .lt. zero) then
               w(i, j, k, itu1) = zero
             else
               w(i, j, k, itu1) = w(i, j, k, itu1)
             end if
-            w(i, j, k, itu2) = w(i, j, k, itu2) + factor*dvt(i, j, k, 2)&
-&             *rblank
-            if (one .gt. w(i, j, k, itu2)) then
-              y1 = w(i, j, k, itu2)
-            else
-              y1 = one
+! gamma equation: point-implicit update with damping
+            if (qq(i, j, k, 2, 2) .gt. zero) then
+              delta = scratch(i, j, k, idvt+1)*rblank/qq(i, j, k, 2, 2)
+              theta = one
+              do m=1,200
+                wnew = w(i, j, k, itu2) + theta*delta
+                if (wnew .gt. rsagrgammalo .and. wnew .lt. rsagrgammahi&
+&               ) then
+                  goto 100
+                else
+                  theta = rsagrdamptheta*theta
+                end if
+              end do
+ 100          w(i, j, k, itu2) = w(i, j, k, itu2) + theta*delta
             end if
-            if (zero .lt. y1) then
-              w(i, j, k, itu2) = y1
-            else
-              w(i, j, k, itu2) = zero
-            end if
-            w(i, j, k, itu3) = w(i, j, k, itu3) + factor*dvt(i, j, k, 3)&
-&             *rblank
-            if (w(i, j, k, itu3) .lt. 1.e-5_realtype*winf(itu3)) then
-              w(i, j, k, itu3) = 1.e-5_realtype*winf(itu3)
-            else
-              w(i, j, k, itu3) = w(i, j, k, itu3)
+! retheta equation: point-implicit update with damping
+            if (qq(i, j, k, 3, 3) .gt. zero) then
+              delta = scratch(i, j, k, idvt+2)*rblank/qq(i, j, k, 3, 3)
+              theta = one
+              do m=1,200
+                wnew = w(i, j, k, itu3) + theta*delta
+                if (wnew .gt. rsagrrethetalo) then
+                  goto 110
+                else
+                  theta = rsagrdamptheta*theta
+                end if
+              end do
+ 110          w(i, j, k, itu3) = w(i, j, k, itu3) + theta*delta
             end if
           end do
         end do
       end do
     end if
   end subroutine sagammarethetasolve
-
-! Stub fast reverse-mode AD of Source (saGammaRetheta)
-! Regenerate with: make -f Makefile_tapenade ad_reverse_fast
-  subroutine source_fast_b()
-    implicit none
-    ! Placeholder: regenerate with Tapenade ad_reverse_fast
-  end subroutine source_fast_b
-
-! Stub fast reverse-mode AD of Viscous (saGammaRetheta)
-  subroutine viscous_fast_b()
-    implicit none
-    ! Placeholder: regenerate with Tapenade ad_reverse_fast
-  end subroutine viscous_fast_b
-
-! Stub fast reverse-mode AD of ResScale (saGammaRetheta)
-  subroutine resscale_fast_b()
-    implicit none
-    ! Placeholder: regenerate with Tapenade ad_reverse_fast
-  end subroutine resscale_fast_b
 
 end module sagammaretheta_fast_b
 

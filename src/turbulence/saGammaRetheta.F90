@@ -94,6 +94,7 @@ contains
         use turbMod, only: dvt, vort, prod, kwCD, f1
         use inputDiscretization, only: approxSA
         use flowVarRefState
+        use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         implicit none
 
         ! Local parameters
@@ -115,6 +116,18 @@ contains
         real(kind=realType) :: strainMag2, strainProd, vortProd
         real(kind=realType), parameter :: xminn = 1.e-10_realType
 
+        ! Gamma-ReTheta source term variables
+        real(kind=realType) :: vortMag, strainMag
+        real(kind=realType) :: nutSA, rTurb, gammaLocal, reThetaTilde
+        real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
+        real(kind=realType) :: fOnset, fOnset1
+        real(kind=realType) :: vortLim, vortMagLim
+        real(kind=realType) :: pGamma, eGamma
+        real(kind=realType) :: velMag, velMag2, timeScale, reThetaT_target
+        real(kind=realType) :: thetaBL, deltaBL, fWake_val, fThetaT
+        real(kind=realType) :: pReTheta, yDist
+        real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
+
 
 
         ! Set model constants
@@ -122,6 +135,12 @@ contains
         kar2Inv = one / (rsaK**2)
         cw36 = rsaCw3**6
         cb3Inv = one / rsaCb3
+
+#ifndef USE_TAPENADE
+        ! Initialize the full 3x3 turbulence Jacobian block to avoid
+        ! uninitialized off-diagonal entries contaminating ANK/DADI.
+        qq = zero
+#endif
 
         ! Determine the non-dimensional wheel speed of this block.
 
@@ -301,12 +320,100 @@ contains
 
                         scratch(i, j, k, idvt) = (term1 + term2 * w(i, j, k, itu1)) * w(i, j, k, itu1)
 
-                        ! Placeholder equations for SA-gamma-ReTheta integration.
-                        ! Gamma and ReTheta are kept frozen at static values and
-                        ! contribute zero to the source residual for now.
+                        ! ========================================================
+                        ! Gamma and ReTheta source terms (Langtry-Menter)
+                        ! ========================================================
 
-                        scratch(i, j, k, idvt+1) = scratch(i, j, k, idvt+1) + zero * (w(i, j, k, itu2) - gammaStatic)
-                        scratch(i, j, k, idvt+2) = scratch(i, j, k, idvt+2) + zero * (w(i, j, k, itu3) - reThetaStatic)
+                        ! --- Compute vorticity and strain magnitudes ---
+                        vortx = two * fact * (wwy - vvz) - two * omegax
+                        vorty = two * fact * (uuz - wwx) - two * omegay
+                        vortz = two * fact * (vvx - uuy) - two * omegaz
+                        vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+                        sxx = two * fact * uux
+                        syy = two * fact * vvy
+                        szz = two * fact * wwz
+                        sxy = fact * (uuy + vvx)
+                        sxz = fact * (uuz + wwx)
+                        syz = fact * (vvz + wwy)
+                        strainMag = sqrt(max(two * (sxy**2 + sxz**2 + syz**2) &
+                                        + sxx**2 + syy**2 + szz**2, xminn))
+
+                        ! --- Local variables ---
+                        nutSA = w(i, j, k, itu1) * fv1
+                        rTurb = nutSA / max(nu, xminn)
+                        gammaLocal = max(w(i, j, k, itu2), zero)
+                        reThetaTilde = max(w(i, j, k, itu3), xminn)
+                        yDist = max(d2Wall(i, j, k), xminn)
+                        velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
+                                  + w(i, j, k, ivz)**2
+                        velMag = sqrt(max(velMag2, xminn))
+
+                        ! --- Vorticity limiting ---
+                        vortLim = MachCoef * sqrt(max(MachCoef * Reynolds, xminn)) &
+                                  / 20.0_realType
+                        vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRvortLimP)
+
+                        ! --- Fonset (smooth tanh-based transition onset) ---
+                        reS_val = w(i, j, k, irho) * yDist**2 * strainMag &
+                                  / max(rlv(i, j, k), xminn)
+                        reThetaC_val = rethetacCorrelation(reThetaTilde)
+                        reThetaC_val = max(reThetaC_val, xminn)
+                        fOnset1 = sqrt((reS_val / (rsaGRfonsetC * reThetaC_val))**2 &
+                                       + rTurb**2)
+                        fOnset = (tanh(rsaGRfonsetK &
+                                       * (fOnset1 - rsaGRfonsetS)) + one) * half
+
+                        ! --- Flength and Fturb (modified) ---
+                        fLength_val = flengthCorrelation(reThetaTilde)
+                        fTurb_val = (one - fOnset) * exp(-rTurb)
+
+                        ! --- Gamma production and destruction ---
+                        pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                                 * sqrt(max(gammaLocal, xminn)) &
+                                 * (one - rsaGRce1 * gammaLocal)
+                        eGamma = rsaGRca2 * fTurb_val * vortMagLim * gammaLocal &
+                                 * (rsaGRce2 * gammaLocal - one)
+
+                        scratch(i, j, k, idvt + 1) = pGamma - eGamma
+
+                        ! --- ReTheta production (relaxation toward correlation) ---
+                        timeScale = 500.0_realType * rlv(i, j, k) &
+                                    / max(w(i, j, k, irho) * velMag2, xminn)
+
+                        ! Compute thetaBL first (needed for lambdaTheta)
+                        thetaBL = reThetaTilde * rlv(i, j, k) &
+                                  / max(w(i, j, k, irho) * velMag, xminn)
+
+                        ! Compute local lambdaTheta = (thetaBL^2 / nu) * dU/ds
+                        uxhat = w(i, j, k, ivx) / max(velMag, xminn)
+                        uyhat = w(i, j, k, ivy) / max(velMag, xminn)
+                        uzhat = w(i, j, k, ivz) / max(velMag, xminn)
+                        dUds = two * fact &
+                             * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
+                              + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
+                              + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
+                        lambdaThetaLocal = (thetaBL**2 / max(nu, xminn)) * dUds
+                        lambdaThetaLocal = max(lambdaThetaLocal, -0.1_realType)
+                        lambdaThetaLocal = min(lambdaThetaLocal, 0.1_realType)
+
+                        reThetaT_target = reThetaTCorrelation( &
+                            turbIntensityInf * 100.0_realType, lambdaThetaLocal)
+
+                        ! Ftheta_t shielding: shields BL interior, allows
+                        ! freestream to drive ReTheta toward correlation value
+                        deltaBL = 375.0_realType * vortMag * yDist * thetaBL &
+                                  / max(velMag, xminn)
+                        deltaBL = max(deltaBL, xminn)
+                        fWake_val = exp(-reS_val / 1.0e5_realType)
+                        fThetaT = min(fWake_val &
+                                  * exp(-(yDist / deltaBL)**4), one)
+
+                        pReTheta = rsaGRcthetat / max(timeScale, xminn) &
+                                   * (reThetaT_target - reThetaTilde) &
+                                   * (one - fThetaT)
+
+                        scratch(i, j, k, idvt + 2) = pReTheta
 
 #ifndef USE_TAPENADE
                         ! Compute some derivatives w.r.t. nuTilde. These will occur
@@ -338,8 +445,18 @@ contains
                         ! contribution. Clip qq to zero, if the total is negative.
 
                         qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), zero)
-                        qq(i, j, k, 2, 2) = zero
-                        qq(i, j, k, 3, 3) = zero
+
+                        ! Gamma Jacobian diagonal: implicit part of destruction
+                        qq(i, j, k, 2, 2) = max( &
+                            rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                            * rsaGRce1 * sqrt(max(gammaLocal, xminn)) &
+                            + rsaGRca2 * fTurb_val * vortMagLim &
+                            * max(two * rsaGRce2 * gammaLocal - one, zero), zero)
+
+                        ! ReTheta Jacobian diagonal: -dP_theta/dReTheta_tilde
+                        qq(i, j, k, 3, 3) = max( &
+                            rsaGRcthetat / max(timeScale, xminn) &
+                            * (one - fThetaT), zero)
 #endif
 #ifdef TAPENADE_REVERSE
                     end do
@@ -697,7 +814,7 @@ contains
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i, j+1, k, itu2)
                         scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i, j-1, k, itu3) &
                                                      - c30 * w(i, j, k, itu3) + c3p * w(i, j+1, k, itu3)
-#ifdef TAPENADE_REVERSE
+#ifndef USE_TAPENADE
                         b1 = -c1m
                         c1 = c10
                         d1 = -c1p
@@ -875,7 +992,7 @@ contains
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i+1, j, k, itu2)
                         scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i-1, j, k, itu3) &
                                                      - c30 * w(i, j, k, itu3) + c3p * w(i+1, j, k, itu3)
-#ifdef TAPENADE_REVERSE
+#ifndef USE_TAPENADE
                         b1 = -c1m
                         c1 = c10
                         d1 = -c1p
@@ -983,10 +1100,10 @@ contains
                         dw(i,j,k,itu1) = -volRef(i,j,k) * scratch(i, j, k, idvt) * rblank
 
                         ! Gamma
-                        dw(i,j,k,itu2) = -volRef(i,j,k) * scratch(i,j,k,idvt+1) * rblank
+                        dw(i,j,k,itu2) = -volRef(i,j,k) * scratch(i, j, k, idvt + 1) * rblank
 
-                        ! ReTheta_t
-                        dw(i,j,k,itu3) = -volRef(i,j,k) * scratch(i,j,k,idvt+2) * rblank
+                        ! ReTheta
+                        dw(i,j,k,itu3) = -volRef(i,j,k) * scratch(i, j, k, idvt + 2) * rblank
 #ifdef TAPENADE_REVERSE
                     end do
 #else
@@ -998,10 +1115,11 @@ contains
 
     subroutine saGammaReThetaSolve(resOnly)
         !
-        !       Residual-first SA-gamma-ReTheta transport solve.
+        !       Point-implicit SA-gamma-ReTheta transport solve.
         !       The residual (source + advection + unsteady + viscous)
         !       is assembled for 3 equations and updates are applied
-        !       explicitly without the SST ADI solver path.
+        !       using a point-implicit scheme (dividing by the diagonal
+        !       of the Jacobian qq), analogous to the SA DADI approach.
         !
         use blockPointers
         use constants
@@ -1017,36 +1135,58 @@ contains
         !
         !      Local variables.
         !
-        integer(kind=intType) :: i, j, k, nn
-        real(kind=realType) :: rblank, factor
-        real(kind=realType), dimension(:, :, :, :), pointer :: dvt
-
-        ! Set a couple of pointers to the correct entries in dw to
-        ! make the code more readable.
-
-        dvt => scratch(1:, 1:, 1:, idvt:)
-
+        integer(kind=intType) :: i, j, k, m
+        real(kind=realType) :: rblank, factor, delta, theta, wNew
 
         if (resOnly) return
 
-        ! Explicit update only; implicit ADI solver path intentionally removed.
+        ! For implicit relaxation, scale the diagonal by the CFL factor
+        ! (same as SA's saSolve: factor = 1 + (1-alfa)/alfa).
 
         factor = one
-        if (turbRelax == turbRelaxExplicit) factor = alfaTurb
+        if (turbRelax == turbRelaxImplicit) &
+            factor = one + (one - alfaTurb) / alfaTurb
 
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
                     rblank = real(iblank(i, j, k), realType)
 
-                    w(i, j, k, itu1) = w(i, j, k, itu1) + factor * dvt(i, j, k, 1) * rblank
+                    ! Scale the diagonal Jacobian for CFL-based damping
+                    qq(i, j, k, 1, 1) = factor * qq(i, j, k, 1, 1)
+                    qq(i, j, k, 2, 2) = factor * qq(i, j, k, 2, 2)
+                    qq(i, j, k, 3, 3) = factor * qq(i, j, k, 3, 3)
+
+                    ! SA equation: point-implicit update (divide by diagonal)
+                    if (qq(i, j, k, 1, 1) > zero) then
+                        w(i, j, k, itu1) = w(i, j, k, itu1) &
+                            + scratch(i, j, k, idvt) * rblank / qq(i, j, k, 1, 1)
+                    end if
                     w(i, j, k, itu1) = max(w(i, j, k, itu1), zero)
 
-                    w(i, j, k, itu2) = w(i, j, k, itu2) + factor * dvt(i, j, k, 2) * rblank
-                    w(i, j, k, itu2) = max(zero, min(one, w(i, j, k, itu2)))
+                    ! Gamma equation: point-implicit update with damping
+                    if (qq(i, j, k, 2, 2) > zero) then
+                        delta = scratch(i, j, k, idvt + 1) * rblank / qq(i, j, k, 2, 2)
+                        theta = one
+                        do m = 1, 200
+                            wNew = w(i, j, k, itu2) + theta * delta
+                            if (wNew > rsaGRgammaLo .and. wNew < rsaGRgammaHi) exit
+                            theta = rsaGRdampTheta * theta
+                        end do
+                        w(i, j, k, itu2) = w(i, j, k, itu2) + theta * delta
+                    end if
 
-                    w(i, j, k, itu3) = w(i, j, k, itu3) + factor * dvt(i, j, k, 3) * rblank
-                    w(i, j, k, itu3) = max(w(i, j, k, itu3), 1.e-5_realType * wInf(itu3))
+                    ! ReTheta equation: point-implicit update with damping
+                    if (qq(i, j, k, 3, 3) > zero) then
+                        delta = scratch(i, j, k, idvt + 2) * rblank / qq(i, j, k, 3, 3)
+                        theta = one
+                        do m = 1, 200
+                            wNew = w(i, j, k, itu3) + theta * delta
+                            if (wNew > rsaGRreThetaLo) exit
+                            theta = rsaGRdampTheta * theta
+                        end do
+                        w(i, j, k, itu3) = w(i, j, k, itu3) + theta * delta
+                    end if
                 end do
             end do
         end do

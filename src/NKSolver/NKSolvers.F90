@@ -3170,14 +3170,22 @@ contains
                                 lambdaL = min(lambdaL, ratio)
                                 ii = ii + 1
 
-                                ! TODO: Do we need physicality checks for the additional turbulence model variables?
-                                !  do l=nt1+1, nt2
-                                !     ii = ii + 1
-                                !  end do
-                                ! do this instead of the above loop for now...
-                                ! Will need to modify this if we want physicality check
-                                ! for the new turb model variables.
-                                ii = ii + (nt2 - nt1)
+                                ! Physicality checks for gamma and ReTheta
+                                do l = nt1 + 1, nt2
+#ifndef USE_COMPLEX
+                                    ratio = (wvec_pointer(ii) / (dvec_pointer(ii) + eps)) * ANK_physLSTolTurb
+#else
+                                    ratio = (real(wvec_pointer(ii)) &
+                                             / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTolTurb)
+#endif
+                                    if (ratio .lt. ANK_stepFactor * ANK_stepMin) then
+                                        if (ratio .gt. zero) &
+                                            dvec_pointer(ii) = wvec_pointer(ii) * ANK_physLSTolTurb
+                                        ratio = one
+                                    end if
+                                    lambdaL = min(lambdaL, ratio)
+                                    ii = ii + 1
+                                end do
                             end do
                         end do
                     end do
@@ -3296,14 +3304,22 @@ contains
                             lambdaL = min(lambdaL, ratio)
                             ii = ii + 1
 
-                            ! TODO: Do we need physicality checks for the additional turbulence model variables?
-                            !  do l=nt1+1, nt2
-                            !     ii = ii + 1
-                            !  end do
-                            ! do this instead of the above loop for now...
-                            ! Will need to modify this if we want physicality check
-                            ! for the new turb model variables.
-                            ii = ii + (nt2 - nt1)
+                            ! Physicality checks for gamma and ReTheta
+                            do l = nt1 + 1, nt2
+#ifndef USE_COMPLEX
+                                ratio = (wvec_pointer(ii) / (dvec_pointer(ii) + eps)) * ANK_physLSTolTurb
+#else
+                                ratio = (real(wvec_pointer(ii)) &
+                                         / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTolTurb)
+#endif
+                                if (ratio .lt. ANK_stepFactor * ANK_stepMin) then
+                                    if (ratio .gt. zero) &
+                                        dvec_pointer(ii) = wvec_pointer(ii) * ANK_physLSTolTurb
+                                    ratio = one
+                                end if
+                                lambdaL = min(lambdaL, ratio)
+                                ii = ii + 1
+                            end do
                         end do
                     end do
                 end do

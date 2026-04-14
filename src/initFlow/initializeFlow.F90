@@ -38,7 +38,7 @@ contains
                                    pInf, pInfCorr, rhoInf, uInf, rGas, muInf, gammaInf, wInf, &
                                    nw, nwf, kPresent, wInf
         use flowUtils, only: computeGamma, eTot
-        use turbUtils, only: saNuKnownEddyRatio
+        use turbUtils, only: saNuKnownEddyRatio, reThetaTCorrelation
         implicit none
 
         integer(kind=intType) :: sps, nn, mm, ierr
@@ -141,7 +141,8 @@ contains
 
                 wInf(itu1) = saNuKnownEddyRatio(eddyVisInfRatio, nuInf)
                 wInf(itu2) = one
-                wInf(itu3) = 1000.0_realType
+                wInf(itu3) = reThetaTCorrelation( &
+                    turbIntensityInf * 100.0_realType, zero)
 
                 !=============================================================
 

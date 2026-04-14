@@ -2105,11 +2105,300 @@ nadvloopspectral:do ii=1,nadv
 !$ad checkpoint-end
 
   end subroutine turbadvection
+
+!  differentiation of rethetatcorrelation in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: rethetat
+!   with respect to varying inputs: lambdatheta
 ! ----------------------------------------------------------------------
 !                                                                      |
 !                    no tapenade routine below this line               |
 !                                                                      |
 ! ----------------------------------------------------------------------
+  real(kind=realtype) function rethetatcorrelation_d(tu, lambdatheta, &
+&   lambdathetad, rethetat) result (rethetatd)
+!
+!       compute the critical momentum-thickness reynolds number
+!       re_theta_t from the langtry-menter correlation.
+!       uses smooth f(lambda_theta) from eqs. 54-57.
+!
+!       tu          : freestream turbulence intensity in percent
+!       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lambdatheta
+    real(kind=realtype), intent(in) :: lambdathetad
+    real(kind=realtype), intent(out) :: rethetat
+    real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
+    real(kind=realtype) :: flambdad, f1vald, f2vald, f3vald
+    intrinsic max
+    intrinsic exp
+    real(kind=realtype) :: arg1
+    real(kind=8) :: temp
+    real(realtype) :: temp0
+    real(kind=realtype) :: temp1
+    if (tu .lt. 0.027_realtype) then
+      tu_safe = 0.027_realtype
+    else
+      tu_safe = tu
+    end if
+! --- smooth f(lambda_theta) eqs. 54-57 ---
+! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
+    temp = 0.275_realtype*exp(-(tu_safe/0.5_realtype))
+    f1vald = temp*exp(-(35.0_realtype*lambdatheta))*35.0_realtype*&
+&     lambdathetad
+    f1val = one + temp*(one-exp(-(35.0_realtype*lambdatheta)))
+! eq. 56: f2 = smoothmax(f1, 1)
+    f2vald = smoothminmax_d(f1val, f1vald, one, 0.0_8, 300.0_realtype, &
+&     f2val)
+! eq. 55: f3 = 1 - (-12.986*lam - 123.66*lam^2 - 405.689*lam^3)*exp(-(tu/1.5)^1.5)
+    arg1 = -((tu_safe/1.5_realtype)**1.5_realtype)
+    temp = exp(arg1)
+    f3vald = temp*(123.66_realtype*2*lambdatheta+405.689_realtype*3*&
+&     lambdatheta**2+12.986_realtype)*lambdathetad
+    f3val = one - temp*(-(12.986_realtype*lambdatheta)-123.66_realtype*(&
+&     lambdatheta*lambdatheta)-405.689_realtype*(lambdatheta*lambdatheta&
+&     *lambdatheta))
+! eq. 57: f(lambda) = smoothmin(f2, f3)
+    flambdad = smoothminmax_d(f2val, f2vald, f3val, f3vald, -&
+&     300.0_realtype, flambda)
+! --- re_theta_t(tu) * f(lambda_theta) ---
+    if (tu_safe .le. 1.3_realtype) then
+      temp0 = 0.2196_realtype/(tu_safe*tu_safe) - 589.428_realtype*&
+&       tu_safe + 1173.51_realtype
+      rethetatd = temp0*flambdad
+      rethetat = temp0*flambda
+    else
+      temp1 = (tu_safe-0.5658_realtype)**(-0.671_realtype)
+      rethetatd = temp1*331.50_realtype*flambdad
+      rethetat = temp1*(331.50_realtype*flambda)
+    end if
+  end function rethetatcorrelation_d
+
+! ----------------------------------------------------------------------
+!                                                                      |
+!                    no tapenade routine below this line               |
+!                                                                      |
+! ----------------------------------------------------------------------
+  function rethetatcorrelation(tu, lambdatheta) result (rethetat)
+!
+!       compute the critical momentum-thickness reynolds number
+!       re_theta_t from the langtry-menter correlation.
+!       uses smooth f(lambda_theta) from eqs. 54-57.
+!
+!       tu          : freestream turbulence intensity in percent
+!       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lambdatheta
+    real(kind=realtype) :: rethetat
+    real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
+    intrinsic max
+    intrinsic exp
+    real(kind=realtype) :: arg1
+    if (tu .lt. 0.027_realtype) then
+      tu_safe = 0.027_realtype
+    else
+      tu_safe = tu
+    end if
+! --- smooth f(lambda_theta) eqs. 54-57 ---
+! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
+    f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lambdatheta)))&
+&     *exp(-(tu_safe/0.5_realtype))
+! eq. 56: f2 = smoothmax(f1, 1)
+    f2val = smoothminmax(f1val, one, 300.0_realtype)
+! eq. 55: f3 = 1 - (-12.986*lam - 123.66*lam^2 - 405.689*lam^3)*exp(-(tu/1.5)^1.5)
+    arg1 = -((tu_safe/1.5_realtype)**1.5_realtype)
+    f3val = one - (-(12.986_realtype*lambdatheta)-123.66_realtype*&
+&     lambdatheta**2-405.689_realtype*lambdatheta**3)*exp(arg1)
+! eq. 57: f(lambda) = smoothmin(f2, f3)
+    flambda = smoothminmax(f2val, f3val, -300.0_realtype)
+! --- re_theta_t(tu) * f(lambda_theta) ---
+    if (tu_safe .le. 1.3_realtype) then
+      rethetat = (1173.51_realtype-589.428_realtype*tu_safe+&
+&       0.2196_realtype/tu_safe**2)*flambda
+    else
+      rethetat = 331.50_realtype*(tu_safe-0.5658_realtype)**(-&
+&       0.671_realtype)*flambda
+    end if
+  end function rethetatcorrelation
+
+!  differentiation of flengthcorrelation in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: flength
+!   with respect to varying inputs: rethetatilde
+  real(kind=realtype) function flengthcorrelation_d(rethetatilde, &
+&   rethetatilded, flength) result (flengthd)
+!
+!       smooth flength correlation (eqs. 49-50).
+!       flength1 = exp(-3e-2 * (rethetatilde - 460))
+!       flength  = 44 - (44 - (0.5 - 3e-4*(rethetatilde-596))) / (1+flength1)^(1/6)
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype), intent(in) :: rethetatilded
+    real(kind=realtype), intent(out) :: flength
+    real(kind=realtype) :: flength1, base
+    real(kind=realtype) :: flength1d, based
+    intrinsic exp
+    real(kind=realtype) :: temp
+    real(kind=realtype) :: temp0
+    real(realtype) :: temp1
+    real(kind=realtype) :: tempd
+! eq. 49
+    flength1d = -(exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype)))*&
+&     3.0e-2_realtype*rethetatilded)
+    flength1 = exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype)))
+! eq. 50
+    based = flength1d
+    base = one + flength1
+    temp = one/6.0_realtype
+    temp0 = base**temp
+    temp1 = (3.0e-4_realtype*(rethetatilde-596.0_realtype)+43.5)/temp0
+    if (base .le. 0.0_8 .and. (temp .eq. 0.0_8 .or. temp .ne. int(temp))&
+&   ) then
+      tempd = 0.0_8
+    else
+      tempd = temp*base**(temp-1)*based
+    end if
+    flengthd = -((3.0e-4_realtype*rethetatilded-temp1*tempd)/temp0)
+    flength = 44.0_realtype - temp1
+  end function flengthcorrelation_d
+
+  function flengthcorrelation(rethetatilde) result (flength)
+!
+!       smooth flength correlation (eqs. 49-50).
+!       flength1 = exp(-3e-2 * (rethetatilde - 460))
+!       flength  = 44 - (44 - (0.5 - 3e-4*(rethetatilde-596))) / (1+flength1)^(1/6)
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype) :: flength
+    real(kind=realtype) :: flength1, base
+    intrinsic exp
+! eq. 49
+    flength1 = exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype)))
+! eq. 50
+    base = one + flength1
+    flength = 44.0_realtype - (44.0_realtype-(0.5_realtype-&
+&     3.0e-4_realtype*(rethetatilde-596.0_realtype)))/base**(one/&
+&     6.0_realtype)
+  end function flengthcorrelation
+
+!  differentiation of rethetaccorrelation in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: rethetac
+!   with respect to varying inputs: rethetatilde
+  real(kind=realtype) function rethetaccorrelation_d(rethetatilde, &
+&   rethetatilded, rethetac) result (rethetacd)
+!
+!       smooth reθc correlation (eq. 51).
+!       reθc = 0.67*rethetatilde + 24*sin(rethetatilde/240 + 0.5) + 14
+!
+    use constants, only : realtype
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype), intent(in) :: rethetatilded
+    real(kind=realtype), intent(out) :: rethetac
+    intrinsic sin
+    rethetacd = (24.0_realtype*cos(rethetatilde/240.0_realtype+&
+&     0.5_realtype)/240.0_realtype+0.67_realtype)*rethetatilded
+    rethetac = 0.67_realtype*rethetatilde + 24.0_realtype*sin(&
+&     rethetatilde/240.0_realtype+0.5_realtype) + 14.0_realtype
+  end function rethetaccorrelation_d
+
+  function rethetaccorrelation(rethetatilde) result (rethetac)
+!
+!       smooth reθc correlation (eq. 51).
+!       reθc = 0.67*rethetatilde + 24*sin(rethetatilde/240 + 0.5) + 14
+!
+    use constants, only : realtype
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype) :: rethetac
+    intrinsic sin
+    rethetac = 0.67_realtype*rethetatilde + 24.0_realtype*sin(&
+&     rethetatilde/240.0_realtype+0.5_realtype) + 14.0_realtype
+  end function rethetaccorrelation
+
+!  differentiation of smoothminmax in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: phi
+!   with respect to varying inputs: g1 g2
+  real(kind=realtype) function smoothminmax_d(g1, g1d, g2, g2d, p, phi) &
+& result (phid)
+!
+!       smooth approximation of min (p<0) or max (p>0).
+!
+!       phi_p(g1,g2) = g1 + (1/p)*ln(1 + exp(p*(g2-g1)))
+!
+!       p = +300 : smooth max
+!       p = -300 : smooth min
+!
+!       overflow-safe: uses asymptotic limits when the
+!       exponent is large.
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: g1, g2, p
+    real(kind=realtype), intent(in) :: g1d, g2d
+    real(kind=realtype), intent(out) :: phi
+    real(kind=realtype) :: arg
+    real(kind=realtype) :: argd
+    intrinsic exp
+    intrinsic log
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
+    argd = p*(g2d-g1d)
+    arg = p*(g2-g1)
+    if (arg .gt. 500.0_realtype) then
+! exp(arg) >> 1: ln(1+exp(arg)) ~ arg
+      phid = g2d
+      phi = g2
+    else if (arg .lt. -500.0_realtype) then
+! exp(arg) ~ 0: ln(1+exp(arg)) ~ 0
+      phid = g1d
+      phi = g1
+    else
+      arg1d = exp(arg)*argd
+      arg1 = one + exp(arg)
+      phid = g1d + arg1d/(p*arg1)
+      phi = g1 + log(arg1)/p
+    end if
+  end function smoothminmax_d
+
+  function smoothminmax(g1, g2, p) result (phi)
+!
+!       smooth approximation of min (p<0) or max (p>0).
+!
+!       phi_p(g1,g2) = g1 + (1/p)*ln(1 + exp(p*(g2-g1)))
+!
+!       p = +300 : smooth max
+!       p = -300 : smooth min
+!
+!       overflow-safe: uses asymptotic limits when the
+!       exponent is large.
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: g1, g2, p
+    real(kind=realtype) :: phi
+    real(kind=realtype) :: arg
+    intrinsic exp
+    intrinsic log
+    real(kind=realtype) :: arg1
+    arg = p*(g2-g1)
+    if (arg .gt. 500.0_realtype) then
+! exp(arg) >> 1: ln(1+exp(arg)) ~ arg
+      phi = g2
+    else if (arg .lt. -500.0_realtype) then
+! exp(arg) ~ 0: ln(1+exp(arg)) ~ 0
+      phi = g1
+    else
+      arg1 = one + exp(arg)
+      phi = g1 + log(arg1)/p
+    end if
+  end function smoothminmax
 
 end module turbutils_d
 

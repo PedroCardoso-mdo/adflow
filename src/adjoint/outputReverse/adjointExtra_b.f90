@@ -1938,7 +1938,7 @@ loopbocos:do mm=1,nbocos
 !   with respect to varying inputs: *dw
 !   rw status of diff variables: *dw:in-out
 !   plus diff mem management of: dw:in
-  subroutine resscale_b()
+  subroutine resscale_b0()
     use constants
     use blockpointers, only : il, jl, kl, nx, ny, nz, volref, dw, dwd
     use flowvarrefstate, only : nwf, nt1, nt2
@@ -1960,7 +1960,7 @@ loopbocos:do mm=1,nbocos
 &       nt1:nt2)
       dwd(i, j, k, 1:nwf) = ovol*dwd(i, j, k, 1:nwf)
     end do
-  end subroutine resscale_b
+  end subroutine resscale_b0
 
   subroutine resscale()
     use constants

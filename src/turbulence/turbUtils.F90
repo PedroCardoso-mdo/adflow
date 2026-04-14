@@ -2141,4 +2141,130 @@ contains
 
     end subroutine kwCDterm
 #endif
+
+    function reThetaTCorrelation(Tu, lambdaTheta) result(reThetaT)
+        !
+        !       Compute the critical momentum-thickness Reynolds number
+        !       Re_theta_t from the Langtry-Menter correlation.
+        !       Uses smooth F(lambda_theta) from Eqs. 54-57.
+        !
+        !       Tu          : freestream turbulence intensity in percent
+        !       lambdaTheta : pressure-gradient parameter (0 for uniform inflow)
+        !
+        use constants, only: realType, one
+        implicit none
+
+        real(kind=realType), intent(in) :: Tu, lambdaTheta
+        real(kind=realType) :: reThetaT
+
+        real(kind=realType) :: Flambda, F1val, F2val, F3val, Tu_safe
+
+        Tu_safe = max(Tu, 0.027_realType)
+
+        ! --- Smooth F(lambda_theta) Eqs. 54-57 ---
+        ! Eq. 54: F1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-Tu/0.5)
+        F1val = one + 0.275_realType &
+                * (one - exp(-35.0_realType * lambdaTheta)) &
+                * exp(-Tu_safe / 0.5_realType)
+
+        ! Eq. 56: F2 = smoothMax(F1, 1)
+        F2val = smoothMinMax(F1val, one, 300.0_realType)
+
+        ! Eq. 55: F3 = 1 - (-12.986*lam - 123.66*lam^2 - 405.689*lam^3)*exp(-(Tu/1.5)^1.5)
+        F3val = one - (-12.986_realType * lambdaTheta &
+                       - 123.66_realType * lambdaTheta**2 &
+                       - 405.689_realType * lambdaTheta**3) &
+                * exp(-(Tu_safe / 1.5_realType)**1.5_realType)
+
+        ! Eq. 57: F(lambda) = smoothMin(F2, F3)
+        Flambda = smoothMinMax(F2val, F3val, -300.0_realType)
+
+        ! --- Re_theta_t(Tu) * F(lambda_theta) ---
+        if (Tu_safe <= 1.3_realType) then
+            reThetaT = (1173.51_realType &
+                        - 589.428_realType * Tu_safe &
+                        + 0.2196_realType / (Tu_safe**2)) * Flambda
+        else
+            reThetaT = 331.50_realType &
+                       * (Tu_safe - 0.5658_realType)**(-0.671_realType) * Flambda
+        end if
+
+    end function reThetaTCorrelation
+
+    function flengthCorrelation(reThetaTilde) result(Flength)
+        !
+        !       Smooth Flength correlation (Eqs. 49-50).
+        !       Flength1 = exp(-3e-2 * (ReThetaTilde - 460))
+        !       Flength  = 44 - (44 - (0.5 - 3e-4*(ReThetaTilde-596))) / (1+Flength1)^(1/6)
+        !
+        use constants, only: realType, one
+        implicit none
+
+        real(kind=realType), intent(in) :: reThetaTilde
+        real(kind=realType) :: Flength
+
+        real(kind=realType) :: Flength1, base
+
+        ! Eq. 49
+        Flength1 = exp(-3.0e-2_realType * (reThetaTilde - 460.0_realType))
+
+        ! Eq. 50
+        base = one + Flength1
+        Flength = 44.0_realType - (44.0_realType &
+                  - (0.5_realType - 3.0e-4_realType * (reThetaTilde - 596.0_realType))) &
+                  / base**(one / 6.0_realType)
+
+    end function flengthCorrelation
+
+    function rethetacCorrelation(reThetaTilde) result(reThetaC)
+        !
+        !       Smooth Reθc correlation (Eq. 51).
+        !       Reθc = 0.67*ReThetaTilde + 24*sin(ReThetaTilde/240 + 0.5) + 14
+        !
+        use constants, only: realType
+        implicit none
+
+        real(kind=realType), intent(in) :: reThetaTilde
+        real(kind=realType) :: reThetaC
+
+        reThetaC = 0.67_realType * reThetaTilde &
+                 + 24.0_realType * sin(reThetaTilde / 240.0_realType + 0.5_realType) &
+                 + 14.0_realType
+
+    end function rethetacCorrelation
+
+    function smoothMinMax(g1, g2, p) result(phi)
+        !
+        !       Smooth approximation of min (p<0) or max (p>0).
+        !
+        !       phi_p(g1,g2) = g1 + (1/p)*ln(1 + exp(p*(g2-g1)))
+        !
+        !       p = +300 : smooth max
+        !       p = -300 : smooth min
+        !
+        !       Overflow-safe: uses asymptotic limits when the
+        !       exponent is large.
+        !
+        use constants, only: realType, one
+        implicit none
+
+        real(kind=realType), intent(in) :: g1, g2, p
+        real(kind=realType) :: phi
+
+        real(kind=realType) :: arg
+
+        arg = p * (g2 - g1)
+
+        if (arg > 500.0_realType) then
+            ! exp(arg) >> 1: ln(1+exp(arg)) ~ arg
+            phi = g2
+        else if (arg < -500.0_realType) then
+            ! exp(arg) ~ 0: ln(1+exp(arg)) ~ 0
+            phi = g1
+        else
+            phi = g1 + log(one + exp(arg)) / p
+        end if
+
+    end function smoothMinMax
+
 end module turbUtils

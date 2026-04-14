@@ -721,6 +721,7 @@ bocos:do nn=1,nbocos
     use constants
     use blockpointers
     use flowvarrefstate
+    use inputphysics, only : turbmodel
     implicit none
 !
 !      subroutine arguments.
@@ -745,9 +746,15 @@ bocos:do nn=1,nbocos
 ! determine whether we are dealing with an inflow or
 ! outflow boundary here.
         if (dot .gt. zero) then
-          call pushcontrol1b(1)
-        else
+          call pushcontrol2b(2)
+        else if (turbmodel .eq. spalartallmarasnoft2gammaretheta) then
 ! inflow. turbulent variables are prescribed.
+! sa-gamma-retheta model:
+! nu~ and retheta use linear extrapolation with
+! prescribed freestream value at the face.
+! gamma is dirichlet zero (gamma_g = -gamma_i).
+! since winf(itu2) = 0, bvt = 2*0 = 0 and bmt = 1
+! gives ghost = -interior, enforcing gamma = 0 at face.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 
@@ -766,13 +773,34 @@ bocos:do nn=1,nbocos
               call pushcontrol3b(6)
             end select
           end do
-          call pushcontrol1b(0)
+          call pushcontrol2b(1)
+        else
+! all other models: simple prescribed ghost value.
+          do l=nt1,nt2
+            select case  (bcfaceid(nn)) 
+            case (imin) 
+              call pushcontrol3b(5)
+            case (imax) 
+              call pushcontrol3b(4)
+            case (jmin) 
+              call pushcontrol3b(3)
+            case (jmax) 
+              call pushcontrol3b(2)
+            case (kmin) 
+              call pushcontrol3b(1)
+            case (kmax) 
+              call pushcontrol3b(0)
+            case default
+              call pushcontrol3b(6)
+            end select
+          end do
+          call pushcontrol2b(0)
         end if
       end do
     end do
     do j=bcdata(nn)%jcend,bcdata(nn)%jcbeg,-1
       do i=bcdata(nn)%icend,bcdata(nn)%icbeg,-1
-        call popcontrol1b(branch)
+        call popcontrol2b(branch)
         if (branch .eq. 0) then
           do l=nt2,nt1,-1
             call popcontrol3b(branch)
@@ -800,6 +828,33 @@ bocos:do nn=1,nbocos
               bvti1d(i, j, l) = 0.0_8
             end if
           end do
+        else if (branch .eq. 1) then
+          do l=nt2,nt1,-1
+            call popcontrol3b(branch)
+            if (branch .lt. 3) then
+              if (branch .eq. 0) then
+                winfd(l) = winfd(l) + two*bvtk2d(i, j, l)
+                bvtk2d(i, j, l) = 0.0_8
+              else if (branch .eq. 1) then
+                winfd(l) = winfd(l) + two*bvtk1d(i, j, l)
+                bvtk1d(i, j, l) = 0.0_8
+              else
+                winfd(l) = winfd(l) + two*bvtj2d(i, j, l)
+                bvtj2d(i, j, l) = 0.0_8
+              end if
+            else if (branch .lt. 5) then
+              if (branch .eq. 3) then
+                winfd(l) = winfd(l) + two*bvtj1d(i, j, l)
+                bvtj1d(i, j, l) = 0.0_8
+              else
+                winfd(l) = winfd(l) + two*bvti2d(i, j, l)
+                bvti2d(i, j, l) = 0.0_8
+              end if
+            else if (branch .eq. 5) then
+              winfd(l) = winfd(l) + two*bvti1d(i, j, l)
+              bvti1d(i, j, l) = 0.0_8
+            end if
+          end do
         end if
       end do
     end do
@@ -817,6 +872,7 @@ bocos:do nn=1,nbocos
     use constants
     use blockpointers
     use flowvarrefstate
+    use inputphysics, only : turbmodel
     implicit none
 !
 !      subroutine arguments.
@@ -858,8 +914,38 @@ bocos:do nn=1,nbocos
               bmtk2(i, j, l, l) = -one
             end select
           end do
-        else
+        else if (turbmodel .eq. spalartallmarasnoft2gammaretheta) then
 ! inflow. turbulent variables are prescribed.
+! sa-gamma-retheta model:
+! nu~ and retheta use linear extrapolation with
+! prescribed freestream value at the face.
+! gamma is dirichlet zero (gamma_g = -gamma_i).
+! since winf(itu2) = 0, bvt = 2*0 = 0 and bmt = 1
+! gives ghost = -interior, enforcing gamma = 0 at face.
+          do l=nt1,nt2
+            select case  (bcfaceid(nn)) 
+            case (imin) 
+              bvti1(i, j, l) = two*winf(l)
+              bmti1(i, j, l, l) = one
+            case (imax) 
+              bvti2(i, j, l) = two*winf(l)
+              bmti2(i, j, l, l) = one
+            case (jmin) 
+              bvtj1(i, j, l) = two*winf(l)
+              bmtj1(i, j, l, l) = one
+            case (jmax) 
+              bvtj2(i, j, l) = two*winf(l)
+              bmtj2(i, j, l, l) = one
+            case (kmin) 
+              bvtk1(i, j, l) = two*winf(l)
+              bmtk1(i, j, l, l) = one
+            case (kmax) 
+              bvtk2(i, j, l) = two*winf(l)
+              bmtk2(i, j, l, l) = one
+            end select
+          end do
+        else
+! all other models: simple prescribed ghost value.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 

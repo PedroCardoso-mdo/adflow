@@ -29,6 +29,23 @@ module paramTurb
 !
     real(kind=realType), parameter :: sigmaTheta = 2.0_realType
     real(kind=realType), parameter :: sigmaF     = 1.0_realType
+    real(kind=realType), parameter :: rsaGRca1   = 2.0_realType
+    real(kind=realType), parameter :: rsaGRca2   = 0.06_realType
+    real(kind=realType), parameter :: rsaGRce1   = 1.0_realType
+    real(kind=realType), parameter :: rsaGRce2   = 50.0_realType
+    real(kind=realType), parameter :: rsaGRcthetat = 0.03_realType
+!
+!       SA-noft2-Gamma-Retheta smooth-Fonset constants.
+!
+    real(kind=realType), parameter :: rsaGRfonsetC  = 2.6_realType
+    real(kind=realType), parameter :: rsaGRfonsetK  = 6.0_realType
+    real(kind=realType), parameter :: rsaGRfonsetS  = 1.35_realType
+    real(kind=realType), parameter :: rsaGRvortLimP = -300.0_realType
+    real(kind=realType), parameter :: rsaGRsmoothP  =  300.0_realType
+    real(kind=realType), parameter :: rsaGRdampTheta = 0.99_realType
+    real(kind=realType), parameter :: rsaGRgammaLo  = 1.e-10_realType
+    real(kind=realType), parameter :: rsaGRgammaHi  = 2.0_realType
+    real(kind=realType), parameter :: rsaGRreThetaLo = 20.0_realType
 
 !
 !       K-omega constants.

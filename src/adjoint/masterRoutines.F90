@@ -285,6 +285,8 @@ contains
         use monitor, only: timeUnsteadyRestart
         use utils, only: isWallType, setPointers, setPointers_d, EChk
         use sa_d, only: saSource_d, saViscous_d, saResScale_d, qq
+        use saGammaRetheta_d, only: saGRSource_d => Source_d, saGRViscous_d => Viscous_d, &
+                         saGRResScale_d => ResScale_d, qqGR => qq
         use turbutils_d, only: turbAdvection_d, computeEddyViscosity_d
         use fluxes_d, only: inviscidDissFluxScalarApprox_d, inviscidDissFluxMatrixApprox_d, &
                             inviscidUpwindFlux_d, inviscidDissFluxScalar_d, inviscidDissFluxMatrix_d, &
@@ -302,7 +304,7 @@ contains
         use initializeflow_d, only: referenceState_d
         use surfaceIntegrations, only: getSolution_d
         use adjointExtra_d, only: xhalo_block_d, volume_block_d, metric_BLock_d, boundarynormals_d
-        use adjointextra_d, only: resscale_D, sumdwandfw_d
+        use adjointextra_d, only: resscale_d => resscale_d0, sumdwandfw_d
         use bcdata, only: setBCData_d, setBCDataFineGrid_d
         use oversetData, only: oversetPresent
         use inputOverset, only: oversetUpdateMode
@@ -655,7 +657,7 @@ contains
         use wallDistanceData, only: xSurfVec, xSurfVecd, xSurf, xSurfd, wallScatter
         use surfaceIntegrations, only: getSolution_b
         use flowUtils, only: fixAllNodalGradientsFromAD
-        use adjointextra_b, only: resscale_B, sumdwandfw_b
+        use adjointextra_b, only: resscale_b => resscale_b0, sumdwandfw_b
         use adjointExtra_b, only: xhalo_block_b, volume_block_b, metric_block_b, boundarynormals_b
         use flowutils_b, only: computePressureSimple_b, computeLamViscosity_b, &
                                computeSpeedOfSoundSquared_b, allNodalGradients_b, adjustInflowAngle_b
@@ -1065,7 +1067,7 @@ contains
         use utils, only: setPointers_d
         use haloExchange, only: whalo2_b
         use flowUtils, only: fixAllNodalGradientsFromAD
-        use adjointextra_b, only: resscale_B, sumdwandfw_b
+        use adjointextra_b, only: resscale_b => resscale_b0, sumdwandfw_b
         use flowutils_b, only: computePressureSimple_b, computeLamViscosity_b, &
                                computeSpeedOfSoundSquared_b
         use turbbcroutines_b, only: applyAllTurbBCthisblock_b, bcTurbTreatment_b
@@ -1335,7 +1337,7 @@ contains
                                computeSpeedOfSoundSquared_d, allNodalGradients_d
         use solverutils_d, only: timeStep_Block_d
         use turbbcroutines_d, only: applyAllTurbBCthisblock_d, bcTurbTreatment_d
-        use adjointextra_d, only: resscale_D, sumdwandfw_d
+        use adjointextra_d, only: resscale_d => resscale_d0, sumdwandfw_d
         use residuals_d, only: sourceterms_block_d
         use actuatorRegionData, only: nActuatorRegions
         implicit none

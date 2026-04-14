@@ -5667,7 +5667,16 @@ class ADFLOW(AeroSolver):
             "flowType": [str, ["external", "internal"]],
             "turbulenceModel": [
                 str,
-                ["SA", "SA-Edwards", "k-omega Wilcox", "k-omega modified", "k-tau", "Menter SST", "v2f"],
+                [
+                    "SA",
+                    "SA-Edwards",
+                    "SA-noft2-Gamma-Retheta",
+                    "k-omega Wilcox",
+                    "k-omega modified",
+                    "k-tau",
+                    "Menter SST",
+                    "v2f",
+                ],
             ],
             "turbulenceOrder": [str, ["first order", "second order"]],
             "turbResScale": [(float, list, type(None)), None],
@@ -5678,6 +5687,7 @@ class ADFLOW(AeroSolver):
             "useRotationSA": [bool, False],
             "useft2SA": [bool, True],
             "eddyVisInfRatio": [float, 0.009],
+            "turbIntensityInf": [float, 0.001],
             "useWallFunctions": [bool, False],
             "useApproxWallDistance": [bool, True],
             "updateWallAssociations": [bool, False],
@@ -6051,7 +6061,7 @@ class ADFLOW(AeroSolver):
             },
             "turbulencemodel": {
                 "sa": self.adflow.constants.spalartallmaras,
-                "SA-noft2-Gamma-Retheta": self.adflow.constants.spalartallmarasnoft2gammaretheta,
+                "sa-noft2-gamma-retheta": self.adflow.constants.spalartallmarasnoft2gammaretheta,
                 "sa-edwards": self.adflow.constants.spalartallmarasedwards,
                 "k-omega wilcox": self.adflow.constants.komegawilcox,
                 "k-omega modified": self.adflow.constants.komegamodified,
@@ -6074,6 +6084,7 @@ class ADFLOW(AeroSolver):
             "userotationsa": ["physics", "userotationsa"],
             "useft2sa": ["physics", "useft2sa"],
             "eddyvisinfratio": ["physics", "eddyvisinfratio"],
+            "turbintensityinf": ["physics", "turbintensityinf"],
             "usewallfunctions": ["physics", "wallfunctions"],
             "walldistcutoff": ["physics", "walldistcutoff"],
             "useapproxwalldistance": ["discr", "useapproxwalldistance"],
@@ -6539,8 +6550,14 @@ class ADFLOW(AeroSolver):
         # thus set default values depending on turbulence model;
         # else do nothing since it already contains value specified by user
 
+        turbModel = self.getOption("turbulencemodel")
+
+        # SA-GR model is not implemented in blocketteResCore,
+        # so always force blockResCore path for correct residual computation.
+        if turbModel == "SA-noft2-Gamma-Retheta":
+            self.setOption("useBlockettes", False)
+
         if self.getOption("turbresscale") is None:
-            turbModel = self.getOption("turbulencemodel")
             if turbModel == "SA":
                 self.setOption("turbresscale", 10000.0)
             elif turbModel == "SA-noft2-Gamma-Retheta":

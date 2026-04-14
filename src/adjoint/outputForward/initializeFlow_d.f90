@@ -49,7 +49,8 @@ contains
 &   , uinfd, rgas, rgasd, muinf, muinfd, gammainf, winf, winfd, nw, nwf,&
 &   kpresent, winf, winfd
     use flowutils_d, only : computegamma, etot, etot_d
-    use turbutils_d, only : sanuknowneddyratio, sanuknowneddyratio_d
+    use turbutils_d, only : sanuknowneddyratio, sanuknowneddyratio_d, &
+&   rethetatcorrelation, rethetatcorrelation_d
     implicit none
     integer(kind=inttype) :: sps, nn, mm, ierr
     real(kind=realtype) :: gm1, ratio
@@ -176,8 +177,8 @@ contains
 &         nuinfd, winf(itu1))
         winfd(itu2) = 0.0_8
         winf(itu2) = one
-        winfd(itu3) = 0.0_8
-        winf(itu3) = 1000.0_realtype
+        winf(itu3) = rethetatcorrelation(turbintensityinf*100.0_realtype&
+&         , zero)
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winfd(itu1) = turbintensityinf**2*1.5_realtype*uinf2d
@@ -263,7 +264,7 @@ contains
 &   pref, rhoref, tref, muref, timeref, uref, href, pinf, pinfcorr, &
 &   rhoinf, uinf, rgas, muinf, gammainf, winf, nw, nwf, kpresent, winf
     use flowutils_d, only : computegamma, etot
-    use turbutils_d, only : sanuknowneddyratio
+    use turbutils_d, only : sanuknowneddyratio, rethetatcorrelation
     implicit none
     integer(kind=inttype) :: sps, nn, mm, ierr
     real(kind=realtype) :: gm1, ratio
@@ -341,7 +342,8 @@ contains
       case (spalartallmarasnoft2gammaretheta) 
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
         winf(itu2) = one
-        winf(itu3) = 1000.0_realtype
+        winf(itu3) = rethetatcorrelation(turbintensityinf*100.0_realtype&
+&         , zero)
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2

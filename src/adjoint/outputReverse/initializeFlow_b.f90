@@ -53,7 +53,8 @@ contains
 &   , uinfd, rgas, rgasd, muinf, muinfd, gammainf, winf, winfd, nw, nwf,&
 &   kpresent, winf, winfd
     use flowutils_b, only : computegamma, etot, etot_b
-    use turbutils_b, only : sanuknowneddyratio, sanuknowneddyratio_b
+    use turbutils_b, only : sanuknowneddyratio, sanuknowneddyratio_b, &
+&   rethetatcorrelation, rethetatcorrelation_b
     implicit none
     integer(kind=inttype) :: sps, nn, mm, ierr
     real(kind=realtype) :: gm1, ratio
@@ -62,6 +63,7 @@ contains
     real(kind=realtype) :: vinf, zinf, tmp1(1), tmp2(1)
     real(kind=realtype) :: vinfd, zinfd
     intrinsic sqrt
+    real(kind=realtype) :: arg1
     real(kind=realtype) :: temp
     real(kind=realtype) :: tempd
     real(kind=realtype) :: temp0
@@ -139,7 +141,8 @@ contains
       case (spalartallmarasnoft2gammaretheta) 
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
         winf(itu2) = one
-        winf(itu3) = 1000.0_realtype
+        arg1 = turbintensityinf*100.0_realtype
+        winf(itu3) = rethetatcorrelation(arg1, zero)
 !=============================================================
         call pushcontrol3b(2)
       case (komegawilcox, komegamodified, mentersst) 
@@ -361,13 +364,14 @@ contains
 &   pref, rhoref, tref, muref, timeref, uref, href, pinf, pinfcorr, &
 &   rhoinf, uinf, rgas, muinf, gammainf, winf, nw, nwf, kpresent, winf
     use flowutils_b, only : computegamma, etot
-    use turbutils_b, only : sanuknowneddyratio
+    use turbutils_b, only : sanuknowneddyratio, rethetatcorrelation
     implicit none
     integer(kind=inttype) :: sps, nn, mm, ierr
     real(kind=realtype) :: gm1, ratio
     real(kind=realtype) :: nuinf, ktmp, uinf2
     real(kind=realtype) :: vinf, zinf, tmp1(1), tmp2(1)
     intrinsic sqrt
+    real(kind=realtype) :: arg1
 ! compute the dimensional viscosity from sutherland's law
     muinfdim = musuthdim*((tsuthdim+ssuthdim)/(tinfdim+ssuthdim))*(&
 &     tinfdim/tsuthdim)**1.5_realtype
@@ -435,7 +439,8 @@ contains
       case (spalartallmarasnoft2gammaretheta) 
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
         winf(itu2) = one
-        winf(itu3) = 1000.0_realtype
+        arg1 = turbintensityinf*100.0_realtype
+        winf(itu3) = rethetatcorrelation(arg1, zero)
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
