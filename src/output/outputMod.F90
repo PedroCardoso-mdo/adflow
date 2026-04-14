@@ -223,6 +223,26 @@ contains
         if (volWriteGC) nVolSolvar = nVolSolvar + 1
         if (volWriteStatus) nVolSolvar = nVolSolvar + 1
         if (volWriteIntermittency) nVolDiscrVar = nVolDiscrVar + 1
+        if (volWriteFonset) nVolSolvar = nVolSolvar + 1
+        if (volWriteFlength) nVolSolvar = nVolSolvar + 1
+        if (volWriteRturb) nVolSolvar = nVolSolvar + 1
+        if (volWriteReThetaTarget) nVolSolvar = nVolSolvar + 1
+        if (volWriteFonset1) nVolSolvar = nVolSolvar + 1
+        if (volWriteReS) nVolSolvar = nVolSolvar + 1
+        if (volWriteReThetaC) nVolSolvar = nVolSolvar + 1
+        if (volWriteReSOverCrit) nVolSolvar = nVolSolvar + 1
+        if (volWriteStrainMag) nVolSolvar = nVolSolvar + 1
+        if (volWriteDudx) nVolSolvar = nVolSolvar + 1
+        if (volWriteDudy) nVolSolvar = nVolSolvar + 1
+        if (volWriteDudz) nVolSolvar = nVolSolvar + 1
+        if (volWriteDvdx) nVolSolvar = nVolSolvar + 1
+        if (volWriteDvdy) nVolSolvar = nVolSolvar + 1
+        if (volWriteDvdz) nVolSolvar = nVolSolvar + 1
+        if (volWriteDwdx) nVolSolvar = nVolSolvar + 1
+        if (volWriteDwdy) nVolSolvar = nVolSolvar + 1
+        if (volWriteDwdz) nVolSolvar = nVolSolvar + 1
+        if (volWriteFthetaT) nVolSolvar = nVolSolvar + 1
+        if (volWriteFwake) nVolSolvar = nVolSolvar + 1
 
         ! Check the discrete variables.
 
@@ -584,6 +604,106 @@ contains
             solNames(nn) = cgnsIntermittency
         end if
 
+        if (volWriteFonset) then
+            nn = nn + 1
+            solNames(nn) = cgnsFonset
+        end if
+
+        if (volWriteFlength) then
+            nn = nn + 1
+            solNames(nn) = cgnsFlength
+        end if
+
+        if (volWriteRturb) then
+            nn = nn + 1
+            solNames(nn) = cgnsRturb
+        end if
+
+        if (volWriteReThetaTarget) then
+            nn = nn + 1
+            solNames(nn) = cgnsReThetaTarget
+        end if
+
+        if (volWriteFonset1) then
+            nn = nn + 1
+            solNames(nn) = cgnsFonset1
+        end if
+
+        if (volWriteReS) then
+            nn = nn + 1
+            solNames(nn) = cgnsReS
+        end if
+
+        if (volWriteReThetaC) then
+            nn = nn + 1
+            solNames(nn) = cgnsReThetaC
+        end if
+
+        if (volWriteReSOverCrit) then
+            nn = nn + 1
+            solNames(nn) = cgnsReSOverCrit
+        end if
+
+        if (volWriteStrainMag) then
+            nn = nn + 1
+            solNames(nn) = cgnsStrainMag
+        end if
+
+        if (volWriteDudx) then
+            nn = nn + 1
+            solNames(nn) = cgnsDudx
+        end if
+
+        if (volWriteDudy) then
+            nn = nn + 1
+            solNames(nn) = cgnsDudy
+        end if
+
+        if (volWriteDudz) then
+            nn = nn + 1
+            solNames(nn) = cgnsDudz
+        end if
+
+        if (volWriteDvdx) then
+            nn = nn + 1
+            solNames(nn) = cgnsDvdx
+        end if
+
+        if (volWriteDvdy) then
+            nn = nn + 1
+            solNames(nn) = cgnsDvdy
+        end if
+
+        if (volWriteDvdz) then
+            nn = nn + 1
+            solNames(nn) = cgnsDvdz
+        end if
+
+        if (volWriteDwdx) then
+            nn = nn + 1
+            solNames(nn) = cgnsDwdx
+        end if
+
+        if (volWriteDwdy) then
+            nn = nn + 1
+            solNames(nn) = cgnsDwdy
+        end if
+
+        if (volWriteDwdz) then
+            nn = nn + 1
+            solNames(nn) = cgnsDwdz
+        end if
+
+        if (volWriteFthetaT) then
+            nn = nn + 1
+            solNames(nn) = cgnsFthetaT
+        end if
+
+        if (volWriteFwake) then
+            nn = nn + 1
+            solNames(nn) = cgnsFwake
+        end if
+
     end subroutine volSolNames
 
     subroutine surfSolNames(solNames)
@@ -762,6 +882,10 @@ contains
         use utils, only: terminate
         use oversetData, only: oversetPresent
         use inputIO, only: laminarToTurbulent
+        use paramTurb, only: rsaCv1, rsaK, rsaGRfonsetC, rsaGRfonsetK, &
+                             rsaGRfonsetS
+        use turbUtils, only: flengthCorrelation, rethetacCorrelation, &
+                             reThetaTCorrelation
         implicit none
         !
         !      Subroutine arguments.
@@ -778,14 +902,26 @@ contains
         !
         real(kind=realType), parameter :: plim = 0.001_realType
         real(kind=realType), parameter :: rholim = 0.001_realType
+        real(kind=realType), parameter :: xminn = 1.e-10_realType
         !
         !      Local variables.
         !
         integer(kind=intType) :: i, j, k, ii, jj, kk, nn
 
-        real(kind=realType) :: uuy, uuz, vvx, vvz, wwx, wwy, tmp
+        real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz, tmp
         real(kind=realType) :: vortx, vorty, vortz, a2, ptotInf, ptot
         real(kind=realType) :: a, UovA(3), gradP(3)
+        real(kind=realType) :: nu_loc, chi_loc, chi3_loc, cv13_loc, fv1_loc
+        real(kind=realType) :: nutSA_loc, rTurb_loc, yDist_loc
+        real(kind=realType) :: sxx_loc, syy_loc, szz_loc
+        real(kind=realType) :: sxy_loc, sxz_loc, syz_loc
+        real(kind=realType) :: strainMag_loc, reS_loc, reThetaC_loc
+        real(kind=realType) :: fOnset1_loc, fOnset_loc, fact_loc
+        real(kind=realType) :: velMag2_loc, velMag_loc, thetaBL_loc
+        real(kind=realType) :: uxhat_loc, uyhat_loc, uzhat_loc
+        real(kind=realType) :: dUds_loc, lambdaThetaLocal_loc
+        real(kind=realType) :: deltaBL_loc, fWake_loc, fThetaT_loc
+        real(kind=realType) :: vortMag_loc
 
         real(kind=realType), dimension(:, :, :, :), pointer :: wIO
 
@@ -1327,6 +1463,668 @@ contains
                     end do
                 end do
             end if
+
+        case (cgnsFonset)
+            cv13_loc = rsaCv1**3
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        nu_loc = rlv(i, j, k) / w(i, j, k, irho)
+                        chi_loc = w(i, j, k, itu1) / nu_loc
+                        chi3_loc = chi_loc**3
+                        fv1_loc = chi3_loc / (chi3_loc + cv13_loc)
+                        nutSA_loc = w(i, j, k, itu1) * fv1_loc
+                        rTurb_loc = nutSA_loc / max(nu_loc, xminn)
+                        yDist_loc = max(d2Wall(i, j, k), xminn)
+
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+
+                        sxx_loc = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                        syy_loc = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                        szz_loc = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+                        sxy_loc = half * (uuy + vvx)
+                        sxz_loc = half * (uuz + wwx)
+                        syz_loc = half * (vvz + ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz)) * fact_loc)
+
+                        strainMag_loc = sqrt(max(two * (sxy_loc**2 + sxz_loc**2 + syz_loc**2) &
+                                           + sxx_loc**2 + syy_loc**2 + szz_loc**2, xminn))
+
+                        reS_loc = w(i,j,k,irho) * yDist_loc**2 * strainMag_loc &
+                                  / max(rlv(i,j,k), xminn)
+                        reThetaC_loc = rethetacCorrelation(max(w(i,j,k,itu3), xminn))
+                        reThetaC_loc = max(reThetaC_loc, xminn)
+                        fOnset1_loc = sqrt((reS_loc / (rsaGRfonsetC * reThetaC_loc))**2 &
+                                           + rTurb_loc**2)
+                        fOnset_loc = (tanh(rsaGRfonsetK &
+                                       * (fOnset1_loc - rsaGRfonsetS)) + one) * half
+                        wIO(i, j, k, 1) = fOnset_loc
+                    end do
+                end do
+            end do
+
+        case (cgnsFlength)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        wIO(i, j, k, 1) = flengthCorrelation(max(w(i,j,k,itu3), xminn))
+                    end do
+                end do
+            end do
+
+        case (cgnsRturb)
+            cv13_loc = rsaCv1**3
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        nu_loc = rlv(i, j, k) / w(i, j, k, irho)
+                        chi_loc = w(i, j, k, itu1) / nu_loc
+                        chi3_loc = chi_loc**3
+                        fv1_loc = chi3_loc / (chi3_loc + cv13_loc)
+                        nutSA_loc = w(i, j, k, itu1) * fv1_loc
+                        wIO(i, j, k, 1) = nutSA_loc / max(nu_loc, xminn)
+                    end do
+                end do
+            end do
+
+        case (cgnsReThetaTarget)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        nu_loc = rlv(i, j, k) / w(i, j, k, irho)
+                        velMag2_loc = w(i,j,k,ivx)**2 + w(i,j,k,ivy)**2 &
+                                      + w(i,j,k,ivz)**2
+                        velMag_loc = sqrt(max(velMag2_loc, xminn))
+                        thetaBL_loc = max(w(i,j,k,itu3), xminn) * rlv(i,j,k) &
+                                      / max(w(i,j,k,irho) * velMag_loc, xminn)
+
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+                        wwy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz))
+
+                        uxhat_loc = w(i,j,k,ivx) / max(velMag_loc, xminn)
+                        uyhat_loc = w(i,j,k,ivy) / max(velMag_loc, xminn)
+                        uzhat_loc = w(i,j,k,ivz) / max(velMag_loc, xminn)
+                        dUds_loc = &
+                             (uxhat_loc * (uxhat_loc * (si(i,j,k,1)*w(i+1,j,k,ivx) &
+                                  - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                                  + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                                  + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx)) * fact_loc &
+                                + uyhat_loc * uuy + uzhat_loc * uuz) &
+                              + uyhat_loc * (uxhat_loc * vvx + uyhat_loc * ( &
+                                  si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                                + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                                + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy)) * fact_loc &
+                                + uzhat_loc * vvz) &
+                              + uzhat_loc * (uxhat_loc * wwx + uyhat_loc * wwy &
+                                + uzhat_loc * ( &
+                                  si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                                + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                                + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz)) * fact_loc))
+                        lambdaThetaLocal_loc = (thetaBL_loc**2 / max(nu_loc, xminn)) * dUds_loc
+                        lambdaThetaLocal_loc = max(lambdaThetaLocal_loc, -0.1_realType)
+                        lambdaThetaLocal_loc = min(lambdaThetaLocal_loc, 0.1_realType)
+                        wIO(i, j, k, 1) = reThetaTCorrelation( &
+                            turbIntensityInf * 100.0_realType, lambdaThetaLocal_loc)
+                    end do
+                end do
+            end do
+
+        case (cgnsFonset1)
+            cv13_loc = rsaCv1**3
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        nu_loc = rlv(i, j, k) / w(i, j, k, irho)
+                        chi_loc = w(i, j, k, itu1) / nu_loc
+                        chi3_loc = chi_loc**3
+                        fv1_loc = chi3_loc / (chi3_loc + cv13_loc)
+                        nutSA_loc = w(i, j, k, itu1) * fv1_loc
+                        rTurb_loc = nutSA_loc / max(nu_loc, xminn)
+                        yDist_loc = max(d2Wall(i, j, k), xminn)
+
+                        sxx_loc = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                        syy_loc = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                        szz_loc = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+
+                        sxy_loc = half * (uuy + vvx)
+                        sxz_loc = half * (uuz + wwx)
+                        syz_loc = half * (vvz + ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz)) * fact_loc)
+
+                        strainMag_loc = sqrt(max(two * (sxy_loc**2 + sxz_loc**2 + syz_loc**2) &
+                                           + sxx_loc**2 + syy_loc**2 + szz_loc**2, xminn))
+
+                        reS_loc = w(i,j,k,irho) * yDist_loc**2 * strainMag_loc &
+                                  / max(rlv(i,j,k), xminn)
+                        reThetaC_loc = rethetacCorrelation(max(w(i,j,k,itu3), xminn))
+                        reThetaC_loc = max(reThetaC_loc, xminn)
+                        fOnset1_loc = sqrt((reS_loc / (rsaGRfonsetC * reThetaC_loc))**2 &
+                                           + rTurb_loc**2)
+                        wIO(i, j, k, 1) = fOnset1_loc
+                    end do
+                end do
+            end do
+
+        case (cgnsReS)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        yDist_loc = max(d2Wall(i, j, k), xminn)
+
+                        sxx_loc = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                        syy_loc = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                        szz_loc = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+
+                        sxy_loc = half * (uuy + vvx)
+                        sxz_loc = half * (uuz + wwx)
+                        syz_loc = half * (vvz + ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz)) * fact_loc)
+
+                        strainMag_loc = sqrt(max(two * (sxy_loc**2 + sxz_loc**2 + syz_loc**2) &
+                                           + sxx_loc**2 + syy_loc**2 + szz_loc**2, xminn))
+
+                        wIO(i, j, k, 1) = w(i,j,k,irho) * yDist_loc**2 * strainMag_loc &
+                                          / max(rlv(i,j,k), xminn)
+                    end do
+                end do
+            end do
+
+        case (cgnsReThetaC)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        reThetaC_loc = rethetacCorrelation(max(w(i,j,k,itu3), xminn))
+                        wIO(i, j, k, 1) = max(reThetaC_loc, xminn)
+                    end do
+                end do
+            end do
+
+        case (cgnsReSOverCrit)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        yDist_loc = max(d2Wall(i, j, k), xminn)
+
+                        sxx_loc = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                        syy_loc = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                        szz_loc = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+
+                        sxy_loc = half * (uuy + vvx)
+                        sxz_loc = half * (uuz + wwx)
+                        syz_loc = half * (vvz + ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz)) * fact_loc)
+
+                        strainMag_loc = sqrt(max(two * (sxy_loc**2 + sxz_loc**2 + syz_loc**2) &
+                                           + sxx_loc**2 + syy_loc**2 + szz_loc**2, xminn))
+
+                        reS_loc = w(i,j,k,irho) * yDist_loc**2 * strainMag_loc &
+                                  / max(rlv(i,j,k), xminn)
+                        reThetaC_loc = rethetacCorrelation(max(w(i,j,k,itu3), xminn))
+                        reThetaC_loc = max(reThetaC_loc, xminn)
+                        wIO(i, j, k, 1) = reS_loc / (rsaGRfonsetC * reThetaC_loc)
+                    end do
+                end do
+            end do
+
+        case (cgnsStrainMag)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+
+                        sxx_loc = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                        syy_loc = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                        szz_loc = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+
+                        sxy_loc = half * (uuy + vvx)
+                        sxz_loc = half * (uuz + wwx)
+                        syz_loc = half * (vvz + ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz)) * fact_loc)
+
+                        wIO(i, j, k, 1) = sqrt(max(two * (sxy_loc**2 + sxz_loc**2 + syz_loc**2) &
+                                           + sxx_loc**2 + syy_loc**2 + szz_loc**2, xminn))
+                    end do
+                end do
+            end do
+
+        case (cgnsDudx)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                    end do
+                end do
+            end do
+
+        case (cgnsDudy)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                    end do
+                end do
+            end do
+
+        case (cgnsDudz)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                    end do
+                end do
+            end do
+
+        case (cgnsDvdx)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                    end do
+                end do
+            end do
+
+        case (cgnsDvdy)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                    end do
+                end do
+            end do
+
+        case (cgnsDvdz)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                    end do
+                end do
+            end do
+
+        case (cgnsDwdx)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+                    end do
+                end do
+            end do
+
+        case (cgnsDwdy)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz))
+                    end do
+                end do
+            end do
+
+        case (cgnsDwdz)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        wIO(i, j, k, 1) = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+                    end do
+                end do
+            end do
+
+        case (cgnsFthetaT)
+            cv13_loc = rsaCv1**3
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        nu_loc = rlv(i, j, k) / w(i, j, k, irho)
+                        yDist_loc = max(d2Wall(i, j, k), xminn)
+                        velMag2_loc = w(i,j,k,ivx)**2 + w(i,j,k,ivy)**2 &
+                                      + w(i,j,k,ivz)**2
+                        velMag_loc = sqrt(max(velMag2_loc, xminn))
+                        thetaBL_loc = max(w(i,j,k,itu3), xminn) * rlv(i,j,k) &
+                                      / max(w(i,j,k,irho) * velMag_loc, xminn)
+
+                        ! Compute vorticity magnitude for deltaBL
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+                        wwy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz))
+
+                        vortx = wwy - vvz
+                        vorty = uuz - wwx
+                        vortz = vvx - uuy
+                        vortMag_loc = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+                        ! Compute strainMag for ReS
+                        sxx_loc = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                        syy_loc = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                        szz_loc = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+                        sxy_loc = half * (uuy + vvx)
+                        sxz_loc = half * (uuz + wwx)
+                        syz_loc = half * (vvz + wwy)
+
+                        strainMag_loc = sqrt(max(two * (sxy_loc**2 + sxz_loc**2 + syz_loc**2) &
+                                           + sxx_loc**2 + syy_loc**2 + szz_loc**2, xminn))
+
+                        reS_loc = w(i,j,k,irho) * yDist_loc**2 * strainMag_loc &
+                                  / max(rlv(i,j,k), xminn)
+
+                        deltaBL_loc = 375.0_realType * vortMag_loc * yDist_loc * thetaBL_loc &
+                                      / max(velMag_loc, xminn)
+                        deltaBL_loc = max(deltaBL_loc, xminn)
+                        fWake_loc = exp(-reS_loc / 1.0e6_realType)
+                        fThetaT_loc = min(fWake_loc &
+                                      * exp(-(yDist_loc / deltaBL_loc)**4), one)
+                        wIO(i, j, k, 1) = fThetaT_loc
+                    end do
+                end do
+            end do
+
+        case (cgnsFwake)
+            do k = kBeg, kEnd
+                do j = jBeg, jEnd
+                    do i = iBeg, iEnd
+                        fact_loc = half / vol(i, j, k)
+                        yDist_loc = max(d2Wall(i, j, k), xminn)
+
+                        sxx_loc = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivx) - si(i-1,j,k,1)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivx) - sj(i,j-1,k,1)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivx) - sk(i,j,k-1,1)*w(i,j,k-1,ivx))
+                        syy_loc = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivy) - si(i-1,j,k,2)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivy) - sj(i,j-1,k,2)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivy) - sk(i,j,k-1,2)*w(i,j,k-1,ivy))
+                        szz_loc = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivz) - si(i-1,j,k,3)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivz) - sj(i,j-1,k,3)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivz) - sk(i,j,k-1,3)*w(i,j,k-1,ivz))
+
+                        uuy = fact_loc * ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivx) - si(i-1,j,k,2)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivx) - sj(i,j-1,k,2)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivx) - sk(i,j,k-1,2)*w(i,j,k-1,ivx))
+                        uuz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivx) - si(i-1,j,k,3)*w(i-1,j,k,ivx) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivx) - sj(i,j-1,k,3)*w(i,j-1,k,ivx) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivx) - sk(i,j,k-1,3)*w(i,j,k-1,ivx))
+                        vvx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivy) - si(i-1,j,k,1)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivy) - sj(i,j-1,k,1)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivy) - sk(i,j,k-1,1)*w(i,j,k-1,ivy))
+                        vvz = fact_loc * ( &
+                              si(i,j,k,3)*w(i+1,j,k,ivy) - si(i-1,j,k,3)*w(i-1,j,k,ivy) &
+                            + sj(i,j,k,3)*w(i,j+1,k,ivy) - sj(i,j-1,k,3)*w(i,j-1,k,ivy) &
+                            + sk(i,j,k,3)*w(i,j,k+1,ivy) - sk(i,j,k-1,3)*w(i,j,k-1,ivy))
+                        wwx = fact_loc * ( &
+                              si(i,j,k,1)*w(i+1,j,k,ivz) - si(i-1,j,k,1)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,1)*w(i,j+1,k,ivz) - sj(i,j-1,k,1)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,1)*w(i,j,k+1,ivz) - sk(i,j,k-1,1)*w(i,j,k-1,ivz))
+
+                        sxy_loc = half * (uuy + vvx)
+                        sxz_loc = half * (uuz + wwx)
+                        syz_loc = half * (vvz + ( &
+                              si(i,j,k,2)*w(i+1,j,k,ivz) - si(i-1,j,k,2)*w(i-1,j,k,ivz) &
+                            + sj(i,j,k,2)*w(i,j+1,k,ivz) - sj(i,j-1,k,2)*w(i,j-1,k,ivz) &
+                            + sk(i,j,k,2)*w(i,j,k+1,ivz) - sk(i,j,k-1,2)*w(i,j,k-1,ivz)) * fact_loc)
+
+                        strainMag_loc = sqrt(max(two * (sxy_loc**2 + sxz_loc**2 + syz_loc**2) &
+                                           + sxx_loc**2 + syy_loc**2 + szz_loc**2, xminn))
+
+                        reS_loc = w(i,j,k,irho) * yDist_loc**2 * strainMag_loc &
+                                  / max(rlv(i,j,k), xminn)
+                        wIO(i, j, k, 1) = exp(-reS_loc / 1.0e6_realType)
+                    end do
+                end do
+            end do
 
         case (cgnsShock)
 

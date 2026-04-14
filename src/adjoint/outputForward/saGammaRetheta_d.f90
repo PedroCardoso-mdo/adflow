@@ -94,6 +94,8 @@ contains
     real(kind=realtype) :: rr, gg, gg6, termfw, fwsa, term1, term2
     real(kind=realtype) :: rrd, ggd, gg6d, termfwd, fwsad, term1d, &
 &   term2d
+    real(kind=realtype) :: term2_prod, term2_dest
+    real(kind=realtype) :: term2_prodd, term2_destd
     real(kind=realtype) :: cv13, kar2inv, cw36, cb3inv
     real(kind=realtype), parameter :: gammastatic=one
     real(kind=realtype), parameter :: rethetastatic=one
@@ -116,6 +118,8 @@ contains
     real(kind=realtype) :: vortmagd, strainmagd
     real(kind=realtype) :: nutsa, rturb, gammalocal, rethetatilde
     real(kind=realtype) :: nutsad, rturbd, gammalocald, rethetatilded
+    real(kind=realtype) :: gammaforsa
+    real(kind=realtype) :: gammaforsad
     real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
     real(kind=realtype) :: res_vald, rethetac_vald, flength_vald, &
 &   fturb_vald
@@ -193,6 +197,7 @@ contains
     real(kind=realtype) :: temp8
     real(kind=realtype) :: temp9
     real(kind=realtype) :: temp10
+    real(kind=realtype) :: tmpresult
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -563,17 +568,34 @@ contains
             fwsa = gg*termfw
 ! compute the source term; some terms are saved for the
 ! linearization. the source term is stored in scratch.
+! smoothly clamp gamma to [0, 1] for sa production coupling.
+            gammaforsad = smoothminmax_d(w(i, j, k, itu2), wd(i, j, k, &
+&             itu2), zero, 0.0_8, rsagrsmoothp, gammaforsa)
+            gammaforsad = smoothminmax_d(gammaforsa, gammaforsad, one, &
+&             0.0_8, -rsagrsmoothp, tmpresult)
+            gammaforsa = tmpresult
             if (approxsa) then
               term1 = zero
               term1d = 0.0_8
             else
-              term1d = rsacb1*((one-ft2)*ssd-ss*ft2d)
-              term1 = rsacb1*(one-ft2)*ss
+              term1d = rsacb1*((one-ft2)*(ss*gammaforsad+gammaforsa*ssd)&
+&               -gammaforsa*ss*ft2d)
+              term1 = gammaforsa*rsacb1*(one-ft2)*ss
             end if
-            temp10 = kar2inv*rsacb1*((one-ft2)*fv2+ft2) - rsacw1*fwsa
-            term2d = temp10*dist2invd + dist2inv*(kar2inv*rsacb1*((one-&
-&             ft2)*fv2d-(fv2-1.0)*ft2d)-rsacw1*fwsad)
-            term2 = dist2inv*temp10
+! split term2 into production and destruction parts.
+! production: near-wall correction from cb1*fv2/(kappa^2*d^2)
+! destruction: -cw1*fw/d^2
+! gamma multiplies only production.
+            temp10 = (one-ft2)*fv2 + ft2
+            term2_prodd = kar2inv*rsacb1*(temp10*dist2invd+dist2inv*((&
+&             one-ft2)*fv2d-(fv2-1.0)*ft2d))
+            term2_prod = kar2inv*rsacb1*(dist2inv*temp10)
+            term2_destd = -(rsacw1*(fwsa*dist2invd+dist2inv*fwsad))
+            term2_dest = -(dist2inv*rsacw1*fwsa)
+! effective term2 with gamma on production only
+            term2d = term2_prod*gammaforsad + gammaforsa*term2_prodd + &
+&             term2_destd
+            term2 = gammaforsa*term2_prod + term2_dest
             temp10 = w(i, j, k, itu1)
             temp9 = w(i, j, k, itu1)
             scratchd(i, j, k, idvt) = temp10*(term1d+temp9*term2d+term2*&
@@ -885,9 +907,9 @@ contains
             else
               deltabl = deltabl
             end if
-            fwake_vald = -(exp(-(res_val/1.0e5_realtype))*res_vald/&
-&             1.0e5_realtype)
-            fwake_val = exp(-(res_val/1.0e5_realtype))
+            fwake_vald = -(exp(-(res_val/1.0e6_realtype))*res_vald/&
+&             1.0e6_realtype)
+            fwake_val = exp(-(res_val/1.0e6_realtype))
             temp10 = ydist/deltabl
             arg1d = -(4*temp10**3*(ydistd-temp10*deltabld)/deltabl)
             arg1 = -(temp10**4)
@@ -944,6 +966,7 @@ contains
     real(kind=realtype) :: fv1, fv2, ft2
     real(kind=realtype) :: ss, sst, nu, dist2inv, chi, chi2, chi3
     real(kind=realtype) :: rr, gg, gg6, termfw, fwsa, term1, term2
+    real(kind=realtype) :: term2_prod, term2_dest
     real(kind=realtype) :: cv13, kar2inv, cw36, cb3inv
     real(kind=realtype), parameter :: gammastatic=one
     real(kind=realtype), parameter :: rethetastatic=one
@@ -957,6 +980,7 @@ contains
 ! gamma-retheta source term variables
     real(kind=realtype) :: vortmag, strainmag
     real(kind=realtype) :: nutsa, rturb, gammalocal, rethetatilde
+    real(kind=realtype) :: gammaforsa
     real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
     real(kind=realtype) :: fonset, fonset1
     real(kind=realtype) :: vortlim, vortmaglim
@@ -1135,13 +1159,23 @@ contains
             fwsa = gg*termfw
 ! compute the source term; some terms are saved for the
 ! linearization. the source term is stored in scratch.
+! smoothly clamp gamma to [0, 1] for sa production coupling.
+            gammaforsa = smoothminmax(w(i, j, k, itu2), zero, &
+&             rsagrsmoothp)
+            gammaforsa = smoothminmax(gammaforsa, one, -rsagrsmoothp)
             if (approxsa) then
               term1 = zero
             else
-              term1 = rsacb1*(one-ft2)*ss
+              term1 = gammaforsa*rsacb1*(one-ft2)*ss
             end if
-            term2 = dist2inv*(kar2inv*rsacb1*((one-ft2)*fv2+ft2)-rsacw1*&
-&             fwsa)
+! split term2 into production and destruction parts.
+! production: near-wall correction from cb1*fv2/(kappa^2*d^2)
+! destruction: -cw1*fw/d^2
+! gamma multiplies only production.
+            term2_prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
+            term2_dest = -(dist2inv*rsacw1*fwsa)
+! effective term2 with gamma on production only
+            term2 = gammaforsa*term2_prod + term2_dest
             scratch(i, j, k, idvt) = (term1+term2*w(i, j, k, itu1))*w(i&
 &             , j, k, itu1)
 ! ========================================================
@@ -1309,7 +1343,7 @@ contains
             else
               deltabl = deltabl
             end if
-            fwake_val = exp(-(res_val/1.0e5_realtype))
+            fwake_val = exp(-(res_val/1.0e6_realtype))
             arg1 = -((ydist/deltabl)**4)
             x2 = fwake_val*exp(arg1)
             if (x2 .gt. one) then

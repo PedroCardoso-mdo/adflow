@@ -2599,6 +2599,10 @@ contains
         volWriteGC = .false.
         volWriteStatus = .false.
         volWriteIntermittency = .false.
+        volWriteFonset = .false.
+        volWriteFlength = .false.
+        volWriteRturb = .false.
+        volWriteReThetaTarget = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2748,6 +2752,86 @@ contains
 
             case ("intermittency")
                 volWriteIntermittency = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fonset")
+                volWriteFonset = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("flength")
+                volWriteFlength = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rturb")
+                volWriteRturb = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rethetat")
+                volWriteReThetaTarget = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fonset1")
+                volWriteFonset1 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("res")
+                volWriteReS = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rethetac")
+                volWriteReThetaC = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("resovercrit")
+                volWriteReSOverCrit = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("strainmag")
+                volWriteStrainMag = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dudx")
+                volWriteDudx = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dudy")
+                volWriteDudy = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dudz")
+                volWriteDudz = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dvdx")
+                volWriteDvdx = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dvdy")
+                volWriteDvdy = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dvdz")
+                volWriteDvdz = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dwdx")
+                volWriteDwdx = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dwdy")
+                volWriteDwdy = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dwdz")
+                volWriteDwdz = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fthetat")
+                volWriteFthetaT = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fwake")
+                volWriteFwake = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default

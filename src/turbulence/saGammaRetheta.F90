@@ -105,6 +105,7 @@ contains
         real(kind=realType) :: fv1, fv2, ft2
         real(kind=realType) :: ss, sst, nu, dist2Inv, chi, chi2, chi3
         real(kind=realType) :: rr, gg, gg6, termFw, fwSa, term1, term2
+        real(kind=realType) :: term2_prod, term2_dest
         real(kind=realType) :: cv13, kar2Inv, cw36, cb3Inv
         real(kind=realType), parameter :: gammaStatic = one
         real(kind=realType), parameter :: reThetaStatic = one
@@ -119,6 +120,7 @@ contains
         ! Gamma-ReTheta source term variables
         real(kind=realType) :: vortMag, strainMag
         real(kind=realType) :: nutSA, rTurb, gammaLocal, reThetaTilde
+        real(kind=realType) :: gammaForSA
         real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
         real(kind=realType) :: fOnset, fOnset1
         real(kind=realType) :: vortLim, vortMagLim
@@ -310,13 +312,26 @@ contains
                         ! Compute the source term; some terms are saved for the
                         ! linearization. The source term is stored in scratch.
 
+                        ! Smoothly clamp gamma to [0, 1] for SA production coupling.
+                        gammaForSA = smoothMinMax(w(i, j, k, itu2), zero, rsaGRsmoothP)
+                        gammaForSA = smoothMinMax(gammaForSA, one, -rsaGRsmoothP)
+
                         if (approxSA) then
                             term1 = zero
                         else
-                            term1 = rsaCb1 * (one - ft2) * ss
+                            term1 = gammaForSA * rsaCb1 * (one - ft2) * ss
                         end if
-                        term2 = dist2Inv * (kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2) &
-                                            - rsaCw1 * fwSa)
+
+                        ! Split term2 into production and destruction parts.
+                        ! Production: near-wall correction from Cb1*fv2/(kappa^2*d^2)
+                        ! Destruction: -Cw1*fw/d^2
+                        ! Gamma multiplies only production.
+                        term2_prod = dist2Inv * kar2Inv * rsaCb1 &
+                                     * ((one - ft2) * fv2 + ft2)
+                        term2_dest = -dist2Inv * rsaCw1 * fwSa
+
+                        ! Effective term2 with gamma on production only
+                        term2 = gammaForSA * term2_prod + term2_dest
 
                         scratch(i, j, k, idvt) = (term1 + term2 * w(i, j, k, itu1)) * w(i, j, k, itu1)
 
@@ -405,7 +420,7 @@ contains
                         deltaBL = 375.0_realType * vortMag * yDist * thetaBL &
                                   / max(velMag, xminn)
                         deltaBL = max(deltaBL, xminn)
-                        fWake_val = exp(-reS_val / 1.0e5_realType)
+                        fWake_val = exp(-reS_val / 1.0e6_realType)
                         fThetaT = min(fWake_val &
                                   * exp(-(yDist / deltaBL)**4), one)
 
@@ -429,16 +444,15 @@ contains
                         dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
                         dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
 
-                        ! Compute the source term jacobian. Note that the part
-                        ! containing term1 is treated explicitly. The reason is that
-                        ! implicit treatment of this part leads to a decrease of the
-                        ! diagonal dominance of the jacobian and it thus decreases
-                        ! the stability. You may want to play around and try to
-                        ! take this term into account in the jacobian.
+                        ! Compute the source term jacobian.
+                        ! term2 already contains gammaForSA on production part.
+                        ! The derivative chain also needs gamma on production
+                        ! derivatives but NOT on destruction derivatives.
                         ! Note that -dsource/dnu is stored.
                         qq(i, j, k, 1, 1) = -two * term2 * w(i, j, k, itu1) &
                                       - dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
-                                      * (rsaCb1 * kar2Inv * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
+                                      * (gammaForSA * rsaCb1 * kar2Inv &
+                                         * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
                                          - rsaCw1 * dfw)
 
                         ! A couple of terms in qq may lead to a negative

@@ -577,7 +577,7 @@ module inputPhysics
     integer(kind=intType) :: turbModel, cpModel, turbProd
     integer(kind=intType) :: rvfN
     logical :: rvfB
-    logical :: useQCR, useRotationSA, useft2SA
+        logical :: useQCR, useRotationSA, useft2SA
 
     logical :: wallFunctions, wallDistanceNeeded
 

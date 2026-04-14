@@ -179,6 +179,47 @@ module cgnsNames
     character(len=maxCGNSNameLen), parameter :: &
         cgnsIntermittency = "Intermittency"
 
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsFonset = "TransitionFonset"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsFlength = "TransitionFlength"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsRturb = "TransitionRturb"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsReThetaTarget = "TransitionReThetaTarget"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsFonset1 = "TransitionFonset1"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsReS = "TransitionReS"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsReThetaC = "TransitionReThetaC"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsReSOverCrit = "TransitionReSOverCrit"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsStrainMag = "StrainMagnitude"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDudx = "VelocityGradientDudx"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDudy = "VelocityGradientDudy"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDudz = "VelocityGradientDudz"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDvdx = "VelocityGradientDvdx"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDvdy = "VelocityGradientDvdy"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDvdz = "VelocityGradientDvdz"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDwdx = "VelocityGradientDwdx"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDwdy = "VelocityGradientDwdy"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsDwdz = "VelocityGradientDwdz"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsFthetaT = "TransitionFthetaT"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsFwake = "TransitionFwake"
+
 !
 !       Residual names.
 !

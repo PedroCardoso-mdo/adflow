@@ -37,6 +37,13 @@ module extraOutput
     logical :: volWriteResRhoE, volWriteResTurb, volWriteBlank
     logical :: volWriteShock, volWriteFilteredShock, volWriteGC, volWriteStatus
     logical :: volWriteIntermittency
+    logical :: volWriteFonset, volWriteFlength, volWriteRturb, volWriteReThetaTarget
+    logical :: volWriteFonset1, volWriteReS, volWriteReThetaC, volWriteReSOverCrit
+    logical :: volWriteStrainMag
+    logical :: volWriteDudx, volWriteDudy, volWriteDudz
+    logical :: volWriteDvdx, volWriteDvdy, volWriteDvdz
+    logical :: volWriteDwdx, volWriteDwdy, volWriteDwdz
+    logical :: volWriteFthetaT, volWriteFwake
 !
 !       The logical variables, which define the isosurface variables
 !       to be written.
