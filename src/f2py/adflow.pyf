@@ -1176,6 +1176,7 @@ python module libadflow
          logical :: wallfunctions
          logical :: use_sabcm
          logical :: sabcm_exp
+         logical :: use_ankprofiling
          real(kind=realtype) :: sabcm_const1
          real(kind=realtype) :: sabcm_const2
          real(kind=realtype) :: sabcm_tu

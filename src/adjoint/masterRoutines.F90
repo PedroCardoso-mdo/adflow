@@ -1231,6 +1231,10 @@ contains
         use blockette, only: blocketteResCore, blockResCore
         use flowUtils, only: computeLamViscosity, computePressureSimple
         use actuatorRegionData, only: nActuatorRegions
+        use ankProfiling, only: ankNow, ankProfIsActive, ankProfGetContext, ankProfAddSection, &
+                ankProfIncrementCounter, ANK_SEC_BLOCKETTERES_TOTAL_IN_ANK, &
+                ANK_SEC_BLOCKETTERES_COMPUTE_IN_ANK, ANK_SEC_BLOCKETTERES_IN_FORMJAC, &
+                ANK_CNT_N_BLOCKETTERES_TOTAL, ANK_CNT_N_BLOCKETTERES_FORMJAC, ANK_CTX_FORMJAC
         implicit none
 
         ! Input Arguments:
@@ -1241,6 +1245,18 @@ contains
         integer(kind=intType) :: ierr, mm, i, j, k, l, fSize, ii, jj, iRegion
         real(kind=realType) :: pLocal
         logical :: dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall
+        integer(kind=intType) :: callContext
+        real(kind=alwaysRealType) :: tStart, totalTime
+
+        callContext = -1_intType
+        if (ankProfIsActive()) then
+            callContext = ankProfGetContext()
+            if (callContext == ANK_CTX_FORMJAC) then
+                tStart = ankNow()
+                call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_TOTAL, 1_intType)
+                call ankProfIncrementCounter(ANK_CNT_N_BLOCKETTERES_FORMJAC, 1_intType)
+            end if
+        end if
 
         flowRes = .True.
         if (present(useFlowRes)) then
@@ -1279,6 +1295,13 @@ contains
             call sourceTerms_block(nn, .True., iRegion, pLocal)
         end do
         call resscale
+
+        if (ankProfIsActive() .and. callContext == ANK_CTX_FORMJAC) then
+            totalTime = ankNow() - tStart
+            call ankProfAddSection(ANK_SEC_BLOCKETTERES_TOTAL_IN_ANK, totalTime, totalTime, 0.0_alwaysRealType)
+            call ankProfAddSection(ANK_SEC_BLOCKETTERES_COMPUTE_IN_ANK, totalTime, totalTime, 0.0_alwaysRealType)
+            call ankProfAddSection(ANK_SEC_BLOCKETTERES_IN_FORMJAC, totalTime, totalTime, 0.0_alwaysRealType)
+        end if
 
     end subroutine block_res_state
 #ifndef USE_COMPLEX

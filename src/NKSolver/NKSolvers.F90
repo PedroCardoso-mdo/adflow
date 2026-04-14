@@ -1643,6 +1643,7 @@ end module NKSolver
 module ANKSolver
 
     use constants
+    use ankProfiling
 #include <petsc/finclude/petsc.h>
     use petsc
     implicit none
@@ -1704,6 +1705,7 @@ module ANKSolver
     real(kind=alwaysRealType) :: totalR_old, totalR_pcUpdate ! for recording the previous residual
     real(kind=alwaysRealType) :: rtolLast, linResOld ! for recording the previous relativel tolerance for Eisenstat-Walker
     logical :: ANK_useDissApprox
+    logical :: ankInsideKSPSolve = .False.
 
     ! Turb KSP related modifications
     logical :: ANK_coupled = .False.
@@ -1724,7 +1726,7 @@ contains
         use communication, only: adflow_comm_world, myid
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputIteration, only: useLinResMonitor
-        use inputPhysics, only: equations
+        use inputPhysics, only: equations, use_ANKProfiling
         use flowVarRefState, only: nw, viscous, nwf, nt1, nt2
         use ADjointVars, only: nCellsLocal
         use NKSolver, only: destroyNKSolver, linearResidualMonitor
@@ -1743,6 +1745,8 @@ contains
         ! Make sure we don't have memory for the approximate and exact
         ! Newton solvers kicking around at the same time.
         call destroyNKSolver()
+
+        call ankProfSetEnabled(use_ANKProfiling)
 
         if (.not. ANK_solverSetup) then
 
@@ -1958,6 +1962,15 @@ contains
         real(kind=realType), dimension(:, :), allocatable :: blk
         logical :: useCoarseMats
         PC shellPC
+        real(kind=alwaysRealType) :: tStart, tResidualStart, tPCSetupStart, commTime
+        real(kind=alwaysRealType) :: tFormJacResTotal, tFormJacResComm
+
+        if (ankProfIsActive()) then
+            tStart = ankNow()
+            call ankProfIncrementCounter(ANK_CNT_N_FORMJAC, 1_intType)
+        end if
+
+        commTime = 0.0_alwaysRealType
 
         if (ANK_precondType == 'mg') then
             useCoarseMats = .True.
@@ -1978,8 +1991,20 @@ contains
             approxSA = .True.
 
         ! Create the preconditoner matrix
+        if (ankProfIsActive()) then
+            tResidualStart = ankNow()
+            call ankProfSetContext(ANK_CTX_FORMJAC)
+        end if
         call setupStateResidualMatrix(dRdwPre, useAD, usePC, useTranspose, &
-                                      useObjective, frozenTurb, 1_intType, useCoarseMats=useCoarseMats)
+                                      useObjective, frozenTurb, 1_intType, useCoarseMats=useCoarseMats, &
+                                      totalTimeOut=tFormJacResTotal, commTimeOut=tFormJacResComm)
+        if (ankProfIsActive()) then
+            call ankProfSetContext(ANK_CTX_NONE)
+            call ankProfAddSection(ANK_SEC_FORMJAC_RES_TOTAL, tFormJacResTotal, &
+                                   tFormJacResTotal - tFormJacResComm, tFormJacResComm)
+            commTime = commTime + tFormJacResComm
+            tPCSetupStart = ankNow() - tResidualStart
+        end if
 
         ! Reset saved value
         viscPC = tmp
@@ -2021,6 +2046,10 @@ contains
         end if
 
         ! Set up the KSP using the same code as used for the adjoint
+        if (ankProfIsActive()) then
+            tPCSetupStart = ankNow()
+            call ankProfIncrementCounter(ANK_CNT_N_PCSETUP, 1_intType)
+        end if
         if (ANK_precondType == 'asm') then
             call setupStandardKSP(ANK_KSP, kspObjectType, subSpace, &
                                   preConSide, globalPCType, ANK_asmOverlap, outerPreConIts, localPCType, &
@@ -2031,10 +2060,19 @@ contains
                                         localOrdering, ANK_iluFill, ANK_innerPreConIts, &
                                         ANK_asmOverlapCoarse, ANK_iluFillCoarse, ANK_innerPreConItsCoarse)
         end if
+        if (ankProfIsActive()) then
+            call ankProfAddSection(ANK_SEC_PCSETUP_TOTAL, ankNow() - tPCSetupStart, ankNow() - tPCSetupStart, &
+                                   0.0_alwaysRealType)
+        end if
 
         ! Don't do iterative refinement
         call KSPGMRESSetCGSRefinementType(ANK_KSP, KSP_GMRES_CGS_REFINE_NEVER, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        if (ankProfIsActive()) then
+            tResidualStart = ankNow() - tStart
+            call ankProfAddSection(ANK_SEC_FORMJAC_TOTAL, tResidualStart, tResidualStart - commTime, commTime)
+        end if
 
     end subroutine FormJacobianANK
 
@@ -2060,6 +2098,11 @@ contains
         integer(kind=intType), dimension(2:10) :: coarseRows
         real(kind=realType), dimension(nState, nState) :: timeStepBlock
         logical :: useCoarseMats
+        real(kind=alwaysRealType) :: tStart, tCommStart, totalTime, commTime
+
+        totalTime = 0.0_alwaysRealType
+        commTime = 0.0_alwaysRealType
+        if (ankProfIsActive()) tStart = ankNow()
 
         if (ANK_precondType == 'mg') then
             useCoarseMats = .True.
@@ -2106,10 +2149,16 @@ contains
         end do
 
         ! PETSc Matrix Assembly
+        if (ankProfIsActive()) tCommStart = ankNow()
         call MatAssemblyBegin(timeStepMat, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
         call MatAssemblyEnd(timeStepMat, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) then
+            commTime = commTime + ankNow() - tCommStart
+            totalTime = ankNow() - tStart
+            call ankProfAddSection(ANK_SEC_COMPUTETIMESTEPMAT, totalTime, totalTime - commTime, commTime)
+        end if
 
     end subroutine computeTimeStepMat
 
@@ -2489,26 +2538,56 @@ contains
         real(kind=realType), pointer :: invec_pointer(:)
         real(kind=realType), pointer :: wvec_pointer(:)
         logical :: useViscApprox
+        real(kind=alwaysRealType) :: tStart, totalTime, commTime
+        real(kind=alwaysRealType) :: tBlocketteTotal, tBlocketteComm
+        real(kind=alwaysRealType) :: tVecOps, tMatAdd, tTmp
 
+
+        if (ankProfIsActive()) then
+            tStart = ankNow()
+            commTime = 0.0_alwaysRealType
+            tVecOps = 0.0_alwaysRealType
+            tMatAdd = 0.0_alwaysRealType
+            call ankProfIncrementCounter(ANK_CNT_N_MATMULT, 1_intType)
+        end if
 
         ! get the input vector (setWANK)
+        if (ankProfIsActive()) tTmp = ankNow()
         call setWANK(inVec, 1, nState)
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! determine if we want the approximate viscous fluxes
         useViscApprox = (.not. ANK_useFullVisc) .and. ANK_useDissApprox
 
+        ! Set context for blocketteRes attribution
+        if (ankProfIsActive()) then
+            if (ankInsideKSPSolve) then
+                call ankProfSetContext(ANK_CTX_MATMULT_IN_KSPSOLVE)
+            else
+                call ankProfSetContext(ANK_CTX_MATMULT_OUTSIDE_KSPSOLVE)
+            end if
+        end if
+
         ! Residual call blocketteRes(...)
         call blocketteRes(useDissApprox=ANK_useDissApprox, useViscApprox=useViscApprox, &
-                          useTurbRes=ANK_coupled, useStoreWall=.False.)
+                          useTurbRes=ANK_coupled, useStoreWall=.False., &
+                          totalTimeOut=tBlocketteTotal, commTimeOut=tBlocketteComm)
+        if (ankProfIsActive()) then
+            call ankProfSetContext(ANK_CTX_NONE)
+            commTime = commTime + tBlocketteComm
+        end if
 
         ! setRVec / setRVecANK
+        if (ankProfIsActive()) tTmp = ankNow()
         if (ANK_coupled) then
             call setRVec(rVec)
         else
             call setRVecANK(rVec)
         end if
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! rVec contains the full steady residual vector
+        if (ankProfIsActive()) tTmp = ankNow()
         call VecGetArrayF90(rVec, rvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
@@ -2519,11 +2598,15 @@ contains
         ! Also read the wVec to access the un-perturbed state vector.
         call VecGetArrayReadF90(wVec, wvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! MatMultAdd(timeStepMat, inVec, rVec)
+        if (ankProfIsActive()) tTmp = ankNow()
         call MatMultAdd(timeStepMat, inVec, rVec, rVec, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tMatAdd = tMatAdd + (ankNow() - tTmp)
 
+        if (ankProfIsActive()) tTmp = ankNow()
         call VecRestoreArrayF90(rVec, rvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
@@ -2532,9 +2615,25 @@ contains
 
         call VecRestoreArrayReadF90(inVec, invec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! We don't check an error here, so just pass back zero
         ierr = 0
+
+        if (ankProfIsActive()) then
+            totalTime = ankNow() - tStart
+            commTime = min(commTime, totalTime)
+            call ankProfAddSection(ANK_SEC_MATMULT_TOTAL, totalTime, totalTime - commTime, commTime)
+            if (ankInsideKSPSolve) then
+                call ankProfAddSection(ANK_SEC_MATMULT_BLOCKETTERES_TOTAL, tBlocketteTotal, &
+                                       tBlocketteTotal - tBlocketteComm, tBlocketteComm)
+                call ankProfAddSection(ANK_SEC_MATMULT_TIMESTEPMATADD_TOTAL, tMatAdd, tMatAdd, 0.0_alwaysRealType)
+                call ankProfAddSection(ANK_SEC_MATMULT_VECOPS_TOTAL, tVecOps, tVecOps, 0.0_alwaysRealType)
+                call ankProfAddSection(ANK_SEC_MATMULT_IN_KSPSOLVE, totalTime, totalTime - commTime, commTime)
+            else
+                call ankProfAddSection(ANK_SEC_MATMULT_OUTSIDE_KSPSOLVE, totalTime, totalTime - commTime, commTime)
+            end if
+        end if
 
     end subroutine FormFunction_mf
 
@@ -2560,11 +2659,17 @@ contains
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii, iiRho
         real(kind=realType), pointer :: rvec_pointer(:)
         real(kind=realType), pointer :: invec_pointer(:)
+        real(kind=alwaysRealType) :: tBlocketteTotal, tBlocketteComm
 
         ! get the input vector
         call setWANK(inVec, nt1, nt2)
 
-        call blocketteRes(useFlowRes=.False., useStoreWall=.False.)
+        if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_TURBUPDATE)
+        call blocketteRes(useFlowRes=.False., useStoreWall=.False., &
+                          totalTimeOut=tBlocketteTotal, commTimeOut=tBlocketteComm)
+        if (ankProfIsActive()) then
+            call ankProfSetContext(ANK_CTX_NONE)
+        end if
         call setRVecANKTurb(rVec)
 
         ! Add the contribution from the time stepping term
@@ -2612,7 +2717,7 @@ contains
 
     end subroutine FormFunction_mf_turb
 
-    subroutine computeUnsteadyResANK(omega)
+    subroutine computeUnsteadyResANK(omega, totalTimeOut, commTimeOut)
 
         ! This routine calculates the unsteady residual in a given iteration.
         ! It needs the following variables/vectors:
@@ -2644,6 +2749,7 @@ contains
         implicit none
 
         real(kind=realType), intent(in) :: omega
+        real(kind=alwaysRealType), intent(out), optional :: totalTimeOut, commTimeOut
 
         real(kind=realType) :: dtinv, rho, uu, vv, ww
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii, iiRho
@@ -2652,33 +2758,57 @@ contains
 
         real(kind=realType), dimension(nState, nState) :: timeStepMatrix
         real(kind=realType), dimension(nState) :: wPrev
+        real(kind=alwaysRealType) :: tStart, totalTime, commTime
+        real(kind=alwaysRealType) :: tBlocketteTotal, tBlocketteComm
+        real(kind=alwaysRealType) :: tVecOps, tMatMult, tTmp
 
         ! Allocate a PETSc vector like deltaW for intermediate computations
         Vec unsteadyVec
 
+        if (ankProfIsActive()) tStart = ankNow()
+        commTime = 0.0_alwaysRealType
+        tVecOps = 0.0_alwaysRealType
+        tMatMult = 0.0_alwaysRealType
+
+        if (ankProfIsActive()) tTmp = ankNow()
         call VecDuplicate(deltaW, unsteadyVec, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! Calculate the steady residuals
-        call blocketteRes(useTurbRes=ANK_coupled)
+        if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_UNSTEADY)
+        call blocketteRes(useTurbRes=ANK_coupled, totalTimeOut=tBlocketteTotal, commTimeOut=tBlocketteComm)
+        if (ankProfIsActive()) then
+            call ankProfSetContext(ANK_CTX_NONE)
+            commTime = commTime + tBlocketteComm
+            call ankProfAddSection(ANK_SEC_COMPUTEUNSTEADY_BLOCKETTERES_TOTAL, tBlocketteTotal, &
+                                   tBlocketteTotal - tBlocketteComm, tBlocketteComm)
+        end if
+        if (ankProfIsActive()) tTmp = ankNow()
         call setRVecANK(rVec)
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! rVec contains the full steady residual vector
+        if (ankProfIsActive()) tTmp = ankNow()
         call VecGetArrayF90(rVec, rvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
         ! deltaW contains the full state update vector
         call VecGetArrayReadF90(deltaW, dvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! TODO AY: check if this routine is fine with complex mode...
         ! dtl and volume can both have complex values in them
 
         ! Multiply the delta by the time step terms
+        if (ankProfIsActive()) tTmp = ankNow()
         call MatMult(timeStepMat, deltaW, unsteadyVec, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tMatMult = tMatMult + (ankNow() - tTmp)
 
         ! Add unsteady term to the steady residual
+        if (ankProfIsActive()) tTmp = ankNow()
         call VecAXPY(rVec, -omega, unsteadyVec, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
@@ -2691,9 +2821,21 @@ contains
 
         call VecRestoreArrayReadF90(deltaW, dvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tVecOps = tVecOps + (ankNow() - tTmp)
 
         ! We don't check an error here, so just pass back zero
         ierr = 0
+
+        if (ankProfIsActive()) then
+            totalTime = ankNow() - tStart
+            commTime = min(commTime, totalTime)
+            call ankProfAddSection(ANK_SEC_COMPUTEUNSTEADY_TOTAL, totalTime, totalTime - commTime, commTime)
+            call ankProfAddSection(ANK_SEC_COMPUTEUNSTEADY_TIMESTEPMATMULT_TOTAL, tMatMult, tMatMult, 0.0_alwaysRealType)
+            call ankProfAddSection(ANK_SEC_COMPUTEUNSTEADY_VECOPS_TOTAL, tVecOps, tVecOps, 0.0_alwaysRealType)
+        end if
+
+        if (present(totalTimeOut)) totalTimeOut = totalTime
+        if (present(commTimeOut)) commTimeOut = commTime
 
     end subroutine computeUnsteadyResANK
 
@@ -2795,6 +2937,11 @@ contains
         use amg, only: destroyAMG
         implicit none
         integer(kind=intType) :: ierr
+
+        if (ankProfIsEnabled() .and. (.not. ankProfIsActive())) then
+            call ankProfReport(ANK_useMatrixFree, ANK_precondType)
+            call ankProfReset()
+        end if
 
         if (ANK_SolverSetup) then
 
@@ -3366,10 +3513,16 @@ contains
         real(kind=alwaysRealType) :: resHist(ANK_maxIter + 1)
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old
         real(kind=alwaysRealType) :: linResMonitorTurb, totalRTurb
+        real(kind=alwaysRealType) :: tBlocketteTotal, tBlocketteComm
         logical :: correctForK, LSFailed
 
         ! Calculate the residuals and set rVecTurb before the first iteration
-        call blocketteRes(useFlowRes=.False., useStoreWall=.False.)
+        if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_TURBUPDATE)
+        call blocketteRes(useFlowRes=.False., useStoreWall=.False., &
+                          totalTimeOut=tBlocketteTotal, commTimeOut=tBlocketteComm)
+        if (ankProfIsActive()) then
+            call ankProfSetContext(ANK_CTX_NONE)
+        end if
         call setRVecANKTurb(rVecTurb)
 
         do n = 1, ANK_nsubIterTurb
@@ -3651,6 +3804,7 @@ contains
         use turbUtils, only: computeEddyViscosity
         use communication
         use blockette, only: blocketteRes
+        use inputPhysics, only: use_ANKProfiling
         implicit none
 
         ! Input Variables
@@ -3663,7 +3817,37 @@ contains
         real(kind=alwaysRealType) :: rtol, totalR_dummy, linearRes, norm
         real(kind=alwaysRealType) :: resHist(ANK_maxIter + 1)
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old, rel_pcUpdateTol
+        real(kind=alwaysRealType) :: tStepStart, tLocalStart, tTmp
+        real(kind=alwaysRealType) :: tLineSearchStart, tKSPStart, tFinalResStart, tTurbUpdateStart
+        real(kind=alwaysRealType) :: tSectionTotal, tSectionCompute, kspCommDelta
+        real(kind=alwaysRealType) :: tFinalResTotal, tFinalResComm
+        real(kind=alwaysRealType) :: ankStepCommDelta
+        real(kind=alwaysRealType) :: tPhaseStart
+        real(kind=alwaysRealType) :: kspMeasuredCommBefore, kspMeasuredCommAfter
+        real(kind=alwaysRealType), dimension(7) :: parentCommBefore, parentCommAfter
+        integer(kind=intType) :: nSectionCalls
         logical :: correctForK, LSFailed
+
+        call ankProfSetEnabled(use_ANKProfiling)
+        if (ankProfIsEnabled()) then
+            call ankProfEnterStep()
+            tStepStart = ankNow()
+            tLocalStart = tStepStart
+            call ankProfGetSectionAccum(ANK_SEC_COMPUTETIMESTEPMAT, tSectionTotal, tSectionCompute, &
+                                        parentCommBefore(1), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_FORMJAC_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommBefore(2), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_KSPSOLVE_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommBefore(3), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_LOCALOPS_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommBefore(4), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_COMPUTEUNSTEADY_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommBefore(5), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_FINALRES_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommBefore(6), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_TURB_UPDATE_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommBefore(7), nSectionCalls)
+        end if
 
         ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
         if (firstCall .or. &
@@ -3745,8 +3929,12 @@ contains
 
         ! Compute the norm of rVec, which is identical to the
         ! norm of the unsteady residual vector.
+        if (ankProfIsActive()) tPhaseStart = ankNow()
         call VecNorm(rVec, NORM_2, unsteadyNorm_old, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) then
+            tTmp = ankNow() - tPhaseStart
+        end if
 
         ! Determine if if we need to form the Preconditioner
         if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol) then
@@ -3783,10 +3971,20 @@ contains
 
             ! Update the time step terms before forming the PC because the states and CFL may have changed
             ! This call also updates the time step terms for the AMG PC if required
+            if (ankProfIsActive()) then
+                tTmp = ankNow() - tLocalStart
+                call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+            end if
             call computeTimeStepMat(usePC=.True.)
+            if (ankProfIsActive()) tLocalStart = ankNow()
 
             ! Actually form the preconditioner and factorize it.
+            if (ankProfIsActive()) then
+                tTmp = ankNow() - tLocalStart
+                call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+            end if
             call FormJacobianANK()
+            if (ankProfIsActive()) tLocalStart = ankNow()
 
             if (totalR .le. ANK_secondOrdSwitchTol * totalR0) then
                 if (ANK_coupled) then
@@ -3808,7 +4006,12 @@ contains
         else
             ! Update the time step terms because the states may have changed from the last step
             ! This call does not update the time step terms for the AMG PC
+            if (ankProfIsActive()) then
+                tTmp = ankNow() - tLocalStart
+                call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+            end if
             call computeTimeStepMat(usePC=.False.)
+            if (ankProfIsActive()) tLocalStart = ankNow()
 
             if (totalR .le. ANK_secondOrdSwitchTol * totalR0) then
                 if (ANK_coupled) then
@@ -3834,10 +4037,12 @@ contains
 #endif
 
         ! Dummy matrix assembly for the matrix-free matrix
+        if (ankProfIsActive()) tPhaseStart = ankNow()
         call MatAssemblyBegin(dRdw, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
         call MatAssemblyEnd(dRdw, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tTmp = ankNow() - tPhaseStart
 
         ! ============== Flow Update =============
 
@@ -3896,6 +4101,7 @@ contains
         ! Due to an outdated preconditioner, the KSP solve might take more iterations.
         ! If this happens, the preconditioner is re-computed and because of this,
         ! ANK iterations usually don't take more than 2 times number of ANK_subSpace size iterations
+        if (ankProfIsActive()) tPhaseStart = ankNow()
         call KSPSetTolerances(ANK_KSP, rtol, &
                               real(atol), real(ANK_divTol), ank_maxIter, ierr)
         call EChk(ierr, __FILE__, __LINE__)
@@ -3908,9 +4114,36 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
         call MatMFFDSetBase(dRdW, wVec, baseRes, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) then
+            tTmp = ankNow() - tPhaseStart
+            call ankProfAddSection(ANK_SEC_LOCALOPS_OUTSIDE_KSPSOLVE_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+        end if
 
         ! Actually do the Linear Krylov Solve
+        if (ankProfIsActive()) then
+            tTmp = ankNow() - tLocalStart
+            call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+            tKSPStart = ankNow()
+            call ankProfGetSectionAccum(ANK_SEC_BLOCKETTERES_IN_MATMULT_IN_KSPSOLVE, tSectionTotal, tSectionCompute, &
+                                        kspMeasuredCommBefore, nSectionCalls)
+            call ankProfIncrementCounter(ANK_CNT_N_KSPSOLVE, 1_intType)
+        end if
+
+        ankInsideKSPSolve = .True.
         call KSPSolve(ANK_KSP, rVec, deltaW, ierr)
+        ankInsideKSPSolve = .False.
+
+        if (ankProfIsActive()) then
+            tTmp = ankNow() - tKSPStart
+            call ankProfGetSectionAccum(ANK_SEC_BLOCKETTERES_IN_MATMULT_IN_KSPSOLVE, tSectionTotal, tSectionCompute, &
+                                        kspMeasuredCommAfter, nSectionCalls)
+
+            kspCommDelta = kspMeasuredCommAfter - kspMeasuredCommBefore
+            kspCommDelta = min(max(0.0_alwaysRealType, kspCommDelta), tTmp)
+
+            call ankProfAddSection(ANK_SEC_KSPSOLVE_TOTAL, tTmp, tTmp - kspCommDelta, kspCommDelta)
+            tLocalStart = ankNow()
+        end if
 
         ! DON'T just check the error. We want to catch error code 72
         ! which is a floating point error. This is ok, we just reset and
@@ -3924,6 +4157,9 @@ contains
         ! Get the number of iterations from the KSP solver
         call KSPGetIterationNumber(ANK_KSP, kspIterations, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) then
+            call ankProfIncrementCounter(ANK_CNT_N_GMRES_ITER, kspIterations)
+        end if
 
         call KSPGetConvergedReason(ANK_KSP, reason, ierr)
         call EChk(ierr, __FILE__, __LINE__)
@@ -3946,30 +4182,41 @@ contains
 
         ! Compute the maximum step that will limit the change in pressure
         ! and energy to some user defined fraction.
+        if (ankProfIsActive()) tPhaseStart = ankNow()
         call physicalityCheckANK(lambda)
         if (ANK_CFL .gt. ANK_CFLMin .and. lambda .lt. ANK_stepMin) &
             lambda = zero
+        if (ankProfIsActive()) tTmp = ankNow() - tPhaseStart
 
         ! Take the uodate after the physicality check.
+        if (ankProfIsActive()) tPhaseStart = ankNow()
         call VecAXPY(wVec, -lambda, deltaW, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
         ! Set the updated state variables
         call setWANK(wVec, 1, nState)
+        if (ankProfIsActive()) tTmp = ankNow() - tPhaseStart
 
         ! Compute the unsteady residuals. The actual residuals
         ! also get calculated in the process, and are stored in
         ! dw. Make sure to call setRVec/setRVecANK after this
         ! routine because rVec contains the unsteady residuals,
         ! and we need the steady residuals for the next iteration.
+        if (ankProfIsActive()) then
+            tTmp = ankNow() - tLocalStart
+            call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+        end if
         call computeUnsteadyResANK(lambda)
+        if (ankProfIsActive()) tLocalStart = ankNow()
 
         ! Count the number of of residual evaluations outside the KSP solve
         feval = 1_intType
 
         ! Check if the norm of the rVec is bad:
+        if (ankProfIsActive()) tPhaseStart = ankNow()
         call VecNorm(rVec, NORM_2, unsteadyNorm, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        if (ankProfIsActive()) tTmp = ankNow() - tPhaseStart
 
         ! initialize this outside the ls
         LSFailed = .False.
@@ -3977,6 +4224,8 @@ contains
         if ((unsteadyNorm > unsteadyNorm_old * ANK_unstdyLSTol .or. myisnan(unsteadyNorm))) then
             ! The unsteady residual is too high or we have a NAN. Do a
             ! backtracking line search until we get a residual that is lower.
+
+            if (ankProfIsActive()) tLineSearchStart = ankNow()
 
             LSFailed = .True.
 
@@ -3998,11 +4247,18 @@ contains
                 call setWANK(wVec, 1, nState)
 
                 ! Compute the unsteady residuals with the current step
+                if (ankProfIsActive()) then
+                    tTmp = ankNow() - tLocalStart
+                    call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+                end if
                 call computeUnsteadyResANK(lambda)
+                if (ankProfIsActive()) tLocalStart = ankNow()
                 feval = feval + 1
 
+                if (ankProfIsActive()) tPhaseStart = ankNow()
                 call VecNorm(rVec, NORM_2, unsteadyNorm, ierr)
                 call EChk(ierr, __FILE__, __LINE__)
+                if (ankProfIsActive()) tTmp = ankNow() - tPhaseStart
 
                 if (unsteadyNorm > unsteadyNorm_old * ANK_unstdyLSTol .or. myisnan(unsteadyNorm)) then
 
@@ -4037,17 +4293,28 @@ contains
                 ! Set the state vec and compute the new residual
                 call setWANK(wVec, 1, nState)
                 if (.not. ANK_coupled) then
+                    if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_LINESEARCH)
                     call blocketteRes(useTurbRes=.False., useStoreWall=.False.)
+                    if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_NONE)
                 else
+                    if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_LINESEARCH)
                     call blocketteRes()
+                    if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_NONE)
                 end if
                 feval = feval + 1
             else
             end if
+
+            if (ankProfIsActive()) tTmp = ankNow() - tLineSearchStart
         end if
 
         ! ============== Turb Update =============
         if ((.not. ANK_coupled) .and. equations == RANSEquations .and. lambda > zero) then
+            if (ankProfIsActive()) then
+                tTmp = ankNow() - tLocalStart
+                call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+                tTurbUpdateStart = ankNow()
+            end if
 
             if (ANK_useTurbDADI) then
                 ! actually do the turbulence update
@@ -4056,13 +4323,28 @@ contains
             else
                 call ANKTurbSolveKSP
             end if
+
+            if (ankProfIsActive()) then
+                tTmp = ankNow() - tTurbUpdateStart
+                call ankProfAddSection(ANK_SEC_TURB_UPDATE_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+                tLocalStart = ankNow()
+            end if
         end if
 
         ! We need to now compute the residual for the next iteration.  We
         ! also need the to update the update the time step and the
         ! viscWall pointer stuff
 
-        call blocketteRes(useUpdateIntermed=.True.)
+        if (ankProfIsActive()) tFinalResStart = ankNow()
+        if (ankProfIsActive()) call ankProfSetContext(ANK_CTX_FINALRES)
+        call blocketteRes(useUpdateIntermed=.True., totalTimeOut=tFinalResTotal, commTimeOut=tFinalResComm)
+        if (ankProfIsActive()) then
+            call ankProfSetContext(ANK_CTX_NONE)
+            tTmp = ankNow() - tFinalResStart
+            tFinalResComm = min(max(0.0_alwaysRealType, tFinalResComm), tTmp)
+            call ankProfAddSection(ANK_SEC_FINALRES_TOTAL, tTmp, tTmp - tFinalResComm, tFinalResComm)
+            tLocalStart = ankNow()
+        end if
 
         feval = feval + 1
         if (ANK_coupled) then
@@ -4109,6 +4391,30 @@ contains
         ! Update the approximate iteration counter. The +1 is for the
         ! residual evaluations.
         approxTotalIts = approxTotalIts + feval + kspIterations
+
+        if (ankProfIsActive()) then
+            tTmp = ankNow() - tLocalStart
+            call ankProfAddSectionNoCall(ANK_SEC_LOCALOPS_TOTAL, tTmp, tTmp, 0.0_alwaysRealType)
+            tTmp = ankNow() - tStepStart
+            call ankProfGetSectionAccum(ANK_SEC_COMPUTETIMESTEPMAT, tSectionTotal, tSectionCompute, &
+                                        parentCommAfter(1), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_FORMJAC_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommAfter(2), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_KSPSOLVE_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommAfter(3), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_LOCALOPS_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommAfter(4), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_COMPUTEUNSTEADY_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommAfter(5), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_FINALRES_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommAfter(6), nSectionCalls)
+            call ankProfGetSectionAccum(ANK_SEC_TURB_UPDATE_TOTAL, tSectionTotal, tSectionCompute, &
+                                        parentCommAfter(7), nSectionCalls)
+            ankStepCommDelta = sum(parentCommAfter - parentCommBefore)
+            ankStepCommDelta = min(max(0.0_alwaysRealType, ankStepCommDelta), tTmp)
+            call ankProfAddSection(ANK_SEC_ANKSTEP_TOTAL, tTmp, tTmp - ankStepCommDelta, ankStepCommDelta)
+            call ankProfExitStep()
+        end if
 
     end subroutine ANKStep
 end module ANKSolver
