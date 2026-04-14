@@ -2726,6 +2726,7 @@ contains
         nullify (flowDoms(nn, level, sps)%radK)
 
         nullify (flowDoms(nn, level, sps)%d2Wall)
+        nullify (flowDoms(nn, level, sps)%transitionDebug)
 
         nullify (flowDoms(nn, level, sps)%bmti1)
         nullify (flowDoms(nn, level, sps)%bmti2)
@@ -3479,6 +3480,7 @@ contains
         ! Wall distance for the turbulence models.
 
         d2Wall => flowDoms(nn, mm, ll)%d2Wall
+        transitionDebug => flowDoms(nn, mm, ll)%transitionDebug
         filterDES => flowDoms(nn, mm, ll)%filterDES  ! eran-des
 
         ! Arrays used for the implicit treatment of the turbulent wall
@@ -5449,6 +5451,10 @@ contains
 
         if (associated(flowDoms(nn, level, sps)%d2Wall)) &
             deallocate (flowDoms(nn, level, sps)%d2Wall, stat=ierr)
+        if (ierr /= 0) deallocationFailure = .true.
+
+        if (associated(flowDoms(nn, level, sps)%transitionDebug)) &
+            deallocate (flowDoms(nn, level, sps)%transitionDebug, stat=ierr)
         if (ierr /= 0) deallocationFailure = .true.
 
         if (associated(flowDoms(nn, level, sps)%bmti1)) &

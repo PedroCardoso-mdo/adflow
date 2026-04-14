@@ -99,6 +99,30 @@ contains
 
         ! Local parameters
         real(kind=realType), parameter :: f23 = two * third
+        integer(kind=intType), parameter :: dbgFonset = 1_intType
+        integer(kind=intType), parameter :: dbgFonset1 = 2_intType
+        integer(kind=intType), parameter :: dbgFlength = 3_intType
+        integer(kind=intType), parameter :: dbgRturb = 4_intType
+        integer(kind=intType), parameter :: dbgReThetaTarget = 5_intType
+        integer(kind=intType), parameter :: dbgReS = 6_intType
+        integer(kind=intType), parameter :: dbgReThetaC = 7_intType
+        integer(kind=intType), parameter :: dbgReSOverCrit = 8_intType
+        integer(kind=intType), parameter :: dbgStrainMag = 9_intType
+        integer(kind=intType), parameter :: dbgFthetaT = 10_intType
+        integer(kind=intType), parameter :: dbgFwake = 11_intType
+        integer(kind=intType), parameter :: dbgDudx = 12_intType
+        integer(kind=intType), parameter :: dbgDudy = 13_intType
+        integer(kind=intType), parameter :: dbgDudz = 14_intType
+        integer(kind=intType), parameter :: dbgDvdx = 15_intType
+        integer(kind=intType), parameter :: dbgDvdy = 16_intType
+        integer(kind=intType), parameter :: dbgDvdz = 17_intType
+        integer(kind=intType), parameter :: dbgDwdx = 18_intType
+        integer(kind=intType), parameter :: dbgDwdy = 19_intType
+        integer(kind=intType), parameter :: dbgDwdz = 20_intType
+        integer(kind=intType), parameter :: dbgGamma = 21_intType
+        integer(kind=intType), parameter :: dbgWallDist = 22_intType
+        integer(kind=intType), parameter :: dbgRho = 23_intType
+        integer(kind=intType), parameter :: dbgMu = 24_intType
 
         ! Local variables.
         integer(kind=intType) :: i, j, k, nn, ii
@@ -129,6 +153,8 @@ contains
         real(kind=realType) :: thetaBL, deltaBL, fWake_val, fThetaT
         real(kind=realType) :: pReTheta, yDist
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
+        real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
+        real(kind=realType) :: dwdx, dwdy, dwdz
 
 
 
@@ -429,6 +455,43 @@ contains
                                    * (one - fThetaT)
 
                         scratch(i, j, k, idvt + 2) = pReTheta
+
+                        if (associated(transitionDebug)) then
+                            dudx = two * fact * uux
+                            dudy = two * fact * uuy
+                            dudz = two * fact * uuz
+                            dvdx = two * fact * vvx
+                            dvdy = two * fact * vvy
+                            dvdz = two * fact * vvz
+                            dwdx = two * fact * wwx
+                            dwdy = two * fact * wwy
+                            dwdz = two * fact * wwz
+
+                            transitionDebug(i, j, k, dbgFonset) = fOnset
+                            transitionDebug(i, j, k, dbgFonset1) = fOnset1
+                            transitionDebug(i, j, k, dbgFlength) = fLength_val
+                            transitionDebug(i, j, k, dbgRturb) = rTurb
+                            transitionDebug(i, j, k, dbgReThetaTarget) = reThetaT_target
+                            transitionDebug(i, j, k, dbgReS) = reS_val
+                            transitionDebug(i, j, k, dbgReThetaC) = reThetaC_val
+                            transitionDebug(i, j, k, dbgReSOverCrit) = reS_val / (rsaGRfonsetC * reThetaC_val)
+                            transitionDebug(i, j, k, dbgStrainMag) = strainMag
+                            transitionDebug(i, j, k, dbgFthetaT) = fThetaT
+                            transitionDebug(i, j, k, dbgFwake) = fWake_val
+                            transitionDebug(i, j, k, dbgDudx) = dudx
+                            transitionDebug(i, j, k, dbgDudy) = dudy
+                            transitionDebug(i, j, k, dbgDudz) = dudz
+                            transitionDebug(i, j, k, dbgDvdx) = dvdx
+                            transitionDebug(i, j, k, dbgDvdy) = dvdy
+                            transitionDebug(i, j, k, dbgDvdz) = dvdz
+                            transitionDebug(i, j, k, dbgDwdx) = dwdx
+                            transitionDebug(i, j, k, dbgDwdy) = dwdy
+                            transitionDebug(i, j, k, dbgDwdz) = dwdz
+                            transitionDebug(i, j, k, dbgGamma) = w(i, j, k, itu2)
+                            transitionDebug(i, j, k, dbgWallDist) = yDist
+                            transitionDebug(i, j, k, dbgRho) = w(i, j, k, irho)
+                            transitionDebug(i, j, k, dbgMu) = rlv(i, j, k)
+                        end if
 
 #ifndef USE_TAPENADE
                         ! Compute some derivatives w.r.t. nuTilde. These will occur

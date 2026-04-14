@@ -419,7 +419,7 @@ contains
         use constants
         use block, only: flowDoms, nDOm
         use flowVarRefState, only: nw, nwf, nt1, nt2
-        use inputPhysics, only: equationMode, gammaConstant
+        use inputPhysics, only: equationMode, gammaConstant, turbModel
         use inputUnsteady, only: timeIntegrationScheme
         use inputIteration, only: mgStartLevel, turbTreatment
         use iteration, only: nOldLevels
@@ -433,6 +433,7 @@ contains
         !      Local variables.
         !
         integer :: ierr
+        integer(kind=intType), parameter :: nSaGrDebugVars = 24_intType
 
         integer(kind=intType) :: nn
         integer(kind=intType) :: il, jl, kl, ie, je, ke, ib, jb, kb
@@ -515,6 +516,15 @@ contains
                 call terminate("allocMemFlovarPart1", &
                                "Memory allocation failure for rev")
             !endif
+
+            if (turbModel == spalartallmarasnoft2gammaretheta) then
+                allocate (flowDoms(nn, level, sps)%transitionDebug(2:il, 2:jl, 2:kl, 1:nSaGrDebugVars), &
+                          stat=ierr)
+                if (ierr /= 0) &
+                    call terminate("allocMemFlovarPart1", &
+                                   "Memory allocation failure for transitionDebug")
+                flowDoms(nn, level, sps)%transitionDebug = zero
+            end if
 
             ! If this is the finest grid some more memory must be allocated.
 
