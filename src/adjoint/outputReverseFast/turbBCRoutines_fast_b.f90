@@ -308,9 +308,9 @@ bocos:do nn=1,nbocos
 ! sa-gamma-retheta model:
 ! nu~ and retheta use linear extrapolation with
 ! prescribed freestream value at the face.
-! gamma is dirichlet zero (gamma_g = -gamma_i).
-! since winf(itu2) = 0, bvt = 2*0 = 0 and bmt = 1
-! gives ghost = -interior, enforcing gamma = 0 at face.
+! gamma is dirichlet one (gamma_g = 2*1 - gamma_i).
+! since winf(itu2) = 1, bvt = 2*1 = 2 and bmt = 1
+! gives ghost = 2 - interior, enforcing gamma = 1 at face.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 

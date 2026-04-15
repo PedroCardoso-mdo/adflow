@@ -1,49 +1,17 @@
+
+
+
+
+
+
+
+
+
+
+
 module turbBCRoutines
 
 contains
-#ifndef USE_TAPENADE
-    subroutine applyAllTurbBC(secondHalo)
-        !
-        !       applyAllTurbBC applies all boundary conditions to the
-        !       turbulent transport equations for the all blocks on the grid
-        !       level currentLevel.
-        !
-        use constants
-        use blockPointers
-        use inputTimeSpectral
-        use iteration
-        use utils, only: setPointers
-        implicit none
-        !
-        !      Subroutine arguments.
-        !
-        logical, intent(in) :: secondHalo
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: nn, sps
-
-        ! Loop over the number of spectral modes and local blocks.
-
-        do sps = 1, nTimeIntervalsSpectral
-            do nn = 1, nDom
-
-                ! Set the pointers to this block. The min function is present
-                ! because this routine can be called from movfin.
-
-                call setPointers(nn, min(currentLevel, groundLevel), sps)
-
-                ! Set the arrays for the boundary condition treatment
-                ! and set the turbulent halo values.
-
-                call bcTurbTreatment
-                call applyAllTurbBCThisBlock(secondHalo)
-
-            end do
-        end do
-
-    end subroutine applyAllTurbBC
-#endif
     !      ==================================================================
 
     subroutine applyAllTurbBCThisBlock(secondHalo)
@@ -78,51 +46,6 @@ contains
             ! the turbulent halo cells.
 
             if (wallFunctions) then
-#ifndef USE_TAPENADE
-                ! Determine the block face on which this subface is located
-                ! and set some pointers accordingly.
-
-                select case (BCFaceID(nn))
-                case (iMin)
-                    bmt => bmti1; bvt => bvti1
-                    ww1 => w(1, 1:, 1:, :); ww2 => w(2, 1:, 1:, :)
-
-                case (iMax)
-                    bmt => bmti2; bvt => bvti2
-                    ww1 => w(ie, 1:, 1:, :); ww2 => w(il, 1:, 1:, :)
-
-                case (jMin)
-                    bmt => bmtj1; bvt => bvtj1
-                    ww1 => w(1:, 1, 1:, :); ww2 => w(1:, 2, 1:, :)
-
-                case (jMax)
-                    bmt => bmtj2; bvt => bvtj2
-                    ww1 => w(1:, je, 1:, :); ww2 => w(1:, jl, 1:, :)
-
-                case (kMin)
-                    bmt => bmtk1; bvt => bvtk1
-                    ww1 => w(1:, 1:, 1, :); ww2 => w(1:, 1:, 2, :)
-
-                case (kMax)
-                    bmt => bmtk2; bvt => bvtk2
-                    ww1 => w(1:, 1:, ke, :); ww2 => w(1:, 1:, kl, :)
-                end select
-
-                ! Write an approximate value into the halo cell for
-                ! postprocessing (it is not used in computation).
-
-                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
-                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
-                        do l = nt1, nt2
-                            ww1(i, j, l) = bvt(i, j, l) - bmt(i, j, l, l) * ww2(i, j, l)
-                            do m = nt1, nt2
-                                if (m /= l .and. bmt(i, j, l, m) /= zero) &
-                                    ww1(i, j, l) = ww2(i, j, l)
-                            end do
-                        end do
-                    end do
-                end do
-#endif
             else
 
                 select case (BCFaceID(nn))
@@ -781,25 +704,6 @@ contains
             call bcTurbWall(nn)
 
             !=============================================================
-#ifndef USE_TAPENADE
-            case (SubsonicInflow, SupersonicInflow, MassBleedInflow)
-
-            ! Inflow. Subsonic, supersonic or mass bleed inflow is
-            ! identical for the turbulent transport equations.
-
-            call bcTurbInflow(nn)
-
-            !=============================================================
-
-            case (SubsonicOutflow, SupersonicOutflow, &
-                  MassBleedOutflow, Extrap)
-
-            ! Outflow. Subsonic, supersonic or mass bleed outflow is
-            ! identical for the turbulent transport equations. The
-            ! extrapolation boundary is also an outflow.
-
-            call bcTurbOutflow(nn)
-#endif
             !=============================================================
 
             case (Symm, SymmPolar, EulerWall)
@@ -1166,71 +1070,6 @@ contains
             end select
 
             !        ================================================================
-#ifndef USE_TAPENADE
-        case (v2f)
-
-            ! Set some variables depending on the block face on which the
-            ! subface is located. Needed for a general treatment.
-
-            select case (BCFaceID(nn))
-            case (iMin)
-                iiMax = jl; jjMax = kl
-                bmt => bmti1; bvt => bvti1; ww2 => w(2, 1:, 1:, :)
-                rlv2 => rlv(2, 1:, 1:); dd2Wall => d2Wall(2, :, :)
-
-            case (iMax)
-                iiMax = jl; jjMax = kl
-                bmt => bmti2; bvt => bvti2; ww2 => w(il, 1:, 1:, :)
-                rlv2 => rlv(il, 1:, 1:); dd2Wall => d2Wall(il, :, :)
-
-            case (jMin)
-                iiMax = il; jjMax = kl
-                bmt => bmtj1; bvt => bvtj1; ww2 => w(1:, 2, 1:, :)
-                rlv2 => rlv(1:, 2, 1:); dd2Wall => d2Wall(:, 2, :)
-
-            case (jMax)
-                iiMax = il; jjMax = kl
-                bmt => bmtj2; bvt => bvtj2; ww2 => w(1:, jl, 1:, :)
-                rlv2 => rlv(1:, jl, 1:); dd2Wall => d2Wall(:, jl, :)
-
-            case (kMin)
-                iiMax = il; jjMax = jl
-                bmt => bmtk1; bvt => bvtk1; ww2 => w(1:, 1:, 2, :)
-                rlv2 => rlv(1:, 1:, 2); dd2Wall => d2Wall(:, :, 2)
-
-            case (kMax)
-                iiMax = il; jjMax = jl
-                bmt => bmtk2; bvt => bvtk2; ww2 => w(1:, 1:, kl, :)
-                rlv2 => rlv(1:, 1:, kl); dd2Wall => d2Wall(:, :, kl)
-            end select
-
-            ! V2f turbulence model. Same story for the wall distance as
-            ! for k-omega. For this model there is a coupling between the
-            ! equations via the boundary conditions.
-
-            do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
-                jj = max(2, min(j, jjMax))
-
-                do i = BCData(nn)%icBeg, BCData(nn)%icEnd
-                    ii = max(2, min(i, iiMax))
-
-                    nu = rlv2(i, j) / ww2(i, j, irho)
-                    tmpd = one / (dd2Wall(ii - 1, jj - 1)**2)
-                    tmpe = two * nu * tmpd
-                    tmpf = -20.0_realType * (nu * tmpd)**2 &
-                           / abs(tmpe * ww2(i, j, itu1))
-                    if (rvfN == 6) tmpf = zero
-
-                    bmt(i, j, itu1, itu1) = one
-                    bmt(i, j, itu2, itu2) = one
-                    bmt(i, j, itu3, itu3) = one
-                    bmt(i, j, itu4, itu4) = one
-
-                    bmt(i, j, itu2, itu1) = -two * tmpe
-                    bmt(i, j, itu4, itu3) = -two * tmpf
-                end do
-            end do
-#endif
         end select
     end subroutine bcTurbWall
 

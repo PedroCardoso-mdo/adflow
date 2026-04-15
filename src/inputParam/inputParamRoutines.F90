@@ -2603,6 +2603,8 @@ contains
         volWriteFlength = .false.
         volWriteRturb = .false.
         volWriteReThetaTarget = .false.
+        volWriteGammaProd = .false.
+        volWriteGammaDest = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2832,6 +2834,14 @@ contains
 
             case ("fwake")
                 volWriteFwake = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("gammaprod")
+                volWriteGammaProd = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("gammadest")
+                volWriteGammaDest = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default

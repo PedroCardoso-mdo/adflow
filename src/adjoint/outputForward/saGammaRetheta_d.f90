@@ -85,6 +85,32 @@ contains
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
+    integer(kind=inttype), parameter :: dbgfonset=1_inttype
+    integer(kind=inttype), parameter :: dbgfonset1=2_inttype
+    integer(kind=inttype), parameter :: dbgflength=3_inttype
+    integer(kind=inttype), parameter :: dbgrturb=4_inttype
+    integer(kind=inttype), parameter :: dbgrethetatarget=5_inttype
+    integer(kind=inttype), parameter :: dbgres=6_inttype
+    integer(kind=inttype), parameter :: dbgrethetac=7_inttype
+    integer(kind=inttype), parameter :: dbgresovercrit=8_inttype
+    integer(kind=inttype), parameter :: dbgstrainmag=9_inttype
+    integer(kind=inttype), parameter :: dbgfthetat=10_inttype
+    integer(kind=inttype), parameter :: dbgfwake=11_inttype
+    integer(kind=inttype), parameter :: dbgdudx=12_inttype
+    integer(kind=inttype), parameter :: dbgdudy=13_inttype
+    integer(kind=inttype), parameter :: dbgdudz=14_inttype
+    integer(kind=inttype), parameter :: dbgdvdx=15_inttype
+    integer(kind=inttype), parameter :: dbgdvdy=16_inttype
+    integer(kind=inttype), parameter :: dbgdvdz=17_inttype
+    integer(kind=inttype), parameter :: dbgdwdx=18_inttype
+    integer(kind=inttype), parameter :: dbgdwdy=19_inttype
+    integer(kind=inttype), parameter :: dbgdwdz=20_inttype
+    integer(kind=inttype), parameter :: dbggamma=21_inttype
+    integer(kind=inttype), parameter :: dbgwalldist=22_inttype
+    integer(kind=inttype), parameter :: dbgrho=23_inttype
+    integer(kind=inttype), parameter :: dbgmu=24_inttype
+    integer(kind=inttype), parameter :: dbggammaprod=25_inttype
+    integer(kind=inttype), parameter :: dbggammadest=26_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -132,24 +158,34 @@ contains
     real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
     real(kind=realtype) :: velmagd, velmag2d, timescaled, &
 &   rethetat_targetd
-    real(kind=realtype) :: thetabl, deltabl, fwake_val, fthetat
-    real(kind=realtype) :: thetabld, deltabld, fwake_vald, fthetatd
+    real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
+    real(kind=realtype) :: thetabld, deltabld, deltad, fwake_vald, &
+&   fthetatd
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: prethetad, ydistd
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: uxhatd, uyhatd, uzhatd, dudsd, &
 &   lambdathetalocald
+    real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
+    real(kind=realtype) :: dwdx, dwdy, dwdz
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
     intrinsic tanh
+    intrinsic associated
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
     real(kind=realtype) :: x1
     real(kind=realtype) :: x1d
     real(kind=realtype) :: x2
     real(kind=realtype) :: x2d
+    real(kind=realtype) :: x3
+    real(kind=realtype) :: x3d
+    real(kind=realtype) :: x4
+    real(kind=realtype) :: x4d
+    real(kind=realtype) :: x5
+    real(kind=realtype) :: x5d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -197,7 +233,7 @@ contains
     real(kind=realtype) :: temp8
     real(kind=realtype) :: temp9
     real(kind=realtype) :: temp10
-    real(kind=realtype) :: tmpresult
+    real(kind=8) :: temp11
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -566,14 +602,20 @@ contains
             termfw = temp10**sixth
             fwsad = termfw*ggd + gg*termfwd
             fwsa = gg*termfw
-! compute the source term; some terms are saved for the
-! linearization. the source term is stored in scratch.
-! smoothly clamp gamma to [0, 1] for sa production coupling.
-            gammaforsad = smoothminmax_d(w(i, j, k, itu2), wd(i, j, k, &
-&             itu2), zero, 0.0_8, rsagrsmoothp, gammaforsa)
-            gammaforsad = smoothminmax_d(gammaforsa, gammaforsad, one, &
-&             0.0_8, -rsagrsmoothp, tmpresult)
-            gammaforsa = tmpresult
+            if (w(i, j, k, itu2) .lt. zero) then
+              x1 = zero
+              x1d = 0.0_8
+            else
+              x1d = wd(i, j, k, itu2)
+              x1 = w(i, j, k, itu2)
+            end if
+            if (x1 .gt. one) then
+              gammaforsa = one
+              gammaforsad = 0.0_8
+            else
+              gammaforsad = x1d
+              gammaforsa = x1
+            end if
             if (approxsa) then
               term1 = zero
               term1d = 0.0_8
@@ -640,15 +682,15 @@ contains
             sxz = fact*(uuz+wwx)
             syzd = (vvz+wwy)*factd + fact*(vvzd+wwyd)
             syz = fact*(vvz+wwy)
-            x1d = two*(2*sxy*sxyd+2*sxz*sxzd+2*syz*syzd) + 2*sxx*sxxd + &
+            x2d = two*(2*sxy*sxyd+2*sxz*sxzd+2*syz*syzd) + 2*sxx*sxxd + &
 &             2*syy*syyd + 2*szz*szzd
-            x1 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
-            if (x1 .lt. xminn) then
+            x2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
+            if (x2 .lt. xminn) then
               max2 = xminn
               max2d = 0.0_8
             else
-              max2d = x1d
-              max2 = x1
+              max2d = x2d
+              max2 = x2
             end if
             temp10 = sqrt(max2)
             if (max2 .eq. 0.0_8) then
@@ -670,15 +712,22 @@ contains
             end if
             rturbd = (nutsad-nutsa*max3d/max3)/max3
             rturb = nutsa/max3
-            if (w(i, j, k, itu2) .lt. zero) then
-              gammalocal = zero
+            if (w(i, j, k, itu2) .lt. rsagrgammalo) then
+              x3 = rsagrgammalo
+              x3d = 0.0_8
+            else
+              x3d = wd(i, j, k, itu2)
+              x3 = w(i, j, k, itu2)
+            end if
+            if (x3 .gt. one) then
+              gammalocal = one
               gammalocald = 0.0_8
             else
-              gammalocald = wd(i, j, k, itu2)
-              gammalocal = w(i, j, k, itu2)
+              gammalocald = x3d
+              gammalocal = x3
             end if
-            if (w(i, j, k, itu3) .lt. xminn) then
-              rethetatilde = xminn
+            if (w(i, j, k, itu3) .lt. one) then
+              rethetatilde = one
               rethetatilded = 0.0_8
             else
               rethetatilded = wd(i, j, k, itu3)
@@ -711,14 +760,14 @@ contains
               velmagd = max4d/(2.0*temp10)
             end if
             velmag = temp10
-            if (machcoef*reynolds .lt. xminn) then
+            if (mach*reynolds .lt. xminn) then
               max5 = xminn
             else
-              max5 = machcoef*reynolds
+              max5 = mach*reynolds
             end if
 ! --- vorticity limiting ---
             result1 = sqrt(max5)
-            vortlim = machcoef*result1/20.0_realtype
+            vortlim = mach*result1/20.0_realtype
             vortlimd = 0.0_8
             vortmaglimd = smoothminmax_d(vortmag, vortmagd, vortlim, &
 &             vortlimd, rsagrvortlimp, vortmaglim)
@@ -744,21 +793,21 @@ contains
             else
               rethetac_val = rethetac_val
             end if
-            temp10 = res_val/(rsagrfonsetc*rethetac_val)
-            arg1d = 2*temp10*(res_vald-temp10*rsagrfonsetc*rethetac_vald&
-&             )/(rsagrfonsetc*rethetac_val) + 2*rturb*rturbd
+            temp10 = res_val/(2.6_realtype*rethetac_val)
+            arg1d = 2*temp10*(res_vald-temp10*2.6_realtype*rethetac_vald&
+&             )/(2.6_realtype*rethetac_val) + 2*rturb*rturbd
             arg1 = temp10*temp10 + rturb*rturb
-            temp10 = sqrt(arg1)
+            temp11 = sqrt(arg1)
             if (arg1 .eq. 0.0_8) then
               fonset1d = 0.0_8
             else
-              fonset1d = arg1d/(2.0*temp10)
+              fonset1d = arg1d/(2.0*temp11)
             end if
-            fonset1 = temp10
-            arg1d = rsagrfonsetk*fonset1d
-            arg1 = rsagrfonsetk*(fonset1-rsagrfonsets)
-            fonsetd = half*(1.0-tanh(arg1)**2)*arg1d
-            fonset = (tanh(arg1)+one)*half
+            fonset1 = temp11
+            fonsetd = half*(1.0-tanh(6.0_realtype*(fonset1-1.35_realtype&
+&             ))**2)*6.0_realtype*fonset1d
+            fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*&
+&             half
 ! --- flength and fturb (modified) ---
             flength_vald = flengthcorrelation_d(rethetatilde, &
 &             rethetatilded, flength_val)
@@ -792,15 +841,17 @@ contains
 &             vortmaglim*fturb_vald+fturb_val*vortmaglimd)+fturb_val*&
 &             vortmaglim*gammalocald)+temp10*rsagrce2*gammalocald)
             egamma = rsagrca2*(temp10*(rsagrce2*gammalocal-one))
-            scratchd(i, j, k, idvt+1) = pgammad - egammad
-            scratch(i, j, k, idvt+1) = pgamma - egamma
-            if (w(i, j, k, irho)*velmag2 .lt. xminn) then
+            scratchd(i, j, k, idvt+1) = pgammad - 1e6_realtype*egammad
+            scratch(i, j, k, idvt+1) = pgamma - 1e6_realtype*egamma
+            temp10 = w(i, j, k, irho)
+            x4d = reynolds*(velmag2*wd(i, j, k, irho)+temp10*velmag2d)
+            x4 = reynolds*(temp10*velmag2)
+            if (x4 .lt. xminn) then
               max8 = xminn
               max8d = 0.0_8
             else
-              temp10 = w(i, j, k, irho)
-              max8d = velmag2*wd(i, j, k, irho) + temp10*velmag2d
-              max8 = temp10*velmag2
+              max8d = x4d
+              max8 = x4
             end if
 ! --- retheta production (relaxation toward correlation) ---
             temp10 = rlv(i, j, k)/max8
@@ -888,6 +939,10 @@ contains
             rethetat_targetd = rethetatcorrelation_d(turbintensityinf*&
 &             100.0_realtype, lambdathetalocal, lambdathetalocald, &
 &             rethetat_target)
+! ftheta_t shielding: shields bl interior, allows
+! freestream to drive retheta toward correlation value
+            deltabld = 7.5_realtype*thetabld
+            deltabl = 7.5_realtype*thetabl
             if (velmag .lt. xminn) then
               max14 = xminn
               max14d = 0.0_8
@@ -895,33 +950,31 @@ contains
               max14d = velmagd
               max14 = velmag
             end if
-! ftheta_t shielding: shields bl interior, allows
-! freestream to drive retheta toward correlation value
-            temp10 = thetabl/max14
-            deltabld = 375.0_realtype*(temp10*(ydist*vortmagd+vortmag*&
-&             ydistd)+vortmag*ydist*(thetabld-temp10*max14d)/max14)
-            deltabl = 375.0_realtype*(vortmag*ydist*temp10)
-            if (deltabl .lt. xminn) then
-              deltabl = xminn
-              deltabld = 0.0_8
+            temp10 = deltabl/max14
+            deltad = 50.0_realtype*(temp10*(vortmag*ydistd+ydist*&
+&             vortmagd)+ydist*vortmag*(deltabld-temp10*max14d)/max14)
+            delta = 50.0_realtype*(ydist*vortmag*temp10)
+            if (delta .lt. xminn) then
+              delta = xminn
+              deltad = 0.0_8
             else
-              deltabl = deltabl
+              delta = delta
             end if
             fwake_vald = -(exp(-(res_val/1.0e6_realtype))*res_vald/&
 &             1.0e6_realtype)
             fwake_val = exp(-(res_val/1.0e6_realtype))
-            temp10 = ydist/deltabl
-            arg1d = -(4*temp10**3*(ydistd-temp10*deltabld)/deltabl)
+            temp10 = ydist/delta
+            arg1d = -(4*temp10**3*(ydistd-temp10*deltad)/delta)
             arg1 = -(temp10**4)
             temp10 = exp(arg1)
-            x2d = temp10*fwake_vald + fwake_val*exp(arg1)*arg1d
-            x2 = fwake_val*temp10
-            if (x2 .gt. one) then
+            x5d = temp10*fwake_vald + fwake_val*exp(arg1)*arg1d
+            x5 = fwake_val*temp10
+            if (x5 .gt. one) then
               fthetat = one
               fthetatd = 0.0_8
             else
-              fthetatd = x2d
-              fthetat = x2
+              fthetatd = x5d
+              fthetat = x5
             end if
             if (timescale .lt. xminn) then
               max15 = xminn
@@ -936,6 +989,45 @@ contains
             pretheta = rsagrcthetat*(temp10*(one-fthetat))
             scratchd(i, j, k, idvt+2) = prethetad
             scratch(i, j, k, idvt+2) = pretheta
+            if (associated(transitiondebug)) then
+              dudx = two*fact*uux
+              dudy = two*fact*uuy
+              dudz = two*fact*uuz
+              dvdx = two*fact*vvx
+              dvdy = two*fact*vvy
+              dvdz = two*fact*vvz
+              dwdx = two*fact*wwx
+              dwdy = two*fact*wwy
+              dwdz = two*fact*wwz
+              transitiondebug(i, j, k, dbgfonset) = fonset
+              transitiondebug(i, j, k, dbgfonset1) = fonset1
+              transitiondebug(i, j, k, dbgflength) = flength_val
+              transitiondebug(i, j, k, dbgrturb) = rturb
+              transitiondebug(i, j, k, dbgrethetatarget) = &
+&               rethetat_target
+              transitiondebug(i, j, k, dbgres) = res_val
+              transitiondebug(i, j, k, dbgrethetac) = rethetac_val
+              transitiondebug(i, j, k, dbgresovercrit) = res_val/(&
+&               2.6_realtype*rethetac_val)
+              transitiondebug(i, j, k, dbgstrainmag) = strainmag
+              transitiondebug(i, j, k, dbgfthetat) = fthetat
+              transitiondebug(i, j, k, dbgfwake) = fwake_val
+              transitiondebug(i, j, k, dbgdudx) = dudx
+              transitiondebug(i, j, k, dbgdudy) = dudy
+              transitiondebug(i, j, k, dbgdudz) = dudz
+              transitiondebug(i, j, k, dbgdvdx) = dvdx
+              transitiondebug(i, j, k, dbgdvdy) = dvdy
+              transitiondebug(i, j, k, dbgdvdz) = dvdz
+              transitiondebug(i, j, k, dbgdwdx) = dwdx
+              transitiondebug(i, j, k, dbgdwdy) = dwdy
+              transitiondebug(i, j, k, dbgdwdz) = dwdz
+              transitiondebug(i, j, k, dbggamma) = w(i, j, k, itu2)
+              transitiondebug(i, j, k, dbgwalldist) = ydist
+              transitiondebug(i, j, k, dbgrho) = w(i, j, k, irho)
+              transitiondebug(i, j, k, dbgmu) = rlv(i, j, k)
+              transitiondebug(i, j, k, dbggammaprod) = pgamma
+              transitiondebug(i, j, k, dbggammadest) = egamma
+            end if
           end do
         end do
       end do
@@ -961,6 +1053,32 @@ contains
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
+    integer(kind=inttype), parameter :: dbgfonset=1_inttype
+    integer(kind=inttype), parameter :: dbgfonset1=2_inttype
+    integer(kind=inttype), parameter :: dbgflength=3_inttype
+    integer(kind=inttype), parameter :: dbgrturb=4_inttype
+    integer(kind=inttype), parameter :: dbgrethetatarget=5_inttype
+    integer(kind=inttype), parameter :: dbgres=6_inttype
+    integer(kind=inttype), parameter :: dbgrethetac=7_inttype
+    integer(kind=inttype), parameter :: dbgresovercrit=8_inttype
+    integer(kind=inttype), parameter :: dbgstrainmag=9_inttype
+    integer(kind=inttype), parameter :: dbgfthetat=10_inttype
+    integer(kind=inttype), parameter :: dbgfwake=11_inttype
+    integer(kind=inttype), parameter :: dbgdudx=12_inttype
+    integer(kind=inttype), parameter :: dbgdudy=13_inttype
+    integer(kind=inttype), parameter :: dbgdudz=14_inttype
+    integer(kind=inttype), parameter :: dbgdvdx=15_inttype
+    integer(kind=inttype), parameter :: dbgdvdy=16_inttype
+    integer(kind=inttype), parameter :: dbgdvdz=17_inttype
+    integer(kind=inttype), parameter :: dbgdwdx=18_inttype
+    integer(kind=inttype), parameter :: dbgdwdy=19_inttype
+    integer(kind=inttype), parameter :: dbgdwdz=20_inttype
+    integer(kind=inttype), parameter :: dbggamma=21_inttype
+    integer(kind=inttype), parameter :: dbgwalldist=22_inttype
+    integer(kind=inttype), parameter :: dbgrho=23_inttype
+    integer(kind=inttype), parameter :: dbgmu=24_inttype
+    integer(kind=inttype), parameter :: dbggammaprod=25_inttype
+    integer(kind=inttype), parameter :: dbggammadest=26_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -986,17 +1104,23 @@ contains
     real(kind=realtype) :: vortlim, vortmaglim
     real(kind=realtype) :: pgamma, egamma
     real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
-    real(kind=realtype) :: thetabl, deltabl, fwake_val, fthetat
+    real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
+    real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
+    real(kind=realtype) :: dwdx, dwdy, dwdz
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
     intrinsic tanh
+    intrinsic associated
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
+    real(kind=realtype) :: x3
+    real(kind=realtype) :: x4
+    real(kind=realtype) :: x5
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1157,12 +1281,16 @@ contains
             gg6 = gg**6
             termfw = ((one+cw36)/(gg6+cw36))**sixth
             fwsa = gg*termfw
-! compute the source term; some terms are saved for the
-! linearization. the source term is stored in scratch.
-! smoothly clamp gamma to [0, 1] for sa production coupling.
-            gammaforsa = smoothminmax(w(i, j, k, itu2), zero, &
-&             rsagrsmoothp)
-            gammaforsa = smoothminmax(gammaforsa, one, -rsagrsmoothp)
+            if (w(i, j, k, itu2) .lt. zero) then
+              x1 = zero
+            else
+              x1 = w(i, j, k, itu2)
+            end if
+            if (x1 .gt. one) then
+              gammaforsa = one
+            else
+              gammaforsa = x1
+            end if
             if (approxsa) then
               term1 = zero
             else
@@ -1197,11 +1325,11 @@ contains
             sxy = fact*(uuy+vvx)
             sxz = fact*(uuz+wwx)
             syz = fact*(vvz+wwy)
-            x1 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
-            if (x1 .lt. xminn) then
+            x2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
+            if (x2 .lt. xminn) then
               max2 = xminn
             else
-              max2 = x1
+              max2 = x2
             end if
             strainmag = sqrt(max2)
 ! --- local variables ---
@@ -1212,13 +1340,18 @@ contains
               max3 = nu
             end if
             rturb = nutsa/max3
-            if (w(i, j, k, itu2) .lt. zero) then
-              gammalocal = zero
+            if (w(i, j, k, itu2) .lt. rsagrgammalo) then
+              x3 = rsagrgammalo
             else
-              gammalocal = w(i, j, k, itu2)
+              x3 = w(i, j, k, itu2)
             end if
-            if (w(i, j, k, itu3) .lt. xminn) then
-              rethetatilde = xminn
+            if (x3 .gt. one) then
+              gammalocal = one
+            else
+              gammalocal = x3
+            end if
+            if (w(i, j, k, itu3) .lt. one) then
+              rethetatilde = one
             else
               rethetatilde = w(i, j, k, itu3)
             end if
@@ -1235,14 +1368,14 @@ contains
               max4 = velmag2
             end if
             velmag = sqrt(max4)
-            if (machcoef*reynolds .lt. xminn) then
+            if (mach*reynolds .lt. xminn) then
               max5 = xminn
             else
-              max5 = machcoef*reynolds
+              max5 = mach*reynolds
             end if
 ! --- vorticity limiting ---
             result1 = sqrt(max5)
-            vortlim = machcoef*result1/20.0_realtype
+            vortlim = mach*result1/20.0_realtype
             vortmaglim = smoothminmax(vortmag, vortlim, rsagrvortlimp)
             if (rlv(i, j, k) .lt. xminn) then
               max6 = xminn
@@ -1257,10 +1390,10 @@ contains
             else
               rethetac_val = rethetac_val
             end if
-            arg1 = (res_val/(rsagrfonsetc*rethetac_val))**2 + rturb**2
+            arg1 = (res_val/(2.6_realtype*rethetac_val))**2 + rturb**2
             fonset1 = sqrt(arg1)
-            arg1 = rsagrfonsetk*(fonset1-rsagrfonsets)
-            fonset = (tanh(arg1)+one)*half
+            fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*&
+&             half
 ! --- flength and fturb (modified) ---
             flength_val = flengthcorrelation(rethetatilde)
             fturb_val = (one-fonset)*exp(-rturb)
@@ -1275,11 +1408,12 @@ contains
 &             -rsagrce1*gammalocal)
             egamma = rsagrca2*fturb_val*vortmaglim*gammalocal*(rsagrce2*&
 &             gammalocal-one)
-            scratch(i, j, k, idvt+1) = pgamma - egamma
-            if (w(i, j, k, irho)*velmag2 .lt. xminn) then
+            scratch(i, j, k, idvt+1) = pgamma - 1e6_realtype*egamma
+            x4 = w(i, j, k, irho)*velmag2*reynolds
+            if (x4 .lt. xminn) then
               max8 = xminn
             else
-              max8 = w(i, j, k, irho)*velmag2
+              max8 = x4
             end if
 ! --- retheta production (relaxation toward correlation) ---
             timescale = 500.0_realtype*rlv(i, j, k)/max8
@@ -1330,26 +1464,27 @@ contains
             end if
             rethetat_target = rethetatcorrelation(turbintensityinf*&
 &             100.0_realtype, lambdathetalocal)
+! ftheta_t shielding: shields bl interior, allows
+! freestream to drive retheta toward correlation value
+            deltabl = 7.5_realtype*thetabl
             if (velmag .lt. xminn) then
               max14 = xminn
             else
               max14 = velmag
             end if
-! ftheta_t shielding: shields bl interior, allows
-! freestream to drive retheta toward correlation value
-            deltabl = 375.0_realtype*vortmag*ydist*thetabl/max14
-            if (deltabl .lt. xminn) then
-              deltabl = xminn
+            delta = 50.0_realtype*ydist*vortmag*deltabl/max14
+            if (delta .lt. xminn) then
+              delta = xminn
             else
-              deltabl = deltabl
+              delta = delta
             end if
             fwake_val = exp(-(res_val/1.0e6_realtype))
-            arg1 = -((ydist/deltabl)**4)
-            x2 = fwake_val*exp(arg1)
-            if (x2 .gt. one) then
+            arg1 = -((ydist/delta)**4)
+            x5 = fwake_val*exp(arg1)
+            if (x5 .gt. one) then
               fthetat = one
             else
-              fthetat = x2
+              fthetat = x5
             end if
             if (timescale .lt. xminn) then
               max15 = xminn
@@ -1359,6 +1494,45 @@ contains
             pretheta = rsagrcthetat/max15*(rethetat_target-rethetatilde)&
 &             *(one-fthetat)
             scratch(i, j, k, idvt+2) = pretheta
+            if (associated(transitiondebug)) then
+              dudx = two*fact*uux
+              dudy = two*fact*uuy
+              dudz = two*fact*uuz
+              dvdx = two*fact*vvx
+              dvdy = two*fact*vvy
+              dvdz = two*fact*vvz
+              dwdx = two*fact*wwx
+              dwdy = two*fact*wwy
+              dwdz = two*fact*wwz
+              transitiondebug(i, j, k, dbgfonset) = fonset
+              transitiondebug(i, j, k, dbgfonset1) = fonset1
+              transitiondebug(i, j, k, dbgflength) = flength_val
+              transitiondebug(i, j, k, dbgrturb) = rturb
+              transitiondebug(i, j, k, dbgrethetatarget) = &
+&               rethetat_target
+              transitiondebug(i, j, k, dbgres) = res_val
+              transitiondebug(i, j, k, dbgrethetac) = rethetac_val
+              transitiondebug(i, j, k, dbgresovercrit) = res_val/(&
+&               2.6_realtype*rethetac_val)
+              transitiondebug(i, j, k, dbgstrainmag) = strainmag
+              transitiondebug(i, j, k, dbgfthetat) = fthetat
+              transitiondebug(i, j, k, dbgfwake) = fwake_val
+              transitiondebug(i, j, k, dbgdudx) = dudx
+              transitiondebug(i, j, k, dbgdudy) = dudy
+              transitiondebug(i, j, k, dbgdudz) = dudz
+              transitiondebug(i, j, k, dbgdvdx) = dvdx
+              transitiondebug(i, j, k, dbgdvdy) = dvdy
+              transitiondebug(i, j, k, dbgdvdz) = dvdz
+              transitiondebug(i, j, k, dbgdwdx) = dwdx
+              transitiondebug(i, j, k, dbgdwdy) = dwdy
+              transitiondebug(i, j, k, dbgdwdz) = dwdz
+              transitiondebug(i, j, k, dbggamma) = w(i, j, k, itu2)
+              transitiondebug(i, j, k, dbgwalldist) = ydist
+              transitiondebug(i, j, k, dbgrho) = w(i, j, k, irho)
+              transitiondebug(i, j, k, dbgmu) = rlv(i, j, k)
+              transitiondebug(i, j, k, dbggammaprod) = pgamma
+              transitiondebug(i, j, k, dbggammadest) = egamma
+            end if
           end do
         end do
       end do
@@ -2517,11 +2691,10 @@ contains
 
   subroutine sagammarethetasolve(resonly)
 !
-!       point-implicit sa-gamma-retheta transport solve.
-!       the residual (source + advection + unsteady + viscous)
-!       is assembled for 3 equations and updates are applied
-!       using a point-implicit scheme (dividing by the diagonal
-!       of the jacobian qq), analogous to the sa dadi approach.
+!       coupled dd-adi sa-gamma-retheta transport solve.
+!       solves the 3-equation system using a diagonally-dominant
+!       alternating-direction-implicit scheme with full 3x3 block
+!       coupling, following the same pattern as the sst solver.
 !
     use blockpointers
     use constants
@@ -2529,6 +2702,7 @@ contains
     use inputiteration
     use inputphysics
     use paramturb
+    use turbutils_d, only : tdia3x3
     implicit none
 !
 !      subroutine arguments.
@@ -2537,63 +2711,520 @@ contains
 !
 !      local variables.
 !
-    integer(kind=inttype) :: i, j, k, m
-    real(kind=realtype) :: rblank, factor, delta, theta, wnew
-    intrinsic real
+    integer(kind=inttype) :: i, j, k
+! viscosity variables
+    real(kind=realtype) :: nu, nu_m, nu_p
+    real(kind=realtype) :: nut, nut_m, nut_p
+    real(kind=realtype) :: nu_tm, nu_tp
+    real(kind=realtype) :: nutilde, nutilde_m, nutilde_p
+    real(kind=realtype) :: chi, chi3, fv1
+    real(kind=realtype) :: chi_m, chi3_m, fv1_m
+    real(kind=realtype) :: chi_p, chi3_p, fv1_p
+! geometry terms
+    real(kind=realtype) :: voli, volmi, volpi
+    real(kind=realtype) :: xm, ym, zm, xp, yp, zp, xa, ya, za
+    real(kind=realtype) :: ttm, ttp
+! diffusion coefficients
+    real(kind=realtype) :: num_v, nup_v
+    real(kind=realtype) :: cdm, cdp
+    real(kind=realtype) :: cdm_gamma, cdp_gamma
+    real(kind=realtype) :: cdm_rt, cdp_rt
+! sa nonlinear correction
+    real(kind=realtype) :: cnud, cam, cap
+    real(kind=realtype) :: nutm, nutp
+! clipped diffusion coefficients
+    real(kind=realtype) :: c1m, c1p, c2m, c2p, c3m, c3p
+! advection
+    real(kind=realtype) :: qs, uu, um, up
+! constants
+    real(kind=realtype) :: cb3inv, cv13
+! misc
+    real(kind=realtype) :: rblank, factor
     intrinsic max
+! adi work arrays
+    real(kind=realtype), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
+    real(kind=realtype), dimension(3, 3, 2:max(il, jl, kl)) :: cc
+    intrinsic real
+    intrinsic min
+    real(kind=realtype) :: x1
     if (resonly) then
       return
     else
-! for implicit relaxation, scale the diagonal by the cfl factor
-! (same as sa's sasolve: factor = 1 + (1-alfa)/alfa).
+      cb3inv = one/rsacb3
+      cv13 = rsacv1**3
+! scale all 9 qq entries by the cfl factor.
+! for implicit relaxation: factor = 1 + (1-alfa)/alfa.
       factor = one
       if (turbrelax .eq. turbrelaximplicit) factor = one + (one-alfaturb&
 &         )/alfaturb
       do k=2,kl
         do j=2,jl
           do i=2,il
-            rblank = real(iblank(i, j, k), realtype)
-! scale the diagonal jacobian for cfl-based damping
             qq(i, j, k, 1, 1) = factor*qq(i, j, k, 1, 1)
+            qq(i, j, k, 1, 2) = factor*qq(i, j, k, 1, 2)
+            qq(i, j, k, 1, 3) = factor*qq(i, j, k, 1, 3)
+            qq(i, j, k, 2, 1) = factor*qq(i, j, k, 2, 1)
             qq(i, j, k, 2, 2) = factor*qq(i, j, k, 2, 2)
+            qq(i, j, k, 2, 3) = factor*qq(i, j, k, 2, 3)
+            qq(i, j, k, 3, 1) = factor*qq(i, j, k, 3, 1)
+            qq(i, j, k, 3, 2) = factor*qq(i, j, k, 3, 2)
             qq(i, j, k, 3, 3) = factor*qq(i, j, k, 3, 3)
-! sa equation: point-implicit update (divide by diagonal)
-            if (qq(i, j, k, 1, 1) .gt. zero) w(i, j, k, itu1) = w(i, j, &
-&               k, itu1) + scratch(i, j, k, idvt)*rblank/qq(i, j, k, 1, &
-&               1)
+          end do
+        end do
+      end do
+! initialize grid velocity to zero.
+      qs = zero
+!
+!       dd-adi step in j-direction. as we solve in j-direction,
+!       the j-loop is the innermost loop.
+!
+      do k=2,kl
+        do i=2,il
+          do j=2,jl
+! recompute viscous diffusion coefficients in j-direction.
+            voli = one/vol(i, j, k)
+            volmi = two/(vol(i, j, k)+vol(i, j-1, k))
+            volpi = two/(vol(i, j, k)+vol(i, j+1, k))
+            xm = sj(i, j-1, k, 1)*volmi
+            ym = sj(i, j-1, k, 2)*volmi
+            zm = sj(i, j-1, k, 3)*volmi
+            xp = sj(i, j, k, 1)*volpi
+            yp = sj(i, j, k, 2)*volpi
+            zp = sj(i, j, k, 3)*volpi
+            xa = half*(sj(i, j, k, 1)+sj(i, j-1, k, 1))*voli
+            ya = half*(sj(i, j, k, 2)+sj(i, j-1, k, 2))*voli
+            za = half*(sj(i, j, k, 3)+sj(i, j-1, k, 3))*voli
+            ttm = xm*xa + ym*ya + zm*za
+            ttp = xp*xa + yp*ya + zp*za
+            cnud = -(rsacb2*w(i, j, k, itu1)*cb3inv)
+            cam = ttm*cnud
+            cap = ttp*cnud
+            nutm = half*(w(i, j-1, k, itu1)+w(i, j, k, itu1))
+            nutp = half*(w(i, j+1, k, itu1)+w(i, j, k, itu1))
+            nu = rlv(i, j, k)/w(i, j, k, irho)
+            nutilde = w(i, j, k, itu1)
+            chi = nutilde/nu
+            chi3 = chi*chi*chi
+            fv1 = chi3/(chi3+cv13)
+            nut = nutilde*fv1
+            nu_m = rlv(i, j-1, k)/w(i, j-1, k, irho)
+            nutilde_m = w(i, j-1, k, itu1)
+            chi_m = nutilde_m/nu_m
+            chi3_m = chi_m*chi_m*chi_m
+            fv1_m = chi3_m/(chi3_m+cv13)
+            nut_m = nutilde_m*fv1_m
+            nu_p = rlv(i, j+1, k)/w(i, j+1, k, irho)
+            nutilde_p = w(i, j+1, k, itu1)
+            chi_p = nutilde_p/nu_p
+            chi3_p = chi_p*chi_p*chi_p
+            fv1_p = chi3_p/(chi3_p+cv13)
+            nut_p = nutilde_p*fv1_p
+            num_v = half*(nu_m+nu)
+            nup_v = half*(nu_p+nu)
+            nu_tm = half*(nut_m+nut)
+            nu_tp = half*(nut_p+nut)
+! sa diffusion
+            cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
+            cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
+! gamma diffusion
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! retheta diffusion
+            cdm_rt = sigmatheta*(num_v+nu_tm)*ttm
+            cdp_rt = sigmatheta*(nup_v+nu_tp)*ttp
+            if (cdm + cam .lt. zero) then
+              c1m = zero
+            else
+              c1m = cdm + cam
+            end if
+            if (cdp + cap .lt. zero) then
+              c1p = zero
+            else
+              c1p = cdp + cap
+            end if
+            if (cdm_gamma .lt. zero) then
+              c2m = zero
+            else
+              c2m = cdm_gamma
+            end if
+            if (cdp_gamma .lt. zero) then
+              c2p = zero
+            else
+              c2p = cdp_gamma
+            end if
+            if (cdm_rt .lt. zero) then
+              c3m = zero
+            else
+              c3m = cdm_rt
+            end if
+            if (cdp_rt .lt. zero) then
+              c3p = zero
+            else
+              c3p = cdp_rt
+            end if
+            bb(1, j) = -c1m
+            dd(1, j) = -c1p
+            bb(2, j) = -c2m
+            dd(2, j) = -c2p
+            bb(3, j) = -c3m
+            dd(3, j) = -c3p
+! add advection off-diagonal terms in j-direction.
+            if (addgridvelocities) qs = half*(sfacej(i, j, k)+sfacej(i, &
+&               j-1, k))*voli
+            uu = xa*w(i, j, k, ivx) + ya*w(i, j, k, ivy) + za*w(i, j, k&
+&             , ivz) - qs
+            um = zero
+            up = zero
+            if (uu .lt. zero) um = uu
+            if (uu .gt. zero) up = uu
+            bb(1, j) = bb(1, j) - up
+            dd(1, j) = dd(1, j) + um
+            bb(2, j) = bb(2, j) - up
+            dd(2, j) = dd(2, j) + um
+            bb(3, j) = bb(3, j) - up
+            dd(3, j) = dd(3, j) + um
+! store central jacobian and rhs in cc and ff.
+! multiply off-diagonal qq entries and rhs by iblank
+! so the update for iblank=0 cells is zero.
+            rblank = real(iblank(i, j, k), realtype)
+            cc(1, 1, j) = qq(i, j, k, 1, 1)
+            cc(1, 2, j) = qq(i, j, k, 1, 2)*rblank
+            cc(1, 3, j) = qq(i, j, k, 1, 3)*rblank
+            cc(2, 1, j) = qq(i, j, k, 2, 1)*rblank
+            cc(2, 2, j) = qq(i, j, k, 2, 2)
+            cc(2, 3, j) = qq(i, j, k, 2, 3)*rblank
+            cc(3, 1, j) = qq(i, j, k, 3, 1)*rblank
+            cc(3, 2, j) = qq(i, j, k, 3, 2)*rblank
+            cc(3, 3, j) = qq(i, j, k, 3, 3)
+            ff(1, j) = scratch(i, j, k, idvt)*rblank
+            ff(2, j) = scratch(i, j, k, idvt+1)*rblank
+            ff(3, j) = scratch(i, j, k, idvt+2)*rblank
+            bb(:, j) = bb(:, j)*rblank
+            dd(:, j) = dd(:, j)*rblank
+          end do
+! solve the tri-diagonal system in j-direction.
+          call tdia3x3(2_inttype, jl, bb, cc, dd, ff)
+! determine the new rhs for the next direction.
+          do j=2,jl
+            scratch(i, j, k, idvt) = qq(i, j, k, 1, 1)*ff(1, j) + qq(i, &
+&             j, k, 1, 2)*ff(2, j) + qq(i, j, k, 1, 3)*ff(3, j)
+            scratch(i, j, k, idvt+1) = qq(i, j, k, 2, 1)*ff(1, j) + qq(i&
+&             , j, k, 2, 2)*ff(2, j) + qq(i, j, k, 2, 3)*ff(3, j)
+            scratch(i, j, k, idvt+2) = qq(i, j, k, 3, 1)*ff(1, j) + qq(i&
+&             , j, k, 3, 2)*ff(2, j) + qq(i, j, k, 3, 3)*ff(3, j)
+          end do
+        end do
+      end do
+!
+!       dd-adi step in i-direction. as we solve in i-direction,
+!       the i-loop is the innermost loop.
+!
+      do k=2,kl
+        do j=2,jl
+          do i=2,il
+! recompute viscous diffusion coefficients in i-direction.
+            voli = one/vol(i, j, k)
+            volmi = two/(vol(i, j, k)+vol(i-1, j, k))
+            volpi = two/(vol(i, j, k)+vol(i+1, j, k))
+            xm = si(i-1, j, k, 1)*volmi
+            ym = si(i-1, j, k, 2)*volmi
+            zm = si(i-1, j, k, 3)*volmi
+            xp = si(i, j, k, 1)*volpi
+            yp = si(i, j, k, 2)*volpi
+            zp = si(i, j, k, 3)*volpi
+            xa = half*(si(i, j, k, 1)+si(i-1, j, k, 1))*voli
+            ya = half*(si(i, j, k, 2)+si(i-1, j, k, 2))*voli
+            za = half*(si(i, j, k, 3)+si(i-1, j, k, 3))*voli
+            ttm = xm*xa + ym*ya + zm*za
+            ttp = xp*xa + yp*ya + zp*za
+            cnud = -(rsacb2*w(i, j, k, itu1)*cb3inv)
+            cam = ttm*cnud
+            cap = ttp*cnud
+            nutm = half*(w(i-1, j, k, itu1)+w(i, j, k, itu1))
+            nutp = half*(w(i+1, j, k, itu1)+w(i, j, k, itu1))
+            nu = rlv(i, j, k)/w(i, j, k, irho)
+            nutilde = w(i, j, k, itu1)
+            chi = nutilde/nu
+            chi3 = chi*chi*chi
+            fv1 = chi3/(chi3+cv13)
+            nut = nutilde*fv1
+            nu_m = rlv(i-1, j, k)/w(i-1, j, k, irho)
+            nutilde_m = w(i-1, j, k, itu1)
+            chi_m = nutilde_m/nu_m
+            chi3_m = chi_m*chi_m*chi_m
+            fv1_m = chi3_m/(chi3_m+cv13)
+            nut_m = nutilde_m*fv1_m
+            nu_p = rlv(i+1, j, k)/w(i+1, j, k, irho)
+            nutilde_p = w(i+1, j, k, itu1)
+            chi_p = nutilde_p/nu_p
+            chi3_p = chi_p*chi_p*chi_p
+            fv1_p = chi3_p/(chi3_p+cv13)
+            nut_p = nutilde_p*fv1_p
+            num_v = half*(nu_m+nu)
+            nup_v = half*(nu_p+nu)
+            nu_tm = half*(nut_m+nut)
+            nu_tp = half*(nut_p+nut)
+! sa diffusion
+            cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
+            cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
+! gamma diffusion
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! retheta diffusion
+            cdm_rt = sigmatheta*(num_v+nu_tm)*ttm
+            cdp_rt = sigmatheta*(nup_v+nu_tp)*ttp
+            if (cdm + cam .lt. zero) then
+              c1m = zero
+            else
+              c1m = cdm + cam
+            end if
+            if (cdp + cap .lt. zero) then
+              c1p = zero
+            else
+              c1p = cdp + cap
+            end if
+            if (cdm_gamma .lt. zero) then
+              c2m = zero
+            else
+              c2m = cdm_gamma
+            end if
+            if (cdp_gamma .lt. zero) then
+              c2p = zero
+            else
+              c2p = cdp_gamma
+            end if
+            if (cdm_rt .lt. zero) then
+              c3m = zero
+            else
+              c3m = cdm_rt
+            end if
+            if (cdp_rt .lt. zero) then
+              c3p = zero
+            else
+              c3p = cdp_rt
+            end if
+            bb(1, i) = -c1m
+            dd(1, i) = -c1p
+            bb(2, i) = -c2m
+            dd(2, i) = -c2p
+            bb(3, i) = -c3m
+            dd(3, i) = -c3p
+! add advection off-diagonal terms in i-direction.
+            if (addgridvelocities) qs = half*(sfacei(i, j, k)+sfacei(i-1&
+&               , j, k))*voli
+            uu = xa*w(i, j, k, ivx) + ya*w(i, j, k, ivy) + za*w(i, j, k&
+&             , ivz) - qs
+            um = zero
+            up = zero
+            if (uu .lt. zero) um = uu
+            if (uu .gt. zero) up = uu
+            bb(1, i) = bb(1, i) - up
+            dd(1, i) = dd(1, i) + um
+            bb(2, i) = bb(2, i) - up
+            dd(2, i) = dd(2, i) + um
+            bb(3, i) = bb(3, i) - up
+            dd(3, i) = dd(3, i) + um
+! store central jacobian and rhs in cc and ff.
+            rblank = real(iblank(i, j, k), realtype)
+            cc(1, 1, i) = qq(i, j, k, 1, 1)
+            cc(1, 2, i) = qq(i, j, k, 1, 2)*rblank
+            cc(1, 3, i) = qq(i, j, k, 1, 3)*rblank
+            cc(2, 1, i) = qq(i, j, k, 2, 1)*rblank
+            cc(2, 2, i) = qq(i, j, k, 2, 2)
+            cc(2, 3, i) = qq(i, j, k, 2, 3)*rblank
+            cc(3, 1, i) = qq(i, j, k, 3, 1)*rblank
+            cc(3, 2, i) = qq(i, j, k, 3, 2)*rblank
+            cc(3, 3, i) = qq(i, j, k, 3, 3)
+            ff(1, i) = scratch(i, j, k, idvt)*rblank
+            ff(2, i) = scratch(i, j, k, idvt+1)*rblank
+            ff(3, i) = scratch(i, j, k, idvt+2)*rblank
+            bb(:, i) = bb(:, i)*rblank
+            dd(:, i) = dd(:, i)*rblank
+          end do
+! solve the tri-diagonal system in i-direction.
+          call tdia3x3(2_inttype, il, bb, cc, dd, ff)
+! determine the new rhs for the next direction.
+          do i=2,il
+            scratch(i, j, k, idvt) = qq(i, j, k, 1, 1)*ff(1, i) + qq(i, &
+&             j, k, 1, 2)*ff(2, i) + qq(i, j, k, 1, 3)*ff(3, i)
+            scratch(i, j, k, idvt+1) = qq(i, j, k, 2, 1)*ff(1, i) + qq(i&
+&             , j, k, 2, 2)*ff(2, i) + qq(i, j, k, 2, 3)*ff(3, i)
+            scratch(i, j, k, idvt+2) = qq(i, j, k, 3, 1)*ff(1, i) + qq(i&
+&             , j, k, 3, 2)*ff(2, i) + qq(i, j, k, 3, 3)*ff(3, i)
+          end do
+        end do
+      end do
+!
+!       dd-adi step in k-direction. as we solve in k-direction,
+!       the k-loop is the innermost loop.
+!
+      do j=2,jl
+        do i=2,il
+          do k=2,kl
+! recompute viscous diffusion coefficients in k-direction.
+            voli = one/vol(i, j, k)
+            volmi = two/(vol(i, j, k)+vol(i, j, k-1))
+            volpi = two/(vol(i, j, k)+vol(i, j, k+1))
+            xm = sk(i, j, k-1, 1)*volmi
+            ym = sk(i, j, k-1, 2)*volmi
+            zm = sk(i, j, k-1, 3)*volmi
+            xp = sk(i, j, k, 1)*volpi
+            yp = sk(i, j, k, 2)*volpi
+            zp = sk(i, j, k, 3)*volpi
+            xa = half*(sk(i, j, k, 1)+sk(i, j, k-1, 1))*voli
+            ya = half*(sk(i, j, k, 2)+sk(i, j, k-1, 2))*voli
+            za = half*(sk(i, j, k, 3)+sk(i, j, k-1, 3))*voli
+            ttm = xm*xa + ym*ya + zm*za
+            ttp = xp*xa + yp*ya + zp*za
+            cnud = -(rsacb2*w(i, j, k, itu1)*cb3inv)
+            cam = ttm*cnud
+            cap = ttp*cnud
+            nutm = half*(w(i, j, k-1, itu1)+w(i, j, k, itu1))
+            nutp = half*(w(i, j, k+1, itu1)+w(i, j, k, itu1))
+            nu = rlv(i, j, k)/w(i, j, k, irho)
+            nutilde = w(i, j, k, itu1)
+            chi = nutilde/nu
+            chi3 = chi*chi*chi
+            fv1 = chi3/(chi3+cv13)
+            nut = nutilde*fv1
+            nu_m = rlv(i, j, k-1)/w(i, j, k-1, irho)
+            nutilde_m = w(i, j, k-1, itu1)
+            chi_m = nutilde_m/nu_m
+            chi3_m = chi_m*chi_m*chi_m
+            fv1_m = chi3_m/(chi3_m+cv13)
+            nut_m = nutilde_m*fv1_m
+            nu_p = rlv(i, j, k+1)/w(i, j, k+1, irho)
+            nutilde_p = w(i, j, k+1, itu1)
+            chi_p = nutilde_p/nu_p
+            chi3_p = chi_p*chi_p*chi_p
+            fv1_p = chi3_p/(chi3_p+cv13)
+            nut_p = nutilde_p*fv1_p
+            num_v = half*(nu_m+nu)
+            nup_v = half*(nu_p+nu)
+            nu_tm = half*(nut_m+nut)
+            nu_tp = half*(nut_p+nut)
+! sa diffusion
+            cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
+            cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
+! gamma diffusion
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! retheta diffusion
+            cdm_rt = sigmatheta*(num_v+nu_tm)*ttm
+            cdp_rt = sigmatheta*(nup_v+nu_tp)*ttp
+            if (cdm + cam .lt. zero) then
+              c1m = zero
+            else
+              c1m = cdm + cam
+            end if
+            if (cdp + cap .lt. zero) then
+              c1p = zero
+            else
+              c1p = cdp + cap
+            end if
+            if (cdm_gamma .lt. zero) then
+              c2m = zero
+            else
+              c2m = cdm_gamma
+            end if
+            if (cdp_gamma .lt. zero) then
+              c2p = zero
+            else
+              c2p = cdp_gamma
+            end if
+            if (cdm_rt .lt. zero) then
+              c3m = zero
+            else
+              c3m = cdm_rt
+            end if
+            if (cdp_rt .lt. zero) then
+              c3p = zero
+            else
+              c3p = cdp_rt
+            end if
+            bb(1, k) = -c1m
+            dd(1, k) = -c1p
+            bb(2, k) = -c2m
+            dd(2, k) = -c2p
+            bb(3, k) = -c3m
+            dd(3, k) = -c3p
+! add advection off-diagonal terms in k-direction.
+            if (addgridvelocities) qs = half*(sfacek(i, j, k)+sfacek(i, &
+&               j, k-1))*voli
+            uu = xa*w(i, j, k, ivx) + ya*w(i, j, k, ivy) + za*w(i, j, k&
+&             , ivz) - qs
+            um = zero
+            up = zero
+            if (uu .lt. zero) um = uu
+            if (uu .gt. zero) up = uu
+            bb(1, k) = bb(1, k) - up
+            dd(1, k) = dd(1, k) + um
+            bb(2, k) = bb(2, k) - up
+            dd(2, k) = dd(2, k) + um
+            bb(3, k) = bb(3, k) - up
+            dd(3, k) = dd(3, k) + um
+! store central jacobian and rhs in cc and ff.
+            rblank = real(iblank(i, j, k), realtype)
+            cc(1, 1, k) = qq(i, j, k, 1, 1)
+            cc(1, 2, k) = qq(i, j, k, 1, 2)*rblank
+            cc(1, 3, k) = qq(i, j, k, 1, 3)*rblank
+            cc(2, 1, k) = qq(i, j, k, 2, 1)*rblank
+            cc(2, 2, k) = qq(i, j, k, 2, 2)
+            cc(2, 3, k) = qq(i, j, k, 2, 3)*rblank
+            cc(3, 1, k) = qq(i, j, k, 3, 1)*rblank
+            cc(3, 2, k) = qq(i, j, k, 3, 2)*rblank
+            cc(3, 3, k) = qq(i, j, k, 3, 3)
+            ff(1, k) = scratch(i, j, k, idvt)*rblank
+            ff(2, k) = scratch(i, j, k, idvt+1)*rblank
+            ff(3, k) = scratch(i, j, k, idvt+2)*rblank
+            bb(:, k) = bb(:, k)*rblank
+            dd(:, k) = dd(:, k)*rblank
+          end do
+! solve the tri-diagonal system in k-direction.
+          call tdia3x3(2_inttype, kl, bb, cc, dd, ff)
+! store the final update in scratch.
+          do k=2,kl
+            scratch(i, j, k, idvt) = ff(1, k)
+            scratch(i, j, k, idvt+1) = ff(2, k)
+            scratch(i, j, k, idvt+2) = ff(3, k)
+          end do
+        end do
+      end do
+!
+!       update the turbulent variables. for explicit relaxation the
+!       update must be relaxed; for implicit relaxation this has been
+!       done via the time step.
+!
+      factor = one
+      if (turbrelax .eq. turbrelaxexplicit) factor = alfaturb
+      do k=2,kl
+        do j=2,jl
+          do i=2,il
+            w(i, j, k, itu1) = w(i, j, k, itu1) + factor*scratch(i, j, k&
+&             , idvt)
             if (w(i, j, k, itu1) .lt. zero) then
               w(i, j, k, itu1) = zero
             else
               w(i, j, k, itu1) = w(i, j, k, itu1)
             end if
-! gamma equation: point-implicit update with damping
-            if (qq(i, j, k, 2, 2) .gt. zero) then
-              delta = scratch(i, j, k, idvt+1)*rblank/qq(i, j, k, 2, 2)
-              theta = one
-              do m=1,200
-                wnew = w(i, j, k, itu2) + theta*delta
-                if (wnew .gt. rsagrgammalo .and. wnew .lt. rsagrgammahi&
-&               ) then
-                  goto 100
-                else
-                  theta = rsagrdamptheta*theta
-                end if
-              end do
- 100          w(i, j, k, itu2) = w(i, j, k, itu2) + theta*delta
+            w(i, j, k, itu2) = w(i, j, k, itu2) + factor*scratch(i, j, k&
+&             , idvt+1)
+            if (w(i, j, k, itu2) .lt. rsagrgammalo) then
+              x1 = rsagrgammalo
+            else
+              x1 = w(i, j, k, itu2)
             end if
-! retheta equation: point-implicit update with damping
-            if (qq(i, j, k, 3, 3) .gt. zero) then
-              delta = scratch(i, j, k, idvt+2)*rblank/qq(i, j, k, 3, 3)
-              theta = one
-              do m=1,200
-                wnew = w(i, j, k, itu3) + theta*delta
-                if (wnew .gt. rsagrrethetalo) then
-                  goto 110
-                else
-                  theta = rsagrdamptheta*theta
-                end if
-              end do
- 110          w(i, j, k, itu3) = w(i, j, k, itu3) + theta*delta
+            if (x1 .gt. one) then
+              w(i, j, k, itu2) = one
+            else
+              w(i, j, k, itu2) = x1
+            end if
+            w(i, j, k, itu3) = w(i, j, k, itu3) + factor*scratch(i, j, k&
+&             , idvt+2)
+            if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
+              w(i, j, k, itu3) = rsagrrethetalo
+            else
+              w(i, j, k, itu3) = w(i, j, k, itu3)
             end if
           end do
         end do

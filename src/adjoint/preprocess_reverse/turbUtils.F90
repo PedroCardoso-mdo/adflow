@@ -1,3 +1,14 @@
+
+
+
+
+
+
+
+
+
+
+
 module turbUtils
 
 contains
@@ -39,17 +50,11 @@ contains
         ! efficient to loop over the faces and to scatter the gradient,
         ! but in that case the gradients for u, v and w must be stored.
         ! In the current approach no extra memory is needed.
-#ifdef TAPENADE_REVERSE
         !$AD II-LOOP
         do ii = 0, nx * ny * nz - 1
             i = mod(ii, nx) + 2
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
-#else
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-#endif
 
                         ! Compute the gradient of u in the cell center. Use is made
                         ! of the fact that the surrounding normals sum up to zero,
@@ -117,13 +122,7 @@ contains
                         ! Compute the production term.
 
                         scratch(i, j, k, iprod) = two * sqrt(sijsij * oijoij)
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
     end subroutine prodKatoLaunder
 
     subroutine prodSmag2
@@ -153,17 +152,11 @@ contains
         ! but in that case the gradients for u, v and w must be stored.
         ! In the current approach no extra memory is needed.
 
-#ifdef TAPENADE_REVERSE
         !$AD II-LOOP
         do ii = 0, nx * ny * nz - 1
             i = mod(ii, nx) + 2
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
-#else
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-#endif
 
                         ! Compute the gradient of u in the cell center. Use is made
                         ! of the fact that the surrounding normals sum up to zero,
@@ -227,13 +220,7 @@ contains
 
                         scratch(i, j, k, iprod) = two * (two * (sxy**2 + sxz**2 + syz**2) &
                                                          + sxx**2 + syy**2 + szz**2) - div2
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
     end subroutine prodSmag2
 
     subroutine prodWmag2
@@ -268,17 +255,11 @@ contains
         ! efficient to loop over the faces and to scatter the gradient,
         ! but in that case the gradients for u, v and w must be stored.
         ! In the current approach no extra memory is needed.
-#ifdef TAPENADE_REVERSE
         !$AD II-LOOP
         do ii = 0, nx * ny * nz - 1
             i = mod(ii, nx) + 2
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
-#else
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-#endif
 
                         ! Compute the necessary derivatives of u in the cell center.
                         ! Use is made of the fact that the surrounding normals sum up
@@ -322,13 +303,7 @@ contains
                         ! Compute the magnitude squared of the vorticity.
 
                         scratch(i, j, k, ivort) = vortx**2 + vorty**2 + vortz**2
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
     end subroutine prodWmag2
     function saNuKnownEddyRatio(eddyRatio, nuLam)
         !
@@ -636,19 +611,6 @@ contains
 
         case (spalartAllmaras, spalartAllmarasEdwards, spalartallmarasnoft2gammaretheta)
             call saEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
-#ifndef USE_TAPENADE
-
-        case (v2f)
-            call vfEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
-        case (komegaWilcox, komegaModified)
-            call kwEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
-
-        case (menterSST)
-            call SSTEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
-
-        case (ktau)
-            call ktEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
-#endif
         end select
 
     end subroutine computeEddyViscosity
@@ -680,7 +642,6 @@ contains
 
         ! Loop over the cells of this block and compute the eddy viscosity.
         ! Do not include halo's.
-#ifdef TAPENADE_REVERSE
         iSize = (iEnd - iBeg) + 1
         jSize = (jEnd - jBeg) + 1
         kSize = (kEnd - kBeg) + 1
@@ -690,23 +651,12 @@ contains
             i = mod(ii, iSize) + iBeg
             j = mod(ii / iSize, jSize) + jBeg
             k = ii / ((iSize * jSize)) + kBeg
-#else
-            do k = kBeg, kEnd
-                do j = jBeg, jEnd
-                    do i = iBeg, iEnd
-#endif
                         rnuSA = w(i, j, k, itu1) * w(i, j, k, irho)
                         chi = rnuSA / rlv(i, j, k)
                         chi3 = chi**3
                         fv1 = chi3 / (chi3 + cv13)
                         rev(i, j, k) = fv1 * rnuSA
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
     end subroutine saEddyViscosity
 
     subroutine kwEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
@@ -727,7 +677,6 @@ contains
 
         ! Loop over the cells of this block and compute the eddy viscosity.
         ! Do not include halo's.
-#ifdef TAPENADE_REVERSE
         iSize = (iEnd - iBeg) + 1
         jSize = (jEnd - jBeg) + 1
         kSize = (kEnd - kBeg) + 1
@@ -737,19 +686,8 @@ contains
             i = mod(ii, iSize) + iBeg
             j = mod(ii / iSize, jSize) + jBeg
             k = ii / ((iSize * jSize)) + kBeg
-#else
-            do k = kBeg, kEnd
-                do j = jBeg, jEnd
-                    do i = iBeg, iEnd
-#endif
                         rev(i, j, k) = abs(w(i, j, k, irho) * w(i, j, k, itu1) / w(i, j, k, itu2))
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
 
     end subroutine kwEddyViscosity
 
@@ -781,7 +719,6 @@ contains
 
         ! Loop over the cells of this block and compute the eddy viscosity.
         ! Do not include halo's.
-#ifdef TAPENADE_REVERSE
         iSize = (iEnd - iBeg) + 1
         jSize = (jEnd - jBeg) + 1
         kSize = (kEnd - kBeg) + 1
@@ -791,11 +728,6 @@ contains
             i = mod(ii, iSize) + iBeg
             j = mod(ii / iSize, jSize) + jBeg
             k = ii / ((iSize * jSize)) + kBeg
-#else
-            do k = kBeg, kEnd
-                do j = jBeg, jEnd
-                    do i = iBeg, iEnd
-#endif
                         ! Compute the value of the function f2, which occurs in the
                         ! eddy-viscosity computation.
 
@@ -812,13 +744,7 @@ contains
                         vortMag = sqrt(scratch(i, j, k, iprod))
                         rev(i, j, k) = w(i, j, k, irho) * rSSTA1 * w(i, j, k, itu1) &
                                        / max(rSSTA1 * w(i, j, k, itu2), f2 * vortMag)
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
 
     end subroutine SSTEddyViscosity
 
@@ -885,17 +811,11 @@ contains
         !       combination with the minmod limiter.
         !       The possible grid velocity must be taken into account.
         !
-#ifdef TAPENADE_REVERSE
         !$AD II-LOOP
         do iii = 0, nx * ny * nz - 1
             i = mod(iii, nx) + 2
             j = mod(iii / nx, ny) + 2
             k = iii / (nx * ny) + 2
-#else
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-#endif
                         ! Compute the grid velocity if present.
                         ! It is taken as the average of k and k-1,
 
@@ -976,31 +896,6 @@ contains
                                 ! uu*dwtk = (V.dot.face_normal)*delta(nuTilde)/delta(x)
 
                                 scratch(i, j, k, idvt + ii - 1) = scratch(i, j, k, idvt + ii - 1) - uu * dwtk
-#ifndef USE_TAPENADE
-                                ! Update the central jacobian. First the term which is
-                                ! always present, i.e. uu.
-
-                                qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) + uu
-
-                                ! For boundary cells k == 2, the implicit treatment must
-                                ! be taken into account. Note that the implicit part
-                                ! is only based on the 1st order discretization.
-                                ! To improve stability the diagonal term is only taken
-                                ! into account when it improves stability, i.e. when
-                                ! it is positive.
-
-                                if (k == 2) then
-                                    do kk = 1, mAdv
-                                        impl(kk) = bmtk1(i, j, jj, kk + offset)
-                                    end do
-
-                                    impl(ii) = max(impl(ii), zero)
-
-                                    do kk = 1, mAdv
-                                        qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) + uu * impl(kk)
-                                    end do
-                                end if
-#endif
 
                             end do
 
@@ -1066,38 +961,10 @@ contains
 
                                 ! Update the central jacobian. First the term which is
                                 ! always present, i.e. -uu.
-#ifndef USE_TAPENADE
-                                qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) - uu
-
-                                ! For boundary cells k == kl, the implicit treatment must
-                                ! be taken into account. Note that the implicit part
-                                ! is only based on the 1st order discretization.
-                                ! To improve stability the diagonal term is only taken
-                                ! into account when it improves stability, i.e. when
-                                ! it is positive.
-
-                                if (k == kl) then
-                                    do kk = 1, mAdv
-                                        impl(kk) = bmtk2(i, j, jj, kk + offset)
-                                    end do
-
-                                    impl(ii) = max(impl(ii), zero)
-
-                                    do kk = 1, mAdv
-                                        qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) - uu * impl(kk)
-                                    end do
-                                end if
-#endif
                             end do
 
                         end if velKdir
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
         continue
         !$AD CHECKPOINT-END
         !
@@ -1110,17 +977,11 @@ contains
         continue
         !$AD CHECKPOINT-START
         qs = zero
-#ifdef TAPENADE_REVERSE
         !$AD II-LOOP
         do iii = 0, nx * ny * nz - 1
             i = mod(iii, nx) + 2
             j = mod(iii / nx, ny) + 2
             k = iii / (nx * ny) + 2
-#else
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-#endif
 
                         ! Compute the grid velocity if present.
                         ! It is taken as the average of j and j-1,
@@ -1203,28 +1064,6 @@ contains
 
                                 ! Update the central jacobian. First the term which is
                                 ! always present, i.e. uu.
-#ifndef USE_TAPENADE
-                                qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) + uu
-
-                                ! For boundary cells j == 2, the implicit treatment must
-                                ! be taken into account. Note that the implicit part
-                                ! is only based on the 1st order discretization.
-                                ! To improve stability the diagonal term is only taken
-                                ! into account when it improves stability, i.e. when
-                                ! it is positive.
-
-                                if (j == 2) then
-                                    do kk = 1, mAdv
-                                        impl(kk) = bmtj1(i, k, jj, kk + offset)
-                                    end do
-
-                                    impl(ii) = max(impl(ii), zero)
-
-                                    do kk = 1, mAdv
-                                        qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) + uu * impl(kk)
-                                    end do
-                                end if
-#endif
                             end do
 
                             else velJdir
@@ -1289,38 +1128,10 @@ contains
 
                                 ! Update the central jacobian. First the term which is
                                 ! always present, i.e. -uu.
-#ifndef USE_TAPENADE
-                                qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) - uu
-
-                                ! For boundary cells j == jl, the implicit treatment must
-                                ! be taken into account. Note that the implicit part
-                                ! is only based on the 1st order discretization.
-                                ! To improve stability the diagonal term is only taken
-                                ! into account when it improves stability, i.e. when
-                                ! it is positive.
-
-                                if (j == jl) then
-                                    do kk = 1, mAdv
-                                        impl(kk) = bmtj2(i, k, jj, kk + offset)
-                                    end do
-
-                                    impl(ii) = max(impl(ii), zero)
-
-                                    do kk = 1, mAdv
-                                        qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) - uu * impl(kk)
-                                    end do
-                                end if
-#endif
                             end do
 
                         end if velJdir
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
         continue
         !$AD CHECKPOINT-END
         !
@@ -1333,17 +1144,11 @@ contains
         continue
         !$AD CHECKPOINT-START
         qs = zero
-#ifdef TAPENADE_REVERSE
         !$AD II-LOOP
         do iii = 0, nx * ny * nz - 1
             i = mod(iii, nx) + 2
             j = mod(iii / nx, ny) + 2
             k = iii / (nx * ny) + 2
-#else
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-#endif
 
                         ! Compute the grid velocity if present.
                         ! It is taken as the average of i and i-1,
@@ -1426,28 +1231,6 @@ contains
 
                                 ! Update the central jacobian. First the term which is
                                 ! always present, i.e. uu.
-#ifndef USE_TAPENADE
-                                qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) + uu
-
-                                ! For boundary cells i == 2, the implicit treatment must
-                                ! be taken into account. Note that the implicit part
-                                ! is only based on the 1st order discretization.
-                                ! To improve stability the diagonal term is only taken
-                                ! into account when it improves stability, i.e. when
-                                ! it is positive.
-
-                                if (i == 2) then
-                                    do kk = 1, mAdv
-                                        impl(kk) = bmti1(j, k, jj, kk + offset)
-                                    end do
-
-                                    impl(ii) = max(impl(ii), zero)
-
-                                    do kk = 1, mAdv
-                                        qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) + uu * impl(kk)
-                                    end do
-                                end if
-#endif
                             end do
 
                             else velIdir
@@ -1512,38 +1295,10 @@ contains
 
                                 ! Update the central jacobian. First the term which is
                                 ! always present, i.e. -uu.
-#ifndef USE_TAPENADE
-                                qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) - uu
-
-                                ! For boundary cells i == il, the implicit treatment must
-                                ! be taken into account. Note that the implicit part
-                                ! is only based on the 1st order discretization.
-                                ! To improve stability the diagonal term is only taken
-                                ! into account when it improves stability, i.e. when
-                                ! it is positive.
-
-                                if (i == il) then
-                                    do kk = 1, mAdv
-                                        impl(kk) = bmti2(j, k, jj, kk + offset)
-                                    end do
-
-                                    impl(ii) = max(impl(ii), zero)
-
-                                    do kk = 1, mAdv
-                                        qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) - uu * impl(kk)
-                                    end do
-                                end if
-#endif
                             end do
 
                         end if velIdir
-#ifdef TAPENADE_REVERSE
                     end do
-#else
-                end do
-            end do
-        end do
-#endif
 
         !$AD CHECKPOINT-END
         continue
@@ -1555,726 +1310,6 @@ contains
     !                                                                      |
     ! ----------------------------------------------------------------------
 
-#ifndef USE_TAPENADE
-
-    subroutine tdia3(nb, ne, l, c, u, r)
-        !
-        !       tdia3 solves the tridiagonal linear system (l+c+u) v = r,
-        !       where l is the lower, c the central and u the upper diagonal.
-        !       Every entry in the matrix is a 2x2 block matrix, i.e.
-        !                    x x  x 0  0 0  ........        = c(nb) u(nb)
-        !                    x x  0 x  0 0  ........
-        !                    x 0  x x  x 0  ........        = l(i) c(i) u(i)
-        !                    0 x  x x  0 x  ........
-        !                         ........  x 0  x x        = l(ne) c(ne)
-        !                         ........  0 x  x x
-        !               With c = x x     u,l = x 0
-        !                        x x           0 x
-        !
-        use constants
-        implicit none
-        !
-        !      Subroutine arguments.
-        !
-        integer(kind=intType), intent(in) :: nb, ne
-
-        real(kind=realType), dimension(2, nb:ne), intent(inout) :: l, u, r
-        real(kind=realType), dimension(2, 2, nb:ne), intent(inout) :: c
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: n
-        real(kind=realType) :: deti, f11, f12, f21, f22, r1
-
-        ! Perform the backward sweep to eliMinate the upper diagonal uu.
-        ! f     = u(n)*c^-1(n+1),
-        ! c'(n) = c(n) - f*l(n+1)
-        ! r'(n) = r(n) - f*r(n+1)
-
-        do n = ne - 1, nb, -1
-
-            deti = one / (c(1, 1, n + 1) * c(2, 2, n + 1) - c(1, 2, n + 1) * c(2, 1, n + 1))
-            f11 = u(1, n) * c(2, 2, n + 1) * deti
-            f12 = -u(1, n) * c(1, 2, n + 1) * deti
-            f21 = -u(2, n) * c(2, 1, n + 1) * deti
-            f22 = u(2, n) * c(1, 1, n + 1) * deti
-
-            c(1, 1, n) = c(1, 1, n) - f11 * l(1, n + 1)
-            c(1, 2, n) = c(1, 2, n) - f12 * l(2, n + 1)
-            c(2, 1, n) = c(2, 1, n) - f21 * l(1, n + 1)
-            c(2, 2, n) = c(2, 2, n) - f22 * l(2, n + 1)
-
-            r(1, n) = r(1, n) - f11 * r(1, n + 1) - f12 * r(2, n + 1)
-            r(2, n) = r(2, n) - f21 * r(1, n + 1) - f22 * r(2, n + 1)
-
-        end do
-
-        ! The matrix is now in low block bi-diagonal form and can thus
-        ! be solved be a forward sweep. The solution is stored in r.
-
-        deti = one / (c(1, 1, nb) * c(2, 2, nb) - c(1, 2, nb) * c(2, 1, nb))
-        r1 = r(1, nb)
-        r(1, nb) = deti * (c(2, 2, nb) * r1 - c(1, 2, nb) * r(2, nb))
-        r(2, nb) = -deti * (c(2, 1, nb) * r1 - c(1, 1, nb) * r(2, nb))
-
-        do n = nb + 1, ne
-
-            r(1, n) = r(1, n) - l(1, n) * r(1, n - 1)
-            r(2, n) = r(2, n) - l(2, n) * r(2, n - 1)
-
-            deti = one / (c(1, 1, n) * c(2, 2, n) - c(1, 2, n) * c(2, 1, n))
-            r1 = r(1, n)
-            r(1, n) = deti * (c(2, 2, n) * r1 - c(1, 2, n) * r(2, n))
-            r(2, n) = -deti * (c(2, 1, n) * r1 - c(1, 1, n) * r(2, n))
-
-        end do
-
-    end subroutine tdia3
-
-    subroutine tdia3x3(nb, ne, l, c, u, r)
-        !
-        !       tdia3x3 solves the tridiagonal linear system (l+c+u) v = r,
-        !       where l is the lower, c the central and u the upper diagonal.
-        !       Every entry in the matrix has a 3x3 block central diagonal
-        !       and scalar (diagonal) lower and upper diagonals:
-        !                    x x x  x 0 0  0 0 0  ........  = c(nb) u(nb)
-        !                    x x x  0 x 0  0 0 0  ........
-        !                    x x x  0 0 x  0 0 0  ........
-        !                    x 0 0  x x x  x 0 0  ........  = l(i) c(i) u(i)
-        !                    0 x 0  x x x  0 x 0  ........
-        !                    0 0 x  x x x  0 0 x  ........
-        !                         ........  x 0 0  x x x    = l(ne) c(ne)
-        !                         ........  0 x 0  x x x
-        !                         ........  0 0 x  x x x
-        !               With c = x x x     u,l = x 0 0
-        !                        x x x           0 x 0
-        !                        x x x           0 0 x
-        !       This is the 3-equation analog of tdia3.
-        !
-        use constants
-        implicit none
-        !
-        !      Subroutine arguments.
-        !
-        integer(kind=intType), intent(in) :: nb, ne
-
-        real(kind=realType), dimension(3, nb:ne), intent(inout) :: l, u, r
-        real(kind=realType), dimension(3, 3, nb:ne), intent(inout) :: c
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: n
-        real(kind=realType) :: deti, r1, r2
-        real(kind=realType) :: ci11, ci12, ci13, ci21, ci22, ci23, ci31, ci32, ci33
-        real(kind=realType) :: f11, f12, f13, f21, f22, f23, f31, f32, f33
-
-        ! Perform the backward sweep to eliminate the upper diagonal u.
-        ! F     = diag(u(:,n)) * C^{-1}(n+1),
-        ! C'(n) = C(n) - F * diag(l(:,n+1))
-        ! r'(n) = r(n) - F * r(n+1)
-
-        do n = ne - 1, nb, -1
-
-            ! Compute cofactors of C(n+1) (= adjugate transpose entries)
-            ci11 = c(2, 2, n + 1) * c(3, 3, n + 1) - c(2, 3, n + 1) * c(3, 2, n + 1)
-            ci12 = c(1, 3, n + 1) * c(3, 2, n + 1) - c(1, 2, n + 1) * c(3, 3, n + 1)
-            ci13 = c(1, 2, n + 1) * c(2, 3, n + 1) - c(1, 3, n + 1) * c(2, 2, n + 1)
-            ci21 = c(2, 3, n + 1) * c(3, 1, n + 1) - c(2, 1, n + 1) * c(3, 3, n + 1)
-            ci22 = c(1, 1, n + 1) * c(3, 3, n + 1) - c(1, 3, n + 1) * c(3, 1, n + 1)
-            ci23 = c(1, 3, n + 1) * c(2, 1, n + 1) - c(1, 1, n + 1) * c(2, 3, n + 1)
-            ci31 = c(2, 1, n + 1) * c(3, 2, n + 1) - c(2, 2, n + 1) * c(3, 1, n + 1)
-            ci32 = c(1, 2, n + 1) * c(3, 1, n + 1) - c(1, 1, n + 1) * c(3, 2, n + 1)
-            ci33 = c(1, 1, n + 1) * c(2, 2, n + 1) - c(1, 2, n + 1) * c(2, 1, n + 1)
-
-            deti = one / (c(1, 1, n + 1) * ci11 + c(1, 2, n + 1) * ci21 + c(1, 3, n + 1) * ci31)
-
-            ! F = diag(u(:,n)) * C^{-1}(n+1)
-            f11 = u(1, n) * ci11 * deti
-            f12 = u(1, n) * ci12 * deti
-            f13 = u(1, n) * ci13 * deti
-            f21 = u(2, n) * ci21 * deti
-            f22 = u(2, n) * ci22 * deti
-            f23 = u(2, n) * ci23 * deti
-            f31 = u(3, n) * ci31 * deti
-            f32 = u(3, n) * ci32 * deti
-            f33 = u(3, n) * ci33 * deti
-
-            ! C'(n) = C(n) - F * diag(l(:,n+1))
-            c(1, 1, n) = c(1, 1, n) - f11 * l(1, n + 1)
-            c(1, 2, n) = c(1, 2, n) - f12 * l(2, n + 1)
-            c(1, 3, n) = c(1, 3, n) - f13 * l(3, n + 1)
-            c(2, 1, n) = c(2, 1, n) - f21 * l(1, n + 1)
-            c(2, 2, n) = c(2, 2, n) - f22 * l(2, n + 1)
-            c(2, 3, n) = c(2, 3, n) - f23 * l(3, n + 1)
-            c(3, 1, n) = c(3, 1, n) - f31 * l(1, n + 1)
-            c(3, 2, n) = c(3, 2, n) - f32 * l(2, n + 1)
-            c(3, 3, n) = c(3, 3, n) - f33 * l(3, n + 1)
-
-            ! r'(n) = r(n) - F * r(n+1)
-            r(1, n) = r(1, n) - f11 * r(1, n + 1) - f12 * r(2, n + 1) - f13 * r(3, n + 1)
-            r(2, n) = r(2, n) - f21 * r(1, n + 1) - f22 * r(2, n + 1) - f23 * r(3, n + 1)
-            r(3, n) = r(3, n) - f31 * r(1, n + 1) - f32 * r(2, n + 1) - f33 * r(3, n + 1)
-
-        end do
-
-        ! The matrix is now in lower block bi-diagonal form and can thus
-        ! be solved by a forward sweep. The solution is stored in r.
-
-        ! Solve C(nb) * x = r(nb)
-        ci11 = c(2, 2, nb) * c(3, 3, nb) - c(2, 3, nb) * c(3, 2, nb)
-        ci12 = c(1, 3, nb) * c(3, 2, nb) - c(1, 2, nb) * c(3, 3, nb)
-        ci13 = c(1, 2, nb) * c(2, 3, nb) - c(1, 3, nb) * c(2, 2, nb)
-        ci21 = c(2, 3, nb) * c(3, 1, nb) - c(2, 1, nb) * c(3, 3, nb)
-        ci22 = c(1, 1, nb) * c(3, 3, nb) - c(1, 3, nb) * c(3, 1, nb)
-        ci23 = c(1, 3, nb) * c(2, 1, nb) - c(1, 1, nb) * c(2, 3, nb)
-        ci31 = c(2, 1, nb) * c(3, 2, nb) - c(2, 2, nb) * c(3, 1, nb)
-        ci32 = c(1, 2, nb) * c(3, 1, nb) - c(1, 1, nb) * c(3, 2, nb)
-        ci33 = c(1, 1, nb) * c(2, 2, nb) - c(1, 2, nb) * c(2, 1, nb)
-
-        deti = one / (c(1, 1, nb) * ci11 + c(1, 2, nb) * ci21 + c(1, 3, nb) * ci31)
-        r1 = r(1, nb)
-        r2 = r(2, nb)
-        r(1, nb) = deti * (ci11 * r1 + ci12 * r2 + ci13 * r(3, nb))
-        r(2, nb) = deti * (ci21 * r1 + ci22 * r2 + ci23 * r(3, nb))
-        r(3, nb) = deti * (ci31 * r1 + ci32 * r2 + ci33 * r(3, nb))
-
-        do n = nb + 1, ne
-
-            r(1, n) = r(1, n) - l(1, n) * r(1, n - 1)
-            r(2, n) = r(2, n) - l(2, n) * r(2, n - 1)
-            r(3, n) = r(3, n) - l(3, n) * r(3, n - 1)
-
-            ci11 = c(2, 2, n) * c(3, 3, n) - c(2, 3, n) * c(3, 2, n)
-            ci12 = c(1, 3, n) * c(3, 2, n) - c(1, 2, n) * c(3, 3, n)
-            ci13 = c(1, 2, n) * c(2, 3, n) - c(1, 3, n) * c(2, 2, n)
-            ci21 = c(2, 3, n) * c(3, 1, n) - c(2, 1, n) * c(3, 3, n)
-            ci22 = c(1, 1, n) * c(3, 3, n) - c(1, 3, n) * c(3, 1, n)
-            ci23 = c(1, 3, n) * c(2, 1, n) - c(1, 1, n) * c(2, 3, n)
-            ci31 = c(2, 1, n) * c(3, 2, n) - c(2, 2, n) * c(3, 1, n)
-            ci32 = c(1, 2, n) * c(3, 1, n) - c(1, 1, n) * c(3, 2, n)
-            ci33 = c(1, 1, n) * c(2, 2, n) - c(1, 2, n) * c(2, 1, n)
-
-            deti = one / (c(1, 1, n) * ci11 + c(1, 2, n) * ci21 + c(1, 3, n) * ci31)
-            r1 = r(1, n)
-            r2 = r(2, n)
-            r(1, n) = deti * (ci11 * r1 + ci12 * r2 + ci13 * r(3, n))
-            r(2, n) = deti * (ci21 * r1 + ci22 * r2 + ci23 * r(3, n))
-            r(3, n) = deti * (ci31 * r1 + ci32 * r2 + ci33 * r(3, n))
-
-        end do
-
-    end subroutine tdia3x3
-
-    subroutine vfEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
-        !
-        !       vfEddyViscosity computes the eddy-viscosity according to the
-        !       v2f turbulence model for the block given in blockPointers.
-        !       This routine is for both the n=1 and n=6 version.
-        !
-        use constants
-        use blockPointers
-        use constants
-        use paramTurb
-        use turbMod
-        use inputPhysics
-        use turbCurveFits, only: curvetupyp
-        implicit none
-        ! Input variables
-        integer(kind=intType) :: iBeg, iEnd, jBeg, jEnd, kBeg, kEnd
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: i, j, k, nn, ii, iSize, jSize, kSize
-        real(kind=realType) :: tke, tep, tkea, tepa, tepl, tv2, tv2a
-        real(kind=realType) :: yp, utau
-
-        real(kind=realType), dimension(itu1:itu5) :: tup
-        real(kind=realType), dimension(:, :, :), pointer :: ww
-        real(kind=realType), dimension(:, :), pointer :: rrlv, rrev
-        real(kind=realType), dimension(:, :), pointer :: dd2Wall
-
-        ! Compute time and length scale
-
-        call vfScale
-
-        ! Loop over the cells of this block and compute the eddy viscosity.
-        ! Do not include halo's.
-#ifdef TAPENADE_REVERSE
-        iSize = (iEnd - iBeg) + 1
-        jSize = (jEnd - jBeg) + 1
-        kSize = (kEnd - kBeg) + 1
-
-        !$AD II-LOOP
-        do ii = 0, iSize * jSize * kSize - 1
-            i = mod(ii, iSize) + iBeg
-            j = mod(ii / iSize, jSize) + jBeg
-            k = ii / ((iSize * jSize)) + kBeg
-#else
-            do k = kBeg, kEnd
-                do j = jBeg, jEnd
-                    do i = iBeg, iEnd
-#endif
-
-                        tke = w(i, j, k, itu1)
-                        tep = w(i, j, k, itu2)
-                        tv2 = w(i, j, k, itu3)
-                        tkea = abs(tke)
-                        tepa = abs(tep)
-                        tv2a = abs(tv2)
-                        tepl = max(tepa, rvfLimitE)
-
-                        rev(i, j, k) = rvfCmu * w(i, j, k, irho) * tv2a / tepl * sct(i, j, k)
-#ifdef TAPENADE_REVERSE
-                    end do
-#else
-                end do
-            end do
-        end do
-#endif
-
-        ! Modify the rhs of the 1st internal cell, if wall functions
-        ! are used; their value is determined by the table.
-
-        testWallFunctions: if (wallFunctions) then
-
-            bocos: do nn = 1, nViscBocos
-
-                ! Determine the block face on which the subface is located
-                ! and set some variables. As flag points to the entire array
-                ! flagI2, etc., its starting indices are the starting indices
-                ! of its target and not 1.
-
-                select case (bcFaceid(nn))
-                case (iMin)
-                    ww => w(2, 1:, 1:, 1:); rrlv => rlv(2, 1:, 1:)
-                    dd2Wall => d2Wall(2, :, :); rrev => rev(2, 1:, 1:)
-
-                case (iMax)
-                    ww => w(il, 1:, 1:, 1:); rrlv => rlv(il, 1:, 1:)
-                    dd2Wall => d2Wall(il, :, :); rrev => rev(il, 1:, 1:)
-
-                case (jMin)
-                    ww => w(1:, 2, 1:, 1:); rrlv => rlv(1:, 2, 1:)
-                    dd2Wall => d2Wall(:, 2, :); rrev => rev(1:, 2, 1:)
-
-                case (jMax)
-                    ww => w(1:, jl, 1:, 1:); rrlv => rlv(1:, jl, 1:)
-                    dd2Wall => d2Wall(:, jl, :); rrev => rev(1:, jl, 1:)
-
-                case (kMin)
-                    ww => w(1:, 1:, 2, 1:); rrlv => rlv(1:, 1:, 2)
-                    dd2Wall => d2Wall(:, :, 2); rrev => rev(1:, 1:, 2)
-
-                case (kMax)
-                    ww => w(1:, 1:, kl, 1:); rrlv => rlv(1:, 1:, kl)
-                    dd2Wall => d2Wall(:, :, kl); rrev => rev(1:, 1:, kl)
-
-                end select
-
-                ! Loop over the owned faces of this subface. Therefore the
-                ! nodal range of bcData must be used. The offset of +1 is
-                ! present, because the starting index of the cell range is
-                ! 1 larger than the starting index of the nodal range.
-
-                do j = (BCData(nn)%jnBeg + 1), BCData(nn)%jnEnd
-                    do i = (BCData(nn)%inBeg + 1), BCData(nn)%inEnd
-
-                        ! Enforce k and epsilon in the 1st internal cell from
-                        ! the wall function table. There is an offset of -1 in
-                        ! the wall distance. Note that the offset compared to
-                        ! the current value must be stored. Also note that the
-                        ! curve fits contain the non-dimensional values.
-
-                        utau = viscSubface(nn)%utau(i, j)
-                        yp = ww(i, j, irho) * dd2Wall(i - 1, j - 1) * utau / rrlv(i, j)
-
-                        call curveTupYp(tup(itu5:itu5), yp, itu5, itu5)
-                        rrev(i, j) = tup(itu5) * rrlv(i, j)
-                    end do
-                end do
-
-            end do bocos
-        end if testWallFunctions
-
-    end subroutine vfEddyViscosity
-    subroutine vfScale
-        !
-        !       time and length scale definition for v2f turbulence model. The
-        !       upper bound can be switched on by setting rvfB to .true.
-        !       The strain squared is defined as: strain2 = 2 sij sij
-        !
-        use constants
-        use blockPointers
-        use inputPhysics
-        use paramTurb
-        use turbMod
-        implicit none
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: i, j, k
-
-        real(kind=realType) :: sqrt3
-        real(kind=realType) :: tkea, tepa, tv2a, supi, rn2
-        real(kind=realType) :: rsct, rscl2, rnu, rstrain
-
-        ! Some constants in the model.
-
-        sqrt3 = sqrt(three)
-
-        ! Set the pointer for dvt in dw, such that the code is more
-        ! readable. Also set the pointers for the production term,
-        ! vorticity, strain and the time and lenght scale of v2f.
-
-        dvt => scratch(1:, 1:, 1:, idvt:)
-        prod => scratch(1:, 1:, 1:, iprod)
-        sct => scratch(1:, 1:, 1:, isct)
-        scl2 => scratch(1:, 1:, 1:, iscl2)
-        vort => prod
-        strain2 => prod
-        !
-        !       Production term.
-        !
-        select case (turbProd)
-        case (strain)
-            call prodSmag2
-
-        case (vorticity)
-            call prodWmag2
-
-        case (katoLaunder)
-            call prodKatoLaunder
-
-        end select
-        !
-        !       Compute the length and time scale for all internal cells.
-        !
-        if (rvfB) then
-
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-
-                        ! Compute the time and length scale with upper bound
-
-                        rstrain = sqrt(strain2(i, j, k))
-                        rnu = rlv(i, j, k) / w(i, j, k, irho)
-                        tkea = abs(w(i, j, k, itu1))
-                        tepa = abs(w(i, j, k, itu2))
-                        tv2a = abs(w(i, j, k, itu3))
-                        supi = tepa * tkea / max(sqrt3 * tv2a * rvfCmu * rstrain, eps)
-                        rn2 = rvfCn**2 * (rnu * tepa)**1.5_realType
-
-                        rsct = max(tkea, six * sqrt(rnu * tepa))
-                        sct(i, j, k) = min(rsct, 0.6_realType * supi)
-                        rscl2 = tkea * min(tkea**2, supi**2)
-                        scl2(i, j, k) = rvfCl**2 * max(rscl2, rn2)
-
-                    end do
-                end do
-            end do
-
-        else
-
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-
-                        ! Compute the time and length scale without upper bound
-
-                        rnu = rlv(i, j, k) / w(i, j, k, irho)
-                        tkea = abs(w(i, j, k, itu1))
-                        tepa = abs(w(i, j, k, itu2))
-                        rn2 = rvfCn**2 * (rnu * tepa)**1.5_realType
-
-                        rsct = max(tkea, six * sqrt(rnu * tepa))
-                        sct(i, j, k) = rsct
-                        rscl2 = tkea**3
-                        scl2(i, j, k) = rvfCl**2 * max(rscl2, rn2)
-                    end do
-                end do
-            end do
-        end if
-
-    end subroutine vfScale
-
-    subroutine ktEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
-        !
-        !       ktEddyViscosity computes the eddy viscosity according to the
-        !       k-tau turbulence model for the block given in blockPointers.
-        !
-        use blockPointers
-        use constants
-        implicit none
-        ! Input variables
-        integer(kind=intType) :: iBeg, iEnd, jBeg, jEnd, kBeg, kEnd
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: i, j, k, ii, iSize, jSize, kSize
-
-        ! Loop over the cells of this block and compute the eddy viscosity.
-        ! Do not include halo's.
-#ifdef TAPENADE_REVERSE
-        iSize = (iEnd - iBeg) + 1
-        jSize = (jEnd - jBeg) + 1
-        kSize = (kEnd - kBeg) + 1
-
-        !$AD II-LOOP
-        do ii = 0, iSize * jSize * kSize - 1
-            i = mod(ii, iSize) + iBeg
-            j = mod(ii / iSize, jSize) + jBeg
-            k = ii / ((iSize * jSize)) + kBeg
-#else
-            do k = kBeg, kEnd
-                do j = jBeg, jEnd
-                    do i = iBeg, iEnd
-#endif
-                        rev(i, j, k) = abs(w(i, j, k, irho) * w(i, j, k, itu1) * w(i, j, k, itu2))
-#ifdef TAPENADE_REVERSE
-                    end do
-#else
-                end do
-            end do
-        end do
-#endif
-    end subroutine ktEddyViscosity
-
-#ifndef USE_TAPENADE
-    subroutine unsteadyTurbSpectral(ntu1, ntu2)
-        use constants
-        use blockPointers
-        use inputPhysics
-        use inputTimeSpectral
-        use iteration
-        use utils, only: setPointers
-        implicit none
-        !
-        !      Subroutine arguments.
-        !
-        integer(kind=intType), intent(in) :: ntu1, ntu2
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: nn, sps
-
-        ! Return immediately if not the time spectral equations are to
-        ! be solved.
-
-        if (equationMode /= timeSpectral) return
-
-        ! Loop over the number of spectral modes and local blocks.
-
-        spectralLoop: do sps = 1, nTimeIntervalsSpectral
-            domains: do nn = 1, nDom
-
-                ! Set the pointers for this block.
-
-                call setPointers(nn, currentLevel, sps)
-
-                call unsteadyTurbSpectral_block(ntu1, ntu2, nn, sps)
-            end do domains
-        end do spectralLoop
-    end subroutine unsteadyTurbSpectral
-#endif
-
-    subroutine unsteadyTurbSpectral_block(ntu1, ntu2, nn, sps)
-        !
-        !       unsteadyTurbSpectral determines the spectral time derivative
-        !       for all owned cells. This routine is called before the actual
-        !       solve routines, such that the treatment is identical for all
-        !       spectral solutions. The results is stored in the corresponding
-        !       entry in dw.
-        !
-        use constants
-        use blockPointers
-        use inputPhysics
-        use inputTimeSpectral
-        use iteration
-        implicit none
-        !
-        !      Subroutine arguments.
-        !
-        integer(kind=intType), intent(in) :: ntu1, ntu2, nn, sps
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: ii, mm, i, j, k
-
-        ! Return immediately if not the time spectral equations are to
-        ! be solved.
-
-        if (equationMode /= timeSpectral) return
-
-        ! Loop over the number of turbulent transport equations.
-
-        nAdvLoop: do ii = ntu1, ntu2
-
-            ! Initialize the time derivative to zero for the owned
-            ! cell centers.
-
-            do k = 2, kl
-                do j = 2, jl
-                    do i = 2, il
-                        dw(i, j, k, ii) = zero
-                    end do
-                end do
-            end do
-
-            ! Loop over the number of terms which contribute to the
-            ! time derivative.
-
-            do mm = 1, nTimeIntervalsSpectral
-
-                ! Add the contribution to the time derivative for
-                ! all owned cells.
-
-                do k = 2, kl
-                    do j = 2, jl
-                        do i = 2, il
-                            dw(i, j, k, ii) = dw(i, j, k, ii) &
-                                              + dscalar(sectionID, sps, mm) &
-                                              * flowDoms(nn, currentLevel, mm)%w(i, j, k, ii)
-                        end do
-                    end do
-                end do
-
-            end do
-
-        end do nAdvLoop
-    end subroutine unsteadyTurbSpectral_block
-
-    subroutine initKOmega(pOffset)
-        !
-        !       initKOmega initializes the values of k and omega a bit more
-        !       intelligently than just free-stream values.
-        !       It is assumed that the pointers in blockPointers already
-        !       point to the correct block on the correct level.
-        !       The argument pOffset is present such that in case of restart
-        !       a possible pointer offset is taken into account. For more
-        !       details see the corresponding routines in initFlow.
-        !
-        use blockPointers
-        use constants
-        use flowVarRefState
-        use paramTurb
-        implicit none
-        !
-        !      Subroutine arguments.
-        !
-        integer(kind=intType), intent(in) :: pOffset
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: i, j, k, ip, jp, kp
-        real(kind=realType) :: rhoi, tmp
-
-        ! Loop over the owned cells of the block.
-
-        do k = 2, kl
-            kp = k + pOffset
-            do j = 2, jl
-                jp = j + pOffset
-                do i = 2, il
-                    ip = i + pOffset
-
-                    ! Compute a value of omega based on the wall distance.
-
-                    rhoi = one / w(ip, jp, kp, irho)
-                    tmp = six * rhoi * rlv(i, j, k) / (rkwBeta1 * (d2Wall(i, j, k)**2))
-
-                    ! Initialize omega using the value just computed; make sure
-                    ! that the free stream value is the lowest possible value.
-                    ! After that initialize k using the current value of omega
-                    ! and the eddy viscosity. Again the free-stream value is
-                    ! the lower bound.
-
-                    w(ip, jp, kp, itu2) = max(tmp, wInf(itu2))
-                    tmp = rhoi * rev(i, j, k) * w(ip, jp, kp, itu2)
-                    w(ip, jp, kp, itu1) = max(tmp, wInf(itu1))
-
-                end do
-            end do
-        end do
-
-    end subroutine initKOmega
-
-    subroutine kwCDterm
-        !
-        !       kwCDterm computes the cross-diffusion term in the omega-eqn
-        !       for the SST version as well as the modified k-omega turbulence
-        !       model. It is assumed that the pointers in blockPointers and
-        !       turbMod are already set.
-        !
-        use constants
-        use blockPointers
-        use turbMod
-        implicit none
-        !
-        !      Local variables.
-        !
-        integer(kind=intType) :: i, j, k
-        real(kind=realType) :: kx, ky, kz, wwx, wwy, wwz
-        real(kind=realType) :: lnwip1, lnwim1, lnwjp1, lnwjm1
-        real(kind=realType) :: lnwkp1, lnwkm1
-
-        ! Loop over the cell centers of the given block. It may be more
-        ! efficient to loop over the faces and to scatter the gradient,
-        ! but in that case the gradients for k and omega must be stored.
-        ! In the current approach no extra memory is needed.
-
-        do k = 2, kl
-            do j = 2, jl
-                do i = 2, il
-
-                    ! Compute the gradient of k in the cell center. Use is made
-                    ! of the fact that the surrounding normals sum up to zero,
-                    ! such that the cell i,j,k does not give a contribution.
-                    ! The gradient is scaled by a factor 1/2vol.
-
-                    kx = w(i + 1, j, k, itu1) * si(i, j, k, 1) - w(i - 1, j, k, itu1) * si(i - 1, j, k, 1) &
-                         + w(i, j + 1, k, itu1) * sj(i, j, k, 1) - w(i, j - 1, k, itu1) * sj(i, j - 1, k, 1) &
-                         + w(i, j, k + 1, itu1) * sk(i, j, k, 1) - w(i, j, k - 1, itu1) * sk(i, j, k - 1, 1)
-                    ky = w(i + 1, j, k, itu1) * si(i, j, k, 2) - w(i - 1, j, k, itu1) * si(i - 1, j, k, 2) &
-                         + w(i, j + 1, k, itu1) * sj(i, j, k, 2) - w(i, j - 1, k, itu1) * sj(i, j - 1, k, 2) &
-                         + w(i, j, k + 1, itu1) * sk(i, j, k, 2) - w(i, j, k - 1, itu1) * sk(i, j, k - 1, 2)
-                    kz = w(i + 1, j, k, itu1) * si(i, j, k, 3) - w(i - 1, j, k, itu1) * si(i - 1, j, k, 3) &
-                         + w(i, j + 1, k, itu1) * sj(i, j, k, 3) - w(i, j - 1, k, itu1) * sj(i, j - 1, k, 3) &
-                         + w(i, j, k + 1, itu1) * sk(i, j, k, 3) - w(i, j, k - 1, itu1) * sk(i, j, k - 1, 3)
-
-                    ! Compute the logarithm of omega in the points that
-                    ! contribute to the gradient in this cell.
-
-                    lnwip1 = log(abs(w(i + 1, j, k, itu2)))
-                    lnwim1 = log(abs(w(i - 1, j, k, itu2)))
-                    lnwjp1 = log(abs(w(i, j + 1, k, itu2)))
-                    lnwjm1 = log(abs(w(i, j - 1, k, itu2)))
-                    lnwkp1 = log(abs(w(i, j, k + 1, itu2)))
-                    lnwkm1 = log(abs(w(i, j, k - 1, itu2)))
-
-                    ! Compute the scaled gradient of ln omega.
-
-                    wwx = lnwip1 * si(i, j, k, 1) - lnwim1 * si(i - 1, j, k, 1) &
-                          + lnwjp1 * sj(i, j, k, 1) - lnwjm1 * sj(i, j - 1, k, 1) &
-                          + lnwkp1 * sk(i, j, k, 1) - lnwkm1 * sk(i, j, k - 1, 1)
-                    wwy = lnwip1 * si(i, j, k, 2) - lnwim1 * si(i - 1, j, k, 2) &
-                          + lnwjp1 * sj(i, j, k, 2) - lnwjm1 * sj(i, j - 1, k, 2) &
-                          + lnwkp1 * sk(i, j, k, 2) - lnwkm1 * sk(i, j, k - 1, 2)
-                    wwz = lnwip1 * si(i, j, k, 3) - lnwim1 * si(i - 1, j, k, 3) &
-                          + lnwjp1 * sj(i, j, k, 3) - lnwjm1 * sj(i, j - 1, k, 3) &
-                          + lnwkp1 * sk(i, j, k, 3) - lnwkm1 * sk(i, j, k - 1, 3)
-
-                    ! Compute the dot product grad k grad ln omega.
-                    ! Multiply it by the correct scaling factor and store it.
-
-                    kwCD(i, j, k) = fourth * (kx * wwx + ky * wwy + kz * wwz) / (vol(i, j, k)**2)
-
-                end do
-            end do
-        end do
-
-    end subroutine kwCDterm
-#endif
 
     function reThetaTCorrelation(Tu, lambdaTheta) result(reThetaT)
         !

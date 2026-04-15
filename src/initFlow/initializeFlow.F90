@@ -433,7 +433,7 @@ contains
         !      Local variables.
         !
         integer :: ierr
-        integer(kind=intType), parameter :: nSaGrDebugVars = 24_intType
+        integer(kind=intType), parameter :: nSaGrDebugVars = 26_intType
 
         integer(kind=intType) :: nn
         integer(kind=intType) :: il, jl, kl, ie, je, ke, ib, jb, kb
@@ -2226,15 +2226,15 @@ contains
                 if (viscous) rlv = muInf
                 if (eddyModel) rev = eddyVisInfRatio * muInf
 
-                ! For SA-gamma-Retheta: initialize gamma to near-zero
+                ! For SA-gamma-Retheta: initialize gamma to zero
                 ! so that SA production is suppressed until Fonset
                 ! activates gamma through the physical transition
-                ! mechanism. Farfield BCs maintain gamma=1 at inflow.
+                ! mechanism. Farfield BCs prescribe gamma=1 at inflow.
                 if (turbModel == spalartallmarasnoft2gammaretheta) then
                     do k = 0, kb
                         do j = 0, jb
                             do i = 0, ib
-                                w(i, j, k, itu2) = 1.0e-10_realType
+                                w(i, j, k, itu2) = 0.5
                             end do
                         end do
                     end do

@@ -243,6 +243,8 @@ contains
         if (volWriteDwdz) nVolSolvar = nVolSolvar + 1
         if (volWriteFthetaT) nVolSolvar = nVolSolvar + 1
         if (volWriteFwake) nVolSolvar = nVolSolvar + 1
+        if (volWriteGammaProd) nVolSolvar = nVolSolvar + 1
+        if (volWriteGammaDest) nVolSolvar = nVolSolvar + 1
 
         ! Check the discrete variables.
 
@@ -702,6 +704,16 @@ contains
         if (volWriteFwake) then
             nn = nn + 1
             solNames(nn) = cgnsFwake
+        end if
+
+        if (volWriteGammaProd) then
+            nn = nn + 1
+            solNames(nn) = cgnsGammaProd
+        end if
+
+        if (volWriteGammaDest) then
+            nn = nn + 1
+            solNames(nn) = cgnsGammaDest
         end if
 
     end subroutine volSolNames
@@ -1467,7 +1479,8 @@ contains
         case (cgnsFonset, cgnsFlength, cgnsRturb, cgnsReThetaTarget, &
               cgnsFonset1, cgnsReS, cgnsReThetaC, cgnsReSOverCrit, &
               cgnsStrainMag, cgnsDudx, cgnsDudy, cgnsDudz, cgnsDvdx, &
-              cgnsDvdy, cgnsDvdz, cgnsDwdx, cgnsDwdy, cgnsDwdz, cgnsFthetaT, cgnsFwake)
+              cgnsDvdy, cgnsDvdz, cgnsDwdx, cgnsDwdy, cgnsDwdz, cgnsFthetaT, cgnsFwake, &
+              cgnsGammaProd, cgnsGammaDest)
 
             dbgVar = 0
             select case (solName)
@@ -1511,6 +1524,10 @@ contains
                 dbgVar = 19
             case (cgnsDwdz)
                 dbgVar = 20
+            case (cgnsGammaProd)
+                dbgVar = 25
+            case (cgnsGammaDest)
+                dbgVar = 26
             end select
 
             do k = kBeg, kEnd

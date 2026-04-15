@@ -44,6 +44,7 @@ module extraOutput
     logical :: volWriteDvdx, volWriteDvdy, volWriteDvdz
     logical :: volWriteDwdx, volWriteDwdy, volWriteDwdz
     logical :: volWriteFthetaT, volWriteFwake
+    logical :: volWriteGammaProd, volWriteGammaDest
 !
 !       The logical variables, which define the isosurface variables
 !       to be written.
