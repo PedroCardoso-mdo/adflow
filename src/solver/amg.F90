@@ -484,8 +484,6 @@ contains
 
     subroutine applyShellPC(pc, x, y, ierr)
         use communication
-        use ankProfiling, only: ankNow, ankProfAddSection, &
-            ANK_SEC_APPLYSHELLPC, ANK_SEC_MGPRECON, ANK_SEC_KSPSOLVE_KSPLEVELS1
         ! Input/Output
         PC pc
         Vec x, y
@@ -493,11 +491,10 @@ contains
 
         ! Working
         integer(kind=intType) :: i
-        real(kind=alwaysRealType) :: tStart, tApply, tMG, tKSP
+        real(kind=alwaysRealType) :: tApply
 
 
-        ! Fine-grained timing: applyShellPC
-        tStart = ankNow()
+        tApply = 0.0_alwaysRealType
 
         if (amgLevels > 1) then
 
@@ -511,14 +508,10 @@ contains
 
             if (amgOuterIts == 1) then
                 ! Time MGPreCon
-                tMG = ankNow()
                 call MGPreCon(rhs(1), y, 1) ! y is the new approximate solution
-                call ankProfAddSection(ANK_SEC_MGPRECON, ankNow()-tMG, ankNow()-tMG, 0.0_alwaysRealType)
             else
                 do i = 1, amgOuterIts
-                    tMG = ankNow()
                     call MGPreCon(rhs(1), sol(1), 1) ! The solution update is stored in sol(1)
-                    call ankProfAddSection(ANK_SEC_MGPRECON, ankNow()-tMG, ankNow()-tMG, 0.0_alwaysRealType)
 
                     ! Update the solution
                     call VecAYPX(y, one, sol(1), ierr) ! y = y + sol(1)
@@ -538,14 +531,10 @@ contains
         else
             ! Solve the fine level
             ! This is equivalent to not using multigrid
-            tKSP = ankNow()
             call KSPSolve(kspLevels(1), x, y, ierr)
-            call ankProfAddSection(ANK_SEC_KSPSOLVE_KSPLEVELS1, ankNow()-tKSP, ankNow()-tKSP, 0.0_alwaysRealType)
             call EChk(ierr, __FILE__, __LINE__)
         end if
 
-        tApply = ankNow() - tStart
-        call ankProfAddSection(ANK_SEC_APPLYSHELLPC, tApply, tApply, 0.0_alwaysRealType)
     !$omp critical(amg_pcapply_accum)
         amgPCApplyAccum = amgPCApplyAccum + tApply
         amgPCApplyCalls = amgPCApplyCalls + 1_intType
