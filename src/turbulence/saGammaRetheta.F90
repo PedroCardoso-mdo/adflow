@@ -125,6 +125,9 @@ contains
         integer(kind=intType), parameter :: dbgMu = 24_intType
         integer(kind=intType), parameter :: dbgGammaProd = 25_intType
         integer(kind=intType), parameter :: dbgGammaDest = 26_intType
+        integer(kind=intType), parameter :: dbgTimeScale = 27_intType
+        integer(kind=intType), parameter :: dbgLambdaTheta = 28_intType
+        integer(kind=intType), parameter :: dbgPReTheta = 29_intType
 
         ! Local variables.
         integer(kind=intType) :: i, j, k, nn, ii
@@ -420,8 +423,12 @@ contains
                         
 
                         ! --- ReTheta production (relaxation toward correlation) ---
+                        ! NOTE: No explicit Reynolds factor here.
+                        ! ADflow's non-dim bakes 1/Re into rlv = mu/(rho_inf*a_inf).
+                        ! The dimensional time scale is t = 500*mu/(rho*U^2);
+                        ! in ADflow non-dim this is 500*rlv/(rho_nd*U_nd^2).
                         timeScale = 500.0_realType * rlv(i, j, k) &
-                                    / max(w(i, j, k, irho) * velMag2 * Reynolds, xminn)
+                                    / max(w(i, j, k, irho) * velMag2, xminn)
 
                         ! Compute thetaBL first (needed for lambdaTheta)
                         thetaBL = reThetaTilde * rlv(i, j, k) &
@@ -495,6 +502,9 @@ contains
                             transitionDebug(i, j, k, dbgMu) = rlv(i, j, k)
                             transitionDebug(i, j, k, dbgGammaProd) = pGamma
                             transitionDebug(i, j, k, dbgGammaDest) = eGamma
+                            transitionDebug(i, j, k, dbgTimeScale) = timeScale
+                            transitionDebug(i, j, k, dbgLambdaTheta) = lambdaThetaLocal
+                            transitionDebug(i, j, k, dbgPReTheta) = pReTheta
                         end if
 
 #ifndef USE_TAPENADE
@@ -522,19 +532,27 @@ contains
                                          * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
                                          - rsaCw1 * dfw)
 
-                        ! A couple of terms in qq may lead to a negative
-                        ! contribution. Clip qq to zero, if the total is negative.
+                        ! Source dt restriction (§2): when production dominates
+                        ! (qq < 0), set qq = |qq|/0.9 instead of clipping to zero.
+                        ! This ensures lambda_source * dt <= 0.9.
+                        qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), &
+                            -qq(i, j, k, 1, 1) / rsaGRsrcDtLimit)
 
-                        qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), zero)
-
-                        ! Gamma Jacobian diagonal: implicit part of destruction
-                        qq(i, j, k, 2, 2) = max( &
-                            rsaGRca1 * fLength_val * fOnset * vortMagLim &
-                            * rsaGRce1 * sqrt(max(gammaLocal, xminn)) &
+                        ! Full gamma source Jacobian: -d(pGamma - eGamma)/dgamma
+                        ! Includes both production and destruction linearization.
+                        qq(i, j, k, 2, 2) = rsaGRca1 * fLength_val * fOnset &
+                            * vortMagLim &
+                            * (1.5_realType * rsaGRce1 * gammaLocal - half) &
+                            / sqrt(max(gammaLocal, xminn)) &
                             + rsaGRca2 * fTurb_val * vortMagLim &
-                            * max(two * rsaGRce2 * gammaLocal - one, zero), zero)
+                            * (two * rsaGRce2 * gammaLocal - one)
+
+                        ! Source dt restriction for gamma equation.
+                        qq(i, j, k, 2, 2) = max(qq(i, j, k, 2, 2), &
+                            -qq(i, j, k, 2, 2) / rsaGRsrcDtLimit)
 
                         ! ReTheta Jacobian diagonal: -dP_theta/dReTheta_tilde
+                        ! Always >= 0 (relaxation), so restriction is a no-op.
                         qq(i, j, k, 3, 3) = max( &
                             rsaGRcthetat / max(timeScale, xminn) &
                             * (one - fThetaT), zero)
@@ -1289,6 +1307,14 @@ contains
 
         ! misc
         real(kind=realType) :: rblank, factor
+        real(kind=realType) :: gammaNew, gammaDelta, dampFactor
+        integer(kind=intType) :: mm
+
+        ! Scaling values from existing turbulence residual scaling options
+        real(kind=realType) :: scaleNu, scaleGamma, scaleReTheta
+
+        ! Scaling ratios (precomputed from scaling values)
+        real(kind=realType) :: s12, s13, s21, s23, s31, s32
 
         ! ADI work arrays
         real(kind=realType), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
@@ -1299,8 +1325,21 @@ contains
         cb3Inv = one / rsaCb3
         cv13 = rsaCv1**3
 
-        ! Scale ALL 9 qq entries by the CFL factor.
-        ! For implicit relaxation: factor = 1 + (1-alfa)/alfa.
+        ! Use existing per-equation scaling controls. Protect against zero.
+        scaleNu = max(abs(turbResScale(1)), one)
+        scaleGamma = max(abs(turbResScale(2)), one)
+        scaleReTheta = max(abs(turbResScale(3)), one)
+
+        ! Precompute scaling ratios: s_col / s_row for off-diagonal entries
+        s12 = scaleGamma   / scaleNu       ! eq1, var2
+        s13 = scaleReTheta / scaleNu       ! eq1, var3
+        s21 = scaleNu      / scaleGamma    ! eq2, var1
+        s23 = scaleReTheta / scaleGamma    ! eq2, var3
+        s31 = scaleNu      / scaleReTheta  ! eq3, var1
+        s32 = scaleGamma   / scaleReTheta  ! eq3, var2
+
+        ! Prepare qq: decoupled mode, scaling, and CFL factor.
+        ! For implicit relaxation: factor = 1 + (1-alfa)/alfa = 1/alfa.
 
         factor = one
         if (turbRelax == turbRelaxImplicit) &
@@ -1309,6 +1348,26 @@ contains
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
+                    ! B3 decoupled mode: zero off-diagonal coupling
+                    if (.not. TurbDADICoupled) then
+                        qq(i, j, k, 1, 2) = zero
+                        qq(i, j, k, 1, 3) = zero
+                        qq(i, j, k, 2, 1) = zero
+                        qq(i, j, k, 2, 3) = zero
+                        qq(i, j, k, 3, 1) = zero
+                        qq(i, j, k, 3, 2) = zero
+                    end if
+
+                    ! Symmetric scaling (§4): qq(m,n) *= s_n / s_m
+                    ! Diagonal entries unchanged; only off-diag scaled.
+                    qq(i, j, k, 1, 2) = qq(i, j, k, 1, 2) * s12
+                    qq(i, j, k, 1, 3) = qq(i, j, k, 1, 3) * s13
+                    qq(i, j, k, 2, 1) = qq(i, j, k, 2, 1) * s21
+                    qq(i, j, k, 2, 3) = qq(i, j, k, 2, 3) * s23
+                    qq(i, j, k, 3, 1) = qq(i, j, k, 3, 1) * s31
+                    qq(i, j, k, 3, 2) = qq(i, j, k, 3, 2) * s32
+
+                    ! CFL factor scaling (all 9 entries)
                     qq(i, j, k, 1, 1) = factor * qq(i, j, k, 1, 1)
                     qq(i, j, k, 1, 2) = factor * qq(i, j, k, 1, 2)
                     qq(i, j, k, 1, 3) = factor * qq(i, j, k, 1, 3)
@@ -1318,6 +1377,11 @@ contains
                     qq(i, j, k, 3, 1) = factor * qq(i, j, k, 3, 1)
                     qq(i, j, k, 3, 2) = factor * qq(i, j, k, 3, 2)
                     qq(i, j, k, 3, 3) = factor * qq(i, j, k, 3, 3)
+
+                    ! Scale the RHS: scratch(m) /= s_m
+                    scratch(i, j, k, idvt)     = scratch(i, j, k, idvt)     / scaleNu
+                    scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) / scaleGamma
+                    scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) / scaleReTheta
                 end do
             end do
         end do
@@ -1750,6 +1814,7 @@ contains
         !       Update the turbulent variables. For explicit relaxation the
         !       update must be relaxed; for implicit relaxation this has been
         !       done via the time step.
+        !       Unscale the update: ΔQ(m) = s_m * ΔQ_scaled(m).
         !
         factor = one
         if (turbRelax == turbRelaxExplicit) factor = alfaTurb
@@ -1758,16 +1823,37 @@ contains
             do j = 2, jl
                 do i = 2, il
                     w(i, j, k, itu1) = w(i, j, k, itu1) &
-                                       + factor * scratch(i, j, k, idvt)
+                                       + factor * scaleNu &
+                                       * scratch(i, j, k, idvt)
                     w(i, j, k, itu1) = max(w(i, j, k, itu1), zero)
 
-                    w(i, j, k, itu2) = w(i, j, k, itu2) &
-                                       + factor * scratch(i, j, k, idvt + 1)
-                    w(i, j, k, itu2) = min(max(w(i, j, k, itu2), rsaGRgammaLo), one)
+                    ! Gamma update with exponential back-off damping (§3).
+                    ! If the raw update overshoots [gammaLo, gammaHi],
+                    ! reduce the step by theta^m until it stays in range.
+                    gammaDelta = factor * scaleGamma &
+                                 * scratch(i, j, k, idvt + 1)
+                    gammaNew = w(i, j, k, itu2) + gammaDelta
+                    dampFactor = one
+                    do mm = 1, 40
+                        if (gammaNew >= rsaGRgammaLo .and. &
+                            gammaNew <= rsaGRgammaHi) exit
+                        dampFactor = dampFactor * rsaGRdampTheta
+                        gammaNew = w(i, j, k, itu2) + dampFactor * gammaDelta
+                    end do
+                    w(i, j, k, itu2) = min(max(gammaNew, rsaGRgammaLo), &
+                                           rsaGRgammaHi)
 
-                    w(i, j, k, itu3) = w(i, j, k, itu3) &
-                                       + factor * scratch(i, j, k, idvt + 2)
-                    w(i, j, k, itu3) = max(w(i, j, k, itu3), rsaGRreThetaLo)
+                    ! ReTheta update with exponential back-off damping (§3).
+                    gammaDelta = factor * scaleReTheta &
+                                 * scratch(i, j, k, idvt + 2)
+                    gammaNew = w(i, j, k, itu3) + gammaDelta
+                    dampFactor = one
+                    do mm = 1, 40
+                        if (gammaNew >= rsaGRreThetaLo) exit
+                        dampFactor = dampFactor * rsaGRdampTheta
+                        gammaNew = w(i, j, k, itu3) + dampFactor * gammaDelta
+                    end do
+                    w(i, j, k, itu3) = max(gammaNew, rsaGRreThetaLo)
                 end do
             end do
         end do

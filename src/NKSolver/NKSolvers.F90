@@ -3020,6 +3020,8 @@ contains
         use constants
         use blockPointers, only: ndom, il, jl, kl
         use flowVarRefState, only: nw, nwf, nt1, nt2
+        use inputPhysics, only: turbModel
+        use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputtimespectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers, EChk
         use genericISNAN, only: myisnan
@@ -3036,6 +3038,7 @@ contains
         real(kind=alwaysRealType) :: lambdaL ! L is for local
         real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
         real(kind=alwaysRealType) :: ratio
+        real(kind=alwaysRealType) :: wval, dval, ratioBound
 
         ! Determine the maximum step size that would yield
         ! a maximum relative change of ANK_physLSTol in density, and total energy.
@@ -3174,10 +3177,41 @@ contains
                                 do l = nt1 + 1, nt2
 #ifndef USE_COMPLEX
                                     ratio = (wvec_pointer(ii) / (dvec_pointer(ii) + eps)) * ANK_physLSTolTurb
+                                    wval = wvec_pointer(ii)
+                                    dval = dvec_pointer(ii)
 #else
                                     ratio = (real(wvec_pointer(ii)) &
                                              / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTolTurb)
+                                    wval = real(wvec_pointer(ii))
+                                    dval = real(dvec_pointer(ii))
 #endif
+
+                                    ! For SA-gamma-ReTheta, also enforce variable bounds by
+                                    ! limiting the global step with the local admissible step.
+                                    if (turbModel == spalartallmarasnoft2gammaretheta) then
+                                        ratioBound = one
+
+                                        if (l == nt1 + 1) then
+                                            ! gamma lower and upper bounds
+                                            if (dval > zero) then
+                                                ratioBound = min(ratioBound, &
+                                                    (wval - rsaGRgammaLo) / (dval + eps))
+                                            else if (dval < zero) then
+                                                ratioBound = min(ratioBound, &
+                                                    (rsaGRgammaHi - wval) / (-dval + eps))
+                                            end if
+                                        else if (l == nt1 + 2) then
+                                            ! ReTheta lower bound
+                                            if (dval > zero) then
+                                                ratioBound = min(ratioBound, &
+                                                    (wval - rsaGRreThetaLo) / (dval + eps))
+                                            end if
+                                        end if
+
+                                        ratioBound = max(ratioBound, zero)
+                                        ratio = min(ratio, ratioBound)
+                                    end if
+
                                     if (ratio .lt. ANK_stepFactor * ANK_stepMin) then
                                         if (ratio .gt. zero) &
                                             dvec_pointer(ii) = wvec_pointer(ii) * ANK_physLSTolTurb
@@ -3227,6 +3261,8 @@ contains
         use constants
         use blockPointers, only: ndom, il, jl, kl
         use flowVarRefState, only: nw, nwf, nt1, nt2
+        use inputPhysics, only: turbModel
+        use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputtimespectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers, EChk
         use genericISNAN, only: myisnan
@@ -3243,6 +3279,7 @@ contains
         real(kind=alwaysRealType) :: lambdaL ! L is for local
         real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
         real(kind=alwaysRealType) :: ratio
+        real(kind=alwaysRealType) :: wval, dval, ratioBound
 
         ! Determine the maximum step size that would yield
         ! a maximum change of 10% in density, total energy,
@@ -3308,10 +3345,41 @@ contains
                             do l = nt1 + 1, nt2
 #ifndef USE_COMPLEX
                                 ratio = (wvec_pointer(ii) / (dvec_pointer(ii) + eps)) * ANK_physLSTolTurb
+                                wval = wvec_pointer(ii)
+                                dval = dvec_pointer(ii)
 #else
                                 ratio = (real(wvec_pointer(ii)) &
                                          / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTolTurb)
+                                wval = real(wvec_pointer(ii))
+                                dval = real(dvec_pointer(ii))
 #endif
+
+                                ! For SA-gamma-ReTheta, also enforce variable bounds by
+                                ! limiting the global step with the local admissible step.
+                                if (turbModel == spalartallmarasnoft2gammaretheta) then
+                                    ratioBound = one
+
+                                    if (l == nt1 + 1) then
+                                        ! gamma lower and upper bounds
+                                        if (dval > zero) then
+                                            ratioBound = min(ratioBound, &
+                                                (wval - rsaGRgammaLo) / (dval + eps))
+                                        else if (dval < zero) then
+                                            ratioBound = min(ratioBound, &
+                                                (rsaGRgammaHi - wval) / (-dval + eps))
+                                        end if
+                                    else if (l == nt1 + 2) then
+                                        ! ReTheta lower bound
+                                        if (dval > zero) then
+                                            ratioBound = min(ratioBound, &
+                                                (wval - rsaGRreThetaLo) / (dval + eps))
+                                        end if
+                                    end if
+
+                                    ratioBound = max(ratioBound, zero)
+                                    ratio = min(ratio, ratioBound)
+                                end if
+
                                 if (ratio .lt. ANK_stepFactor * ANK_stepMin) then
                                     if (ratio .gt. zero) &
                                         dvec_pointer(ii) = wvec_pointer(ii) * ANK_physLSTolTurb

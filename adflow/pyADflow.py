@@ -1262,9 +1262,18 @@ class ADFLOW(AeroSolver):
 
         if self.adflow.killsignals.fatalfail:
             numDigits = self.getOption("writeSolutionDigits")
-            fileName = f"failed_mesh_{self.curAP.name}_{self.curAP.adflowData.callCounter:0{numDigits}d}.cgns"
-            self.pp(f"Fatal failure during mesh warp! Bad mesh is written in output directory as {fileName}")
-            self.writeMeshFile(os.path.join(self.getOption("outputDirectory"), fileName))
+            volumeFileName = f"failed_mesh_{self.curAP.name}_{self.curAP.adflowData.callCounter:0{numDigits}d}.cgns"
+            surfaceFileName = f"failed_mesh_{self.curAP.name}_{self.curAP.adflowData.callCounter:0{numDigits}d}_surf.cgns"
+            self.pp(
+                f"Fatal failure during mesh warp! Bad volume mesh is written in output directory as {volumeFileName} "
+                f"and surface mesh is written as {surfaceFileName}"
+            )
+            outputDir = self.getOption("outputDirectory")
+            self.pp(f"DEBUG: entering failed-mesh write path; volume file: {volumeFileName}, surface file: {surfaceFileName}")
+            self.writeMeshFile(os.path.join(outputDir, volumeFileName))
+            self.pp(f"DEBUG: volume mesh write complete; now writing surface mesh to {surfaceFileName}")
+            self.writeSurfaceSolutionFile(os.path.join(outputDir, surfaceFileName))
+            self.pp(f"DEBUG: failed surface mesh write complete")
             self.curAP.fatalFail = True
             self.curAP.solveFailed = True
             return
@@ -5808,6 +5817,7 @@ class ADFLOW(AeroSolver):
             # Approximate Newton-Krylov Parameters
             "useANKSolver": [bool, True],
             "ANKUseTurbDADI": [bool, True],
+            "TurbDADICoupled": [bool, True],
             "ANKUseApproxSA": [bool, False],
             "ANKSwitchTol": [float, 1e3],
             "ANKSubspaceSize": [int, -1],
@@ -6223,6 +6233,7 @@ class ADFLOW(AeroSolver):
             # Approximate Newton-Krylov Parameters
             "useanksolver": ["ank", "useanksolver"],
             "ankuseturbdadi": ["ank", "ank_useturbdadi"],
+            "turbdadicoupled": ["iter", "turbdadicoupled"],
             "ankuseapproxsa": ["ank", "ank_useapproxsa"],
             "ankswitchtol": ["ank", "ank_switchtol"],
             "anksubspacesize": ["ank", "ank_subspace"],

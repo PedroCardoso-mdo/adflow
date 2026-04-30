@@ -1107,6 +1107,7 @@ python module libadflow
          real(kind=realtype) :: disscontmagnitude
          real(kind=realtype) :: disscontmidpoint
          real(kind=realtype) :: disscontsharpness
+         logical :: turbdadicoupled
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

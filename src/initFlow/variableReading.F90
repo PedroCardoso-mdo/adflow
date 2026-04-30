@@ -1173,9 +1173,9 @@ contains
 
             else
 
-                ! Variable not present; use free-stream value,
-                ! except gamma which is initialized to near-zero
-                ! for proper transition onset (Option B).
+                ! Variable not present; use free-stream values.
+                ! Gamma = wInf(itu2) = 1.0 (fully turbulent freestream).
+                ! ReTheta = wInf(itu3) = correlation value.
                 itu = indW(ii)
                 do k = kBeg, kEnd
                     kp = k + po
@@ -1183,14 +1183,7 @@ contains
                         jp = j + po
                         do i = iBeg, iEnd
                             ip = i + po
-                            if (ii == 1) then
-                                ! Gamma: initialize small to suppress SA
-                                ! production until physical transition
-                                w(ip, jp, kp, itu) = 1.0e-10_realType
-                            else
-                                ! ReTheta: use freestream correlation value
-                                w(ip, jp, kp, itu) = wInf(itu)
-                            end if
+                            w(ip, jp, kp, itu) = wInf(itu)
                         end do
                     end do
                 end do

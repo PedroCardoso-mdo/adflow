@@ -295,6 +295,7 @@ module inputIteration
     logical :: useSkewnessCheck
     logical :: useDissContinuation
     real(kind=realType) :: dissContMagnitude, dissContMidpoint, dissContSharpness
+    logical :: TurbDADICoupled = .true.
 
 end module inputIteration
 

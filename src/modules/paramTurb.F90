@@ -46,6 +46,10 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRgammaLo  = 1.e-10_realType
     real(kind=realType), parameter :: rsaGRgammaHi  = 2.0_realType
     real(kind=realType), parameter :: rsaGRreThetaLo = 20.0_realType
+!
+!       SA-Gamma-Retheta stabilization: source dt restriction and scaling.
+!
+    real(kind=realType), parameter :: rsaGRsrcDtLimit = 0.9_realType
 
 !
 !       K-omega constants.
