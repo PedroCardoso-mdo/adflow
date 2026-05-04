@@ -223,6 +223,19 @@ module cgnsNames
         cgnsGammaProd = "TransitionGammaProduction"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsGammaDest = "TransitionGammaDestruction"
+    ! slots 22-24, 27-29 (slot 21 = "TransitionGamma" already via cgnsTurbGamma)
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransWallDist = "TransitionWallDist"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransRho = "TransitionRho"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransMu = "TransitionMu"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransTimeScale = "TransitionTimeScale"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransLambdaTheta = "TransitionLambdaTheta"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransPReTheta = "TransitionPReTheta"
 
 !
 !       Residual names.

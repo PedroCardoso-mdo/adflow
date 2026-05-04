@@ -421,7 +421,7 @@ contains
         use flowVarRefState, only: nw, nwf, nt1, nt2
         use inputPhysics, only: equationMode, gammaConstant, turbModel
         use inputUnsteady, only: timeIntegrationScheme
-        use inputIteration, only: mgStartLevel, turbTreatment
+        use inputIteration, only: mgStartLevel, turbTreatment, storeTransitionDebug
         use iteration, only: nOldLevels
         use utils, only: terminate
         implicit none
@@ -517,7 +517,7 @@ contains
                                "Memory allocation failure for rev")
             !endif
 
-            if (turbModel == spalartallmarasnoft2gammaretheta) then
+            if (turbModel == spalartallmarasnoft2gammaretheta .and. storeTransitionDebug) then
                 allocate (flowDoms(nn, level, sps)%transitionDebug(2:il, 2:jl, 2:kl, 1:nSaGrDebugVars), &
                           stat=ierr)
                 if (ierr /= 0) &
@@ -2226,7 +2226,7 @@ contains
                 if (viscous) rlv = muInf
                 if (eddyModel) rev = eddyVisInfRatio * muInf
 
-                ! For SA-gamma-Retheta: initialize gamma to zero
+                ! For SA-gamma-Retheta: initialize gamma to 0.02
                 ! so that SA production is suppressed until Fonset
                 ! activates gamma through the physical transition
                 ! mechanism. Farfield BCs prescribe gamma=1 at inflow.
@@ -2234,7 +2234,7 @@ contains
                     do k = 0, kb
                         do j = 0, jb
                             do i = 0, ib
-                                w(i, j, k, itu2) = 0.5
+                                w(i, j, k, itu2) = 0.02
                             end do
                         end do
                     end do

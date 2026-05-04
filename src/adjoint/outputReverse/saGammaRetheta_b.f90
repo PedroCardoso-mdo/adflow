@@ -762,7 +762,7 @@ contains
         wd(i, j, k, irho) = wd(i, j, k, irho) + velmag2*reynolds*x4d
         velmag2d = w(i, j, k, irho)*reynolds*x4d
         pgammad = scratchd(i, j, k, idvt+1)
-        egammad = -(1e6_realtype*scratchd(i, j, k, idvt+1))
+        egammad = -scratchd(i, j, k, idvt+1)
         scratchd(i, j, k, idvt+1) = 0.0_8
         tempd1 = (rsagrce2*gammalocal-one)*rsagrca2*egammad
         fturb_vald = vortmaglim*gammalocal*tempd1
@@ -1526,7 +1526,7 @@ contains
 &         rsagrce1*gammalocal)
         egamma = rsagrca2*fturb_val*vortmaglim*gammalocal*(rsagrce2*&
 &         gammalocal-one)
-        scratch(i, j, k, idvt+1) = pgamma - 1e6_realtype*egamma
+        scratch(i, j, k, idvt+1) = pgamma - egamma
         x4 = w(i, j, k, irho)*velmag2*reynolds
         if (x4 .lt. xminn) then
           max8 = xminn

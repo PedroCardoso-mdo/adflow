@@ -169,6 +169,34 @@ contains
         if (surfWriteSepSensor) nSolVar = nSolVar + 1
         if (surfWriteCavitation) nsolVar = nsolVar + 1
         if (surfWriteGC) nsolVar = nsolVar + 1
+        if (surfWriteFonset) nSolVar = nSolVar + 1
+        if (surfWriteFonset1) nSolVar = nSolVar + 1
+        if (surfWriteFlength) nSolVar = nSolVar + 1
+        if (surfWriteRturb) nSolVar = nSolVar + 1
+        if (surfWriteReThetaTarget) nSolVar = nSolVar + 1
+        if (surfWriteReS) nSolVar = nSolVar + 1
+        if (surfWriteReThetaC) nSolVar = nSolVar + 1
+        if (surfWriteReSOverCrit) nSolVar = nSolVar + 1
+        if (surfWriteStrainMag) nSolVar = nSolVar + 1
+        if (surfWriteDudx) nSolVar = nSolVar + 1
+        if (surfWriteDudy) nSolVar = nSolVar + 1
+        if (surfWriteDudz) nSolVar = nSolVar + 1
+        if (surfWriteDvdx) nSolVar = nSolVar + 1
+        if (surfWriteDvdy) nSolVar = nSolVar + 1
+        if (surfWriteDvdz) nSolVar = nSolVar + 1
+        if (surfWriteDwdx) nSolVar = nSolVar + 1
+        if (surfWriteDwdy) nSolVar = nSolVar + 1
+        if (surfWriteDwdz) nSolVar = nSolVar + 1
+        if (surfWriteFthetaT) nSolVar = nSolVar + 1
+        if (surfWriteFwake) nSolVar = nSolVar + 1
+        if (surfWriteGammaProd) nSolVar = nSolVar + 1
+        if (surfWriteGammaDest) nSolVar = nSolVar + 1
+        if (surfWriteTransWallDist) nSolVar = nSolVar + 1
+        if (surfWriteTransRho) nSolVar = nSolVar + 1
+        if (surfWriteTransMu) nSolVar = nSolVar + 1
+        if (surfWriteTransTimeScale) nSolVar = nSolVar + 1
+        if (surfWriteTransLambdaTheta) nSolVar = nSolVar + 1
+        if (surfWriteTransPReTheta) nSolVar = nSolVar + 1
 
     end subroutine numberOfSurfSolVariables
 
@@ -245,6 +273,12 @@ contains
         if (volWriteFwake) nVolSolvar = nVolSolvar + 1
         if (volWriteGammaProd) nVolSolvar = nVolSolvar + 1
         if (volWriteGammaDest) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransWallDist) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransRho) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransMu) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransTimeScale) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransLambdaTheta) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransPReTheta) nVolSolvar = nVolSolvar + 1
 
         ! Check the discrete variables.
 
@@ -716,6 +750,36 @@ contains
             solNames(nn) = cgnsGammaDest
         end if
 
+        if (volWriteTransWallDist) then
+            nn = nn + 1
+            solNames(nn) = cgnsTransWallDist
+        end if
+
+        if (volWriteTransRho) then
+            nn = nn + 1
+            solNames(nn) = cgnsTransRho
+        end if
+
+        if (volWriteTransMu) then
+            nn = nn + 1
+            solNames(nn) = cgnsTransMu
+        end if
+
+        if (volWriteTransTimeScale) then
+            nn = nn + 1
+            solNames(nn) = cgnsTransTimeScale
+        end if
+
+        if (volWriteTransLambdaTheta) then
+            nn = nn + 1
+            solNames(nn) = cgnsTransLambdaTheta
+        end if
+
+        if (volWriteTransPReTheta) then
+            nn = nn + 1
+            solNames(nn) = cgnsTransPReTheta
+        end if
+
     end subroutine volSolNames
 
     subroutine surfSolNames(solNames)
@@ -872,6 +936,35 @@ contains
             nn = nn + 1
             solNames(nn) = cgnsGC
         end if
+
+        if (surfWriteFonset) then; nn = nn + 1; solNames(nn) = cgnsFonset; end if
+        if (surfWriteFonset1) then; nn = nn + 1; solNames(nn) = cgnsFonset1; end if
+        if (surfWriteFlength) then; nn = nn + 1; solNames(nn) = cgnsFlength; end if
+        if (surfWriteRturb) then; nn = nn + 1; solNames(nn) = cgnsRturb; end if
+        if (surfWriteReThetaTarget) then; nn = nn + 1; solNames(nn) = cgnsReThetaTarget; end if
+        if (surfWriteReS) then; nn = nn + 1; solNames(nn) = cgnsReS; end if
+        if (surfWriteReThetaC) then; nn = nn + 1; solNames(nn) = cgnsReThetaC; end if
+        if (surfWriteReSOverCrit) then; nn = nn + 1; solNames(nn) = cgnsReSOverCrit; end if
+        if (surfWriteStrainMag) then; nn = nn + 1; solNames(nn) = cgnsStrainMag; end if
+        if (surfWriteDudx) then; nn = nn + 1; solNames(nn) = cgnsDudx; end if
+        if (surfWriteDudy) then; nn = nn + 1; solNames(nn) = cgnsDudy; end if
+        if (surfWriteDudz) then; nn = nn + 1; solNames(nn) = cgnsDudz; end if
+        if (surfWriteDvdx) then; nn = nn + 1; solNames(nn) = cgnsDvdx; end if
+        if (surfWriteDvdy) then; nn = nn + 1; solNames(nn) = cgnsDvdy; end if
+        if (surfWriteDvdz) then; nn = nn + 1; solNames(nn) = cgnsDvdz; end if
+        if (surfWriteDwdx) then; nn = nn + 1; solNames(nn) = cgnsDwdx; end if
+        if (surfWriteDwdy) then; nn = nn + 1; solNames(nn) = cgnsDwdy; end if
+        if (surfWriteDwdz) then; nn = nn + 1; solNames(nn) = cgnsDwdz; end if
+        if (surfWriteFthetaT) then; nn = nn + 1; solNames(nn) = cgnsFthetaT; end if
+        if (surfWriteFwake) then; nn = nn + 1; solNames(nn) = cgnsFwake; end if
+        if (surfWriteGammaProd) then; nn = nn + 1; solNames(nn) = cgnsGammaProd; end if
+        if (surfWriteGammaDest) then; nn = nn + 1; solNames(nn) = cgnsGammaDest; end if
+        if (surfWriteTransWallDist) then; nn = nn + 1; solNames(nn) = cgnsTransWallDist; end if
+        if (surfWriteTransRho) then; nn = nn + 1; solNames(nn) = cgnsTransRho; end if
+        if (surfWriteTransMu) then; nn = nn + 1; solNames(nn) = cgnsTransMu; end if
+        if (surfWriteTransTimeScale) then; nn = nn + 1; solNames(nn) = cgnsTransTimeScale; end if
+        if (surfWriteTransLambdaTheta) then; nn = nn + 1; solNames(nn) = cgnsTransLambdaTheta; end if
+        if (surfWriteTransPReTheta) then; nn = nn + 1; solNames(nn) = cgnsTransPReTheta; end if
 
     end subroutine surfSolNames
 
@@ -1480,7 +1573,8 @@ contains
               cgnsFonset1, cgnsReS, cgnsReThetaC, cgnsReSOverCrit, &
               cgnsStrainMag, cgnsDudx, cgnsDudy, cgnsDudz, cgnsDvdx, &
               cgnsDvdy, cgnsDvdz, cgnsDwdx, cgnsDwdy, cgnsDwdz, cgnsFthetaT, cgnsFwake, &
-              cgnsGammaProd, cgnsGammaDest)
+              cgnsGammaProd, cgnsGammaDest, &
+              cgnsTransTimeScale, cgnsTransLambdaTheta, cgnsTransPReTheta)
 
             dbgVar = 0
             select case (solName)
@@ -1528,6 +1622,19 @@ contains
                 dbgVar = 25
             case (cgnsGammaDest)
                 dbgVar = 26
+                dbgVar = 21
+            case (cgnsTransWallDist)
+                dbgVar = 22
+            case (cgnsTransRho)
+                dbgVar = 23
+            case (cgnsTransMu)
+                dbgVar = 24
+            case (cgnsTransTimeScale)
+                dbgVar = 27
+            case (cgnsTransLambdaTheta)
+                dbgVar = 28
+            case (cgnsTransPReTheta)
+                dbgVar = 29
             end select
 
             do k = kBeg, kEnd
@@ -1658,6 +1765,7 @@ contains
         !
         integer(kind=intType) :: i, j, k, ior, jor
         integer(kind=intType) :: ii, jj, mm, iiMax, jjMax
+        integer(kind=intType) :: dbgSlot
 
         integer(kind=intType), dimension(2, 2) :: rangeFace
         integer(kind=intType), dimension(3, 2) :: rangeCell
@@ -2449,6 +2557,74 @@ contains
                 !print*, sensor
             end do
         end do
+
+        case (cgnsFonset, cgnsFonset1, cgnsFlength, cgnsRturb, cgnsReThetaTarget, &
+              cgnsReS, cgnsReThetaC, cgnsReSOverCrit, cgnsStrainMag, &
+              cgnsDudx, cgnsDudy, cgnsDudz, cgnsDvdx, cgnsDvdy, cgnsDvdz, &
+              cgnsDwdx, cgnsDwdy, cgnsDwdz, cgnsFthetaT, cgnsFwake, &
+              cgnsGammaProd, cgnsGammaDest, &
+              cgnsTransTimeScale, cgnsTransLambdaTheta, cgnsTransPReTheta)
+
+            ! Transition debug fields: map face (i,j) → 3D cell based on faceID.
+            ! transitionDebug is indexed (2:il, 2:jl, 2:kl, slot).
+            dbgSlot = 0
+            select case (solName)
+            case (cgnsFonset);          dbgSlot = 1
+            case (cgnsFonset1);         dbgSlot = 2
+            case (cgnsFlength);         dbgSlot = 3
+            case (cgnsRturb);           dbgSlot = 4
+            case (cgnsReThetaTarget);   dbgSlot = 5
+            case (cgnsReS);             dbgSlot = 6
+            case (cgnsReThetaC);        dbgSlot = 7
+            case (cgnsReSOverCrit);     dbgSlot = 8
+            case (cgnsStrainMag);       dbgSlot = 9
+            case (cgnsFthetaT);         dbgSlot = 10
+            case (cgnsFwake);           dbgSlot = 11
+            case (cgnsDudx);            dbgSlot = 12
+            case (cgnsDudy);            dbgSlot = 13
+            case (cgnsDudz);            dbgSlot = 14
+            case (cgnsDvdx);            dbgSlot = 15
+            case (cgnsDvdy);            dbgSlot = 16
+            case (cgnsDvdz);            dbgSlot = 17
+            case (cgnsDwdx);            dbgSlot = 18
+            case (cgnsDwdy);            dbgSlot = 19
+            case (cgnsDwdz);            dbgSlot = 20
+            case (cgnsTransWallDist);   dbgSlot = 22
+            case (cgnsTransRho);        dbgSlot = 23
+            case (cgnsTransMu);         dbgSlot = 24
+            case (cgnsGammaProd);       dbgSlot = 25
+            case (cgnsGammaDest);       dbgSlot = 26
+            case (cgnsTransTimeScale);  dbgSlot = 27
+            case (cgnsTransLambdaTheta); dbgSlot = 28
+            case (cgnsTransPReTheta);   dbgSlot = 29
+            end select
+
+            do j = rangeFace(2, 1), rangeFace(2, 2)
+                do i = rangeFace(1, 1), rangeFace(1, 2)
+                    nn = nn + 1
+                    if (associated(transitionDebug) .and. dbgSlot > 0) then
+                        select case (faceID)
+                        case (iMin)
+                            buffer(nn) = transitionDebug(2,  i, j, dbgSlot)
+                        case (iMax)
+                            buffer(nn) = transitionDebug(il, i, j, dbgSlot)
+                        case (jMin)
+                            buffer(nn) = transitionDebug(i, 2,  j, dbgSlot)
+                        case (jMax)
+                            buffer(nn) = transitionDebug(i, jl, j, dbgSlot)
+                        case (kMin)
+                            buffer(nn) = transitionDebug(i, j, 2,  dbgSlot)
+                        case (kMax)
+                            buffer(nn) = transitionDebug(i, j, kl, dbgSlot)
+                        case default
+                            buffer(nn) = zero
+                        end select
+                    else
+                        buffer(nn) = zero
+                    end if
+                end do
+            end do
+
         end select varName
 
     contains

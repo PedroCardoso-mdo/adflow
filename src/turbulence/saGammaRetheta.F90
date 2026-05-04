@@ -4,6 +4,38 @@ module saGammaReTheta
     ! model. It is slightly more modularized than the original which makes
     ! performing reverse mode AD simplier.
 
+    ! transitionDebug slot map (nTransitionDebug = 29; see paramTurb.F90).
+    ! Do NOT renumber existing slots — append new ones at the end.
+    !  1  fonset         fOnset
+    !  2  fonset1        fOnset1
+    !  3  flength        fLength_val
+    !  4  rturb          rTurb
+    !  5  rethetatarget  reThetaT_target
+    !  6  res            reS_val
+    !  7  rethetac       reThetaC_val
+    !  8  resovercrit    reS_val / (2.6 * reThetaC_val)
+    !  9  strainmag      strainMag
+    ! 10  fthetat        fThetaT
+    ! 11  fwake          fWake_val
+    ! 12  dudx           dudx
+    ! 13  dudy           dudy
+    ! 14  dudz           dudz
+    ! 15  dvdx           dvdx
+    ! 16  dvdy           dvdy
+    ! 17  dvdz           dvdz
+    ! 18  dwdx           dwdx
+    ! 19  dwdy           dwdy
+    ! 20  dwdz           dwdz
+    ! 21  transgamma     w(i,j,k,itu2)  [γ state]
+    ! 22  transwalldist  yDist
+    ! 23  transrho       w(i,j,k,irho)
+    ! 24  transmu        rlv(i,j,k)
+    ! 25  gammaprod      pGamma
+    ! 26  gammadest      eGamma
+    ! 27  transtimescale timeScale
+    ! 28  translambdatheta lambdaThetaLocal
+    ! 29  transpretheta  pReTheta
+
     use constants, only: realType
 
     real(kind=realType), dimension(:, :, :, :, :), allocatable :: qq
@@ -410,7 +442,8 @@ contains
 
                         ! --- Flength and Fturb (modified) ---
                         fLength_val = flengthCorrelation(reThetaTilde)
-                        fTurb_val = (one - fOnset) * exp(-rTurb)
+                        !fTurb_val = (one - fOnset) * exp(-rTurb)
+                        fTurb_val = exp(-(rTurb / 4.0_realType)**4)
 
                         ! --- Gamma production and destruction ---
                         pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &

@@ -2389,6 +2389,21 @@ contains
         surfWriteAxisMoment = .false.
         surfWriteGC = .false.
 
+        surfWriteFonset = .false.; surfWriteFonset1 = .false.
+        surfWriteFlength = .false.; surfWriteRturb = .false.
+        surfWriteReThetaTarget = .false.; surfWriteReS = .false.
+        surfWriteReThetaC = .false.; surfWriteReSOverCrit = .false.
+        surfWriteStrainMag = .false.
+        surfWriteDudx = .false.; surfWriteDudy = .false.; surfWriteDudz = .false.
+        surfWriteDvdx = .false.; surfWriteDvdy = .false.; surfWriteDvdz = .false.
+        surfWriteDwdx = .false.; surfWriteDwdy = .false.; surfWriteDwdz = .false.
+        surfWriteFthetaT = .false.; surfWriteFwake = .false.
+        surfWriteGammaProd = .false.; surfWriteGammaDest = .false.
+        surfWriteTransWallDist = .false.
+        surfWriteTransRho = .false.; surfWriteTransMu = .false.
+        surfWriteTransTimeScale = .false.; surfWriteTransLambdaTheta = .false.
+        surfWriteTransPReTheta = .false.
+
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
 
@@ -2523,6 +2538,118 @@ contains
                 surfWriteGC = .True.
                 nVarSpecified = nVarSpecified + 1
 
+            case ("fonset")
+                surfWriteFonset = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fonset1")
+                surfWriteFonset1 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("flength")
+                surfWriteFlength = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rturb")
+                surfWriteRturb = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rethetat")
+                surfWriteReThetaTarget = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("res")
+                surfWriteReS = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rethetac")
+                surfWriteReThetaC = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("resovercrit")
+                surfWriteReSOverCrit = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("strainmag")
+                surfWriteStrainMag = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dudx")
+                surfWriteDudx = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dudy")
+                surfWriteDudy = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dudz")
+                surfWriteDudz = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dvdx")
+                surfWriteDvdx = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dvdy")
+                surfWriteDvdy = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dvdz")
+                surfWriteDvdz = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dwdx")
+                surfWriteDwdx = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dwdy")
+                surfWriteDwdy = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dwdz")
+                surfWriteDwdz = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fthetat")
+                surfWriteFthetaT = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fwake")
+                surfWriteFwake = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("gammaprod")
+                surfWriteGammaProd = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("gammadest")
+                surfWriteGammaDest = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transwalldist")
+                surfWriteTransWallDist = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transrho")
+                surfWriteTransRho = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transmu")
+                surfWriteTransMu = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transtimescale")
+                surfWriteTransTimeScale = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("translambdatheta")
+                surfWriteTransLambdaTheta = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transpretheta")
+                surfWriteTransPReTheta = .true.
+                nVarSpecified = nVarSpecified + 1
+
             case default
                 pos = len_trim(keyword)
                 write (errorMessage, "(3a)") "Unknown surface output &
@@ -2605,6 +2732,10 @@ contains
         volWriteReThetaTarget = .false.
         volWriteGammaProd = .false.
         volWriteGammaDest = .false.
+        volWriteTransWallDist = .false.
+        volWriteTransRho = .false.; volWriteTransMu = .false.
+        volWriteTransTimeScale = .false.; volWriteTransLambdaTheta = .false.
+        volWriteTransPReTheta = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2842,6 +2973,30 @@ contains
 
             case ("gammadest")
                 volWriteGammaDest = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transwalldist")
+                volWriteTransWallDist = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transrho")
+                volWriteTransRho = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transmu")
+                volWriteTransMu = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transtimescale")
+                volWriteTransTimeScale = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("translambdatheta")
+                volWriteTransLambdaTheta = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transpretheta")
+                volWriteTransPReTheta = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default

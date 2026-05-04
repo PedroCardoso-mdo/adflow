@@ -45,6 +45,19 @@ module extraOutput
     logical :: volWriteDwdx, volWriteDwdy, volWriteDwdz
     logical :: volWriteFthetaT, volWriteFwake
     logical :: volWriteGammaProd, volWriteGammaDest
+    logical :: volWriteTransWallDist, volWriteTransRho, volWriteTransMu
+    logical :: volWriteTransTimeScale, volWriteTransLambdaTheta, volWriteTransPReTheta
+    ! Surface write flags for transition debug variables (all 29 slots)
+    logical :: surfWriteFonset, surfWriteFonset1, surfWriteFlength, surfWriteRturb
+    logical :: surfWriteReThetaTarget, surfWriteReS, surfWriteReThetaC, surfWriteReSOverCrit
+    logical :: surfWriteStrainMag
+    logical :: surfWriteDudx, surfWriteDudy, surfWriteDudz
+    logical :: surfWriteDvdx, surfWriteDvdy, surfWriteDvdz
+    logical :: surfWriteDwdx, surfWriteDwdy, surfWriteDwdz
+    logical :: surfWriteFthetaT, surfWriteFwake
+    logical :: surfWriteGammaProd, surfWriteGammaDest
+    logical :: surfWriteTransWallDist, surfWriteTransRho, surfWriteTransMu
+    logical :: surfWriteTransTimeScale, surfWriteTransLambdaTheta, surfWriteTransPReTheta
 !
 !       The logical variables, which define the isosurface variables
 !       to be written.

@@ -51,6 +51,10 @@ module paramTurb
 !
     real(kind=realType), parameter :: rsaGRsrcDtLimit = 0.9_realType
 
+!       transitionDebug slot count (must match comment block in saGammaRetheta.F90).
+!       Do NOT renumber existing slots — append new ones at the end.
+    integer(kind=intType), parameter :: nTransitionDebug = 29_intType
+
 !
 !       K-omega constants.
 !
