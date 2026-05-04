@@ -53,7 +53,7 @@ module paramTurb
 
 !       transitionDebug slot count (must match comment block in saGammaRetheta.F90).
 !       Do NOT renumber existing slots — append new ones at the end.
-    integer(kind=intType), parameter :: nTransitionDebug = 29_intType
+    integer(kind=intType), parameter :: nTransitionDebug = 48_intType
 
 !
 !       K-omega constants.

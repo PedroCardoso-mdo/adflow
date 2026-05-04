@@ -433,7 +433,7 @@ contains
         !      Local variables.
         !
         integer :: ierr
-        integer(kind=intType), parameter :: nSaGrDebugVars = 29_intType
+        integer(kind=intType), parameter :: nSaGrDebugVars = 48_intType
 
         integer(kind=intType) :: nn
         integer(kind=intType) :: il, jl, kl, ie, je, ke, ib, jb, kb

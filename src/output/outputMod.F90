@@ -197,6 +197,25 @@ contains
         if (surfWriteTransTimeScale) nSolVar = nSolVar + 1
         if (surfWriteTransLambdaTheta) nSolVar = nSolVar + 1
         if (surfWriteTransPReTheta) nSolVar = nSolVar + 1
+        if (surfWriteGammaForSA) nSolVar = nSolVar + 1
+        if (surfWriteGammaLocal) nSolVar = nSolVar + 1
+        if (surfWriteTransVortMag) nSolVar = nSolVar + 1
+        if (surfWriteTransVortMagLim) nSolVar = nSolVar + 1
+        if (surfWriteTransFturb) nSolVar = nSolVar + 1
+        if (surfWriteSAStrainRate) nSolVar = nSolVar + 1
+        if (surfWriteSAModStrainRate) nSolVar = nSolVar + 1
+        if (surfWriteTransFt2) nSolVar = nSolVar + 1
+        if (surfWriteTransThetaBL) nSolVar = nSolVar + 1
+        if (surfWriteTransDeltaBL) nSolVar = nSolVar + 1
+        if (surfWriteTransDelta) nSolVar = nSolVar + 1
+        if (surfWriteTransVelMag) nSolVar = nSolVar + 1
+        if (surfWriteTransDUds) nSolVar = nSolVar + 1
+        if (surfWriteTransNutSA) nSolVar = nSolVar + 1
+        if (surfWriteTransReThetaTilde) nSolVar = nSolVar + 1
+        if (surfWriteTransVortLim) nSolVar = nSolVar + 1
+        if (surfWriteTransQQ11) nSolVar = nSolVar + 1
+        if (surfWriteTransQQ22) nSolVar = nSolVar + 1
+        if (surfWriteTransQQ33) nSolVar = nSolVar + 1
 
     end subroutine numberOfSurfSolVariables
 
@@ -279,6 +298,25 @@ contains
         if (volWriteTransTimeScale) nVolSolvar = nVolSolvar + 1
         if (volWriteTransLambdaTheta) nVolSolvar = nVolSolvar + 1
         if (volWriteTransPReTheta) nVolSolvar = nVolSolvar + 1
+        if (volWriteGammaForSA) nVolSolvar = nVolSolvar + 1
+        if (volWriteGammaLocal) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransVortMag) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransVortMagLim) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransFturb) nVolSolvar = nVolSolvar + 1
+        if (volWriteSAStrainRate) nVolSolvar = nVolSolvar + 1
+        if (volWriteSAModStrainRate) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransFt2) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransThetaBL) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransDeltaBL) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransDelta) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransVelMag) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransDUds) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransNutSA) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransReThetaTilde) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransVortLim) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransQQ11) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransQQ22) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransQQ33) nVolSolvar = nVolSolvar + 1
 
         ! Check the discrete variables.
 
@@ -780,6 +818,26 @@ contains
             solNames(nn) = cgnsTransPReTheta
         end if
 
+        if (volWriteGammaForSA) then; nn = nn + 1; solNames(nn) = cgnsGammaForSA; end if
+        if (volWriteGammaLocal) then; nn = nn + 1; solNames(nn) = cgnsGammaLocal; end if
+        if (volWriteTransVortMag) then; nn = nn + 1; solNames(nn) = cgnsTransVortMag; end if
+        if (volWriteTransVortMagLim) then; nn = nn + 1; solNames(nn) = cgnsTransVortMagLim; end if
+        if (volWriteTransFturb) then; nn = nn + 1; solNames(nn) = cgnsTransFturb; end if
+        if (volWriteSAStrainRate) then; nn = nn + 1; solNames(nn) = cgnsSAStrainRate; end if
+        if (volWriteSAModStrainRate) then; nn = nn + 1; solNames(nn) = cgnsSAModStrainRate; end if
+        if (volWriteTransFt2) then; nn = nn + 1; solNames(nn) = cgnsTransFt2; end if
+        if (volWriteTransThetaBL) then; nn = nn + 1; solNames(nn) = cgnsTransThetaBL; end if
+        if (volWriteTransDeltaBL) then; nn = nn + 1; solNames(nn) = cgnsTransDeltaBL; end if
+        if (volWriteTransDelta) then; nn = nn + 1; solNames(nn) = cgnsTransDelta; end if
+        if (volWriteTransVelMag) then; nn = nn + 1; solNames(nn) = cgnsTransVelMag; end if
+        if (volWriteTransDUds) then; nn = nn + 1; solNames(nn) = cgnsTransDUds; end if
+        if (volWriteTransNutSA) then; nn = nn + 1; solNames(nn) = cgnsTransNutSA; end if
+        if (volWriteTransReThetaTilde) then; nn = nn + 1; solNames(nn) = cgnsTransReThetaTilde; end if
+        if (volWriteTransVortLim) then; nn = nn + 1; solNames(nn) = cgnsTransVortLim; end if
+        if (volWriteTransQQ11) then; nn = nn + 1; solNames(nn) = cgnsTransQQ11; end if
+        if (volWriteTransQQ22) then; nn = nn + 1; solNames(nn) = cgnsTransQQ22; end if
+        if (volWriteTransQQ33) then; nn = nn + 1; solNames(nn) = cgnsTransQQ33; end if
+
     end subroutine volSolNames
 
     subroutine surfSolNames(solNames)
@@ -965,6 +1023,25 @@ contains
         if (surfWriteTransTimeScale) then; nn = nn + 1; solNames(nn) = cgnsTransTimeScale; end if
         if (surfWriteTransLambdaTheta) then; nn = nn + 1; solNames(nn) = cgnsTransLambdaTheta; end if
         if (surfWriteTransPReTheta) then; nn = nn + 1; solNames(nn) = cgnsTransPReTheta; end if
+        if (surfWriteGammaForSA) then; nn = nn + 1; solNames(nn) = cgnsGammaForSA; end if
+        if (surfWriteGammaLocal) then; nn = nn + 1; solNames(nn) = cgnsGammaLocal; end if
+        if (surfWriteTransVortMag) then; nn = nn + 1; solNames(nn) = cgnsTransVortMag; end if
+        if (surfWriteTransVortMagLim) then; nn = nn + 1; solNames(nn) = cgnsTransVortMagLim; end if
+        if (surfWriteTransFturb) then; nn = nn + 1; solNames(nn) = cgnsTransFturb; end if
+        if (surfWriteSAStrainRate) then; nn = nn + 1; solNames(nn) = cgnsSAStrainRate; end if
+        if (surfWriteSAModStrainRate) then; nn = nn + 1; solNames(nn) = cgnsSAModStrainRate; end if
+        if (surfWriteTransFt2) then; nn = nn + 1; solNames(nn) = cgnsTransFt2; end if
+        if (surfWriteTransThetaBL) then; nn = nn + 1; solNames(nn) = cgnsTransThetaBL; end if
+        if (surfWriteTransDeltaBL) then; nn = nn + 1; solNames(nn) = cgnsTransDeltaBL; end if
+        if (surfWriteTransDelta) then; nn = nn + 1; solNames(nn) = cgnsTransDelta; end if
+        if (surfWriteTransVelMag) then; nn = nn + 1; solNames(nn) = cgnsTransVelMag; end if
+        if (surfWriteTransDUds) then; nn = nn + 1; solNames(nn) = cgnsTransDUds; end if
+        if (surfWriteTransNutSA) then; nn = nn + 1; solNames(nn) = cgnsTransNutSA; end if
+        if (surfWriteTransReThetaTilde) then; nn = nn + 1; solNames(nn) = cgnsTransReThetaTilde; end if
+        if (surfWriteTransVortLim) then; nn = nn + 1; solNames(nn) = cgnsTransVortLim; end if
+        if (surfWriteTransQQ11) then; nn = nn + 1; solNames(nn) = cgnsTransQQ11; end if
+        if (surfWriteTransQQ22) then; nn = nn + 1; solNames(nn) = cgnsTransQQ22; end if
+        if (surfWriteTransQQ33) then; nn = nn + 1; solNames(nn) = cgnsTransQQ33; end if
 
     end subroutine surfSolNames
 
@@ -1573,8 +1650,13 @@ contains
               cgnsFonset1, cgnsReS, cgnsReThetaC, cgnsReSOverCrit, &
               cgnsStrainMag, cgnsDudx, cgnsDudy, cgnsDudz, cgnsDvdx, &
               cgnsDvdy, cgnsDvdz, cgnsDwdx, cgnsDwdy, cgnsDwdz, cgnsFthetaT, cgnsFwake, &
-              cgnsGammaProd, cgnsGammaDest, &
-              cgnsTransTimeScale, cgnsTransLambdaTheta, cgnsTransPReTheta)
+              cgnsGammaProd, cgnsGammaDest, cgnsTransWallDist, cgnsTransRho, cgnsTransMu, &
+              cgnsTransTimeScale, cgnsTransLambdaTheta, cgnsTransPReTheta, &
+              cgnsGammaForSA, cgnsGammaLocal, cgnsTransVortMag, cgnsTransVortMagLim, &
+              cgnsTransFturb, cgnsSAStrainRate, cgnsSAModStrainRate, cgnsTransFt2, &
+              cgnsTransThetaBL, cgnsTransDeltaBL, cgnsTransDelta, cgnsTransVelMag, &
+              cgnsTransDUds, cgnsTransNutSA, cgnsTransReThetaTilde, cgnsTransVortLim, &
+              cgnsTransQQ11, cgnsTransQQ22, cgnsTransQQ33)
 
             dbgVar = 0
             select case (solName)
@@ -1622,7 +1704,6 @@ contains
                 dbgVar = 25
             case (cgnsGammaDest)
                 dbgVar = 26
-                dbgVar = 21
             case (cgnsTransWallDist)
                 dbgVar = 22
             case (cgnsTransRho)
@@ -1635,6 +1716,44 @@ contains
                 dbgVar = 28
             case (cgnsTransPReTheta)
                 dbgVar = 29
+            case (cgnsGammaForSA)
+                dbgVar = 30
+            case (cgnsGammaLocal)
+                dbgVar = 31
+            case (cgnsTransVortMag)
+                dbgVar = 32
+            case (cgnsTransVortMagLim)
+                dbgVar = 33
+            case (cgnsTransFturb)
+                dbgVar = 34
+            case (cgnsSAStrainRate)
+                dbgVar = 35
+            case (cgnsSAModStrainRate)
+                dbgVar = 36
+            case (cgnsTransFt2)
+                dbgVar = 37
+            case (cgnsTransThetaBL)
+                dbgVar = 38
+            case (cgnsTransDeltaBL)
+                dbgVar = 39
+            case (cgnsTransDelta)
+                dbgVar = 40
+            case (cgnsTransVelMag)
+                dbgVar = 41
+            case (cgnsTransDUds)
+                dbgVar = 42
+            case (cgnsTransNutSA)
+                dbgVar = 43
+            case (cgnsTransReThetaTilde)
+                dbgVar = 44
+            case (cgnsTransVortLim)
+                dbgVar = 45
+            case (cgnsTransQQ11)
+                dbgVar = 46
+            case (cgnsTransQQ22)
+                dbgVar = 47
+            case (cgnsTransQQ33)
+                dbgVar = 48
             end select
 
             do k = kBeg, kEnd
@@ -2562,8 +2681,13 @@ contains
               cgnsReS, cgnsReThetaC, cgnsReSOverCrit, cgnsStrainMag, &
               cgnsDudx, cgnsDudy, cgnsDudz, cgnsDvdx, cgnsDvdy, cgnsDvdz, &
               cgnsDwdx, cgnsDwdy, cgnsDwdz, cgnsFthetaT, cgnsFwake, &
-              cgnsGammaProd, cgnsGammaDest, &
-              cgnsTransTimeScale, cgnsTransLambdaTheta, cgnsTransPReTheta)
+              cgnsGammaProd, cgnsGammaDest, cgnsTransWallDist, cgnsTransRho, cgnsTransMu, &
+              cgnsTransTimeScale, cgnsTransLambdaTheta, cgnsTransPReTheta, &
+              cgnsGammaForSA, cgnsGammaLocal, cgnsTransVortMag, cgnsTransVortMagLim, &
+              cgnsTransFturb, cgnsSAStrainRate, cgnsSAModStrainRate, cgnsTransFt2, &
+              cgnsTransThetaBL, cgnsTransDeltaBL, cgnsTransDelta, cgnsTransVelMag, &
+              cgnsTransDUds, cgnsTransNutSA, cgnsTransReThetaTilde, cgnsTransVortLim, &
+              cgnsTransQQ11, cgnsTransQQ22, cgnsTransQQ33)
 
             ! Transition debug fields: map face (i,j) → 3D cell based on faceID.
             ! transitionDebug is indexed (2:il, 2:jl, 2:kl, slot).
@@ -2597,6 +2721,25 @@ contains
             case (cgnsTransTimeScale);  dbgSlot = 27
             case (cgnsTransLambdaTheta); dbgSlot = 28
             case (cgnsTransPReTheta);   dbgSlot = 29
+            case (cgnsGammaForSA);      dbgSlot = 30
+            case (cgnsGammaLocal);      dbgSlot = 31
+            case (cgnsTransVortMag);    dbgSlot = 32
+            case (cgnsTransVortMagLim); dbgSlot = 33
+            case (cgnsTransFturb);      dbgSlot = 34
+            case (cgnsSAStrainRate);    dbgSlot = 35
+            case (cgnsSAModStrainRate); dbgSlot = 36
+            case (cgnsTransFt2);        dbgSlot = 37
+            case (cgnsTransThetaBL);    dbgSlot = 38
+            case (cgnsTransDeltaBL);    dbgSlot = 39
+            case (cgnsTransDelta);      dbgSlot = 40
+            case (cgnsTransVelMag);     dbgSlot = 41
+            case (cgnsTransDUds);       dbgSlot = 42
+            case (cgnsTransNutSA);      dbgSlot = 43
+            case (cgnsTransReThetaTilde); dbgSlot = 44
+            case (cgnsTransVortLim);    dbgSlot = 45
+            case (cgnsTransQQ11);       dbgSlot = 46
+            case (cgnsTransQQ22);       dbgSlot = 47
+            case (cgnsTransQQ33);       dbgSlot = 48
             end select
 
             do j = rangeFace(2, 1), rangeFace(2, 2)

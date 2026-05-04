@@ -4,37 +4,56 @@ module saGammaReTheta
     ! model. It is slightly more modularized than the original which makes
     ! performing reverse mode AD simplier.
 
-    ! transitionDebug slot map (nTransitionDebug = 29; see paramTurb.F90).
+    ! transitionDebug slot map (nTransitionDebug = 48; see paramTurb.F90).
     ! Do NOT renumber existing slots — append new ones at the end.
-    !  1  fonset         fOnset
-    !  2  fonset1        fOnset1
-    !  3  flength        fLength_val
-    !  4  rturb          rTurb
-    !  5  rethetatarget  reThetaT_target
-    !  6  res            reS_val
-    !  7  rethetac       reThetaC_val
-    !  8  resovercrit    reS_val / (2.6 * reThetaC_val)
-    !  9  strainmag      strainMag
-    ! 10  fthetat        fThetaT
-    ! 11  fwake          fWake_val
-    ! 12  dudx           dudx
-    ! 13  dudy           dudy
-    ! 14  dudz           dudz
-    ! 15  dvdx           dvdx
-    ! 16  dvdy           dvdy
-    ! 17  dvdz           dvdz
-    ! 18  dwdx           dwdx
-    ! 19  dwdy           dwdy
-    ! 20  dwdz           dwdz
-    ! 21  transgamma     w(i,j,k,itu2)  [γ state]
-    ! 22  transwalldist  yDist
-    ! 23  transrho       w(i,j,k,irho)
-    ! 24  transmu        rlv(i,j,k)
-    ! 25  gammaprod      pGamma
-    ! 26  gammadest      eGamma
-    ! 27  transtimescale timeScale
-    ! 28  translambdatheta lambdaThetaLocal
-    ! 29  transpretheta  pReTheta
+    !  1  fonset            fOnset
+    !  2  fonset1           fOnset1
+    !  3  flength           fLength_val
+    !  4  rturb             rTurb
+    !  5  rethetatarget     reThetaT_target
+    !  6  res               reS_val
+    !  7  rethetac          reThetaC_val
+    !  8  resovercrit       reS_val / (2.6 * reThetaC_val)
+    !  9  strainmag         strainMag
+    ! 10  fthetat           fThetaT
+    ! 11  fwake             fWake_val
+    ! 12  dudx              dudx
+    ! 13  dudy              dudy
+    ! 14  dudz              dudz
+    ! 15  dvdx              dvdx
+    ! 16  dvdy              dvdy
+    ! 17  dvdz              dvdz
+    ! 18  dwdx              dwdx
+    ! 19  dwdy              dwdy
+    ! 20  dwdz              dwdz
+    ! 21  transgamma        w(i,j,k,itu2)  [γ state; slot 21 = cgnsTurbGamma]
+    ! 22  transwalldist     yDist
+    ! 23  transrho          w(i,j,k,irho)
+    ! 24  transmu           rlv(i,j,k)
+    ! 25  gammaprod         pGamma
+    ! 26  gammadest         eGamma
+    ! 27  transtimescale    timeScale
+    ! 28  translambdatheta  lambdaThetaLocal
+    ! 29  transpretheta     pReTheta
+    ! 30  gammaforsa        gammaForSA  [min(max(γ,0),1) seen by SA production]
+    ! 31  gammalocal        gammaLocal  [min(max(γ,γ_lo),1) in transition eqs]
+    ! 32  transvortmag      vortMag     [raw |ω| before limiter]
+    ! 33  transvortmaglim   vortMagLim  [limited |ω| used in sources]
+    ! 34  fturb             fTurb_val   [γ destruction switch exp(-(RT/4)^4)]
+    ! 35  sastrainrate      ss          [S, raw strain rate]
+    ! 36  samodstrainrate   sst         [S̃, SA-modified strain with wall correction]
+    ! 37  ft2               ft2         [SA ft2 function]
+    ! 38  thetabl           thetaBL     [BL momentum thickness]
+    ! 39  deltabl           deltaBL     [7.5·θ_BL]
+    ! 40  transdelta        delta       [BL thickness for fThetaT shielding]
+    ! 41  transvelmag       velMag      [|U|]
+    ! 42  duds              dUds        [dU/ds streamwise gradient]
+    ! 43  nutsa             nutSA       [w(itu1)·fv1, SA eddy viscosity]
+    ! 44  rethetatilde      reThetaTilde [max(w(itu3),1)]
+    ! 45  transvortlim      vortLim     [vorticity limiter threshold]
+    ! 46  qq11              qq(i,j,k,1,1) [SA diagonal Jacobian]
+    ! 47  qq22              qq(i,j,k,2,2) [γ diagonal Jacobian]
+    ! 48  qq33              qq(i,j,k,3,3) [Re̅θt diagonal Jacobian]
 
     use constants, only: realType
 
@@ -160,6 +179,25 @@ contains
         integer(kind=intType), parameter :: dbgTimeScale = 27_intType
         integer(kind=intType), parameter :: dbgLambdaTheta = 28_intType
         integer(kind=intType), parameter :: dbgPReTheta = 29_intType
+        integer(kind=intType), parameter :: dbgGammaForSA = 30_intType
+        integer(kind=intType), parameter :: dbgGammaLocal = 31_intType
+        integer(kind=intType), parameter :: dbgVortMag = 32_intType
+        integer(kind=intType), parameter :: dbgVortMagLim = 33_intType
+        integer(kind=intType), parameter :: dbgFturb = 34_intType
+        integer(kind=intType), parameter :: dbgSS = 35_intType
+        integer(kind=intType), parameter :: dbgSST = 36_intType
+        integer(kind=intType), parameter :: dbgFt2 = 37_intType
+        integer(kind=intType), parameter :: dbgThetaBL = 38_intType
+        integer(kind=intType), parameter :: dbgDeltaBL = 39_intType
+        integer(kind=intType), parameter :: dbgDelta = 40_intType
+        integer(kind=intType), parameter :: dbgVelMag = 41_intType
+        integer(kind=intType), parameter :: dbgDUds = 42_intType
+        integer(kind=intType), parameter :: dbgNutSA = 43_intType
+        integer(kind=intType), parameter :: dbgReThetaTilde = 44_intType
+        integer(kind=intType), parameter :: dbgVortLim = 45_intType
+        integer(kind=intType), parameter :: dbgQQ11 = 46_intType
+        integer(kind=intType), parameter :: dbgQQ22 = 47_intType
+        integer(kind=intType), parameter :: dbgQQ33 = 48_intType
 
         ! Local variables.
         integer(kind=intType) :: i, j, k, nn, ii
@@ -538,6 +576,22 @@ contains
                             transitionDebug(i, j, k, dbgTimeScale) = timeScale
                             transitionDebug(i, j, k, dbgLambdaTheta) = lambdaThetaLocal
                             transitionDebug(i, j, k, dbgPReTheta) = pReTheta
+                            transitionDebug(i, j, k, dbgGammaForSA) = gammaForSA
+                            transitionDebug(i, j, k, dbgGammaLocal) = gammaLocal
+                            transitionDebug(i, j, k, dbgVortMag) = vortMag
+                            transitionDebug(i, j, k, dbgVortMagLim) = vortMagLim
+                            transitionDebug(i, j, k, dbgFturb) = fTurb_val
+                            transitionDebug(i, j, k, dbgSS) = ss
+                            transitionDebug(i, j, k, dbgSST) = sst
+                            transitionDebug(i, j, k, dbgFt2) = ft2
+                            transitionDebug(i, j, k, dbgThetaBL) = thetaBL
+                            transitionDebug(i, j, k, dbgDeltaBL) = deltaBL
+                            transitionDebug(i, j, k, dbgDelta) = delta
+                            transitionDebug(i, j, k, dbgVelMag) = velMag
+                            transitionDebug(i, j, k, dbgDUds) = dUds
+                            transitionDebug(i, j, k, dbgNutSA) = nutSA
+                            transitionDebug(i, j, k, dbgReThetaTilde) = reThetaTilde
+                            transitionDebug(i, j, k, dbgVortLim) = vortLim
                         end if
 
 #ifndef USE_TAPENADE
@@ -589,6 +643,12 @@ contains
                         qq(i, j, k, 3, 3) = max( &
                             rsaGRcthetat / max(timeScale, xminn) &
                             * (one - fThetaT), zero)
+
+                        if (associated(transitionDebug)) then
+                            transitionDebug(i, j, k, dbgQQ11) = qq(i, j, k, 1, 1)
+                            transitionDebug(i, j, k, dbgQQ22) = qq(i, j, k, 2, 2)
+                            transitionDebug(i, j, k, dbgQQ33) = qq(i, j, k, 3, 3)
+                        end if
 #endif
 #ifdef TAPENADE_REVERSE
                     end do

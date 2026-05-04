@@ -2403,6 +2403,18 @@ contains
         surfWriteTransRho = .false.; surfWriteTransMu = .false.
         surfWriteTransTimeScale = .false.; surfWriteTransLambdaTheta = .false.
         surfWriteTransPReTheta = .false.
+        surfWriteGammaForSA = .false.; surfWriteGammaLocal = .false.
+        surfWriteTransVortMag = .false.; surfWriteTransVortMagLim = .false.
+        surfWriteTransFturb = .false.
+        surfWriteSAStrainRate = .false.; surfWriteSAModStrainRate = .false.
+        surfWriteTransFt2 = .false.
+        surfWriteTransThetaBL = .false.; surfWriteTransDeltaBL = .false.
+        surfWriteTransDelta = .false.
+        surfWriteTransVelMag = .false.; surfWriteTransDUds = .false.
+        surfWriteTransNutSA = .false.
+        surfWriteTransReThetaTilde = .false.; surfWriteTransVortLim = .false.
+        surfWriteTransQQ11 = .false.; surfWriteTransQQ22 = .false.
+        surfWriteTransQQ33 = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2650,6 +2662,82 @@ contains
                 surfWriteTransPReTheta = .true.
                 nVarSpecified = nVarSpecified + 1
 
+            case ("gammaforsa")
+                surfWriteGammaForSA = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("gammalocal")
+                surfWriteGammaLocal = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvortmag")
+                surfWriteTransVortMag = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvortmaglim")
+                surfWriteTransVortMagLim = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fturb")
+                surfWriteTransFturb = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("sastrainrate")
+                surfWriteSAStrainRate = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("samodstrainrate")
+                surfWriteSAModStrainRate = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("ft2")
+                surfWriteTransFt2 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("thetabl")
+                surfWriteTransThetaBL = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("deltabl")
+                surfWriteTransDeltaBL = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transdelta")
+                surfWriteTransDelta = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvelmag")
+                surfWriteTransVelMag = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("duds")
+                surfWriteTransDUds = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("nutsa")
+                surfWriteTransNutSA = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rethetatilde")
+                surfWriteTransReThetaTilde = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvortlim")
+                surfWriteTransVortLim = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("qq11")
+                surfWriteTransQQ11 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("qq22")
+                surfWriteTransQQ22 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("qq33")
+                surfWriteTransQQ33 = .true.
+                nVarSpecified = nVarSpecified + 1
+
             case default
                 pos = len_trim(keyword)
                 write (errorMessage, "(3a)") "Unknown surface output &
@@ -2736,6 +2824,18 @@ contains
         volWriteTransRho = .false.; volWriteTransMu = .false.
         volWriteTransTimeScale = .false.; volWriteTransLambdaTheta = .false.
         volWriteTransPReTheta = .false.
+        volWriteGammaForSA = .false.; volWriteGammaLocal = .false.
+        volWriteTransVortMag = .false.; volWriteTransVortMagLim = .false.
+        volWriteTransFturb = .false.
+        volWriteSAStrainRate = .false.; volWriteSAModStrainRate = .false.
+        volWriteTransFt2 = .false.
+        volWriteTransThetaBL = .false.; volWriteTransDeltaBL = .false.
+        volWriteTransDelta = .false.
+        volWriteTransVelMag = .false.; volWriteTransDUds = .false.
+        volWriteTransNutSA = .false.
+        volWriteTransReThetaTilde = .false.; volWriteTransVortLim = .false.
+        volWriteTransQQ11 = .false.; volWriteTransQQ22 = .false.
+        volWriteTransQQ33 = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2997,6 +3097,82 @@ contains
 
             case ("transpretheta")
                 volWriteTransPReTheta = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("gammaforsa")
+                volWriteGammaForSA = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("gammalocal")
+                volWriteGammaLocal = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvortmag")
+                volWriteTransVortMag = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvortmaglim")
+                volWriteTransVortMagLim = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("fturb")
+                volWriteTransFturb = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("sastrainrate")
+                volWriteSAStrainRate = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("samodstrainrate")
+                volWriteSAModStrainRate = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("ft2")
+                volWriteTransFt2 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("thetabl")
+                volWriteTransThetaBL = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("deltabl")
+                volWriteTransDeltaBL = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transdelta")
+                volWriteTransDelta = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvelmag")
+                volWriteTransVelMag = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("duds")
+                volWriteTransDUds = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("nutsa")
+                volWriteTransNutSA = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rethetatilde")
+                volWriteTransReThetaTilde = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("transvortlim")
+                volWriteTransVortLim = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("qq11")
+                volWriteTransQQ11 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("qq22")
+                volWriteTransQQ22 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("qq33")
+                volWriteTransQQ33 = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default
