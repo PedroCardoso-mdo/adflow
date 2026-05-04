@@ -13,7 +13,7 @@ Do these in order. Each row links to a section in
 
 | #  | T-ID    | Title                                            | AD?  | Status |
 |----|---------|--------------------------------------------------|------|--------|
-| 1  | A1      | Smoke baseline — SA only, transition off         | no   | ❌      |
+| 1  | A1      | Smoke baseline — SA only, transition off         | no   | ✅      |
 | 2  | A2      | Wire `transitionDebug` into volume CGNS          | no   | ❌      |
 | 3  | A3      | Smoke run — transition on, γ=1 forced            | no   | ❌      |
 | 4  | B1      | Verify timeScale matches ADflow nondim convention| maybe| ❌      |
