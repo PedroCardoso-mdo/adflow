@@ -59,3 +59,12 @@ tests/output_files/*.plt
 
 # for mac users
 *.DS_Store
+
+
+# Claude Code — personal/local settings (do not commit)
+.claude/settings.local.json
+
+# Claude Code — local credentials, transcripts, caches
+.claude/.credentials*
+.claude/transcripts/
+.claude/.cache/

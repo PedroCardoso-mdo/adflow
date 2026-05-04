@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "defaultMode": "default",
+    "allow": [
+      "Bash(cd build:*)",
+      "Bash(make:*)",
+      "Bash(cd build && make:*)",
+      "Bash(rg:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git restore:*)",
+
+      "Read(src/**)",
+      "Read(python/**)",
+      "Read(tests/**)",
+      "Read(build/**)",
+      "Read(config/**)",
+      "Read(Makefile)",
+      "Read(*.md)",
+
+      "Edit(src/turbulence/**)",
+      "Edit(src/modules/**)",
+      "Edit(src/initFlow/**)",
+      "Edit(src/utils/**)",
+      "Edit(src/output/**)",
+      "Edit(src/NKSolver/**)",
+      "Edit(src/solver/**)",
+      "Edit(src/preprocessing/**)",
+      "Edit(python/**)",
+      "Edit(tests/**)",
+      "Edit(*.md)",
+
+      "Write(tests/**)",
+      "Write(*.md)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git rebase:*)",
+      "Bash(rm:*)",
+      "Edit(Makefile)",
+      "Edit(config/**)",
+      "Edit(.gitignore)"
+    ],
+    "deny": [
+      "Edit(src/adjoint/output*/**)",
+      "Edit(src/adjoint/outputForward/**)",
+      "Edit(src/adjoint/outputReverse/**)",
+      "Edit(src/adjoint/outputReverseFast/**)",
+      "Edit(src/modules/constants.F90)",
+      "Edit(src/modules/turbMod.F90)",
+      "Edit(src/turbulence/saModel.F90)",
+      "Edit(src/turbulence/saSource.F90)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard origin/*)",
+      "Read(.env)",
+      "Read(**/.env)",
+      "Read(**/credentials*)",
+      "Read(**/*secret*)"
+    ]
+  }
+}
