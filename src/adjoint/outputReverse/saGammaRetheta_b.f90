@@ -5,6 +5,56 @@ module sagammaretheta_b
 ! this module contains the source code related to the sst turbulence
 ! model. it is slightly more modularized than the original which makes
 ! performing reverse mode ad simplier.
+! transitiondebug slot map (ntransitiondebug = 48; see paramturb.f90).
+! do not renumber existing slots — append new ones at the end.
+!  1  fonset            fonset
+!  2  fonset1           fonset1
+!  3  flength           flength_val
+!  4  rturb             rturb
+!  5  rethetatarget     rethetat_target
+!  6  res               res_val
+!  7  rethetac          rethetac_val
+!  8  resovercrit       res_val / (2.6 * rethetac_val)
+!  9  strainmag         strainmag
+! 10  fthetat           fthetat
+! 11  fwake             fwake_val
+! 12  dudx              dudx
+! 13  dudy              dudy
+! 14  dudz              dudz
+! 15  dvdx              dvdx
+! 16  dvdy              dvdy
+! 17  dvdz              dvdz
+! 18  dwdx              dwdx
+! 19  dwdy              dwdy
+! 20  dwdz              dwdz
+! 21  transgamma        w(i,j,k,itu2)  [γ state; slot 21 = cgnsturbgamma]
+! 22  transwalldist     ydist
+! 23  transrho          w(i,j,k,irho)
+! 24  transmu           rlv(i,j,k)
+! 25  gammaprod         pgamma
+! 26  gammadest         egamma
+! 27  transtimescale    timescale
+! 28  translambdatheta  lambdathetalocal
+! 29  transpretheta     pretheta
+! 30  gammaforsa        gammaforsa  [min(max(γ,0),1) seen by sa production]
+! 31  gammalocal        gammalocal  [min(max(γ,γ_lo),1) in transition eqs]
+! 32  transvortmag      vortmag     [raw |ω| before limiter]
+! 33  transvortmaglim   vortmaglim  [limited |ω| used in sources]
+! 34  fturb             fturb_val   [γ destruction switch exp(-(rt/4)^4)]
+! 35  sastrainrate      ss          [s, raw strain rate]
+! 36  samodstrainrate   sst         [s̃, sa-modified strain with wall correction]
+! 37  ft2               ft2         [sa ft2 function]
+! 38  thetabl           thetabl     [bl momentum thickness]
+! 39  deltabl           deltabl     [7.5·θ_bl]
+! 40  transdelta        delta       [bl thickness for fthetat shielding]
+! 41  transvelmag       velmag      [|u|]
+! 42  duds              duds        [du/ds streamwise gradient]
+! 43  nutsa             nutsa       [w(itu1)·fv1, sa eddy viscosity]
+! 44  rethetatilde      rethetatilde [max(w(itu3),1)]
+! 45  transvortlim      vortlim     [vorticity limiter threshold]
+! 46  qq11              qq(i,j,k,1,1) [sa diagonal jacobian]
+! 47  qq22              qq(i,j,k,2,2) [γ diagonal jacobian]
+! 48  qq33              qq(i,j,k,3,3) [re̅θt diagonal jacobian]
   use constants, only : realtype
   implicit none
   real(kind=realtype), dimension(:, :, :, :, :), allocatable :: qq
@@ -113,6 +163,28 @@ contains
     integer(kind=inttype), parameter :: dbgmu=24_inttype
     integer(kind=inttype), parameter :: dbggammaprod=25_inttype
     integer(kind=inttype), parameter :: dbggammadest=26_inttype
+    integer(kind=inttype), parameter :: dbgtimescale=27_inttype
+    integer(kind=inttype), parameter :: dbglambdatheta=28_inttype
+    integer(kind=inttype), parameter :: dbgpretheta=29_inttype
+    integer(kind=inttype), parameter :: dbggammaforsa=30_inttype
+    integer(kind=inttype), parameter :: dbggammalocal=31_inttype
+    integer(kind=inttype), parameter :: dbgvortmag=32_inttype
+    integer(kind=inttype), parameter :: dbgvortmaglim=33_inttype
+    integer(kind=inttype), parameter :: dbgfturb=34_inttype
+    integer(kind=inttype), parameter :: dbgss=35_inttype
+    integer(kind=inttype), parameter :: dbgsst=36_inttype
+    integer(kind=inttype), parameter :: dbgft2=37_inttype
+    integer(kind=inttype), parameter :: dbgthetabl=38_inttype
+    integer(kind=inttype), parameter :: dbgdeltabl=39_inttype
+    integer(kind=inttype), parameter :: dbgdelta=40_inttype
+    integer(kind=inttype), parameter :: dbgvelmag=41_inttype
+    integer(kind=inttype), parameter :: dbgduds=42_inttype
+    integer(kind=inttype), parameter :: dbgnutsa=43_inttype
+    integer(kind=inttype), parameter :: dbgrethetatilde=44_inttype
+    integer(kind=inttype), parameter :: dbgvortlim=45_inttype
+    integer(kind=inttype), parameter :: dbgqq11=46_inttype
+    integer(kind=inttype), parameter :: dbgqq22=47_inttype
+    integer(kind=inttype), parameter :: dbgqq33=48_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -187,8 +259,6 @@ contains
     real(kind=realtype) :: x3d
     real(kind=realtype) :: x4
     real(kind=realtype) :: x4d
-    real(kind=realtype) :: x5
-    real(kind=realtype) :: x5d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -536,7 +606,8 @@ contains
         fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*half
 ! --- flength and fturb (modified) ---
         flength_val = flengthcorrelation(rethetatilde)
-        fturb_val = (one-fonset)*exp(-rturb)
+!fturb_val = (one - fonset) * exp(-rturb)
+        fturb_val = exp(-((rturb/4.0_realtype)**4))
         if (gammalocal .lt. xminn) then
           call pushcontrol1b(0)
           max7 = xminn
@@ -545,15 +616,18 @@ contains
           call pushcontrol1b(1)
         end if
 ! --- gamma production and destruction ---
-        x4 = w(i, j, k, irho)*velmag2*reynolds
-        if (x4 .lt. xminn) then
+        if (w(i, j, k, irho)*velmag2 .lt. xminn) then
           max8 = xminn
           call pushcontrol1b(0)
         else
-          max8 = x4
+          max8 = w(i, j, k, irho)*velmag2
           call pushcontrol1b(1)
         end if
 ! --- retheta production (relaxation toward correlation) ---
+! note: no explicit reynolds factor here.
+! adflow's non-dim bakes 1/re into rlv = mu/(rho_inf*a_inf).
+! the dimensional time scale is t = 500*mu/(rho*u^2);
+! in adflow non-dim this is 500*rlv/(rho_nd*u_nd^2).
         timescale = 500.0_realtype*rlv(i, j, k)/max8
         if (w(i, j, k, irho)*velmag .lt. xminn) then
           call pushcontrol1b(0)
@@ -635,12 +709,12 @@ contains
           delta = delta
         end if
         fwake_val = exp(-(res_val/1.0e6_realtype))
-        x5 = fwake_val*exp(-((ydist/delta)**4))
-        if (x5 .gt. one) then
+        x4 = fwake_val*exp(-((ydist/delta)**4))
+        if (x4 .gt. one) then
           fthetat = one
           call pushcontrol1b(0)
         else
-          fthetat = x5
+          fthetat = x4
           call pushcontrol1b(1)
         end if
         if (timescale .lt. xminn) then
@@ -666,14 +740,14 @@ contains
         end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
-          x5d = 0.0_8
+          x4d = 0.0_8
         else
-          x5d = fthetatd
+          x4d = fthetatd
         end if
         temp2 = ydist/delta
         temp1 = -(temp2**4)
-        fwake_vald = exp(temp1)*x5d
-        tempd2 = -(4*temp2**3*exp(temp1)*fwake_val*x5d/delta)
+        fwake_vald = exp(temp1)*x4d
+        tempd2 = -(4*temp2**3*exp(temp1)*fwake_val*x4d/delta)
         ydistd = tempd2
         deltad = -(temp2*tempd2)
         res_vald = -(exp(-(res_val/1.0e6_realtype))*fwake_vald/&
@@ -755,12 +829,11 @@ contains
         max8d = -(rlv(i, j, k)*tempd1/max8)
         call popcontrol1b(branch)
         if (branch .eq. 0) then
-          x4d = 0.0_8
+          velmag2d = 0.0_8
         else
-          x4d = max8d
+          wd(i, j, k, irho) = wd(i, j, k, irho) + velmag2*max8d
+          velmag2d = w(i, j, k, irho)*max8d
         end if
-        wd(i, j, k, irho) = wd(i, j, k, irho) + velmag2*reynolds*x4d
-        velmag2d = w(i, j, k, irho)*reynolds*x4d
         pgammad = scratchd(i, j, k, idvt+1)
         egammad = -scratchd(i, j, k, idvt+1)
         scratchd(i, j, k, idvt+1) = 0.0_8
@@ -784,9 +857,6 @@ contains
         vortmaglimd = vortmaglimd + flength_val*fonset*tempd1
         call popcontrol1b(branch)
         if (branch .ne. 0) gammalocald = gammalocald + max7d
-        fonsetd = fonsetd - exp(-rturb)*fturb_vald
-        call flengthcorrelation_b(rethetatilde, rethetatilded, &
-&                           flength_vald)
         fonset1d = 6.0_realtype*(1.0-tanh(6.0_realtype*(fonset1-&
 &         1.35_realtype))**2)*half*fonsetd
         temp0 = res_val/(2.6_realtype*rethetac_val)
@@ -795,7 +865,10 @@ contains
         else
           tempd = fonset1d/(2.0*sqrt(temp0**2+rturb**2))
         end if
-        rturbd = 2*rturb*tempd - exp(-rturb)*(one-fonset)*fturb_vald
+        rturbd = 2*rturb*tempd - 4*rturb**3*exp(-((rturb/4.0_realtype)**&
+&         4))*fturb_vald/4.0_realtype**4
+        call flengthcorrelation_b(rethetatilde, rethetatilded, &
+&                           flength_vald)
         tempd0 = 2*temp0*tempd/(2.6_realtype*rethetac_val)
         res_vald = res_vald + tempd0
         rethetac_vald = -(2.6_realtype*temp0*tempd0)
@@ -1198,6 +1271,28 @@ contains
     integer(kind=inttype), parameter :: dbgmu=24_inttype
     integer(kind=inttype), parameter :: dbggammaprod=25_inttype
     integer(kind=inttype), parameter :: dbggammadest=26_inttype
+    integer(kind=inttype), parameter :: dbgtimescale=27_inttype
+    integer(kind=inttype), parameter :: dbglambdatheta=28_inttype
+    integer(kind=inttype), parameter :: dbgpretheta=29_inttype
+    integer(kind=inttype), parameter :: dbggammaforsa=30_inttype
+    integer(kind=inttype), parameter :: dbggammalocal=31_inttype
+    integer(kind=inttype), parameter :: dbgvortmag=32_inttype
+    integer(kind=inttype), parameter :: dbgvortmaglim=33_inttype
+    integer(kind=inttype), parameter :: dbgfturb=34_inttype
+    integer(kind=inttype), parameter :: dbgss=35_inttype
+    integer(kind=inttype), parameter :: dbgsst=36_inttype
+    integer(kind=inttype), parameter :: dbgft2=37_inttype
+    integer(kind=inttype), parameter :: dbgthetabl=38_inttype
+    integer(kind=inttype), parameter :: dbgdeltabl=39_inttype
+    integer(kind=inttype), parameter :: dbgdelta=40_inttype
+    integer(kind=inttype), parameter :: dbgvelmag=41_inttype
+    integer(kind=inttype), parameter :: dbgduds=42_inttype
+    integer(kind=inttype), parameter :: dbgnutsa=43_inttype
+    integer(kind=inttype), parameter :: dbgrethetatilde=44_inttype
+    integer(kind=inttype), parameter :: dbgvortlim=45_inttype
+    integer(kind=inttype), parameter :: dbgqq11=46_inttype
+    integer(kind=inttype), parameter :: dbgqq22=47_inttype
+    integer(kind=inttype), parameter :: dbgqq33=48_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -1240,7 +1335,6 @@ contains
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
     real(kind=realtype) :: x4
-    real(kind=realtype) :: x5
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1515,7 +1609,8 @@ contains
         fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*half
 ! --- flength and fturb (modified) ---
         flength_val = flengthcorrelation(rethetatilde)
-        fturb_val = (one-fonset)*exp(-rturb)
+!fturb_val = (one - fonset) * exp(-rturb)
+        fturb_val = exp(-((rturb/4.0_realtype)**4))
         if (gammalocal .lt. xminn) then
           max7 = xminn
         else
@@ -1527,13 +1622,16 @@ contains
         egamma = rsagrca2*fturb_val*vortmaglim*gammalocal*(rsagrce2*&
 &         gammalocal-one)
         scratch(i, j, k, idvt+1) = pgamma - egamma
-        x4 = w(i, j, k, irho)*velmag2*reynolds
-        if (x4 .lt. xminn) then
+        if (w(i, j, k, irho)*velmag2 .lt. xminn) then
           max8 = xminn
         else
-          max8 = x4
+          max8 = w(i, j, k, irho)*velmag2
         end if
 ! --- retheta production (relaxation toward correlation) ---
+! note: no explicit reynolds factor here.
+! adflow's non-dim bakes 1/re into rlv = mu/(rho_inf*a_inf).
+! the dimensional time scale is t = 500*mu/(rho*u^2);
+! in adflow non-dim this is 500*rlv/(rho_nd*u_nd^2).
         timescale = 500.0_realtype*rlv(i, j, k)/max8
         if (w(i, j, k, irho)*velmag .lt. xminn) then
           max9 = xminn
@@ -1597,11 +1695,11 @@ contains
           delta = delta
         end if
         fwake_val = exp(-(res_val/1.0e6_realtype))
-        x5 = fwake_val*exp(-((ydist/delta)**4))
-        if (x5 .gt. one) then
+        x4 = fwake_val*exp(-((ydist/delta)**4))
+        if (x4 .gt. one) then
           fthetat = one
         else
-          fthetat = x5
+          fthetat = x4
         end if
         if (timescale .lt. xminn) then
           max15 = xminn
@@ -1648,6 +1746,25 @@ contains
           transitiondebug(i, j, k, dbgmu) = rlv(i, j, k)
           transitiondebug(i, j, k, dbggammaprod) = pgamma
           transitiondebug(i, j, k, dbggammadest) = egamma
+          transitiondebug(i, j, k, dbgtimescale) = timescale
+          transitiondebug(i, j, k, dbglambdatheta) = lambdathetalocal
+          transitiondebug(i, j, k, dbgpretheta) = pretheta
+          transitiondebug(i, j, k, dbggammaforsa) = gammaforsa
+          transitiondebug(i, j, k, dbggammalocal) = gammalocal
+          transitiondebug(i, j, k, dbgvortmag) = vortmag
+          transitiondebug(i, j, k, dbgvortmaglim) = vortmaglim
+          transitiondebug(i, j, k, dbgfturb) = fturb_val
+          transitiondebug(i, j, k, dbgss) = ss
+          transitiondebug(i, j, k, dbgsst) = sst
+          transitiondebug(i, j, k, dbgft2) = ft2
+          transitiondebug(i, j, k, dbgthetabl) = thetabl
+          transitiondebug(i, j, k, dbgdeltabl) = deltabl
+          transitiondebug(i, j, k, dbgdelta) = delta
+          transitiondebug(i, j, k, dbgvelmag) = velmag
+          transitiondebug(i, j, k, dbgduds) = duds
+          transitiondebug(i, j, k, dbgnutsa) = nutsa
+          transitiondebug(i, j, k, dbgrethetatilde) = rethetatilde
+          transitiondebug(i, j, k, dbgvortlim) = vortlim
         end if
       end do
     end if
@@ -3039,26 +3156,97 @@ contains
     real(kind=realtype) :: cb3inv, cv13
 ! misc
     real(kind=realtype) :: rblank, factor
+    real(kind=realtype) :: gammanew, gammadelta, dampfactor
+    integer(kind=inttype) :: mm
+! scaling values from existing turbulence residual scaling options
+    real(kind=realtype) :: scalenu, scalegamma, scaleretheta
+! scaling ratios (precomputed from scaling values)
+    real(kind=realtype) :: s12, s13, s21, s23, s31, s32
     intrinsic max
 ! adi work arrays
     real(kind=realtype), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
     real(kind=realtype), dimension(3, 3, 2:max(il, jl, kl)) :: cc
+    intrinsic abs
     intrinsic real
     intrinsic min
     real(kind=realtype) :: x1
+    real(kind=realtype) :: x2
+    real(kind=realtype) :: x3
+    real(kind=realtype) :: x4
     if (resonly) then
       return
     else
       cb3inv = one/rsacb3
       cv13 = rsacv1**3
-! scale all 9 qq entries by the cfl factor.
-! for implicit relaxation: factor = 1 + (1-alfa)/alfa.
+      if (turbresscale(1) .ge. 0.) then
+        x1 = turbresscale(1)
+      else
+        x1 = -turbresscale(1)
+      end if
+      if (x1 .lt. one) then
+        scalenu = one
+      else
+        scalenu = x1
+      end if
+      if (turbresscale(2) .ge. 0.) then
+        x2 = turbresscale(2)
+      else
+        x2 = -turbresscale(2)
+      end if
+      if (x2 .lt. one) then
+        scalegamma = one
+      else
+        scalegamma = x2
+      end if
+      if (turbresscale(3) .ge. 0.) then
+        x3 = turbresscale(3)
+      else
+        x3 = -turbresscale(3)
+      end if
+      if (x3 .lt. one) then
+        scaleretheta = one
+      else
+        scaleretheta = x3
+      end if
+! precompute scaling ratios: s_col / s_row for off-diagonal entries
+! eq1, var2
+      s12 = scalegamma/scalenu
+! eq1, var3
+      s13 = scaleretheta/scalenu
+! eq2, var1
+      s21 = scalenu/scalegamma
+! eq2, var3
+      s23 = scaleretheta/scalegamma
+! eq3, var1
+      s31 = scalenu/scaleretheta
+! eq3, var2
+      s32 = scalegamma/scaleretheta
+! prepare qq: decoupled mode, scaling, and cfl factor.
+! for implicit relaxation: factor = 1 + (1-alfa)/alfa = 1/alfa.
       factor = one
       if (turbrelax .eq. turbrelaximplicit) factor = one + (one-alfaturb&
 &         )/alfaturb
       do k=2,kl
         do j=2,jl
           do i=2,il
+! b3 decoupled mode: zero off-diagonal coupling
+            if (.not.turbdadicoupled) then
+              qq(i, j, k, 1, 2) = zero
+              qq(i, j, k, 1, 3) = zero
+              qq(i, j, k, 2, 1) = zero
+              qq(i, j, k, 2, 3) = zero
+              qq(i, j, k, 3, 1) = zero
+              qq(i, j, k, 3, 2) = zero
+            end if
+! symmetric scaling (§4): qq(m,n) *= s_n / s_m
+! diagonal entries unchanged; only off-diag scaled.
+            qq(i, j, k, 1, 2) = qq(i, j, k, 1, 2)*s12
+            qq(i, j, k, 1, 3) = qq(i, j, k, 1, 3)*s13
+            qq(i, j, k, 2, 1) = qq(i, j, k, 2, 1)*s21
+            qq(i, j, k, 2, 3) = qq(i, j, k, 2, 3)*s23
+            qq(i, j, k, 3, 1) = qq(i, j, k, 3, 1)*s31
+            qq(i, j, k, 3, 2) = qq(i, j, k, 3, 2)*s32
+! cfl factor scaling (all 9 entries)
             qq(i, j, k, 1, 1) = factor*qq(i, j, k, 1, 1)
             qq(i, j, k, 1, 2) = factor*qq(i, j, k, 1, 2)
             qq(i, j, k, 1, 3) = factor*qq(i, j, k, 1, 3)
@@ -3068,6 +3256,12 @@ contains
             qq(i, j, k, 3, 1) = factor*qq(i, j, k, 3, 1)
             qq(i, j, k, 3, 2) = factor*qq(i, j, k, 3, 2)
             qq(i, j, k, 3, 3) = factor*qq(i, j, k, 3, 3)
+! scale the rhs: scratch(m) /= s_m
+            scratch(i, j, k, idvt) = scratch(i, j, k, idvt)/scalenu
+            scratch(i, j, k, idvt+1) = scratch(i, j, k, idvt+1)/&
+&             scalegamma
+            scratch(i, j, k, idvt+2) = scratch(i, j, k, idvt+2)/&
+&             scaleretheta
           end do
         end do
       end do
@@ -3493,37 +3687,61 @@ contains
 !       update the turbulent variables. for explicit relaxation the
 !       update must be relaxed; for implicit relaxation this has been
 !       done via the time step.
+!       unscale the update: δq(m) = s_m * δq_scaled(m).
 !
       factor = one
       if (turbrelax .eq. turbrelaxexplicit) factor = alfaturb
       do k=2,kl
         do j=2,jl
           do i=2,il
-            w(i, j, k, itu1) = w(i, j, k, itu1) + factor*scratch(i, j, k&
-&             , idvt)
+            w(i, j, k, itu1) = w(i, j, k, itu1) + factor*scalenu*scratch&
+&             (i, j, k, idvt)
             if (w(i, j, k, itu1) .lt. zero) then
               w(i, j, k, itu1) = zero
             else
               w(i, j, k, itu1) = w(i, j, k, itu1)
             end if
-            w(i, j, k, itu2) = w(i, j, k, itu2) + factor*scratch(i, j, k&
-&             , idvt+1)
-            if (w(i, j, k, itu2) .lt. rsagrgammalo) then
-              x1 = rsagrgammalo
+! gamma update with exponential back-off damping (§3).
+! if the raw update overshoots [gammalo, gammahi],
+! reduce the step by theta^m until it stays in range.
+            gammadelta = factor*scalegamma*scratch(i, j, k, idvt+1)
+            gammanew = w(i, j, k, itu2) + gammadelta
+            dampfactor = one
+            do mm=1,40
+              if (gammanew .ge. rsagrgammalo .and. gammanew .le. &
+&                 rsagrgammahi) then
+                goto 100
+              else
+                dampfactor = dampfactor*rsagrdamptheta
+                gammanew = w(i, j, k, itu2) + dampfactor*gammadelta
+              end if
+            end do
+ 100        if (gammanew .lt. rsagrgammalo) then
+              x4 = rsagrgammalo
             else
-              x1 = w(i, j, k, itu2)
+              x4 = gammanew
             end if
-            if (x1 .gt. one) then
-              w(i, j, k, itu2) = one
+            if (x4 .gt. rsagrgammahi) then
+              w(i, j, k, itu2) = rsagrgammahi
             else
-              w(i, j, k, itu2) = x1
+              w(i, j, k, itu2) = x4
             end if
-            w(i, j, k, itu3) = w(i, j, k, itu3) + factor*scratch(i, j, k&
-&             , idvt+2)
-            if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
+! retheta update with exponential back-off damping (§3).
+            gammadelta = factor*scaleretheta*scratch(i, j, k, idvt+2)
+            gammanew = w(i, j, k, itu3) + gammadelta
+            dampfactor = one
+            do mm=1,40
+              if (gammanew .ge. rsagrrethetalo) then
+                goto 110
+              else
+                dampfactor = dampfactor*rsagrdamptheta
+                gammanew = w(i, j, k, itu3) + dampfactor*gammadelta
+              end if
+            end do
+ 110        if (gammanew .lt. rsagrrethetalo) then
               w(i, j, k, itu3) = rsagrrethetalo
             else
-              w(i, j, k, itu3) = w(i, j, k, itu3)
+              w(i, j, k, itu3) = gammanew
             end if
           end do
         end do

@@ -5,6 +5,56 @@ module sagammaretheta_fast_b
 ! this module contains the source code related to the sst turbulence
 ! model. it is slightly more modularized than the original which makes
 ! performing reverse mode ad simplier.
+! transitiondebug slot map (ntransitiondebug = 48; see paramturb.f90).
+! do not renumber existing slots — append new ones at the end.
+!  1  fonset            fonset
+!  2  fonset1           fonset1
+!  3  flength           flength_val
+!  4  rturb             rturb
+!  5  rethetatarget     rethetat_target
+!  6  res               res_val
+!  7  rethetac          rethetac_val
+!  8  resovercrit       res_val / (2.6 * rethetac_val)
+!  9  strainmag         strainmag
+! 10  fthetat           fthetat
+! 11  fwake             fwake_val
+! 12  dudx              dudx
+! 13  dudy              dudy
+! 14  dudz              dudz
+! 15  dvdx              dvdx
+! 16  dvdy              dvdy
+! 17  dvdz              dvdz
+! 18  dwdx              dwdx
+! 19  dwdy              dwdy
+! 20  dwdz              dwdz
+! 21  transgamma        w(i,j,k,itu2)  [γ state; slot 21 = cgnsturbgamma]
+! 22  transwalldist     ydist
+! 23  transrho          w(i,j,k,irho)
+! 24  transmu           rlv(i,j,k)
+! 25  gammaprod         pgamma
+! 26  gammadest         egamma
+! 27  transtimescale    timescale
+! 28  translambdatheta  lambdathetalocal
+! 29  transpretheta     pretheta
+! 30  gammaforsa        gammaforsa  [min(max(γ,0),1) seen by sa production]
+! 31  gammalocal        gammalocal  [min(max(γ,γ_lo),1) in transition eqs]
+! 32  transvortmag      vortmag     [raw |ω| before limiter]
+! 33  transvortmaglim   vortmaglim  [limited |ω| used in sources]
+! 34  fturb             fturb_val   [γ destruction switch exp(-(rt/4)^4)]
+! 35  sastrainrate      ss          [s, raw strain rate]
+! 36  samodstrainrate   sst         [s̃, sa-modified strain with wall correction]
+! 37  ft2               ft2         [sa ft2 function]
+! 38  thetabl           thetabl     [bl momentum thickness]
+! 39  deltabl           deltabl     [7.5·θ_bl]
+! 40  transdelta        delta       [bl thickness for fthetat shielding]
+! 41  transvelmag       velmag      [|u|]
+! 42  duds              duds        [du/ds streamwise gradient]
+! 43  nutsa             nutsa       [w(itu1)·fv1, sa eddy viscosity]
+! 44  rethetatilde      rethetatilde [max(w(itu3),1)]
+! 45  transvortlim      vortlim     [vorticity limiter threshold]
+! 46  qq11              qq(i,j,k,1,1) [sa diagonal jacobian]
+! 47  qq22              qq(i,j,k,2,2) [γ diagonal jacobian]
+! 48  qq33              qq(i,j,k,3,3) [re̅θt diagonal jacobian]
   use constants, only : realtype
   implicit none
   real(kind=realtype), dimension(:, :, :, :, :), allocatable :: qq
@@ -112,6 +162,25 @@ contains
     integer(kind=inttype), parameter :: dbgtimescale=27_inttype
     integer(kind=inttype), parameter :: dbglambdatheta=28_inttype
     integer(kind=inttype), parameter :: dbgpretheta=29_inttype
+    integer(kind=inttype), parameter :: dbggammaforsa=30_inttype
+    integer(kind=inttype), parameter :: dbggammalocal=31_inttype
+    integer(kind=inttype), parameter :: dbgvortmag=32_inttype
+    integer(kind=inttype), parameter :: dbgvortmaglim=33_inttype
+    integer(kind=inttype), parameter :: dbgfturb=34_inttype
+    integer(kind=inttype), parameter :: dbgss=35_inttype
+    integer(kind=inttype), parameter :: dbgsst=36_inttype
+    integer(kind=inttype), parameter :: dbgft2=37_inttype
+    integer(kind=inttype), parameter :: dbgthetabl=38_inttype
+    integer(kind=inttype), parameter :: dbgdeltabl=39_inttype
+    integer(kind=inttype), parameter :: dbgdelta=40_inttype
+    integer(kind=inttype), parameter :: dbgvelmag=41_inttype
+    integer(kind=inttype), parameter :: dbgduds=42_inttype
+    integer(kind=inttype), parameter :: dbgnutsa=43_inttype
+    integer(kind=inttype), parameter :: dbgrethetatilde=44_inttype
+    integer(kind=inttype), parameter :: dbgvortlim=45_inttype
+    integer(kind=inttype), parameter :: dbgqq11=46_inttype
+    integer(kind=inttype), parameter :: dbgqq22=47_inttype
+    integer(kind=inttype), parameter :: dbgqq33=48_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -1181,6 +1250,25 @@ branch = myIntStack(myIntPtr)
     integer(kind=inttype), parameter :: dbgtimescale=27_inttype
     integer(kind=inttype), parameter :: dbglambdatheta=28_inttype
     integer(kind=inttype), parameter :: dbgpretheta=29_inttype
+    integer(kind=inttype), parameter :: dbggammaforsa=30_inttype
+    integer(kind=inttype), parameter :: dbggammalocal=31_inttype
+    integer(kind=inttype), parameter :: dbgvortmag=32_inttype
+    integer(kind=inttype), parameter :: dbgvortmaglim=33_inttype
+    integer(kind=inttype), parameter :: dbgfturb=34_inttype
+    integer(kind=inttype), parameter :: dbgss=35_inttype
+    integer(kind=inttype), parameter :: dbgsst=36_inttype
+    integer(kind=inttype), parameter :: dbgft2=37_inttype
+    integer(kind=inttype), parameter :: dbgthetabl=38_inttype
+    integer(kind=inttype), parameter :: dbgdeltabl=39_inttype
+    integer(kind=inttype), parameter :: dbgdelta=40_inttype
+    integer(kind=inttype), parameter :: dbgvelmag=41_inttype
+    integer(kind=inttype), parameter :: dbgduds=42_inttype
+    integer(kind=inttype), parameter :: dbgnutsa=43_inttype
+    integer(kind=inttype), parameter :: dbgrethetatilde=44_inttype
+    integer(kind=inttype), parameter :: dbgvortlim=45_inttype
+    integer(kind=inttype), parameter :: dbgqq11=46_inttype
+    integer(kind=inttype), parameter :: dbgqq22=47_inttype
+    integer(kind=inttype), parameter :: dbgqq33=48_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -1637,6 +1725,22 @@ branch = myIntStack(myIntPtr)
           transitiondebug(i, j, k, dbgtimescale) = timescale
           transitiondebug(i, j, k, dbglambdatheta) = lambdathetalocal
           transitiondebug(i, j, k, dbgpretheta) = pretheta
+          transitiondebug(i, j, k, dbggammaforsa) = gammaforsa
+          transitiondebug(i, j, k, dbggammalocal) = gammalocal
+          transitiondebug(i, j, k, dbgvortmag) = vortmag
+          transitiondebug(i, j, k, dbgvortmaglim) = vortmaglim
+          transitiondebug(i, j, k, dbgfturb) = fturb_val
+          transitiondebug(i, j, k, dbgss) = ss
+          transitiondebug(i, j, k, dbgsst) = sst
+          transitiondebug(i, j, k, dbgft2) = ft2
+          transitiondebug(i, j, k, dbgthetabl) = thetabl
+          transitiondebug(i, j, k, dbgdeltabl) = deltabl
+          transitiondebug(i, j, k, dbgdelta) = delta
+          transitiondebug(i, j, k, dbgvelmag) = velmag
+          transitiondebug(i, j, k, dbgduds) = duds
+          transitiondebug(i, j, k, dbgnutsa) = nutsa
+          transitiondebug(i, j, k, dbgrethetatilde) = rethetatilde
+          transitiondebug(i, j, k, dbgvortlim) = vortlim
         end if
       end do
     end if

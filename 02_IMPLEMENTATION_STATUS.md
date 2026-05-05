@@ -14,7 +14,7 @@ Do these in order. Each row links to a section in
 | #  | T-ID    | Title                                            | AD?  | Status |
 |----|---------|--------------------------------------------------|------|--------|
 | 1  | A1      | Smoke baseline — SA only, transition off         | no   | ✅      |
-| 2  | A2      | Wire `transitionDebug` into volume CGNS          | no   | ✅      |
+| 2  | A2      | Wire `transitionDebug` into volume CGNS          | no   | ✅ (48 slots, vol+surf)      |
 | 3  | A3      | Smoke run — transition on, γ=1 forced            | no   | ❌      |
 | 4  | B1      | Verify timeScale matches ADflow nondim convention| maybe| ❌      |
 | 5  | B2      | Verify φ_p overflow safety (Algorithm 1)         | yes  | 🟠      |
@@ -110,7 +110,7 @@ Folded into task A2 (no longer separate).
 | `src/modules/constants.F90:128`                 | —     | ✅ enum=8                            |
 | `src/modules/paramTurb.F90:32-52`               | —     | ✅ constants match paper             |
 | `src/modules/inputParam.F90:293,298`            | —     | 🟠 `turbResScale` uninit             |
-| `src/modules/block.F90:662`                     | —     | 🟡 `transitionDebug` declared, unused |
+| `src/modules/block.F90:662`                     | —     | ✅ `transitionDebug` allocated + filled (48 slots) |
 | `src/initFlow/initializeFlow.F90:140,2237`      | —     | ✅ γ_init = 0.02                     |
 | `src/turbulence/turbBCRoutines.F90:441,921`     | —     | ✅ wall γ=0, farfield γ=1            |
 | `src/NKSolver/NKSolvers.F90:3191,3359`          | —     | ✅ variable bounds                   |
