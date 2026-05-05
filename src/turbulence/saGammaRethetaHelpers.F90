@@ -28,9 +28,31 @@ module saGammaRethetaHelpers
 
     ! Smooth min/max parameters
     real(kind=realType), parameter :: slm_p_smooth = 300.0_realType
-    real(kind=realType), parameter :: slm_pswitch = 1.0e-15_realType
 
 contains
+
+    ! ===================================================================
+    !  φ_p(g1, g2, p): overflow-safe smooth max/min (Algorithm 1)
+    !  p > 0 → smooth max;  p < 0 → smooth min
+    ! ===================================================================
+    function phi_p(g1, g2, p) result(phi)
+        implicit none
+        real(kind=realType), intent(in) :: g1, g2, p
+        real(kind=realType) :: phi
+        real(kind=realType) :: diff
+
+        diff = p * (g2 - g1)
+
+        if (abs(diff) < 1.0e-15_realType) then
+            phi = (g1 + g2) * half + log(two) / abs(p) - log(two) / p
+        else if (diff > 20.0_realType) then
+            phi = g2 - log(two) / p
+        else if (diff < -20.0_realType) then
+            phi = g1 - log(two) / p
+        else
+            phi = (g1 + g2) * half + log(one + exp(diff)) / p - log(two) / p
+        end if
+    end function phi_p
 
     ! ===================================================================
     !  Smooth max:  smooth_max(g1, g2) ≈ max(g1, g2)
@@ -40,18 +62,8 @@ contains
         implicit none
         real(kind=realType), intent(in) :: g1, g2
         real(kind=realType) :: val
-        real(kind=realType) :: a, b, phi_switch, p
 
-        p = slm_p_smooth
-        a = max(g1, g2)
-        b = min(g1, g2)
-        phi_switch = -log(p * slm_pswitch) / p
-
-        if (abs(a - b) > phi_switch) then
-            val = a
-        else
-            val = a + log(one + exp(p * (b - a))) / p
-        end if
+        val = phi_p(g1, g2, slm_p_smooth)
     end function smooth_max
 
     ! ===================================================================
@@ -62,18 +74,8 @@ contains
         implicit none
         real(kind=realType), intent(in) :: g1, g2
         real(kind=realType) :: val
-        real(kind=realType) :: a, b, phi_switch, p
 
-        p = slm_p_smooth
-        a = max(g1, g2)
-        b = min(g1, g2)
-        phi_switch = -log(p * slm_pswitch) / p
-
-        if (abs(a - b) > phi_switch) then
-            val = b
-        else
-            val = b + log(one + exp(-p * (a - b))) / (-p)
-        end if
+        val = phi_p(g1, g2, -slm_p_smooth)
     end function smooth_min
 
     ! ===================================================================

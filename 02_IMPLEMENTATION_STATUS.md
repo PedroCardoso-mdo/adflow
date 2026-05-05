@@ -17,7 +17,7 @@ Do these in order. Each row links to a section in
 | 2  | A2      | Wire `transitionDebug` into volume CGNS          | no   | ✅ (48 slots, vol+surf)      |
 | 3  | A3      | Smoke run — transition on, γ=1 forced            | no   | ✅      |
 | 4  | B1      | Verify timeScale matches ADflow nondim convention| no   | ✅      |
-| 5  | B2      | Verify φ_p overflow safety (Algorithm 1)         | yes  | 🟠      |
+| 5  | B2      | Verify φ_p overflow safety (Algorithm 1)         | yes  | ✅      |
 | 6  | B3      | Populate off-diagonal source Jacobian            | yes  | ❌      |
 | 7  | B4      | Initialize row/column scaling factors            | no   | 🟠      |
 | 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ❌      |
@@ -43,7 +43,7 @@ cases (NLF0416, S809) on their own.
 | #   | Where                              | Status                              | Resolved by |
 |-----|------------------------------------|-------------------------------------|-------------|
 | #1  | `saGammaRetheta.F90:510-559`       | Confirmed — off-diag Jacobian zero → DADI decoupled regardless of `TurbDADICoupled` flag | B3 |
-| #2? | `saGammaRetheta.F90:430-431`       | UNVERIFIED — `timeScale` may or may not need explicit Re factor depending on ADflow nondim convention. Needs read-source verification, not blind fix. | B1 |
+| #2? | `saGammaRetheta.F90:430-431`       | Confrimed — `timeScale` do not need explicit Re factor due to ADflow nondim convention. 
 | #3  | feedback loop                      | Symptom (γ pinned at 1) downstream of #1 and possibly #2; should disappear after B1+B3+E1 | (auto) |
 
 ---
@@ -59,7 +59,7 @@ cases (NLF0416, S809) on their own.
 - T1.6 Multigrid restriction — SKIP
 
 ### Phase 2 — LM2015 Sources
-- T2.1 φ_p smooth max/min — 🟠 (verify Algorithm 1, → task B2)
+- T2.1 φ_p smooth max/min — ✅ (Algorithm 1 four-branch overflow-safe form)
 - T2.2 Re_θt correlation — ✅
 - T2.3 F_onset, F_length, Re_θc (LM2015) — 🟡
 - T2.4 P_θt source term — 🟠 (timeScale convention unverified, → task B1)
