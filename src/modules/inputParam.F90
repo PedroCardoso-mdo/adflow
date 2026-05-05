@@ -300,6 +300,7 @@ module inputIteration
     real(kind=realType) :: dissContMagnitude, dissContMidpoint, dissContSharpness
     integer(kind=intType) :: TurbDADICoupled = 2
     logical :: transitionFirstOrderUpwind = .true.
+    logical :: transitionSrcDtRestrict = .true.
 
 end module inputIteration
 
