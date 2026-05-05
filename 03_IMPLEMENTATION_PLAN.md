@@ -491,8 +491,15 @@ largest positive eigenvalue of the 3×3 source Jacobian (paper Eq. 59).
 Diagonal-only fallback exists (lines 538, 551). Add the eigenvalue-based
 cap that uses the off-diagonals from B3.
 
+The eigenvalue cap must respect the three `TurbDADICoupled` modes
+(see `07_COUPLING_MODES.md`):
+- `0` ("decoupled"): use existing diagonal-only cap (unchanged)
+- `1` ("transition"): use 2×2 eigenvalue of the gamma-ReTheta sub-block
+  (qq(2:3,2:3)), keep SA diagonal cap separate
+- `2` ("full"): use full 3×3 eigenvalue
+
 AD impact:   no  (it's a time-step cap, outside residual)
-Context:     `01_PAPER_REFERENCE.md` §7.1, §7.4
+Context:     `01_PAPER_REFERENCE.md` §7.1, §7.4, `07_COUPLING_MODES.md`
 Files:       `src/turbulence/saGammaRetheta.F90` (the DADI solver section,
              ~line 1330 onward)
 
@@ -509,20 +516,22 @@ Change:
   !       a0 = -det(J)
   ! Take real parts; lambda_max = max(re(λ_i)).
   ```
-  Implementation sketch is enough — Claude Code writes the actual cubic
-  solver. Use `realType` throughout. If complex roots arise, take real part
-  and largest of the three.
-- In the DADI block where `qq(i,j,k,m,m) = max(qq(i,j,k,m,m), -qq(i,j,k,m,m)/0.9)`
-  is currently applied, replace with:
+  Also add a 2×2 variant for the transition-only mode.
+- Branch on `TurbDADICoupled`:
   ```fortran
-  if (TurbDADICoupled) then
+  select case (TurbDADICoupled)
+  case (0)
+      ! existing diagonal-only cap, unchanged
+  case (1)
+      ! SA: diagonal cap as before
+      ! gamma-ReTheta: 2x2 eigenvalue of qq(2:3,2:3)
+      lambda_max_2x2 = max_pos_eigenvalue_2x2(qq(i,j,k,2:3,2:3))
+      dt_cap = 0.9 / max(lambda_max_2x2, eps_small)
+  case (2)
+      ! full 3x3 eigenvalue
       lambda_max = max_pos_eigenvalue_3x3(qq(i,j,k,1:3,1:3))
-      dt_cap = 0.9_realType / max(lambda_max, eps_small)
-      ! enforce: shrink dt to dt_cap if smaller than current
-      ! ... existing dt update ...
-  else
-      ! existing diagonal-only path, unchanged
-  end if
+      dt_cap = 0.9 / max(lambda_max, eps_small)
+  end select
   ```
 - Guard with the `transitionSrcDtRestrict` flag so user can disable if
   desired (default `.true.`).
@@ -530,8 +539,8 @@ Change:
 Compile:     standard
 Done when:
 - `make` exits 0.
-- New function exists and is called only when `TurbDADICoupled=True`.
-- Diagonal path is untouched.
+- New functions exist and are called per coupling mode.
+- Diagonal path is untouched for mode 0.
 Status row:  flip C2 to ✅
 End-of-turn: STATUS: READY TO RUN
 
@@ -540,10 +549,10 @@ End-of-turn: STATUS: READY TO RUN
 ## C3 — Source-term dt restriction: Turb-ANK CFL cap
 
 Goal: The Turb-ANK path needs the same restriction: cap CFL by the source
-Jacobian. Paper §7.1.
+Jacobian. Paper §7.1. This applies when `ANKUseTurbDADI=False`.
 
 AD impact:   no
-Context:     `04_ARCHITECTURE.md` §1 (Turb-ANK)
+Context:     `04_ARCHITECTURE.md` §1 (Turb-ANK), `07_COUPLING_MODES.md`
 Files:       `src/NKSolver/NKSolvers.F90` (or wherever Turb-ANK CFL is
              updated; locate by `grep -rn 'CFL' src/NKSolver/`)
 
@@ -559,6 +568,9 @@ Change:
   An MPI ALLREDUCE on `qq_diag_max` may be needed for global consistency —
   follow the existing CFL reduction pattern in the file.
 - Guard with `transitionSrcDtRestrict`.
+- Note: `TurbDADICoupled` does not apply here (Turb-ANK uses its own
+  Jacobian assembly in `FormJacobianANKTurb`), but the diagonal source
+  entries are still relevant for the CFL cap.
 
 Compile:     standard
 Done when:
@@ -575,19 +587,25 @@ Goal: Paper §IV.B: after 5 successive inexact-Newton iterations without
 backtracking and with R_d > 1e-5, deactivate the source-term restriction.
 Reactivate if backtracking triggers or residual rises.
 
+This gates the dt caps from C2 (DADI path, all `TurbDADICoupled` modes)
+and C3 (Turb-ANK path). See `07_COUPLING_MODES.md` for the full picture.
+
 AD impact:   no
-Context:     `01_PAPER_REFERENCE.md` §7.1 (last paragraph), `04_ARCHITECTURE.md` §1
+Context:     `01_PAPER_REFERENCE.md` §7.1 (last paragraph),
+             `04_ARCHITECTURE.md` §1, `07_COUPLING_MODES.md`
 Files:
 - `src/modules/inputParam.F90`         — add `srcDtRestrictActive` logical
                                           (module-level state, init `.true.`)
                                           and `noBacktrackCount` integer
                                           (init 0)
 - `src/turbulence/saGammaRetheta.F90`  — read `srcDtRestrictActive` to gate
-                                          the C2/C3 caps (i.e. wrap them in
-                                          `if (srcDtRestrictActive)` blocks)
+                                          the C2 caps (i.e. wrap them in
+                                          `if (srcDtRestrictActive)` blocks).
+                                          Applies to all three
+                                          `TurbDADICoupled` modes.
 - `src/NKSolver/NKSolvers.F90` (or wherever the inexact-Newton loop logs
   backtracking) — increment/reset counter and flip
-  `srcDtRestrictActive`
+  `srcDtRestrictActive`. Also gate C3 cap.
 
 Change:
 - After each Newton iteration:
@@ -610,29 +628,29 @@ End-of-turn: STATUS: READY TO RUN
 
 ## D1-D4 — Solver path smoke tests
 
-Four solver-mode smoke tests. The four paths together cover: simplest
-possible path, off-diagonal coupling inside DADI, full coupling at the
-ANK level, and Newton-on-turb-but-decoupled-from-flow. If any path NaNs
-that the others survive, it isolates the bug to that path's specific
-machinery.
+Six solver-mode smoke tests (D1 has sub-variants). The paths together
+cover all coupling modes documented in `07_COUPLING_MODES.md`. If any
+path NaNs that the others survive, it isolates the bug to that path's
+specific machinery.
 
-**The four paths:**
+**The paths:**
 
-| Test | Description                                     | What it exercises                                                 |
-|------|-------------------------------------------------|-------------------------------------------------------------------|
-| D1   | Decoupled flow/turb, DADI **diagonal**          | basic γ-Re̅θt PDE, BCs, halo, γ·P_SA — minimal coupling           |
-| D2   | Decoupled flow/turb, DADI **3×3 coupled**        | adds off-diagonal Jacobian (B3) and source-dt cap (C2)            |
-| D3   | **Coupled ANK** (flow + turb in one Newton)     | global Jv coupling — γ, ν̃, flow all in one Krylov                |
-| D4   | Decoupled flow/turb, **standard ANK** for turb   | turb-block ANK sub-solver with new equations (C3 CFL cap)         |
+| Test | Description                                      | What it exercises                                                 |
+|------|--------------------------------------------------|-------------------------------------------------------------------|
+| D1a  | Decoupled, DADI **diagonal** (`"decoupled"`)     | basic γ-Re̅θt PDE, BCs, halo, γ·P_SA — minimal coupling           |
+| D1b  | Decoupled, DADI **transition** (`"transition"`)   | SA decoupled, γ↔Re̅θt coupled via qq(2,3)                         |
+| D2   | Decoupled, DADI **full 3×3** (`"full"`)           | adds all off-diagonal Jacobian (B3) and source-dt cap (C2)       |
+| D3   | **Coupled ANK** (flow + turb in one Newton)      | global Jv coupling — γ, ν̃, flow all in one Krylov                |
+| D4   | Decoupled, **Turb-ANK KSP** for turb             | turb-block ANK sub-solver with new equations (C3 CFL cap)         |
 
 D3 is the "coupled ANK like solve" — flow and turbulence in the same
 Newton-Krylov system, matrix-free. NK as a separate terminal solver is NOT
 tested here; it shares D3's coupling structure with stricter tolerances.
 
-**For all four:**
+**For all paths:**
 
 AD impact:   no  (config-only; no source edits)
-Context:     `04_ARCHITECTURE.md` §1
+Context:     `04_ARCHITECTURE.md` §1, `07_COUPLING_MODES.md`
 Files:       (none modified — config only)
 Compile:     `cd build && make -j` should exit 0 immediately (no dirty state).
 Done when:   smoke script runs N iterations without NaN in γ, Re̅θt, ν̃.
@@ -643,11 +661,9 @@ If any path NaNs, do NOT try to fix it inline. The right response is
 `STATUS: BLOCKED` with a precise description; the user creates a follow-up
 task using `06_TASK_TEMPLATE.md`.
 
-**Per-path option blocks** (exact flag names verified against
-`python/pyADflow.py defaultOptions` in the first session of D-block —
-update here once confirmed):
+**Per-path option blocks:**
 
-### D1 — Decoupled / DADI diagonal
+### D1a — Decoupled / DADI diagonal
 
 ```python
 opts = {
@@ -655,18 +671,24 @@ opts = {
     'useTransitionModel':  True,
     'equationType':        'RANS',
     'useANKSolver':        True,
-    'ankCoupledSwitchTol':  0.0,    # never switch to coupled ANK
-    'turbDADICoupled':      False,  # diagonal — ignore off-diagonals
-    'storeTransitionDebug': True,
-    'volumeVariables':      [...standard...] + [...all transition names...],
+    'ANKCoupledSwitchTol':  0.0,        # never switch to coupled ANK
+    'TurbDADICoupled':      'decoupled', # diagonal — all off-diags zeroed
+    'ANKUseTurbDADI':       True,
 }
 ```
 
-### D2 — Decoupled / DADI 3×3 coupled
+### D1b — Decoupled / DADI transition-only coupling
 
-Same as D1 except:
+Same as D1a except:
 ```python
-    'turbDADICoupled':      True,   # use full 3×3 block (off-diags from B3)
+    'TurbDADICoupled':      'transition', # SA decoupled, gamma-ReTheta coupled
+```
+
+### D2 — Decoupled / DADI full 3×3 coupled
+
+Same as D1a except:
+```python
+    'TurbDADICoupled':      'full',      # full 3×3 block (off-diags from B3)
 ```
 
 ### D3 — Coupled ANK (flow + turb in one Newton)
@@ -677,13 +699,12 @@ opts = {
     'useTransitionModel':  True,
     'equationType':        'RANS',
     'useANKSolver':        True,
-    'ankCoupledSwitchTol':  1.0,    # always coupled — flow+turb together
-    'storeTransitionDebug': True,
-    'volumeVariables':      [...],
+    'ANKCoupledSwitchTol':  1.0,         # always coupled — flow+turb together
 }
 ```
+Note: `TurbDADICoupled` and `ANKUseTurbDADI` do not apply in coupled mode.
 
-### D4 — Decoupled / standard ANK for turb
+### D4 — Decoupled / Turb-ANK KSP
 
 Decoupled at the flow level; turbulence solved by its own ANK Newton-Krylov
 sub-solver (not DADI).
@@ -694,20 +715,10 @@ opts = {
     'useTransitionModel':    True,
     'equationType':          'RANS',
     'useANKSolver':          True,
-    'ankCoupledSwitchTol':    0.0,    # decoupled at flow level
-    'turbSubsolver':         'ANK',   # ← verify exact option name in pyADflow.py
-    'storeTransitionDebug':  True,
-    'volumeVariables':        [...],
+    'ANKCoupledSwitchTol':    0.0,       # decoupled at flow level
+    'ANKUseTurbDADI':         False,     # use Turb-ANK KSP instead of DADI
 }
 ```
-
-**First D-task action** (D1 specifically, since options carry over):
-`grep -n "ankCoupledSwitchTol\|turbDADICoupled\|turbSubsolver" python/pyADflow.py`
-to confirm the exact option names used by this branch. Update the four
-blocks above in this file with the verified names before running. If a
-flag does not exist (e.g. no `turbSubsolver` option exists yet), output
-`STATUS: BLOCKED — option 'turbSubsolver' not exposed in pyADflow.py;
-needs prior task to expose it.`
 
 Status rows:  flip D1, D2, D3, D4 to ✅ each as it lands
 
