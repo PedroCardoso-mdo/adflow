@@ -236,6 +236,8 @@ contains
 &   lambdathetalocald
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
+    real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
+    real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
@@ -1299,6 +1301,8 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
+    real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
+    real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
     intrinsic mod
     intrinsic sqrt
     intrinsic exp

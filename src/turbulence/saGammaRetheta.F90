@@ -232,6 +232,8 @@ contains
         real(kind=realType) :: dwdx, dwdy, dwdz
         real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
         real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
+        real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
+        real(kind=realType) :: dfOnset1_drT, dfOnset_dfOnset1
 
 
 
@@ -655,13 +657,30 @@ contains
                         ! qq(1,3) = -dS_nu/dReThetaTilde: ~0 (paper §7.1)
                         qq(i, j, k, 1, 3) = zero
 
-                        ! qq(2,1) = -dS_gamma/dnu_tilde: E_gamma depends on
-                        ! fTurb(R_T) where R_T = nu_t/nu ~ nu_tilde/rlv.
-                        ! LM2015: dfTurb/dR_T = -(R_T^3/64)*fTurb
-                        qq(i, j, k, 2, 1) = -rsaGRca2 * rTurb**3 * fTurb_val &
-                            * vortMagLim * gammaLocal &
-                            * (rsaGRce2 * gammaLocal - one) &
-                            / (64.0_realType * max(rlv(i, j, k), xminn))
+                        ! qq(2,1) = -dS_gamma/dnu_tilde: both pGamma and
+                        ! eGamma depend on nu_tilde through rTurb.
+                        ! rTurb = nu_tilde * fv1 / nu
+                        drTurb_dnu = (fv1 + chi * dfv1) / nu
+
+                        ! dfTurb/dnu = dfTurb/drTurb * drTurb/dnu
+                        ! LM2015: dfTurb/drTurb = -(rTurb^3/64)*fTurb
+                        dfTurb_dnu = -(rTurb**3 / 64.0_realType) &
+                            * fTurb_val * drTurb_dnu
+
+                        ! dfOnset/dnu = dfOnset/dfOnset1 * dfOnset1/drTurb * drTurb/dnu
+                        ! fOnset1 = sqrt((reS/(2.6*reThetaC))^2 + rTurb^2)
+                        dfOnset1_drT = rTurb / max(fOnset1, xminn)
+                        ! fOnset = 0.5*(tanh(6*(fOnset1-1.35))+1)
+                        dfOnset_dfOnset1 = 12.0_realType * fOnset * (one - fOnset)
+                        dfOnset_dnu = dfOnset_dfOnset1 * dfOnset1_drT * drTurb_dnu
+
+                        ! -d(pGamma - eGamma)/dnu_tilde
+                        qq(i, j, k, 2, 1) = &
+                            -(rsaGRca1 * fLength_val * dfOnset_dnu * vortMagLim &
+                              * sqrt(max(gammaLocal, xminn)) &
+                              * (one - rsaGRce1 * gammaLocal)) &
+                            + rsaGRca2 * dfTurb_dnu * vortMagLim * gammaLocal &
+                              * (rsaGRce2 * gammaLocal - one)
 
                         ! qq(2,3) = -dS_gamma/dReThetaTilde: P_gamma depends on
                         ! fOnset(reThetaC(reThetaTilde)) and fLength(reThetaTilde).
