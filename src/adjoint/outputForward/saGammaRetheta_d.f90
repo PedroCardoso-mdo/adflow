@@ -242,6 +242,8 @@ contains
     real(kind=realtype) :: dwdx, dwdy, dwdz
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
     real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
+    real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
+    real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
     intrinsic sqrt
     intrinsic exp
     intrinsic min
@@ -1228,6 +1230,8 @@ contains
     real(kind=realtype) :: dwdx, dwdy, dwdz
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
     real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
+    real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
+    real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
     intrinsic sqrt
     intrinsic exp
     intrinsic min
@@ -2957,7 +2961,7 @@ contains
         do j=2,jl
           do i=2,il
 ! b3 decoupled mode: zero off-diagonal coupling
-            if (turbdadicoupled == 0) then
+            if (turbdadicoupled .eq. 0) then
               qq(i, j, k, 1, 2) = zero
               qq(i, j, k, 1, 3) = zero
               qq(i, j, k, 2, 1) = zero

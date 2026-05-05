@@ -69,6 +69,8 @@ contains
         use iteration
         use turbUtils, only: SSTEddyViscosity, turbAdvection, unsteadyTurbTerm, saEddyViscosity
         use turbBCRoutines, only: bcTurbTreatment, applyAllTurbBCThisBlock
+        use inputIteration, only: transitionFirstOrderUpwind
+        use inputDiscretization, only: orderTurb
         implicit none
 
         !
@@ -79,6 +81,7 @@ contains
         !      Local variables.
         !
         integer(kind=intType) :: nn, sps
+        integer(kind=intType) :: orderTurbSave
 
         ! Set the arrays for the boundary condition treatment.
 
@@ -92,7 +95,14 @@ contains
 
         ! Advection Term
         nn = itu1 - 1
+        if (transitionFirstOrderUpwind) then
+            orderTurbSave = orderTurb
+            orderTurb = firstOrder
+        end if
         call turbAdvection(3_intType, 3_intType, nn, qq)
+        if (transitionFirstOrderUpwind) then
+            orderTurb = orderTurbSave
+        end if
 
         call unsteadyTurbTerm(3_intType, 3_intType, nn, qq)
 

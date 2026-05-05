@@ -69,6 +69,8 @@ contains
 &   unsteadyturbterm, saeddyviscosity
     use turbbcroutines_b, only : bcturbtreatment, &
 &   applyallturbbcthisblock
+    use inputiteration, only : transitionfirstorderupwind
+    use inputdiscretization, only : orderturb
     implicit none
 !
 !      subroutine argument.
@@ -78,6 +80,7 @@ contains
 !      local variables.
 !
     integer(kind=inttype) :: nn, sps
+    integer(kind=inttype) :: orderturbsave
 ! set the arrays for the boundary condition treatment.
     call bcturbtreatment()
 ! alloc central jacobian memory
@@ -86,7 +89,12 @@ contains
     call source()
 ! advection term
     nn = itu1 - 1
+    if (transitionfirstorderupwind) then
+      orderturbsave = orderturb
+      orderturb = firstorder
+    end if
     call turbadvection(3_inttype, 3_inttype, nn, qq)
+    if (transitionfirstorderupwind) orderturb = orderturbsave
     call unsteadyturbterm(3_inttype, 3_inttype, nn, qq)
 ! viscous terms
     call viscous()
@@ -244,6 +252,8 @@ contains
     real(kind=realtype) :: dwdx, dwdy, dwdz
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
     real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
+    real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
+    real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
@@ -1327,6 +1337,8 @@ contains
     real(kind=realtype) :: dwdx, dwdy, dwdz
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
     real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
+    real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
+    real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
@@ -3170,6 +3182,7 @@ contains
 ! adi work arrays
     real(kind=realtype), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
     real(kind=realtype), dimension(3, 3, 2:max(il, jl, kl)) :: cc
+    logical, save :: printedcoupling=.false.
     intrinsic abs
     intrinsic real
     intrinsic min
@@ -3180,6 +3193,23 @@ contains
     if (resonly) then
       return
     else
+      if (.not.printedcoupling) then
+        printedcoupling = .true.
+        select case  (turbdadicoupled) 
+        case (0) 
+          print*, &
+&      'sa-gamma-retheta dadi coupling: fully decoupled (diagonal only)'
+        case (1) 
+          print*, &
+&  'sa-gamma-retheta dadi coupling: sa decoupled, gamma-retheta coupled'
+        case (2) 
+          print*, &
+&         'sa-gamma-retheta dadi coupling: fully coupled (3x3 block)'
+        case default
+          print*, 'sa-gamma-retheta dadi coupling: unknown mode', &
+&         turbdadicoupled
+        end select
+      end if
       cb3inv = one/rsacb3
       cv13 = rsacv1**3
       if (turbresscale(1) .ge. 0.) then
@@ -3233,14 +3263,20 @@ contains
       do k=2,kl
         do j=2,jl
           do i=2,il
-! b3 decoupled mode: zero off-diagonal coupling
-            if (turbdadicoupled == 0) then
+! turbdadicoupled: 0=decoupled, 1=transition-only, 2=full
+            if (turbdadicoupled .eq. 0) then
               qq(i, j, k, 1, 2) = zero
               qq(i, j, k, 1, 3) = zero
               qq(i, j, k, 2, 1) = zero
               qq(i, j, k, 2, 3) = zero
               qq(i, j, k, 3, 1) = zero
               qq(i, j, k, 3, 2) = zero
+            else if (turbdadicoupled .eq. 1) then
+! sa decoupled, gamma-retheta coupled
+              qq(i, j, k, 1, 2) = zero
+              qq(i, j, k, 1, 3) = zero
+              qq(i, j, k, 2, 1) = zero
+              qq(i, j, k, 3, 1) = zero
             end if
 ! symmetric scaling (§4): qq(m,n) *= s_n / s_m
 ! diagonal entries unchanged; only off-diag scaled.

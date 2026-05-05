@@ -20,7 +20,7 @@ Do these in order. Each row links to a section in
 | 5  | B2      | Verify φ_p overflow safety (Algorithm 1)         | yes  | ✅      |
 | 6  | B3      | Populate off-diagonal source Jacobian            | yes  | ✅      |
 | 7  | B4      | Initialize row/column scaling factors            | no   | ✅      |
-| 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ❌      |
+| 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ✅      |
 | 9  | C2      | Source-term dt restriction — DADI (all 3 modes)  | no   | ❌      |
 | 10 | C3      | Source-term dt restriction — Turb-ANK CFL cap    | no   | ❌      |
 | 11 | C4      | 5-iter deactivation switch                       | no   | ❌      |

@@ -7,9 +7,11 @@ ADflow. The model is ~60% done; this roadmap drives it to completion. All
 four solver paths must remain runtime-selectable and runnable:
 
 1. Decoupled — turbulence solved by DADI (3×3 block coupled)
+1.2. Decoupled — turbulence solved by DADI (3×3 block decoupled)
+1.3. Decoupled — turbulence solved by DADI (2×2 block coupled transition vars decoupled sa)
 2. Decoupled — turbulence solved by Turb-ANK
 3. Coupled ANK — flow + turbulence in one Newton-Krylov system
-4. Coupled NK — terminal Newton-Krylov solver
+
 
 **Definition of done for any task: code compiles, smoke test runs N
 iterations without NaN.** Physics correctness is verified by the user at
