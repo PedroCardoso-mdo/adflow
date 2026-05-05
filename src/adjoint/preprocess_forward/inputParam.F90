@@ -1,3 +1,14 @@
+
+
+
+
+
+
+
+
+
+
+
 module inputDiscretization
     !
     !       Input parameters which are related to the discretization of
@@ -83,11 +94,6 @@ module inputDiscretization
     real(kind=realType) :: sigma
     logical :: useBlockettes
 
-#ifndef USE_TAPENADE
-    real(kind=realType) :: vis2b, vis4b, vis2Coarseb, adisb
-    real(kind=realType) :: kappaCoefb
-    real(kind=realType) :: sigmab
-#endif
     logical :: vortexCorr, dirScaling, hScalingInlet
     logical :: radiiNeededFine, radiiNeededCoarse
 
@@ -600,20 +606,6 @@ module inputPhysics
     real(kind=realType) :: cpmin_rho
     real(kind=realType), dimension(:), allocatable :: cpmin_family
 
-#ifndef USE_TAPENADE
-    real(kind=realType) :: alphad, betad
-    real(kind=realType), dimension(3) :: velDirFreestreamd, velDirFreeStreamb
-    real(kind=realType), dimension(3) :: liftDirectiond, liftDirectionb
-    real(kind=realType), dimension(3) :: dragDirectiond, dragDirectionb
-    real(kind=realType), dimension(3) :: pointRefd, pointRefb
-    real(kind=realType), dimension(3, 2) :: momentAxisd, momentAxisb
-    real(kind=realType) :: Machd, MachCoefd, MachGridd
-    real(kind=realType) :: reynoldsd, reynoldslengthd
-    real(kind=realType) :: gammaconstantd
-    real(kind=realType) :: surfaceRefd, lengthRefd
-    real(kind=realType) :: rgasdimd
-    real(kind=realType) :: Prandtlb, PrandtlTurbb
-#endif
 
     real(kind=realType), dimension(3) :: pointRefEC
 

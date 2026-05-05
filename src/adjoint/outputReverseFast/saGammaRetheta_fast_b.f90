@@ -3120,7 +3120,7 @@ branch = myIntStack(myIntPtr)
         do j=2,jl
           do i=2,il
 ! b3 decoupled mode: zero off-diagonal coupling
-            if (.not.turbdadicoupled) then
+            if (turbdadicoupled == 0) then
               qq(i, j, k, 1, 2) = zero
               qq(i, j, k, 1, 3) = zero
               qq(i, j, k, 2, 1) = zero

@@ -1,3 +1,14 @@
+
+
+
+
+
+
+
+
+
+
+
 module saGammaReTheta
 
     ! This module contains the source code related to the SST turbulence
@@ -243,11 +254,6 @@ contains
         cw36 = rsaCw3**6
         cb3Inv = one / rsaCb3
 
-#ifndef USE_TAPENADE
-        ! Initialize the full 3x3 turbulence Jacobian block to avoid
-        ! uninitialized off-diagonal entries contaminating ANK/DADI.
-        qq = zero
-#endif
 
         ! Determine the non-dimensional wheel speed of this block.
 
@@ -262,17 +268,9 @@ contains
             stop
         end if
 
-#ifdef TAPENADE_REVERSE
-        !$AD II-LOOP
-        do ii = 0, nx * ny * nz - 1
-            i = mod(ii, nx) + 2
-            j = mod(ii / nx, ny) + 2
-            k = ii / (nx * ny) + 2
-#else
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
-#endif
                         ! Compute the gradient of u in the cell center. Use is made
                         ! of the fact that the surrounding normals sum up to zero,
                         ! such that the cell i,j,k does not give a contribution.
@@ -598,127 +596,9 @@ contains
                             transitionDebug(i, j, k, dbgVortLim) = vortLim
                         end if
 
-#ifndef USE_TAPENADE
-                        ! Compute some derivatives w.r.t. nuTilde. These will occur
-                        ! in the left hand side, i.e. the matrix for the implicit
-                        ! treatment.
-
-                        dfv1 = three * chi2 * cv13 / ((chi3 + cv13)**2)
-                        dfv2 = (chi2 * dfv1 - one) / (nu * ((one + chi * fv1)**2))
-                        dft2 = -two * rsaCt4 * chi * ft2 / nu
-
-                        drr = (one - rr * (fv2 + w(i, j, k, itu1) * dfv2)) &
-                              * kar2Inv * dist2Inv / sst
-                        dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
-                        dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
-
-                        ! Compute the source term jacobian.
-                        ! term2 already contains gammaForSA on production part.
-                        ! The derivative chain also needs gamma on production
-                        ! derivatives but NOT on destruction derivatives.
-                        ! Note that -dsource/dnu is stored.
-                        qq(i, j, k, 1, 1) = -two * term2 * w(i, j, k, itu1) &
-                                      - dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
-                                      * (gammaForSA * rsaCb1 * kar2Inv &
-                                         * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
-                                         - rsaCw1 * dfw)
-
-                        ! Source dt restriction (§2): when production dominates
-                        ! (qq < 0), set qq = |qq|/0.9 instead of clipping to zero.
-                        ! This ensures lambda_source * dt <= 0.9.
-                        qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), &
-                            -qq(i, j, k, 1, 1) / rsaGRsrcDtLimit)
-
-                        ! Full gamma source Jacobian: -d(pGamma - eGamma)/dgamma
-                        ! Includes both production and destruction linearization.
-                        qq(i, j, k, 2, 2) = rsaGRca1 * fLength_val * fOnset &
-                            * vortMagLim &
-                            * (1.5_realType * rsaGRce1 * gammaLocal - half) &
-                            / sqrt(max(gammaLocal, xminn)) &
-                            + rsaGRca2 * fTurb_val * vortMagLim &
-                            * (two * rsaGRce2 * gammaLocal - one)
-
-                        ! Source dt restriction for gamma equation.
-                        qq(i, j, k, 2, 2) = max(qq(i, j, k, 2, 2), &
-                            -qq(i, j, k, 2, 2) / rsaGRsrcDtLimit)
-
-                        ! ReTheta Jacobian diagonal: -dP_theta/dReTheta_tilde
-                        ! Always >= 0 (relaxation), so restriction is a no-op.
-                        qq(i, j, k, 3, 3) = max( &
-                            rsaGRcthetat / max(timeScale, xminn) &
-                            * (one - fThetaT), zero)
-
-                        ! --- Off-diagonal source Jacobian entries ---
-
-                        ! qq(1,2) = -dS_nu/dgamma: SA production depends on gamma
-                        qq(i, j, k, 1, 2) = -(rsaCb1 * (one - ft2) * ss &
-                            + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
-
-                        ! qq(1,3) = -dS_nu/dReThetaTilde: ~0 (paper §7.1)
-                        qq(i, j, k, 1, 3) = zero
-
-                        ! qq(2,1) = -dS_gamma/dnu_tilde: both pGamma and
-                        ! eGamma depend on nu_tilde through rTurb.
-                        ! rTurb = nu_tilde * fv1 / nu
-                        drTurb_dnu = (fv1 + chi * dfv1) / nu
-
-                        ! dfTurb/dnu = dfTurb/drTurb * drTurb/dnu
-                        ! LM2015: dfTurb/drTurb = -(rTurb^3/64)*fTurb
-                        dfTurb_dnu = -(rTurb**3 / 64.0_realType) &
-                            * fTurb_val * drTurb_dnu
-
-                        ! dfOnset/dnu = dfOnset/dfOnset1 * dfOnset1/drTurb * drTurb/dnu
-                        ! fOnset1 = sqrt((reS/(2.6*reThetaC))^2 + rTurb^2)
-                        dfOnset1_drT = rTurb / max(fOnset1, xminn)
-                        ! fOnset = 0.5*(tanh(6*(fOnset1-1.35))+1)
-                        dfOnset_dfOnset1 = 12.0_realType * fOnset * (one - fOnset)
-                        dfOnset_dnu = dfOnset_dfOnset1 * dfOnset1_drT * drTurb_dnu
-
-                        ! -d(pGamma - eGamma)/dnu_tilde
-                        qq(i, j, k, 2, 1) = &
-                            -(rsaGRca1 * fLength_val * dfOnset_dnu * vortMagLim &
-                              * sqrt(max(gammaLocal, xminn)) &
-                              * (one - rsaGRce1 * gammaLocal)) &
-                            + rsaGRca2 * dfTurb_dnu * vortMagLim * gammaLocal &
-                              * (rsaGRce2 * gammaLocal - one)
-
-                        ! qq(2,3) = -dS_gamma/dReThetaTilde: P_gamma depends on
-                        ! fOnset(reThetaC(reThetaTilde)) and fLength(reThetaTilde).
-                        ! Use one-sided finite difference on P_gamma.
-                        epsRT = max(1.0e-4_realType * reThetaTilde, 1.0e-2_realType)
-                        reThetaTilde_p = reThetaTilde + epsRT
-                        reThetaC_p = rethetacCorrelation(reThetaTilde_p)
-                        reThetaC_p = max(reThetaC_p, xminn)
-                        fOnset1_p = sqrt((reS_val &
-                            / (2.6_realType * reThetaC_p))**2 + rTurb**2)
-                        fOnset_p = (tanh(6.0_realType &
-                            * (fOnset1_p - 1.35_realType)) + one) * half
-                        fLength_p = flengthCorrelation(reThetaTilde_p)
-                        pGamma_p = rsaGRca1 * fLength_p * fOnset_p * vortMagLim &
-                            * sqrt(max(gammaLocal, xminn)) &
-                            * (one - rsaGRce1 * gammaLocal)
-                        qq(i, j, k, 2, 3) = -(pGamma_p - pGamma) / epsRT
-
-                        ! qq(3,1) = -dS_retheta/dnu_tilde: ~0 (paper §7.1)
-                        qq(i, j, k, 3, 1) = zero
-
-                        ! qq(3,2) = -dS_retheta/dgamma: fThetaT does not
-                        ! depend on gamma in the current implementation.
-                        qq(i, j, k, 3, 2) = zero
-
-                        if (associated(transitionDebug)) then
-                            transitionDebug(i, j, k, dbgQQ11) = qq(i, j, k, 1, 1)
-                            transitionDebug(i, j, k, dbgQQ22) = qq(i, j, k, 2, 2)
-                            transitionDebug(i, j, k, dbgQQ33) = qq(i, j, k, 3, 3)
-                        end if
-#endif
-#ifdef TAPENADE_REVERSE
-                    end do
-#else
                 end do
             end do
         end do
-#endif
     end subroutine Source
 
     subroutine Viscous
@@ -782,17 +662,9 @@ contains
 
 
         ! Viscous terms in k-direction.
-#ifdef TAPENADE_REVERSE
-        !$AD II-LOOP
-        do ii = 0, nx * ny * nz - 1
-            i = mod(ii, nx) + 2
-            j = mod(ii / nx, ny) + 2
-            k = ii / (nx * ny) + 2
-#else
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
-#endif
                         !Mesh Geometry contribution
                         voli = one / vol(i, j, k)
                         volmi = two / (vol(i, j, k) + vol(i, j, k - 1))
@@ -889,103 +761,13 @@ contains
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i, j, k + 1, itu2)
                         scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i, j, k - 1, itu3) &
                                                      - c30 * w(i, j, k, itu3) + c3p * w(i, j, k + 1, itu3)
-#ifndef USE_TAPENADE
-                        b1 = -c1m
-                        c1 = c10
-                        d1 = -c1p
-
-                        ! Update the central jacobian. For nonboundary cells this
-                        ! is simply c1. For boundary cells this is slightly more
-                        ! complicated, because the boundary conditions are treated
-                        ! implicitly and the off-diagonal terms b1 and d1 must be
-                        ! taken into account.
-                        ! The boundary conditions are only treated implicitly if
-                        ! the diagonal dominance of the matrix is increased.
-
-                        if (k == 2) then
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
-                                            - b1 * max(bmtk1(i,j,itu1,itu1), zero)
-                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - b1 * bmtk1(i,j,itu1,itu2)
-                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - b1 * bmtk1(i,j,itu1,itu3)
-
-                        else if (k == kl) then
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
-                                            - d1 * max(bmtk2(i,j,itu1,itu1), zero)
-                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - d1 * bmtk2(i,j,itu1,itu2)
-                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - d1 * bmtk2(i,j,itu1,itu3)
-
-                        else
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1
-                        end if
-
-                        !====================================================
-                        ! GAMMA EQUATION
-                        !====================================================
-
-                        b2 = -c2m
-                        c2 =  c20
-                        d2 = -c2p
-
-                        if (k == 2) then
-                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtk1(i,j,itu2,itu1)
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - b2 * max(bmtk1(i,j,itu2,itu2), zero)
-                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmtk1(i,j,itu2,itu3)
-
-                        else if (k == kl) then
-                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmtk2(i,j,itu2,itu1)
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - d2 * max(bmtk2(i,j,itu2,itu2), zero)
-                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmtk2(i,j,itu2,itu3)
-
-                        else
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2
-                        end if
-
-
-                        !====================================================
-                        ! RETHETA EQUATION
-                        !====================================================
-
-                        b3 = -c3m
-                        c3 =  c30
-                        d3 = -c3p
-
-                        if (k == 2) then
-                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmtk1(i,j,itu3,itu1)
-                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmtk1(i,j,itu3,itu2)
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - b3 * max(bmtk1(i,j,itu3,itu3), zero)
-
-                        else if (k == kl) then
-                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmtk2(i,j,itu3,itu1)
-                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmtk2(i,j,itu3,itu2)
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - d3 * max(bmtk2(i,j,itu3,itu3), zero)
-
-                        else
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
-                        end if
-#endif
-#ifdef TAPENADE_REVERSE
-                    end do
-#else
                 end do
             end do
         end do
-#endif
         ! Viscous terms in j-direction.
-#ifdef TAPENADE_REVERSE
-        !$AD II-LOOP
-        do ii = 0, nx * ny * nz - 1
-            i = mod(ii, nx) + 2
-            j = mod(ii / nx, ny) + 2
-            k = ii / (nx * ny) + 2
-#else
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
-#endif
                         voli = one / vol(i, j, k)
                         volmi = two / (vol(i, j, k) + vol(i, j - 1, k))
                         volpi = two / (vol(i, j, k) + vol(i, j + 1, k))
@@ -1080,103 +862,13 @@ contains
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i, j+1, k, itu2)
                         scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i, j-1, k, itu3) &
                                                      - c30 * w(i, j, k, itu3) + c3p * w(i, j+1, k, itu3)
-#ifndef USE_TAPENADE
-                        b1 = -c1m
-                        c1 = c10
-                        d1 = -c1p
-
-                        ! Update the central jacobian. For nonboundary cells this
-                        ! is simply c1. For boundary cells this is slightly more
-                        ! complicated, because the boundary conditions are treated
-                        ! implicitly and the off-diagonal terms b1 and d1 must be
-                        ! taken into account.
-                        ! The boundary conditions are only treated implicitly if
-                        ! the diagonal dominance of the matrix is increased.
-
-                        if (j == 2) then
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
-                                            - b1 * max(bmtj1(i,k,itu1,itu1), zero)
-                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - b1 * bmtj1(i,k,itu1,itu2)
-                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - b1 * bmtj1(i,k,itu1,itu3)
-
-                        else if (j == jl) then
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
-                                            - d1 * max(bmtj2(i,k,itu1,itu1), zero)
-                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - d1 * bmtj2(i,k,itu1,itu2)
-                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - d1 * bmtj2(i,k,itu1,itu3)
-
-                        else
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1
-                        end if
-
-                        !====================================================
-                        ! GAMMA EQUATION
-                        !====================================================
-
-                        b2 = -c2m
-                        c2 =  c20
-                        d2 = -c2p
-
-                        if (j == 2) then
-                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtj1(i,k,itu2,itu1)
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - b2 * max(bmtj1(i,k,itu2,itu2), zero)
-                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmtj1(i,k,itu2,itu3)
-
-                        else if (j == jl) then
-                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmtj2(i,k,itu2,itu1)
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - d2 * max(bmtj2(i,k,itu2,itu2), zero)
-                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmtj2(i,k,itu2,itu3)
-
-                        else
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2
-                        end if
-
-
-                        !====================================================
-                        ! RETHETA EQUATION
-                        !====================================================
-
-                        b3 = -c3m
-                        c3 =  c30
-                        d3 = -c3p
-
-                        if (j == 2) then
-                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmtj1(i,k,itu3,itu1)
-                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmtj1(i,k,itu3,itu2)
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - b3 * max(bmtj1(i,k,itu3,itu3), zero)
-
-                        else if (j == jl) then
-                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmtj2(i,k,itu3,itu1)
-                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmtj2(i,k,itu3,itu2)
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - d3 * max(bmtj2(i,k,itu3,itu3), zero)
-
-                        else
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
-                        end if
-#endif
-#ifdef TAPENADE_REVERSE
-                    end do
-#else
                 end do
             end do
         end do
-#endif
         ! Viscous terms in i-direction.
-#ifdef TAPENADE_REVERSE
-        !$AD II-LOOP
-        do ii = 0, nx * ny * nz - 1
-            i = mod(ii, nx) + 2
-            j = mod(ii / nx, ny) + 2
-            k = ii / (nx * ny) + 2
-#else
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
-#endif
                         voli = one / vol(i, j, k)
                         volmi = two / (vol(i, j, k) + vol(i - 1, j, k))
                         volpi = two / (vol(i, j, k) + vol(i + 1, j, k))
@@ -1270,91 +962,9 @@ contains
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i+1, j, k, itu2)
                         scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i-1, j, k, itu3) &
                                                      - c30 * w(i, j, k, itu3) + c3p * w(i+1, j, k, itu3)
-#ifndef USE_TAPENADE
-                        b1 = -c1m
-                        c1 = c10
-                        d1 = -c1p
-
-                        ! Update the central jacobian. For nonboundary cells this
-                        ! is simply c1. For boundary cells this is slightly more
-                        ! complicated, because the boundary conditions are treated
-                        ! implicitly and the off-diagonal terms b1 and d1 must be
-                        ! taken into account.
-                        ! The boundary conditions are only treated implicitly if
-                        ! the diagonal dominance of the matrix is increased.
-
-                        if (i == 2) then
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
-                                            - b1 * max(bmti1(j,k,itu1,itu1), zero)
-                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - b1 * bmti1(j,k,itu1,itu2)
-                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - b1 * bmti1(j,k,itu1,itu3)
-
-                        else if (i == il) then
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
-                                            - d1 * max(bmti2(j,k,itu1,itu1), zero)
-                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - d1 * bmti2(j,k,itu1,itu2)
-                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - d1 * bmti2(j,k,itu1,itu3)
-
-                        else
-                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1
-                        end if
-
-                        !====================================================
-                        ! GAMMA EQUATION
-                        !====================================================
-
-                        b2 = -c2m
-                        c2 =  c20
-                        d2 = -c2p
-
-                        if (i == 2) then
-                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmti1(j,k,itu2,itu1)
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - b2 * max(bmti1(j,k,itu2,itu2), zero)
-                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmti1(j,k,itu2,itu3)
-
-                        else if (i == il) then
-                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmti2(j,k,itu2,itu1)
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - d2 * max(bmti2(j,k,itu2,itu2), zero)
-                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmti2(j,k,itu2,itu3)
-
-                        else
-                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2
-                        end if
-
-
-                        !====================================================
-                        ! RETHETA EQUATION
-                        !====================================================
-
-                        b3 = -c3m
-                        c3 =  c30
-                        d3 = -c3p
-
-                        if (i == 2) then
-                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmti1(j,k,itu3,itu1)
-                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmti1(j,k,itu3,itu2)
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - b3 * max(bmti1(j,k,itu3,itu3), zero)
-
-                        else if (i == il) then
-                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmti2(j,k,itu3,itu1)
-                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmti2(j,k,itu3,itu2)
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - d3 * max(bmti2(j,k,itu3,itu3), zero)
-
-                        else
-                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
-                        end if
-#endif
-#ifdef TAPENADE_REVERSE
-                    end do
-#else
                 end do
             end do
         end do
-#endif
     end subroutine Viscous
 
     subroutine ResScale
@@ -1374,17 +984,9 @@ contains
         integer(kind=intType) :: i, j, k, ii
         real(kind=realType) :: rblank
 
-#ifdef TAPENADE_REVERSE
-        !$AD II-LOOP
-        do ii = 0, nx * ny * nz - 1
-            i = mod(ii, nx) + 2
-            j = mod(ii / nx, ny) + 2
-            k = ii / (nx * ny) + 2
-#else
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
-#endif
                         rblank = max(real(iblank(i, j, k), realType), zero)
                         ! SA variable ν~
                         dw(i,j,k,itu1) = -volRef(i,j,k) * scratch(i, j, k, idvt) * rblank
@@ -1394,13 +996,9 @@ contains
 
                         ! ReTheta
                         dw(i,j,k,itu3) = -volRef(i,j,k) * scratch(i, j, k, idvt + 2) * rblank
-#ifdef TAPENADE_REVERSE
-                    end do
-#else
                 end do
             end do
         end do
-#endif
     end subroutine ResScale
 
     subroutine saGammaReThetaSolve(resOnly)
@@ -1475,23 +1073,7 @@ contains
         real(kind=realType), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
         real(kind=realType), dimension(3, 3, 2:max(il, jl, kl)) :: cc
 
-        logical, save :: printedCoupling = .false.
-
         if (resOnly) return
-
-        if (.not. printedCoupling) then
-            printedCoupling = .true.
-            select case (TurbDADICoupled)
-            case (0)
-                print *, 'SA-gamma-ReTheta DADI coupling: fully decoupled (diagonal only)'
-            case (1)
-                print *, 'SA-gamma-ReTheta DADI coupling: SA decoupled, gamma-ReTheta coupled'
-            case (2)
-                print *, 'SA-gamma-ReTheta DADI coupling: fully coupled (3x3 block)'
-            case default
-                print *, 'SA-gamma-ReTheta DADI coupling: unknown mode', TurbDADICoupled
-            end select
-        end if
 
         cb3Inv = one / rsaCb3
         cv13 = rsaCv1**3
@@ -1519,7 +1101,7 @@ contains
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
-                    ! TurbDADICoupled: 0=decoupled, 1=transition-only, 2=full
+                    ! B3 decoupled mode: zero off-diagonal coupling
                     if (TurbDADICoupled == 0) then
                         qq(i, j, k, 1, 2) = zero
                         qq(i, j, k, 1, 3) = zero
@@ -1527,12 +1109,6 @@ contains
                         qq(i, j, k, 2, 3) = zero
                         qq(i, j, k, 3, 1) = zero
                         qq(i, j, k, 3, 2) = zero
-                    else if (TurbDADICoupled == 1) then
-                        ! SA decoupled, gamma-retheta coupled
-                        qq(i, j, k, 1, 2) = zero
-                        qq(i, j, k, 1, 3) = zero
-                        qq(i, j, k, 2, 1) = zero
-                        qq(i, j, k, 3, 1) = zero
                     end if
 
                     ! Symmetric scaling (§4): qq(m,n) *= s_n / s_m

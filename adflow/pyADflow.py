@@ -5817,7 +5817,7 @@ class ADFLOW(AeroSolver):
             # Approximate Newton-Krylov Parameters
             "useANKSolver": [bool, True],
             "ANKUseTurbDADI": [bool, True],
-            "TurbDADICoupled": [bool, True],
+            "TurbDADICoupled": [str, "full"],
             "ANKUseApproxSA": [bool, False],
             "ANKSwitchTol": [float, 1e3],
             "ANKSubspaceSize": [int, -1],
@@ -6233,7 +6233,12 @@ class ADFLOW(AeroSolver):
             # Approximate Newton-Krylov Parameters
             "useanksolver": ["ank", "useanksolver"],
             "ankuseturbdadi": ["ank", "ank_useturbdadi"],
-            "turbdadicoupled": ["iter", "turbdadicoupled"],
+            "turbdadicoupled": {
+                "decoupled": 0,
+                "transition": 1,
+                "full": 2,
+                "location": ["iter", "turbdadicoupled"],
+            },
             "ankuseapproxsa": ["ank", "ank_useapproxsa"],
             "ankswitchtol": ["ank", "ank_switchtol"],
             "anksubspacesize": ["ank", "ank_subspace"],
