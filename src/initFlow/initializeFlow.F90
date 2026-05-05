@@ -421,7 +421,7 @@ contains
         use flowVarRefState, only: nw, nwf, nt1, nt2
         use inputPhysics, only: equationMode, gammaConstant, turbModel
         use inputUnsteady, only: timeIntegrationScheme
-        use inputIteration, only: mgStartLevel, turbTreatment, storeTransitionDebug
+        use inputIteration, only: mgStartLevel, turbTreatment
         use iteration, only: nOldLevels
         use utils, only: terminate
         implicit none
@@ -517,7 +517,7 @@ contains
                                "Memory allocation failure for rev")
             !endif
 
-            if (turbModel == spalartallmarasnoft2gammaretheta .and. storeTransitionDebug) then
+            if (turbModel == spalartallmarasnoft2gammaretheta) then
                 allocate (flowDoms(nn, level, sps)%transitionDebug(2:il, 2:jl, 2:kl, 1:nSaGrDebugVars), &
                           stat=ierr)
                 if (ierr /= 0) &
