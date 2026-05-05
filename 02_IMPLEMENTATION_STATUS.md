@@ -79,7 +79,7 @@ cases (NLF0416, S809) on their own.
 - T4.1 Row/column scaling — ✅ (Fortran default=1.0; Python sets model-specific values)
 - T4.2 Solution-update damping (Alg. 2) — ✅
 - T4.3 3×3 source Jacobian — ✅ (diagonal + off-diagonal)
-- T4.4 Source-term dt restriction — 🟡 (DADI diag only; → tasks C2, C3; all 3 TurbDADICoupled modes)
+- T4.4 Source-term dt restriction — 🟡 (DADI eigenvalue done for modes 1,2; diag for mode 0; → task C3 for Turb-ANK)
 - T4.5 Deactivation switch — ❌ (→ task C4)
 
 ### Phase 5 — Coupling (see `07_COUPLING_MODES.md`)
