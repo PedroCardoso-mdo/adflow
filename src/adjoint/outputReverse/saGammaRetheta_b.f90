@@ -625,9 +625,9 @@ contains
         end if
 ! --- retheta production (relaxation toward correlation) ---
 ! note: no explicit reynolds factor here.
-! adflow's non-dim bakes 1/re into rlv = mu/(rho_inf*a_inf).
-! the dimensional time scale is t = 500*mu/(rho*u^2);
-! in adflow non-dim this is 500*rlv/(rho_nd*u_nd^2).
+! nondim form: rlv = mu/muref with l_ref=1m so re=1 implicitly
+! (see initializeflow.f90:62-66). no explicit re factor needed,
+! consistent with nu = rlv/rho in sa.f90:245.
         timescale = 500.0_realtype*rlv(i, j, k)/max8
         if (w(i, j, k, irho)*velmag .lt. xminn) then
           call pushcontrol1b(0)
@@ -1629,9 +1629,9 @@ contains
         end if
 ! --- retheta production (relaxation toward correlation) ---
 ! note: no explicit reynolds factor here.
-! adflow's non-dim bakes 1/re into rlv = mu/(rho_inf*a_inf).
-! the dimensional time scale is t = 500*mu/(rho*u^2);
-! in adflow non-dim this is 500*rlv/(rho_nd*u_nd^2).
+! nondim form: rlv = mu/muref with l_ref=1m so re=1 implicitly
+! (see initializeflow.f90:62-66). no explicit re factor needed,
+! consistent with nu = rlv/rho in sa.f90:245.
         timescale = 500.0_realtype*rlv(i, j, k)/max8
         if (w(i, j, k, irho)*velmag .lt. xminn) then
           max9 = xminn
