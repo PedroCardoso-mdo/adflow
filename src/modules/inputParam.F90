@@ -290,7 +290,10 @@ module inputIteration
     logical :: printNegativeVolumes
     logical :: printBadlySkewedCells
     logical :: printBCWarnings
-    real(kind=realType), dimension(4) :: turbResScale
+    real(kind=realType), dimension(4) :: turbResScale = (/1.0_realType, &
+                                                          1.0_realType, &
+                                                          1.0_realType, &
+                                                          1.0_realType/)
     real(kind=realType) :: meshMaxSkewness
     logical :: useSkewnessCheck
     logical :: useDissContinuation

@@ -19,7 +19,7 @@ Do these in order. Each row links to a section in
 | 4  | B1      | Verify timeScale matches ADflow nondim convention| no   | ✅      |
 | 5  | B2      | Verify φ_p overflow safety (Algorithm 1)         | yes  | ✅      |
 | 6  | B3      | Populate off-diagonal source Jacobian            | yes  | ✅      |
-| 7  | B4      | Initialize row/column scaling factors            | no   | 🟠      |
+| 7  | B4      | Initialize row/column scaling factors            | no   | ✅      |
 | 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ❌      |
 | 9  | C2      | Source-term dt restriction — DADI (all 3 modes)  | no   | ❌      |
 | 10 | C3      | Source-term dt restriction — Turb-ANK CFL cap    | no   | ❌      |
@@ -76,7 +76,7 @@ cases (NLF0416, S809) on their own.
 - T3.5 Variant dispatch — ✅
 
 ### Phase 4 — Numerical Robustness
-- T4.1 Row/column scaling — 🟠 (declared, uninit; → task B4)
+- T4.1 Row/column scaling — ✅ (Fortran default=1.0; Python sets model-specific values)
 - T4.2 Solution-update damping (Alg. 2) — ✅
 - T4.3 3×3 source Jacobian — ✅ (diagonal + off-diagonal)
 - T4.4 Source-term dt restriction — 🟡 (DADI diag only; → tasks C2, C3; all 3 TurbDADICoupled modes)
