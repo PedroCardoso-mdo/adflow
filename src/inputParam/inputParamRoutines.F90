@@ -1213,7 +1213,7 @@ contains
         !
         integer :: nVarSpecified, pos
 
-        character(len=15) :: keyword
+        character(len=32) :: keyword
         character(len=maxStringLen) :: errorMessage
 
         ! Convert the string variables to lower case.
@@ -1460,7 +1460,7 @@ contains
         !
         integer :: pos, ierr
 
-        character(len=15) :: keyword
+        character(len=32) :: keyword
         character(len=maxStringLen) :: errorMessage
 
         character(len=maxCGNSNameLen), dimension(nVarMax) :: tmpNames
@@ -2350,7 +2350,7 @@ contains
         !
         integer :: nVarSpecified, pos
 
-        character(len=15) :: keyword
+        character(len=32) :: keyword
         character(len=maxStringLen) :: errorMessage
 
         ! Convert the string variables to lower case.
@@ -2774,7 +2774,7 @@ contains
         !
         integer :: nVarSpecified, pos
 
-        character(len=15) :: keyword
+        character(len=32) :: keyword
         character(len=maxStringLen) :: errorMessage
 
         ! Convert the string variables to lower case.
