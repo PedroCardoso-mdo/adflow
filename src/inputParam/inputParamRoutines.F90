@@ -2566,11 +2566,11 @@ contains
                 surfWriteRturb = .true.
                 nVarSpecified = nVarSpecified + 1
 
-            case ("rethetat")
+            case ("rethetat", "rethetatarget")
                 surfWriteReThetaTarget = .true.
                 nVarSpecified = nVarSpecified + 1
 
-            case ("res")
+            case ("res", "res_s")
                 surfWriteReS = .true.
                 nVarSpecified = nVarSpecified + 1
 
@@ -2999,7 +2999,7 @@ contains
                 volWriteRturb = .true.
                 nVarSpecified = nVarSpecified + 1
 
-            case ("rethetat")
+            case ("rethetat", "rethetatarget")
                 volWriteReThetaTarget = .true.
                 nVarSpecified = nVarSpecified + 1
 
@@ -3007,7 +3007,7 @@ contains
                 volWriteFonset1 = .true.
                 nVarSpecified = nVarSpecified + 1
 
-            case ("res")
+            case ("res", "res_s")
                 volWriteReS = .true.
                 nVarSpecified = nVarSpecified + 1
 
