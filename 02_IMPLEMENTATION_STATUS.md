@@ -15,8 +15,8 @@ Do these in order. Each row links to a section in
 |----|---------|--------------------------------------------------|------|--------|
 | 1  | A1      | Smoke baseline — SA only, transition off         | no   | ✅      |
 | 2  | A2      | Wire `transitionDebug` into volume CGNS          | no   | ✅ (48 slots, vol+surf)      |
-| 3  | A3      | Smoke run — transition on, γ=1 forced            | no   | ❌      |
-| 4  | B1      | Verify timeScale matches ADflow nondim convention| maybe| ❌      |
+| 3  | A3      | Smoke run — transition on, γ=1 forced            | no   | ✅      |
+| 4  | B1      | Verify timeScale matches ADflow nondim convention| no   | ✅      |
 | 5  | B2      | Verify φ_p overflow safety (Algorithm 1)         | yes  | 🟠      |
 | 6  | B3      | Populate off-diagonal source Jacobian            | yes  | ❌      |
 | 7  | B4      | Initialize row/column scaling factors            | no   | 🟠      |

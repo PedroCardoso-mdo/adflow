@@ -495,9 +495,9 @@ contains
 
                         ! --- ReTheta production (relaxation toward correlation) ---
                         ! NOTE: No explicit Reynolds factor here.
-                        ! ADflow's non-dim bakes 1/Re into rlv = mu/(rho_inf*a_inf).
-                        ! The dimensional time scale is t = 500*mu/(rho*U^2);
-                        ! in ADflow non-dim this is 500*rlv/(rho_nd*U_nd^2).
+                        ! Nondim form: rlv = mu/muRef with L_ref=1m so Re=1 implicitly
+                        ! (see initializeFlow.F90:62-66). No explicit Re factor needed,
+                        ! consistent with nu = rlv/rho in sa.F90:245.
                         timeScale = 500.0_realType * rlv(i, j, k) &
                                     / max(w(i, j, k, irho) * velMag2, xminn)
 
