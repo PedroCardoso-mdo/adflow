@@ -296,7 +296,6 @@ module inputIteration
     logical :: useDissContinuation
     real(kind=realType) :: dissContMagnitude, dissContMidpoint, dissContSharpness
     logical :: TurbDADICoupled = .true.
-    logical :: storeTransitionDebug = .false.
 
 end module inputIteration
 
