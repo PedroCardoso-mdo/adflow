@@ -21,15 +21,16 @@ Do these in order. Each row links to a section in
 | 6  | B3      | Populate off-diagonal source Jacobian            | yes  | ✅      |
 | 7  | B4      | Initialize row/column scaling factors            | no   | 🟠      |
 | 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ❌      |
-| 9  | C2      | Source-term dt restriction — DADI 3×3 eigenvalue | no   | ❌      |
+| 9  | C2      | Source-term dt restriction — DADI (all 3 modes)  | no   | ❌      |
 | 10 | C3      | Source-term dt restriction — Turb-ANK CFL cap    | no   | ❌      |
 | 11 | C4      | 5-iter deactivation switch                       | no   | ❌      |
-| 12 | D1      | Smoke — decoupled / DADI path                    | no   | ❌      |
-| 13 | D2      | Smoke — decoupled / Turb-ANK path                | no   | ❌      |
-| 14 | D3      | Smoke — coupled ANK path                         | no   | ❌      |
-| 15 | D4      | Smoke — coupled NK path                          | no   | ❌      |
-| 16 | E1      | Tapenade clean regen — full sweep                | yes  | 🟠      |
-| 17 | E2      | Build with AD enabled                            | no   | ❌      |
+| 12 | D1a     | Smoke — DADI decoupled (diagonal only)           | no   | ❌      |
+| 13 | D1b     | Smoke — DADI transition (SA decoupled, γ-Re̅θt coupled) | no | ❌  |
+| 14 | D2      | Smoke — DADI full 3×3 coupled                    | no   | ❌      |
+| 15 | D3      | Smoke — coupled ANK (flow+turb in one Newton)    | no   | ❌      |
+| 16 | D4      | Smoke — Turb-ANK KSP (decoupled)                 | no   | ❌      |
+| 17 | E1      | Tapenade clean regen — full sweep                | yes  | 🟠      |
+| 18 | E2      | Build with AD enabled                            | no   | ❌      |
 
 Legend: ✅ done · 🟡 partial · 🟠 suspect/needs verification · ❌ not started
 
@@ -78,13 +79,15 @@ cases (NLF0416, S809) on their own.
 - T4.1 Row/column scaling — 🟠 (declared, uninit; → task B4)
 - T4.2 Solution-update damping (Alg. 2) — ✅
 - T4.3 3×3 source Jacobian — ✅ (diagonal + off-diagonal)
-- T4.4 Source-term dt restriction — 🟡 (DADI diag only; → tasks C2, C3)
+- T4.4 Source-term dt restriction — 🟡 (DADI diag only; → tasks C2, C3; all 3 TurbDADICoupled modes)
 - T4.5 Deactivation switch — ❌ (→ task C4)
 
-### Phase 5 — Coupling
-- T5.1 Decoupled mode — ✅ runs (→ smoke D1, D2)
-- T5.2 Segregated mode — DEFER (not in critical path)
-- T5.3 Fully coupled mode — 🟡 (ANK/NK via Jv works; → smoke D3, D4)
+### Phase 5 — Coupling (see `07_COUPLING_MODES.md`)
+- T5.1a DADI decoupled (diagonal) — ✅ runs (→ smoke D1a)
+- T5.1b DADI transition (SA decoupled, γ-Re̅θt coupled) — ✅ implemented (→ smoke D1b)
+- T5.1c DADI full 3×3 — ✅ implemented (→ smoke D2)
+- T5.2 Turb-ANK KSP — ✅ infrastructure exists (→ smoke D4)
+- T5.3 Fully coupled ANK — 🟡 (ANK via Jv works; → smoke D3)
 - T5.4 Benchmark all modes — user does at end
 
 ### Phase 6 — Adjoint
