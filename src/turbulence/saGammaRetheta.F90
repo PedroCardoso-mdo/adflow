@@ -230,6 +230,8 @@ contains
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
         real(kind=realType) :: dwdx, dwdy, dwdz
+        real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
+        real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
 
 
 
@@ -643,6 +645,47 @@ contains
                         qq(i, j, k, 3, 3) = max( &
                             rsaGRcthetat / max(timeScale, xminn) &
                             * (one - fThetaT), zero)
+
+                        ! --- Off-diagonal source Jacobian entries ---
+
+                        ! qq(1,2) = -dS_nu/dgamma: SA production depends on gamma
+                        qq(i, j, k, 1, 2) = -(rsaCb1 * (one - ft2) * ss &
+                            + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
+
+                        ! qq(1,3) = -dS_nu/dReThetaTilde: ~0 (paper §7.1)
+                        qq(i, j, k, 1, 3) = zero
+
+                        ! qq(2,1) = -dS_gamma/dnu_tilde: E_gamma depends on
+                        ! fTurb(R_T) where R_T = nu_t/nu ~ nu_tilde/rlv.
+                        ! LM2015: dfTurb/dR_T = -(R_T^3/64)*fTurb
+                        qq(i, j, k, 2, 1) = -rsaGRca2 * rTurb**3 * fTurb_val &
+                            * vortMagLim * gammaLocal &
+                            * (rsaGRce2 * gammaLocal - one) &
+                            / (64.0_realType * max(rlv(i, j, k), xminn))
+
+                        ! qq(2,3) = -dS_gamma/dReThetaTilde: P_gamma depends on
+                        ! fOnset(reThetaC(reThetaTilde)) and fLength(reThetaTilde).
+                        ! Use one-sided finite difference on P_gamma.
+                        epsRT = max(1.0e-4_realType * reThetaTilde, 1.0e-2_realType)
+                        reThetaTilde_p = reThetaTilde + epsRT
+                        reThetaC_p = rethetacCorrelation(reThetaTilde_p)
+                        reThetaC_p = max(reThetaC_p, xminn)
+                        fOnset1_p = sqrt((reS_val &
+                            / (2.6_realType * reThetaC_p))**2 + rTurb**2)
+                        fOnset_p = (tanh(6.0_realType &
+                            * (fOnset1_p - 1.35_realType)) + one) * half
+                        fLength_p = flengthCorrelation(reThetaTilde_p)
+                        pGamma_p = rsaGRca1 * fLength_p * fOnset_p * vortMagLim &
+                            * sqrt(max(gammaLocal, xminn)) &
+                            * (one - rsaGRce1 * gammaLocal)
+                        qq(i, j, k, 2, 3) = -(pGamma_p - pGamma) / epsRT
+
+                        ! qq(3,1) = -dS_retheta/dnu_tilde: ~0 (paper §7.1)
+                        qq(i, j, k, 3, 1) = zero
+
+                        ! qq(3,2) = -dS_retheta/dgamma: fThetaT does not
+                        ! depend on gamma in the current implementation.
+                        qq(i, j, k, 3, 2) = zero
 
                         if (associated(transitionDebug)) then
                             transitionDebug(i, j, k, dbgQQ11) = qq(i, j, k, 1, 1)

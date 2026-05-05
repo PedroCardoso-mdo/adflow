@@ -18,7 +18,7 @@ Do these in order. Each row links to a section in
 | 3  | A3      | Smoke run — transition on, γ=1 forced            | no   | ✅      |
 | 4  | B1      | Verify timeScale matches ADflow nondim convention| no   | ✅      |
 | 5  | B2      | Verify φ_p overflow safety (Algorithm 1)         | yes  | ✅      |
-| 6  | B3      | Populate off-diagonal source Jacobian            | yes  | ❌      |
+| 6  | B3      | Populate off-diagonal source Jacobian            | yes  | ✅      |
 | 7  | B4      | Initialize row/column scaling factors            | no   | 🟠      |
 | 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ❌      |
 | 9  | C2      | Source-term dt restriction — DADI 3×3 eigenvalue | no   | ❌      |
@@ -42,7 +42,7 @@ cases (NLF0416, S809) on their own.
 
 | #   | Where                              | Status                              | Resolved by |
 |-----|------------------------------------|-------------------------------------|-------------|
-| #1  | `saGammaRetheta.F90:510-559`       | Confirmed — off-diag Jacobian zero → DADI decoupled regardless of `TurbDADICoupled` flag | B3 |
+| #1  | `saGammaRetheta.F90:510-559`       | ✅ Fixed — off-diag Jacobian populated (B3) | B3 |
 | #2? | `saGammaRetheta.F90:430-431`       | Confrimed — `timeScale` do not need explicit Re factor due to ADflow nondim convention. 
 | #3  | feedback loop                      | Symptom (γ pinned at 1) downstream of #1 and possibly #2; should disappear after B1+B3+E1 | (auto) |
 
@@ -77,7 +77,7 @@ cases (NLF0416, S809) on their own.
 ### Phase 4 — Numerical Robustness
 - T4.1 Row/column scaling — 🟠 (declared, uninit; → task B4)
 - T4.2 Solution-update damping (Alg. 2) — ✅
-- T4.3 3×3 source Jacobian — 🟡 (diagonal only; off-diag → task B3)
+- T4.3 3×3 source Jacobian — ✅ (diagonal + off-diagonal)
 - T4.4 Source-term dt restriction — 🟡 (DADI diag only; → tasks C2, C3)
 - T4.5 Deactivation switch — ❌ (→ task C4)
 
