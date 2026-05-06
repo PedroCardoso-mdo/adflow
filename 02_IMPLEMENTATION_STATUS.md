@@ -23,7 +23,7 @@ Do these in order. Each row links to a section in
 | 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ✅      |
 | 9  | C2      | Source-term dt restriction — DADI (all 3 modes)  | no   | ✅      |
 | 10 | C3      | Source-term dt restriction — Turb-ANK CFL cap    | no   | ✅      |
-| 11 | C4      | 5-iter deactivation switch                       | no   | ❌      |
+| 11 | C4      | 5-iter deactivation switch                       | no   | ✅      |
 | 12 | D1a     | Smoke — DADI decoupled (diagonal only)           | no   | ❌      |
 | 13 | D1b     | Smoke — DADI transition (SA decoupled, γ-Re̅θt coupled) | no | ❌  |
 | 14 | D2      | Smoke — DADI full 3×3 coupled                    | no   | ❌      |
@@ -80,7 +80,7 @@ cases (NLF0416, S809) on their own.
 - T4.2 Solution-update damping (Alg. 2) — ✅
 - T4.3 3×3 source Jacobian — ✅ (diagonal + off-diagonal)
 - T4.4 Source-term dt restriction — ✅ (DADI eigenvalue modes 1,2 + diag mode 0; Turb-ANK CFL cap)
-- T4.5 Deactivation switch — ❌ (→ task C4)
+- T4.5 Deactivation switch — ✅ (C4: 5-iter no-backtrack deactivation)
 
 ### Phase 5 — Coupling (see `07_COUPLING_MODES.md`)
 - T5.1a DADI decoupled (diagonal) — ✅ runs (→ smoke D1a)

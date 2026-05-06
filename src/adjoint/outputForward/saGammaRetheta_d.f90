@@ -55,9 +55,10 @@ module sagammaretheta_d
 ! 46  qq11              qq(i,j,k,1,1) [sa diagonal jacobian]
 ! 47  qq22              qq(i,j,k,2,2) [γ diagonal jacobian]
 ! 48  qq33              qq(i,j,k,3,3) [re̅θt diagonal jacobian]
-  use constants, only : realtype
+  use constants, only : realtype, zero
   implicit none
   real(kind=realtype), dimension(:, :, :, :, :), allocatable :: qq
+  real(kind=realtype), save :: srcjacdiagmax=zero
 
 contains
   subroutine sagammaretheta_block(resonly)
@@ -69,6 +70,8 @@ contains
 &   unsteadyturbterm, saeddyviscosity
     use turbbcroutines_d, only : bcturbtreatment, &
 &   applyallturbbcthisblock
+    use inputiteration, only : transitionfirstorderupwind
+    use inputdiscretization, only : orderturb
     implicit none
 !
 !      subroutine argument.
@@ -78,6 +81,7 @@ contains
 !      local variables.
 !
     integer(kind=inttype) :: nn, sps
+    integer(kind=inttype) :: orderturbsave
 ! set the arrays for the boundary condition treatment.
     call bcturbtreatment()
 ! alloc central jacobian memory
@@ -86,7 +90,12 @@ contains
     call source()
 ! advection term
     nn = itu1 - 1
+    if (transitionfirstorderupwind) then
+      orderturbsave = orderturb
+      orderturb = firstorder
+    end if
     call turbadvection(3_inttype, 3_inttype, nn, qq)
+    if (transitionfirstorderupwind) orderturb = orderturbsave
     call unsteadyturbterm(3_inttype, 3_inttype, nn, qq)
 ! viscous terms
     call viscous()
@@ -250,6 +259,7 @@ contains
     intrinsic max
     intrinsic tanh
     intrinsic associated
+    intrinsic abs
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
     real(kind=realtype) :: x1
@@ -291,6 +301,9 @@ contains
     real(kind=realtype) :: max14d
     real(kind=realtype) :: max15
     real(kind=realtype) :: max15d
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs2
     real(kind=realtype) :: result1
     real(kind=realtype) :: result1d
     real(kind=realtype) :: arg1
@@ -1128,6 +1141,29 @@ contains
           end do
         end do
       end do
+      srcjacdiagmax = zero
+      do k=kl,ke
+        do j=jl,je
+          do i=il,ie
+            if (qq(i, j, k, 1, 1) .ge. 0.) then
+              abs0 = qq(i, j, k, 1, 1)
+            else
+              abs0 = -qq(i, j, k, 1, 1)
+            end if
+            if (qq(i, j, k, 2, 2) .ge. 0.) then
+              abs1 = qq(i, j, k, 2, 2)
+            else
+              abs1 = -qq(i, j, k, 2, 2)
+            end if
+            if (qq(i, j, k, 3, 3) .ge. 0.) then
+              abs2 = qq(i, j, k, 3, 3)
+            else
+              abs2 = -qq(i, j, k, 3, 3)
+            end if
+            srcjacdiagmax = max(srcjacdiagmax, abs0, abs1, abs2)
+          end do
+        end do
+      end do
     end if
   end subroutine source_d
 
@@ -1238,6 +1274,7 @@ contains
     intrinsic max
     intrinsic tanh
     intrinsic associated
+    intrinsic abs
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
@@ -1259,6 +1296,9 @@ contains
     real(kind=realtype) :: max13
     real(kind=realtype) :: max14
     real(kind=realtype) :: max15
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs2
     real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
 ! set model constants
@@ -1680,6 +1720,29 @@ contains
               transitiondebug(i, j, k, dbgrethetatilde) = rethetatilde
               transitiondebug(i, j, k, dbgvortlim) = vortlim
             end if
+          end do
+        end do
+      end do
+      srcjacdiagmax = zero
+      do k=kl,ke
+        do j=jl,je
+          do i=il,ie
+            if (qq(i, j, k, 1, 1) .ge. 0.) then
+              abs0 = qq(i, j, k, 1, 1)
+            else
+              abs0 = -qq(i, j, k, 1, 1)
+            end if
+            if (qq(i, j, k, 2, 2) .ge. 0.) then
+              abs1 = qq(i, j, k, 2, 2)
+            else
+              abs1 = -qq(i, j, k, 2, 2)
+            end if
+            if (qq(i, j, k, 3, 3) .ge. 0.) then
+              abs2 = qq(i, j, k, 3, 3)
+            else
+              abs2 = -qq(i, j, k, 3, 3)
+            end if
+            srcjacdiagmax = max(srcjacdiagmax, abs0, abs1, abs2)
           end do
         end do
       end do
@@ -2889,6 +2952,9 @@ contains
     real(kind=realtype) :: rblank, factor
     real(kind=realtype) :: gammanew, gammadelta, dampfactor
     integer(kind=inttype) :: mm
+! eigenvalue-based dt cap variables
+    real(kind=realtype) :: lambda_eig, dt_cap_inv
+    real(kind=realtype) :: j2(2, 2), j3(3, 3)
 ! scaling values from existing turbulence residual scaling options
     real(kind=realtype) :: scalenu, scalegamma, scaleretheta
 ! scaling ratios (precomputed from scaling values)
@@ -2897,6 +2963,7 @@ contains
 ! adi work arrays
     real(kind=realtype), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
     real(kind=realtype), dimension(3, 3, 2:max(il, jl, kl)) :: cc
+    logical, save :: printedcoupling=.false.
     intrinsic abs
     intrinsic real
     intrinsic min
@@ -2907,6 +2974,23 @@ contains
     if (resonly) then
       return
     else
+      if (.not.printedcoupling) then
+        printedcoupling = .true.
+        select case  (turbdadicoupled) 
+        case (0) 
+          print*, &
+&      'sa-gamma-retheta dadi coupling: fully decoupled (diagonal only)'
+        case (1) 
+          print*, &
+&  'sa-gamma-retheta dadi coupling: sa decoupled, gamma-retheta coupled'
+        case (2) 
+          print*, &
+&         'sa-gamma-retheta dadi coupling: fully coupled (3x3 block)'
+        case default
+          print*, 'sa-gamma-retheta dadi coupling: unknown mode', &
+&         turbdadicoupled
+        end select
+      end if
       cb3inv = one/rsacb3
       cv13 = rsacv1**3
       if (turbresscale(1) .ge. 0.) then
@@ -2960,7 +3044,7 @@ contains
       do k=2,kl
         do j=2,jl
           do i=2,il
-! b3 decoupled mode: zero off-diagonal coupling
+! turbdadicoupled: 0=decoupled, 1=transition-only, 2=full
             if (turbdadicoupled .eq. 0) then
               qq(i, j, k, 1, 2) = zero
               qq(i, j, k, 1, 3) = zero
@@ -2968,6 +3052,63 @@ contains
               qq(i, j, k, 2, 3) = zero
               qq(i, j, k, 3, 1) = zero
               qq(i, j, k, 3, 2) = zero
+            else if (turbdadicoupled .eq. 1) then
+! sa decoupled, gamma-retheta coupled
+              qq(i, j, k, 1, 2) = zero
+              qq(i, j, k, 1, 3) = zero
+              qq(i, j, k, 2, 1) = zero
+              qq(i, j, k, 3, 1) = zero
+            end if
+! eigenvalue-based source dt restriction (eq. 59)
+            if (transitionsrcdtrestrict .and. turbdadicoupled .gt. 0) &
+&           then
+              if (turbdadicoupled .eq. 1) then
+! 2x2 eigenvalue of gamma-retheta sub-block
+                j2(1, 1) = qq(i, j, k, 2, 2)
+                j2(1, 2) = qq(i, j, k, 2, 3)
+                j2(2, 1) = qq(i, j, k, 3, 2)
+                j2(2, 2) = qq(i, j, k, 3, 3)
+                lambda_eig = maxposeigenvalue2x2(j2)
+                dt_cap_inv = lambda_eig/rsagrsrcdtlimit
+                if (qq(i, j, k, 2, 2) .lt. dt_cap_inv) then
+                  qq(i, j, k, 2, 2) = dt_cap_inv
+                else
+                  qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2)
+                end if
+                if (qq(i, j, k, 3, 3) .lt. dt_cap_inv) then
+                  qq(i, j, k, 3, 3) = dt_cap_inv
+                else
+                  qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3)
+                end if
+              else
+! full 3x3 eigenvalue
+                j3(1, 1) = qq(i, j, k, 1, 1)
+                j3(1, 2) = qq(i, j, k, 1, 2)
+                j3(1, 3) = qq(i, j, k, 1, 3)
+                j3(2, 1) = qq(i, j, k, 2, 1)
+                j3(2, 2) = qq(i, j, k, 2, 2)
+                j3(2, 3) = qq(i, j, k, 2, 3)
+                j3(3, 1) = qq(i, j, k, 3, 1)
+                j3(3, 2) = qq(i, j, k, 3, 2)
+                j3(3, 3) = qq(i, j, k, 3, 3)
+                lambda_eig = maxposeigenvalue3x3(j3)
+                dt_cap_inv = lambda_eig/rsagrsrcdtlimit
+                if (qq(i, j, k, 1, 1) .lt. dt_cap_inv) then
+                  qq(i, j, k, 1, 1) = dt_cap_inv
+                else
+                  qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1)
+                end if
+                if (qq(i, j, k, 2, 2) .lt. dt_cap_inv) then
+                  qq(i, j, k, 2, 2) = dt_cap_inv
+                else
+                  qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2)
+                end if
+                if (qq(i, j, k, 3, 3) .lt. dt_cap_inv) then
+                  qq(i, j, k, 3, 3) = dt_cap_inv
+                else
+                  qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3)
+                end if
+              end if
             end if
 ! symmetric scaling (§4): qq(m,n) *= s_n / s_m
 ! diagonal entries unchanged; only off-diag scaled.
@@ -3479,6 +3620,107 @@ contains
       end do
     end if
   end subroutine sagammarethetasolve
+
+  function maxposeigenvalue2x2(a) result (lambda_max)
+    use constants, only : realtype, zero
+    implicit none
+    real(kind=realtype), intent(in) :: a(2, 2)
+    real(kind=realtype) :: lambda_max
+    real(kind=realtype) :: tr, det, disc, sq, l1, l2
+    intrinsic max
+    intrinsic sqrt
+    real(kind=realtype) :: max1
+    tr = a(1, 1) + a(2, 2)
+    det = a(1, 1)*a(2, 2) - a(1, 2)*a(2, 1)
+    disc = tr*tr - 4.0_realtype*det
+    if (disc .lt. zero) then
+      max1 = zero
+    else
+      max1 = disc
+    end if
+    sq = sqrt(max1)
+    l1 = (tr+sq)*0.5_realtype
+    l2 = (tr-sq)*0.5_realtype
+    if (l1 .lt. l2) then
+      if (l2 .lt. zero) then
+        lambda_max = zero
+      else
+        lambda_max = l2
+      end if
+    else if (l1 .lt. zero) then
+      lambda_max = zero
+    else
+      lambda_max = l1
+    end if
+  end function maxposeigenvalue2x2
+
+  function maxposeigenvalue3x3(a) result (lambda_max)
+    use constants, only : realtype, zero, one, two, three
+    implicit none
+    real(kind=realtype), intent(in) :: a(3, 3)
+    real(kind=realtype) :: lambda_max
+    real(kind=realtype) :: a2, a1, a0, q, r, theta, sq
+    real(kind=realtype) :: l1, l2, l3
+    real(kind=realtype), parameter :: pi=3.141592653589793_realtype
+    real(kind=realtype), parameter :: third=one/three
+    intrinsic max
+    intrinsic sqrt
+    intrinsic min
+    intrinsic acos
+    intrinsic cos
+    real(kind=realtype) :: y1
+    real(kind=realtype) :: y2
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: arg1
+! characteristic polynomial: lambda^3 + a2*lambda^2 + a1*lambda + a0 = 0
+    a2 = -(a(1, 1)+a(2, 2)+a(3, 3))
+    a1 = a(1, 1)*a(2, 2) + a(1, 1)*a(3, 3) + a(2, 2)*a(3, 3) - a(1, 2)*a&
+&     (2, 1) - a(1, 3)*a(3, 1) - a(2, 3)*a(3, 2)
+    a0 = -(a(1, 1)*(a(2, 2)*a(3, 3)-a(2, 3)*a(3, 2))-a(1, 2)*(a(2, 1)*a(&
+&     3, 3)-a(2, 3)*a(3, 1))+a(1, 3)*(a(2, 1)*a(3, 2)-a(2, 2)*a(3, 1)))
+! cardano via trigonometric method (all roots real for real symmetric-ish matrices)
+    q = (three*a1-a2*a2)/9.0_realtype
+    r = (9.0_realtype*a2*a1-27.0_realtype*a0-two*a2*a2*a2)/54.0_realtype
+! disc = q^3 + r^2; if disc <= 0, three real roots
+    if (q*q*q + r*r .le. zero) then
+      if (-q .lt. zero) then
+        max1 = zero
+      else
+        max1 = -q
+      end if
+      sq = sqrt(max1)
+      if (sq*sq*sq .lt. 1.0e-30_realtype) then
+        max3 = 1.0e-30_realtype
+      else
+        max3 = sq*sq*sq
+      end if
+      y2 = r/max3
+      if (one .gt. y2) then
+        y1 = y2
+      else
+        y1 = one
+      end if
+      if (-one .lt. y1) then
+        max2 = y1
+      else
+        max2 = -one
+      end if
+      theta = acos(max2)
+      l1 = two*sq*cos(theta*third) - a2*third
+      arg1 = (theta+two*pi)*third
+      l2 = two*sq*cos(arg1) - a2*third
+      arg1 = (theta+4.0_realtype*pi)*third
+      l3 = two*sq*cos(arg1) - a2*third
+    else
+! fallback: use diagonal entries as approximation
+      l1 = a(1, 1)
+      l2 = a(2, 2)
+      l3 = a(3, 3)
+    end if
+    lambda_max = max(l1, l2, l3, zero)
+  end function maxposeigenvalue3x3
 
 end module sagammaretheta_d
 

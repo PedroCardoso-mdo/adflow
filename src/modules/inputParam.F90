@@ -301,6 +301,8 @@ module inputIteration
     integer(kind=intType) :: TurbDADICoupled = 2
     logical :: transitionFirstOrderUpwind = .true.
     logical :: transitionSrcDtRestrict = .true.
+    logical :: srcDtRestrictActive = .true.
+    integer(kind=intType) :: noBacktrackCount = 0
 
 end module inputIteration
 

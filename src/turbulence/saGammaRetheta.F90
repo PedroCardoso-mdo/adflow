@@ -155,6 +155,7 @@ contains
         use inputPhysics
         use turbMod, only: dvt, vort, prod, kwCD, f1
         use inputDiscretization, only: approxSA
+        use inputIteration, only: srcDtRestrictActive
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         implicit none
@@ -637,8 +638,10 @@ contains
                         ! Source dt restriction (§2): when production dominates
                         ! (qq < 0), set qq = |qq|/0.9 instead of clipping to zero.
                         ! This ensures lambda_source * dt <= 0.9.
+                        if (srcDtRestrictActive) then
                         qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), &
                             -qq(i, j, k, 1, 1) / rsaGRsrcDtLimit)
+                        end if
 
                         ! Full gamma source Jacobian: -d(pGamma - eGamma)/dgamma
                         ! Includes both production and destruction linearization.
@@ -650,8 +653,10 @@ contains
                             * (two * rsaGRce2 * gammaLocal - one)
 
                         ! Source dt restriction for gamma equation.
+                        if (srcDtRestrictActive) then
                         qq(i, j, k, 2, 2) = max(qq(i, j, k, 2, 2), &
                             -qq(i, j, k, 2, 2) / rsaGRsrcDtLimit)
+                        end if
 
                         ! ReTheta Jacobian diagonal: -dP_theta/dReTheta_tilde
                         ! Always >= 0 (relaxation), so restriction is a no-op.
@@ -731,10 +736,17 @@ contains
         end do
 #endif
 
-        srcJacDiagMax = max( &
-            maxval(abs(qq(:,:,:,1,1))), &
-            maxval(abs(qq(:,:,:,2,2))), &
-            maxval(abs(qq(:,:,:,3,3))))
+        srcJacDiagMax = zero
+        do k = kl, ke
+            do j = jl, je
+                do i = il, ie
+                    srcJacDiagMax = max(srcJacDiagMax, &
+                        abs(qq(i,j,k,1,1)), &
+                        abs(qq(i,j,k,2,2)), &
+                        abs(qq(i,j,k,3,3)))
+                end do
+            end do
+        end do
 
     end subroutine Source
 
@@ -1557,7 +1569,7 @@ contains
                     end if
 
                     ! Eigenvalue-based source dt restriction (Eq. 59)
-                    if (transitionSrcDtRestrict .and. TurbDADICoupled > 0) then
+                    if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. TurbDADICoupled > 0) then
                         if (TurbDADICoupled == 1) then
                             ! 2x2 eigenvalue of gamma-ReTheta sub-block
                             J2(1,1) = qq(i,j,k,2,2); J2(1,2) = qq(i,j,k,2,3)
