@@ -238,6 +238,7 @@ contains
         real(kind=realType) :: pGamma, eGamma
         real(kind=realType) :: velMag, velMag2, timeScale, reThetaT_target
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
+        real(kind=realType) :: gammaEff, gammaTerm
         real(kind=realType) :: pReTheta, yDist
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
@@ -543,8 +544,10 @@ contains
                             / max(velMag, xminn)
                         delta = max(delta, xminn)
                         fWake_val = exp(-reS_val / 1.0e6_realType)
-                        fThetaT = min(fWake_val &
-                              * exp(-(yDist / delta)**4), one)
+                        gammaEff = max(gammaLocal, zero)
+                        gammaTerm = one - ((gammaEff - one/rsaGRce2) / (one - one/rsaGRce2))**2
+                        gammaTerm = max(min(gammaTerm, one), zero)
+                        fThetaT = min(max(fWake_val * exp(-(yDist / delta)**4), gammaTerm), one)
 
                         pReTheta = rsaGRcthetat / max(timeScale, xminn) &
                                    * (reThetaT_target - reThetaTilde) &
