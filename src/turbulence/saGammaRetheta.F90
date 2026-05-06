@@ -55,9 +55,10 @@ module saGammaReTheta
     ! 47  qq22              qq(i,j,k,2,2) [γ diagonal Jacobian]
     ! 48  qq33              qq(i,j,k,3,3) [Re̅θt diagonal Jacobian]
 
-    use constants, only: realType
+    use constants, only: realType, zero
 
     real(kind=realType), dimension(:, :, :, :, :), allocatable :: qq
+    real(kind=realType) :: srcJacDiagMax = zero
 
 contains
 
@@ -729,6 +730,12 @@ contains
             end do
         end do
 #endif
+
+        srcJacDiagMax = max( &
+            maxval(abs(qq(:,:,:,1,1))), &
+            maxval(abs(qq(:,:,:,2,2))), &
+            maxval(abs(qq(:,:,:,3,3))))
+
     end subroutine Source
 
     subroutine Viscous

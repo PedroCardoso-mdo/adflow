@@ -22,7 +22,7 @@ Do these in order. Each row links to a section in
 | 7  | B4      | Initialize row/column scaling factors            | no   | ✅      |
 | 8  | C1      | First-order upwind option for γ, Re̅θt           | yes  | ✅      |
 | 9  | C2      | Source-term dt restriction — DADI (all 3 modes)  | no   | ✅      |
-| 10 | C3      | Source-term dt restriction — Turb-ANK CFL cap    | no   | ❌      |
+| 10 | C3      | Source-term dt restriction — Turb-ANK CFL cap    | no   | ✅      |
 | 11 | C4      | 5-iter deactivation switch                       | no   | ❌      |
 | 12 | D1a     | Smoke — DADI decoupled (diagonal only)           | no   | ❌      |
 | 13 | D1b     | Smoke — DADI transition (SA decoupled, γ-Re̅θt coupled) | no | ❌  |
