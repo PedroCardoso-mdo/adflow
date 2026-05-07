@@ -468,7 +468,7 @@ contains
                         sxy = fact * (uuy + vvx)
                         sxz = fact * (uuz + wwx)
                         syz = fact * (vvz + wwy)
-                        
+
                         strainMag2 = two*(sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
                         strainMag  = sqrt(max(two*strainMag2, xminn))
 
@@ -689,9 +689,7 @@ contains
                         drTurb_dnu = (fv1 + chi * dfv1) / nu
 
                         ! dfTurb/dnu = dfTurb/drTurb * drTurb/dnu
-                        ! LM2015: dfTurb/drTurb = -(rTurb^3/64)*fTurb
-                        dfTurb_dnu = -(rTurb**3 / 64.0_realType) &
-                            * fTurb_val * drTurb_dnu
+                        dfTurb_dnu = -fTurb_val * drTurb_dnu
 
                         ! dfOnset/dnu = dfOnset/dfOnset1 * dfOnset1/drTurb * drTurb/dnu
                         ! fOnset1 = sqrt((reS/(2.6*reThetaC))^2 + rTurb^2)
