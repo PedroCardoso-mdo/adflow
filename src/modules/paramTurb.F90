@@ -40,8 +40,8 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRfonsetC  = 2.6_realType
     real(kind=realType), parameter :: rsaGRfonsetK  = 6.0_realType
     real(kind=realType), parameter :: rsaGRfonsetS  = 1.35_realType
-    real(kind=realType), parameter :: rsaGRvortLimP = -300.0_realType
-    real(kind=realType), parameter :: rsaGRsmoothP  =  300.0_realType
+    real(kind=realType), parameter :: rsaGRmin = -300.0_realType
+    real(kind=realType), parameter :: rsaGRmax  =  300.0_realType
     real(kind=realType), parameter :: rsaGRdampTheta = 0.99_realType
     real(kind=realType), parameter :: rsaGRgammaLo  = 1.e-10_realType
     real(kind=realType), parameter :: rsaGRgammaHi  = 2.0_realType

@@ -1,43 +1,5 @@
 # Equation Audit Issues — SA-sLM2015 Implementation
 
-**Audit Date**: 2026-05-06  
-**Reference**: Piotrowski & Zingg (2020), "Smooth Local Correlation-Based Transition Model for the Spalart-Allmaras Turbulence Model", AIAA Journal, Vol. 58, No. 10.
-
----
-
-## Issue 1: F_θt Missing γ-Dependent Term
-
-**Location**: `src/turbulence/saGammaRetheta.F90:546-548`
-
-**Paper (Eq. 3)**:
-```
-F_θt = min(max(F_wake · e^(-(y/δ)^4), 1 - ((γ_eff - 1/ce2)/(1 - 1/ce2))^2), 1.0)
-```
-where γ_eff = max(γ, 0.0) and ce2 = 50.0.
-
-**Current Code**:
-```fortran
-fThetaT = min(fWake_val * exp(-(yDist / delta)**4), one)
-```
-
-**Problem**: Code is missing the second argument to the outer `max()`:
-```
-1 - ((γ_eff - 1/ce2)/(1 - 1/ce2))^2
-```
-This term prevents F_θt from going to zero when γ approaches 1 (fully turbulent), which affects the Re̅θt source term shielding.
-
-**Fix Plan**:
-```fortran
-! Compute gamma-dependent shielding term (Eq. 3)
-gammaEff = max(gammaLocal, zero)
-gammaTerm = one - ((gammaEff - one/rsaGRce2) / (one - one/rsaGRce2))**2
-gammaTerm = min(gammaTerm, one)  ! Clamp to [0,1]
-
-! Full F_theta_t with both terms
-fThetaT = min(max(fWake_val * exp(-(yDist / delta)**4), gammaTerm), one)
-```
-
----
 
 ## Issue 2: F_wake Wrong Formula
 
