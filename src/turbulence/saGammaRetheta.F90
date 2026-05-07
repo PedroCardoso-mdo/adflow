@@ -468,8 +468,9 @@ contains
                         sxy = fact * (uuy + vvx)
                         sxz = fact * (uuz + wwx)
                         syz = fact * (vvz + wwy)
-                        strainMag = sqrt(max(two * (sxy**2 + sxz**2 + syz**2) &
-                                        + sxx**2 + syy**2 + szz**2, xminn))
+                        
+                        strainMag2 = two*(sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
+                        strainMag  = sqrt(max(two*strainMag2, xminn))
 
                         ! --- Local variables ---
                         nutSA = w(i, j, k, itu1) * fv1
