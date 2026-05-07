@@ -137,6 +137,7 @@ contains
     use inputphysics
     use turbmod, only : dvt, vort, prod, kwcd, f1
     use inputdiscretization, only : approxsa
+    use inputiteration, only : srcdtrestrictactive
     use flowvarrefstate
     use turbutils_d, only : rethetatcorrelation, rethetatcorrelation_d, &
 &   flengthcorrelation, flengthcorrelation_d, rethetaccorrelation, &
@@ -242,6 +243,8 @@ contains
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: thetabld, deltabld, deltad, fwake_vald, &
 &   fthetatd
+    real(kind=realtype) :: gammaeff, gammaterm
+    real(kind=realtype) :: gammaeffd, gammatermd
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: prethetad, ydistd
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
@@ -270,6 +273,10 @@ contains
     real(kind=realtype) :: x3d
     real(kind=realtype) :: x4
     real(kind=realtype) :: x4d
+    real(kind=realtype) :: x5
+    real(kind=realtype) :: x5d
+    real(kind=realtype) :: x6
+    real(kind=realtype) :: x6d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -1053,18 +1060,50 @@ contains
             fwake_vald = -(exp(-(res_val/1.0e6_realtype))*res_vald/&
 &             1.0e6_realtype)
             fwake_val = exp(-(res_val/1.0e6_realtype))
+            if (gammalocal .lt. zero) then
+              gammaeff = zero
+              gammaeffd = 0.0_8
+            else
+              gammaeffd = gammalocald
+              gammaeff = gammalocal
+            end if
+            temp10 = one - one/rsagrce2
+            temp9 = (gammaeff-one/rsagrce2)/temp10
+            gammatermd = -(2*temp9*gammaeffd/temp10)
+            gammaterm = one - temp9*temp9
+            if (gammaterm .gt. one) then
+              x4 = one
+              x4d = 0.0_8
+            else
+              x4d = gammatermd
+              x4 = gammaterm
+            end if
+            if (x4 .lt. zero) then
+              gammaterm = zero
+              gammatermd = 0.0_8
+            else
+              gammatermd = x4d
+              gammaterm = x4
+            end if
             temp10 = ydist/delta
             arg1d = -(4*temp10**3*(ydistd-temp10*deltad)/delta)
             arg1 = -(temp10**4)
             temp10 = exp(arg1)
-            x4d = temp10*fwake_vald + fwake_val*exp(arg1)*arg1d
-            x4 = fwake_val*temp10
-            if (x4 .gt. one) then
+            x6d = temp10*fwake_vald + fwake_val*exp(arg1)*arg1d
+            x6 = fwake_val*temp10
+            if (x6 .lt. gammaterm) then
+              x5d = gammatermd
+              x5 = gammaterm
+            else
+              x5d = x6d
+              x5 = x6
+            end if
+            if (x5 .gt. one) then
               fthetat = one
               fthetatd = 0.0_8
             else
-              fthetatd = x4d
-              fthetat = x4
+              fthetatd = x5d
+              fthetat = x5
             end if
             if (timescale .lt. xminn) then
               max15 = xminn
@@ -1180,6 +1219,7 @@ contains
     use inputphysics
     use turbmod, only : dvt, vort, prod, kwcd, f1
     use inputdiscretization, only : approxsa
+    use inputiteration, only : srcdtrestrictactive
     use flowvarrefstate
     use turbutils_d, only : rethetatcorrelation, flengthcorrelation, &
 &   rethetaccorrelation, smoothminmax
@@ -1260,6 +1300,7 @@ contains
     real(kind=realtype) :: pgamma, egamma
     real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
+    real(kind=realtype) :: gammaeff, gammaterm
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
@@ -1280,6 +1321,8 @@ contains
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
     real(kind=realtype) :: x4
+    real(kind=realtype) :: x5
+    real(kind=realtype) :: x6
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1646,12 +1689,34 @@ contains
               delta = delta
             end if
             fwake_val = exp(-(res_val/1.0e6_realtype))
+            if (gammalocal .lt. zero) then
+              gammaeff = zero
+            else
+              gammaeff = gammalocal
+            end if
+            gammaterm = one - ((gammaeff-one/rsagrce2)/(one-one/rsagrce2&
+&             ))**2
+            if (gammaterm .gt. one) then
+              x4 = one
+            else
+              x4 = gammaterm
+            end if
+            if (x4 .lt. zero) then
+              gammaterm = zero
+            else
+              gammaterm = x4
+            end if
             arg1 = -((ydist/delta)**4)
-            x4 = fwake_val*exp(arg1)
-            if (x4 .gt. one) then
+            x6 = fwake_val*exp(arg1)
+            if (x6 .lt. gammaterm) then
+              x5 = gammaterm
+            else
+              x5 = x6
+            end if
+            if (x5 .gt. one) then
               fthetat = one
             else
-              fthetat = x4
+              fthetat = x5
             end if
             if (timescale .lt. xminn) then
               max15 = xminn
@@ -3060,8 +3125,8 @@ contains
               qq(i, j, k, 3, 1) = zero
             end if
 ! eigenvalue-based source dt restriction (eq. 59)
-            if (transitionsrcdtrestrict .and. turbdadicoupled .gt. 0) &
-&           then
+            if (transitionsrcdtrestrict .and. srcdtrestrictactive .and. &
+&               turbdadicoupled .gt. 0) then
               if (turbdadicoupled .eq. 1) then
 ! 2x2 eigenvalue of gamma-retheta sub-block
                 j2(1, 1) = qq(i, j, k, 2, 2)

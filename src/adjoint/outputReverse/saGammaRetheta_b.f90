@@ -139,6 +139,7 @@ contains
     use inputphysics
     use turbmod, only : dvt, vort, prod, kwcd, f1
     use inputdiscretization, only : approxsa
+    use inputiteration, only : srcdtrestrictactive
     use flowvarrefstate
     use turbutils_b, only : rethetatcorrelation, rethetatcorrelation_b, &
 &   flengthcorrelation, flengthcorrelation_b, rethetaccorrelation, &
@@ -244,6 +245,8 @@ contains
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: thetabld, deltabld, deltad, fwake_vald, &
 &   fthetatd
+    real(kind=realtype) :: gammaeff, gammaterm
+    real(kind=realtype) :: gammaeffd, gammatermd
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: prethetad, ydistd
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
@@ -273,6 +276,10 @@ contains
     real(kind=realtype) :: x3d
     real(kind=realtype) :: x4
     real(kind=realtype) :: x4d
+    real(kind=realtype) :: x5
+    real(kind=realtype) :: x5d
+    real(kind=realtype) :: x6
+    real(kind=realtype) :: x6d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -730,12 +737,42 @@ contains
           delta = delta
         end if
         fwake_val = exp(-(res_val/1.0e6_realtype))
-        x4 = fwake_val*exp(-((ydist/delta)**4))
-        if (x4 .gt. one) then
+        if (gammalocal .lt. zero) then
+          gammaeff = zero
+          call pushcontrol1b(0)
+        else
+          gammaeff = gammalocal
+          call pushcontrol1b(1)
+        end if
+        gammaterm = one - ((gammaeff-one/rsagrce2)/(one-one/rsagrce2))**&
+&         2
+        if (gammaterm .gt. one) then
+          x4 = one
+          call pushcontrol1b(0)
+        else
+          x4 = gammaterm
+          call pushcontrol1b(1)
+        end if
+        if (x4 .lt. zero) then
+          gammaterm = zero
+          call pushcontrol1b(0)
+        else
+          gammaterm = x4
+          call pushcontrol1b(1)
+        end if
+        x6 = fwake_val*exp(-((ydist/delta)**4))
+        if (x6 .lt. gammaterm) then
+          x5 = gammaterm
+          call pushcontrol1b(0)
+        else
+          x5 = x6
+          call pushcontrol1b(1)
+        end if
+        if (x5 .gt. one) then
           fthetat = one
           call pushcontrol1b(0)
         else
-          fthetat = x4
+          fthetat = x5
           call pushcontrol1b(1)
         end if
         if (timescale .lt. xminn) then
@@ -761,16 +798,44 @@ contains
         end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
-          x4d = 0.0_8
+          x5d = 0.0_8
         else
-          x4d = fthetatd
+          x5d = fthetatd
+        end if
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          gammatermd = x5d
+          x6d = 0.0_8
+        else
+          x6d = x5d
+          gammatermd = 0.0_8
         end if
         temp2 = ydist/delta
         temp1 = -(temp2**4)
-        fwake_vald = exp(temp1)*x4d
-        tempd2 = -(4*temp2**3*exp(temp1)*fwake_val*x4d/delta)
+        fwake_vald = exp(temp1)*x6d
+        tempd2 = -(4*temp2**3*exp(temp1)*fwake_val*x6d/delta)
         ydistd = tempd2
         deltad = -(temp2*tempd2)
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          x4d = 0.0_8
+        else
+          x4d = gammatermd
+        end if
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          gammatermd = 0.0_8
+        else
+          gammatermd = x4d
+        end if
+        temp2 = one - one/rsagrce2
+        gammaeffd = -(2*(gammaeff-one/rsagrce2)*gammatermd/temp2**2)
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          gammalocald = 0.0_8
+        else
+          gammalocald = gammaeffd
+        end if
         res_vald = -(exp(-(res_val/1.0e6_realtype))*fwake_vald/&
 &         1.0e6_realtype)
         call popcontrol1b(branch)
@@ -864,8 +929,9 @@ contains
         temp0 = sqrt(max7)
         temp1 = flength_val*fonset*vortmaglim
         tempd = temp0*rsagrca1*pgammad
-        gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*rsagrca2*&
-&         egammad + fturb_val*vortmaglim*tempd1 - rsagrce1*temp1*tempd
+        gammalocald = gammalocald + rsagrce2*fturb_val*vortmaglim*&
+&         gammalocal*rsagrca2*egammad + fturb_val*vortmaglim*tempd1 - &
+&         rsagrce1*temp1*tempd
         if (max7 .eq. 0.0_8) then
           max7d = 0.0_8
         else
@@ -1260,6 +1326,7 @@ contains
     use inputphysics
     use turbmod, only : dvt, vort, prod, kwcd, f1
     use inputdiscretization, only : approxsa
+    use inputiteration, only : srcdtrestrictactive
     use flowvarrefstate
     use turbutils_b, only : rethetatcorrelation, flengthcorrelation, &
 &   rethetaccorrelation, smoothminmax
@@ -1340,6 +1407,7 @@ contains
     real(kind=realtype) :: pgamma, egamma
     real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
+    real(kind=realtype) :: gammaeff, gammaterm
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
@@ -1361,6 +1429,8 @@ contains
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
     real(kind=realtype) :: x4
+    real(kind=realtype) :: x5
+    real(kind=realtype) :: x6
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1724,11 +1794,33 @@ contains
           delta = delta
         end if
         fwake_val = exp(-(res_val/1.0e6_realtype))
-        x4 = fwake_val*exp(-((ydist/delta)**4))
-        if (x4 .gt. one) then
+        if (gammalocal .lt. zero) then
+          gammaeff = zero
+        else
+          gammaeff = gammalocal
+        end if
+        gammaterm = one - ((gammaeff-one/rsagrce2)/(one-one/rsagrce2))**&
+&         2
+        if (gammaterm .gt. one) then
+          x4 = one
+        else
+          x4 = gammaterm
+        end if
+        if (x4 .lt. zero) then
+          gammaterm = zero
+        else
+          gammaterm = x4
+        end if
+        x6 = fwake_val*exp(-((ydist/delta)**4))
+        if (x6 .lt. gammaterm) then
+          x5 = gammaterm
+        else
+          x5 = x6
+        end if
+        if (x5 .gt. one) then
           fthetat = one
         else
-          fthetat = x4
+          fthetat = x5
         end if
         if (timescale .lt. xminn) then
           max15 = xminn
@@ -3318,8 +3410,8 @@ contains
               qq(i, j, k, 3, 1) = zero
             end if
 ! eigenvalue-based source dt restriction (eq. 59)
-            if (transitionsrcdtrestrict .and. turbdadicoupled .gt. 0) &
-&           then
+            if (transitionsrcdtrestrict .and. srcdtrestrictactive .and. &
+&               turbdadicoupled .gt. 0) then
               if (turbdadicoupled .eq. 1) then
 ! 2x2 eigenvalue of gamma-retheta sub-block
                 j2(1, 1) = qq(i, j, k, 2, 2)
