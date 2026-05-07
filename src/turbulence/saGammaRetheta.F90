@@ -489,6 +489,8 @@ contains
                         vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) &
                                 / 20.0_realType
 
+                        vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRvortLimP)
+
                         ! --- Fonset (smooth tanh-based transition onset) ---
                         reS_val = w(i, j, k, irho) * yDist**2 * strainMag &
                                   / max(rlv(i, j, k), xminn)
