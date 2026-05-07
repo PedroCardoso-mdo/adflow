@@ -482,9 +482,12 @@ contains
                         velMag = sqrt(max(velMag2, xminn))
 
                         ! --- Vorticity limiting ---
-                        vortLim = Mach * sqrt(max(Mach * Reynolds, xminn)) &
-                                  / 20.0_realType
-                        vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRvortLimP)
+                        ! ADflow nondim of paper Eqs. 52–53. Paper writes M·√(M·Re)/20
+                        ! using a∞ as velocity scale; ADflow uses √(p/ρ) as velocity
+                        ! scale. Translation: M → uInf (the nondim freestream velocity)
+                        ! and Re → uInf/muInf (Reynolds based on freestream velocity).
+                        vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) &
+                                / 20.0_realType
 
                         ! --- Fonset (smooth tanh-based transition onset) ---
                         reS_val = w(i, j, k, irho) * yDist**2 * strainMag &
@@ -497,8 +500,9 @@ contains
 
                         ! --- Flength and Fturb (modified) ---
                         fLength_val = flengthCorrelation(reThetaTilde)
-                        !fTurb_val = (one - fOnset) * exp(-rTurb)
-                        fTurb_val = exp(-(rTurb / 4.0_realType)**4)
+                        fTurb_val = (one - fOnset) * exp(-rTurb)
+                        !Check here if needed 
+                        !fTurb_val = exp(-(rTurb / 4.0_realType)**4)
 
                         ! --- Gamma production and destruction ---
                         pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
