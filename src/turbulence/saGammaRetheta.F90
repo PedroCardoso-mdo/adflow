@@ -453,7 +453,7 @@ contains
                         scratch(i, j, k, idvt) = (term1 + term2 * w(i, j, k, itu1)) * w(i, j, k, itu1)
 
                         ! ========================================================
-                        ! Gamma and ReTheta source terms (Langtry-Menter)
+                        ! Gamma and ReTheta source terms (sLangtry-Menter)
                         ! ========================================================
 
                         ! --- Compute vorticity and strain magnitudes ---
@@ -473,11 +473,13 @@ contains
                         strainMag  = sqrt(max(two*strainMag2, xminn))
 
                         ! --- Local variables ---
+                        !v_t= ν̃ · fv1 is the SA eddy viscosity
                         nutSA = w(i, j, k, itu1) * fv1
+                        !rTurb= ν_t/ν
                         rTurb = nutSA / max(nu, xminn)
-                        gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), one)
-                        reThetaTilde = max(w(i, j, k, itu3), one)
-                        yDist = max(d2Wall(i, j, k), xminn)
+                        gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
+                        reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
+                        yDist = d2Wall(i, j, k)
                         velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
                                   + w(i, j, k, ivz)**2
                         velMag = sqrt(max(velMag2, xminn))
@@ -485,12 +487,11 @@ contains
                         ! --- Vorticity limiting ---
                         ! ADflow nondim of paper Eqs. 52–53. Paper writes M·√(M·Re)/20
                         ! using a∞ as velocity scale; ADflow uses √(p/ρ) as velocity
-                        ! scale. Translation: M → uInf (the nondim freestream velocity)
-                        ! and Re → uInf/muInf (Reynolds based on freestream velocity).
+                        ! scale and √(p*ρ) for dynamic viscosity.
                         vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) &
                                 / 20.0_realType
 
-                        vortMagLim = smoothMinMax(vortMag, vortLim, -300.0_realType)
+                        vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
 
                         ! --- Fonset (smooth tanh-based transition onset) ---
                         reS_val = w(i, j, k, irho) * yDist**2 * strainMag &
