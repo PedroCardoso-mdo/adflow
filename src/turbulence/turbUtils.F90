@@ -2302,7 +2302,7 @@ contains
                 * exp(-Tu_safe / 0.5_realType)
 
         ! Eq. 56: F2 = smoothMax(F1, 1)
-        F2val = smoothMinMax(F1val, one, 300.0_realType)
+        F2val = smoothMinMax(F1val, one, rsaGRpmax)
 
         ! Eq. 55: F3 = 1 - (-12.986*lam - 123.66*lam^2 - 405.689*lam^3)*exp(-(Tu/1.5)^1.5)
         F3val = one - (-12.986_realType * lambdaTheta &
@@ -2311,7 +2311,7 @@ contains
                 * exp(-(Tu_safe / 1.5_realType)**1.5_realType)
 
         ! Eq. 57: F(lambda) = smoothMin(F2, F3)
-        Flambda = smoothMinMax(F2val, F3val, -300.0_realType)
+        Flambda = smoothMinMax(F2val, F3val, rsaGRpmin)
 
         ! --- Re_theta_t(Tu) * F(lambda_theta) ---
         if (Tu_safe <= 1.3_realType) then
