@@ -2369,23 +2369,17 @@ contains
 
     function smoothMinMax(g1, g2, p) result(phi)
         !
-        !  Smooth approximation of max (p > 0) or min (p < 0) of two
-        !  real values. Implements Algorithm 1 of Piotrowski & Zingg
-        !  (AIAA J. 2020, doi:10.2514/1.J059784):
+        !  Smooth max (p > 0) or min (p < 0) of two variables.
+        !  Algorithm 1, Piotrowski & Zingg (AIAA J. 2020,
+        !  doi:10.2514/1.J059784), Eqs. 43-45.
         !
-        !       Φ_p(g1, g2) = a + log(1 + exp(p(b-a)))/p     for p > 0
-        !                   = b + log(1 + exp(p(a-b)))/p     for p < 0
+        !       Phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+        !                     = b + log(1 + exp(p*(a-b))) / p   [min]
+        !  where a = max(g1,g2), b = min(g1,g2).
         !
-        !  where a = max(g1, g2), b = min(g1, g2).
-        !
-        !  Proximity switch (Eq. 45): when |a-b| > λ_switch the smooth
-        !  correction is below ~machine epsilon, so the bare min/max
-        !  is returned and the log/exp pair is skipped.
-        !
-        !       λ_switch = log(|p| · p_switch_eps) / |p|
-        !
-        !  Asymptotic guards on the exp argument remain as
-        !  defense-in-depth against unusual p magnitudes.
+        !  Proximity switch (Eq. 45): when |a-b| > lambda_switch
+        !  the smooth correction is below machine epsilon, so the
+        !  bare max/min is returned directly.
         !
         use constants, only: realType, one
         implicit none
@@ -2393,47 +2387,24 @@ contains
         real(kind=realType), intent(in) :: g1, g2, p
         real(kind=realType) :: phi
 
-        ! Cutoff for the proximity check. Tuned so the smooth correction
-        ! is below ~1e-15 outside the kink region for |p| ~ O(100).
-        real(kind=realType), parameter :: p_switch_eps = 1.0e15_realType
-
-        real(kind=realType) :: a, b, abs_p, lambda_switch, arg
+        real(kind=realType), parameter :: p_switch = 1.0e15_realType
+        real(kind=realType) :: a, b, lambda_switch
 
         a = max(g1, g2)
         b = min(g1, g2)
-        abs_p = abs(p)
-
-        ! Proximity switch threshold (Eq. 45)
-        lambda_switch = log(abs_p * p_switch_eps) / abs_p
+        lambda_switch = log(abs(p) * p_switch) / abs(p)
 
         if (p > 0.0_realType) then
-            ! ----- Smooth maximum -----
             if ((a - b) > lambda_switch) then
-                ! Far from the kink: bare max
                 phi = a
             else
-                ! Near the kink: exponential penalty function
-                arg = p * (b - a)
-                if (arg < -500.0_realType) then
-                    phi = a
-                else
-                    phi = a + log(one + exp(arg)) / p
-                end if
+                phi = a + log(one + exp(p * (b - a))) / p
             end if
         else
-            ! ----- Smooth minimum -----
             if ((a - b) > lambda_switch) then
-                ! Far from the kink: bare min
                 phi = b
             else
-                ! Near the kink: exponential penalty function
-                ! (p < 0 here, so p*(a-b) ≤ 0 when a > b)
-                arg = p * (a - b)
-                if (arg < -500.0_realType) then
-                    phi = b
-                else
-                    phi = b + log(one + exp(arg)) / p
-                end if
+                phi = b + log(one + exp(p * (a - b))) / p
             end if
         end if
 
