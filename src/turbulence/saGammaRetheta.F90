@@ -476,7 +476,7 @@ contains
                         !v_t= ν̃ · fv1 is the SA eddy viscosity
                         nutSA = w(i, j, k, itu1) * fv1
                         !rTurb= ν_t/ν
-                        rTurb = nutSA / max(nu, xminn)
+                        rTurb = nutSA / nu
                         gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
                         reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
                         yDist = d2Wall(i, j, k)
@@ -488,6 +488,7 @@ contains
                         ! ADflow nondim of paper Eqs. 52–53. Paper writes M·√(M·Re)/20
                         ! using a∞ as velocity scale; ADflow uses √(p/ρ) as velocity
                         ! scale and √(p*ρ) for dynamic viscosity.
+                        ! Rotating frame not adress here!!!!! uInf has no meaning on it.
                         vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) &
                                 / 20.0_realType
 
@@ -495,9 +496,8 @@ contains
 
                         ! --- Fonset (smooth tanh-based transition onset) ---
                         reS_val = w(i, j, k, irho) * yDist**2 * strainMag &
-                                  / max(rlv(i, j, k), xminn)
-                        reThetaC_val = rethetacCorrelation(reThetaTilde)
-                        reThetaC_val = max(reThetaC_val, xminn)
+                                  / rlv(i, j, k)
+                        reThetaC_val = rethetacCorrelation(reThetaTilde)                       
                         fOnset1 = sqrt((reS_val / (2.6_realType * reThetaC_val))**2 &
                                        + rTurb**2)
                         fOnset = (tanh(6.0_realType * (fOnset1 - 1.35_realType)) + one) * half
@@ -510,7 +510,7 @@ contains
 
                         ! --- Gamma production and destruction ---
                         pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
-                                 * sqrt(max(gammaLocal, xminn)) &
+                                 * sqrt(gammaLocal) &
                                  * (one - rsaGRce1 * gammaLocal)
                         eGamma = rsaGRca2 * fTurb_val * vortMagLim * gammaLocal &
                                  * (rsaGRce2 * gammaLocal - one)
@@ -523,12 +523,11 @@ contains
                         ! Nondim form: rlv = mu/muRef with L_ref=1m so Re=1 implicitly
                         ! (see initializeFlow.F90:62-66). No explicit Re factor needed,
                         ! consistent with nu = rlv/rho in sa.F90:245.
-                        timeScale = 500.0_realType * rlv(i, j, k) &
-                                    / max(w(i, j, k, irho) * velMag2, xminn)
+                        timeScale = 500.0_realType * nu / max(velMag2, xminn)
 
                         ! Compute thetaBL first (needed for lambdaTheta)
-                        thetaBL = reThetaTilde * rlv(i, j, k) &
-                                  / max(w(i, j, k, irho) * velMag, xminn)
+                        thetaBL = reThetaTilde * nu &
+                                  / max(velMag, xminn)
 
                         ! Compute local lambdaTheta = (thetaBL^2 / nu) * dU/ds
                         uxhat = w(i, j, k, ivx) / max(velMag, xminn)
@@ -538,9 +537,9 @@ contains
                              * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
                               + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
                               + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
-                        lambdaThetaLocal = (thetaBL**2 / max(nu, xminn)) * dUds
-                        lambdaThetaLocal = max(lambdaThetaLocal, -0.1_realType)
-                        lambdaThetaLocal = min(lambdaThetaLocal, 0.1_realType)
+                        lambdaThetaLocal = (thetaBL**2 / nu) * dUds
+                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, -0.1_realType, rsaGRpmax)
+                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, 0.1_realType, rsaGRpmin)
 
                         reThetaT_target = reThetaTCorrelation( &
                             turbIntensityInf * 100.0_realType, lambdaThetaLocal)
@@ -552,7 +551,7 @@ contains
                             / max(velMag, xminn)
                         delta = max(delta, xminn)
                         fWake_val = exp(-reS_val / 1.0e6_realType)
-                        fThetaT    = F_wake * exp(-(yDist/delta)**4)
+                        fThetaT    = fWake_val * exp(-(yDist/delta)**4)
 
                         pReTheta = rsaGRcthetat / max(timeScale, xminn) &
                                    * (reThetaT_target - reThetaTilde) &

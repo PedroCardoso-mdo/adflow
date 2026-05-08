@@ -2293,7 +2293,7 @@ contains
 
         real(kind=realType) :: Flambda, F1val, F2val, F3val, Tu_safe
 
-        Tu_safe = max(Tu, 0.027_realType)
+        Tu_safe = smoothMinMax(Tu, 0.027_realType, rsaGRpmax)
 
         ! --- Smooth F(lambda_theta) Eqs. 54-57 ---
         ! Eq. 54: F1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-Tu/0.5)
