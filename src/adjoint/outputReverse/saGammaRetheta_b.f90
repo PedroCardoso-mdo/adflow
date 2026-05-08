@@ -2,7 +2,7 @@
 !  tapenade 3.16 (develop) - 22 aug 2023 15:51
 !
 module sagammaretheta_b
-! this module contains the source code related to the sst turbulence
+! this module contains the source code for sa-slm2015 turbulence
 ! model. it is slightly more modularized than the original which makes
 ! performing reverse mode ad simplier.
 ! transitiondebug slot map (ntransitiondebug = 48; see paramturb.f90).
@@ -243,10 +243,8 @@ contains
     real(kind=realtype) :: velmagd, velmag2d, timescaled, &
 &   rethetat_targetd
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
-    real(kind=realtype) :: thetabld, deltabld, deltad, fwake_vald, &
-&   fthetatd
+    real(kind=realtype) :: thetabld, deltabld, deltad, fthetatd
     real(kind=realtype) :: gammaeff, gammaterm
-    real(kind=realtype) :: gammaeffd, gammatermd
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: prethetad, ydistd
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
@@ -273,13 +271,6 @@ contains
     real(kind=realtype) :: x2
     real(kind=realtype) :: x2d
     real(kind=realtype) :: x3
-    real(kind=realtype) :: x3d
-    real(kind=realtype) :: x4
-    real(kind=realtype) :: x4d
-    real(kind=realtype) :: x5
-    real(kind=realtype) :: x5d
-    real(kind=realtype) :: x6
-    real(kind=realtype) :: x6d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -312,6 +303,7 @@ contains
     real(kind=realtype) :: max15
     real(kind=realtype) :: max15d
     real(kind=realtype) :: abs0
+    real(kind=realtype) :: max16
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs2
     real(kind=realtype) :: arg1
@@ -326,6 +318,7 @@ contains
     real(kind=realtype) :: temp2
     real(kind=realtype) :: tempd2
     integer :: branch
+    real :: f_wake
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -547,12 +540,14 @@ contains
         sxy = fact*(uuy+vvx)
         sxz = fact*(uuz+wwx)
         syz = fact*(vvz+wwy)
-        x2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
-        if (x2 .lt. xminn) then
-          max2 = xminn
+        call pushreal8(strainmag2)
+        strainmag2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz&
+&         **2
+        if (two*strainmag2 .lt. xminn) then
           call pushcontrol1b(0)
+          max2 = xminn
         else
-          max2 = x2
+          max2 = two*strainmag2
           call pushcontrol1b(1)
         end if
         strainmag = sqrt(max2)
@@ -568,16 +563,16 @@ contains
         rturb = nutsa/max3
         if (w(i, j, k, itu2) .lt. rsagrgammalo) then
           call pushcontrol1b(0)
-          x3 = rsagrgammalo
+          x2 = rsagrgammalo
         else
-          x3 = w(i, j, k, itu2)
+          x2 = w(i, j, k, itu2)
           call pushcontrol1b(1)
         end if
-        if (x3 .gt. one) then
+        if (x2 .gt. one) then
           gammalocal = one
           call pushcontrol1b(0)
         else
-          gammalocal = x3
+          gammalocal = x2
           call pushcontrol1b(1)
         end if
         if (w(i, j, k, itu3) .lt. one) then
@@ -604,14 +599,24 @@ contains
           call pushcontrol1b(1)
         end if
         velmag = sqrt(max4)
-        if (mach*reynolds .lt. xminn) then
+        if (muinf .lt. xminn) then
+          max16 = xminn
+        else
+          max16 = muinf
+        end if
+        x3 = uinf/max16
+        if (x3 .lt. xminn) then
           max5 = xminn
         else
-          max5 = mach*reynolds
+          max5 = x3
         end if
 ! --- vorticity limiting ---
-        vortlim = mach*sqrt(max5)/20.0_realtype
-        vortmaglim = smoothminmax(vortmag, vortlim, rsagrvortlimp)
+! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
+! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
+! scale. translation: m → uinf (the nondim freestream velocity)
+! and re → uinf/muinf (reynolds based on freestream velocity).
+        vortlim = uinf*sqrt(max5)/20.0_realtype
+        vortmaglim = smoothminmax(vortmag, vortlim, -300.0_realtype)
         if (rlv(i, j, k) .lt. xminn) then
           call pushcontrol1b(0)
           max6 = xminn
@@ -634,8 +639,7 @@ contains
         fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*half
 ! --- flength and fturb (modified) ---
         flength_val = flengthcorrelation(rethetatilde)
-!fturb_val = (one - fonset) * exp(-rturb)
-        fturb_val = exp(-((rturb/4.0_realtype)**4))
+        fturb_val = (one-fonset)*exp(-rturb)
         if (gammalocal .lt. xminn) then
           call pushcontrol1b(0)
           max7 = xminn
@@ -643,6 +647,8 @@ contains
           max7 = gammalocal
           call pushcontrol1b(1)
         end if
+!check here if needed 
+!fturb_val = exp(-(rturb / 4.0_realtype)**4)
 ! --- gamma production and destruction ---
         if (w(i, j, k, irho)*velmag2 .lt. xminn) then
           max8 = xminn
@@ -736,45 +742,7 @@ contains
           call pushcontrol1b(1)
           delta = delta
         end if
-        fwake_val = exp(-(res_val/1.0e6_realtype))
-        if (gammalocal .lt. zero) then
-          gammaeff = zero
-          call pushcontrol1b(0)
-        else
-          gammaeff = gammalocal
-          call pushcontrol1b(1)
-        end if
-        gammaterm = one - ((gammaeff-one/rsagrce2)/(one-one/rsagrce2))**&
-&         2
-        if (gammaterm .gt. one) then
-          x4 = one
-          call pushcontrol1b(0)
-        else
-          x4 = gammaterm
-          call pushcontrol1b(1)
-        end if
-        if (x4 .lt. zero) then
-          gammaterm = zero
-          call pushcontrol1b(0)
-        else
-          gammaterm = x4
-          call pushcontrol1b(1)
-        end if
-        x6 = fwake_val*exp(-((ydist/delta)**4))
-        if (x6 .lt. gammaterm) then
-          x5 = gammaterm
-          call pushcontrol1b(0)
-        else
-          x5 = x6
-          call pushcontrol1b(1)
-        end if
-        if (x5 .gt. one) then
-          fthetat = one
-          call pushcontrol1b(0)
-        else
-          fthetat = x5
-          call pushcontrol1b(1)
-        end if
+        fthetat = f_wake*exp(-((ydist/delta)**4))
         if (timescale .lt. xminn) then
           max15 = xminn
           call pushcontrol1b(0)
@@ -796,48 +764,10 @@ contains
         else
           timescaled = max15d
         end if
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          x5d = 0.0_8
-        else
-          x5d = fthetatd
-        end if
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          gammatermd = x5d
-          x6d = 0.0_8
-        else
-          x6d = x5d
-          gammatermd = 0.0_8
-        end if
         temp2 = ydist/delta
-        temp1 = -(temp2**4)
-        fwake_vald = exp(temp1)*x6d
-        tempd2 = -(4*temp2**3*exp(temp1)*fwake_val*x6d/delta)
+        tempd2 = -(4*temp2**3*exp(-(temp2**4))*f_wake*fthetatd/delta)
         ydistd = tempd2
         deltad = -(temp2*tempd2)
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          x4d = 0.0_8
-        else
-          x4d = gammatermd
-        end if
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          gammatermd = 0.0_8
-        else
-          gammatermd = x4d
-        end if
-        temp2 = one - one/rsagrce2
-        gammaeffd = -(2*(gammaeff-one/rsagrce2)*gammatermd/temp2**2)
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          gammalocald = 0.0_8
-        else
-          gammalocald = gammaeffd
-        end if
-        res_vald = -(exp(-(res_val/1.0e6_realtype))*fwake_vald/&
-&         1.0e6_realtype)
         call popcontrol1b(branch)
         if (branch .eq. 0) deltad = 0.0_8
         tempd2 = deltabl*50.0_realtype*deltad/max14
@@ -929,9 +859,8 @@ contains
         temp0 = sqrt(max7)
         temp1 = flength_val*fonset*vortmaglim
         tempd = temp0*rsagrca1*pgammad
-        gammalocald = gammalocald + rsagrce2*fturb_val*vortmaglim*&
-&         gammalocal*rsagrca2*egammad + fturb_val*vortmaglim*tempd1 - &
-&         rsagrce1*temp1*tempd
+        gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*rsagrca2*&
+&         egammad + fturb_val*vortmaglim*tempd1 - rsagrce1*temp1*tempd
         if (max7 .eq. 0.0_8) then
           max7d = 0.0_8
         else
@@ -944,6 +873,9 @@ contains
         vortmaglimd = vortmaglimd + flength_val*fonset*tempd1
         call popcontrol1b(branch)
         if (branch .ne. 0) gammalocald = gammalocald + max7d
+        fonsetd = fonsetd - exp(-rturb)*fturb_vald
+        call flengthcorrelation_b(rethetatilde, rethetatilded, &
+&                           flength_vald)
         fonset1d = 6.0_realtype*(1.0-tanh(6.0_realtype*(fonset1-&
 &         1.35_realtype))**2)*half*fonsetd
         temp0 = res_val/(2.6_realtype*rethetac_val)
@@ -952,12 +884,9 @@ contains
         else
           tempd = fonset1d/(2.0*sqrt(temp0**2+rturb**2))
         end if
-        rturbd = 2*rturb*tempd - 4*rturb**3*exp(-((rturb/4.0_realtype)**&
-&         4))*fturb_vald/4.0_realtype**4
-        call flengthcorrelation_b(rethetatilde, rethetatilded, &
-&                           flength_vald)
+        rturbd = 2*rturb*tempd - exp(-rturb)*(one-fonset)*fturb_vald
         tempd0 = 2*temp0*tempd/(2.6_realtype*rethetac_val)
-        res_vald = res_vald + tempd0
+        res_vald = tempd0
         rethetac_vald = -(2.6_realtype*temp0*tempd0)
         call popcontrol1b(branch)
         if (branch .eq. 0) rethetac_vald = 0.0_8
@@ -972,8 +901,8 @@ contains
         max6d = -(temp0*tempd0)
         call popcontrol1b(branch)
         if (branch .ne. 0) rlvd(i, j, k) = rlvd(i, j, k) + max6d
-        call smoothminmax_b(vortmag, vortmagd, vortlim, vortlimd, &
-&                     rsagrvortlimp, vortmaglimd)
+        call smoothminmax_b(vortmag, vortmagd, vortlim, vortlimd, -&
+&                     300.0_realtype, vortmaglimd)
         if (max4 .eq. 0.0_8) then
           max4d = 0.0_8
         else
@@ -991,12 +920,12 @@ contains
 &           rethetatilded
         call popcontrol1b(branch)
         if (branch .eq. 0) then
-          x3d = 0.0_8
+          x2d = 0.0_8
         else
-          x3d = gammalocald
+          x2d = gammalocald
         end if
         call popcontrol1b(branch)
-        if (branch .ne. 0) wd(i, j, k, itu2) = wd(i, j, k, itu2) + x3d
+        if (branch .ne. 0) wd(i, j, k, itu2) = wd(i, j, k, itu2) + x2d
         nutsad = rturbd/max3
         max3d = -(nutsa*rturbd/max3**2)
         call popcontrol1b(branch)
@@ -1009,15 +938,12 @@ contains
           max2d = strainmagd/(2.0*sqrt(max2))
         end if
         call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          x2d = 0.0_8
-        else
-          x2d = max2d
-        end if
-        tempd0 = two*x2d
-        sxxd = 2*sxx*x2d
-        syyd = 2*syy*x2d
-        szzd = 2*szz*x2d
+        if (branch .ne. 0) strainmag2d = strainmag2d + two*max2d
+        call popreal8(strainmag2)
+        tempd0 = two*strainmag2d
+        sxxd = 2*sxx*strainmag2d
+        syyd = 2*syy*strainmag2d
+        szzd = 2*szz*strainmag2d
         sxyd = 2*sxy*tempd0
         sxzd = 2*sxz*tempd0
         syzd = 2*syz*tempd0
@@ -1118,7 +1044,9 @@ contains
         call popcontrol1b(branch)
         if (branch .eq. 0) sstd = 0.0_8
         call popcontrol1b(branch)
-        if (branch .ne. 0) then
+        if (branch .eq. 0) then
+          strainmag2d = 0.0_8
+        else
           min1d = rsacrot*sstd
           call popcontrol1b(branch)
           if (branch .eq. 0) then
@@ -1126,8 +1054,11 @@ contains
           else
             y1d = 0.0_8
           end if
-          if (.not.two*strainmag2 .eq. 0.0_8) strainmag2d = strainmag2d &
-&             + two*y1d/(2.0*sqrt(two*strainmag2))
+          if (two*strainmag2 .eq. 0.0_8) then
+            strainmag2d = 0.0_8
+          else
+            strainmag2d = two*y1d/(2.0*sqrt(two*strainmag2))
+          end if
         end if
         ssd = ssd + sstd
         wd(i, j, k, itu1) = wd(i, j, k, itu1) + fv2*dist2inv*kar2inv*&
@@ -1428,9 +1359,6 @@ contains
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
-    real(kind=realtype) :: x4
-    real(kind=realtype) :: x5
-    real(kind=realtype) :: x6
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1448,9 +1376,11 @@ contains
     real(kind=realtype) :: max14
     real(kind=realtype) :: max15
     real(kind=realtype) :: abs0
+    real(kind=realtype) :: max16
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs2
     real(kind=realtype) :: arg1
+    real :: f_wake
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -1639,11 +1569,12 @@ contains
         sxy = fact*(uuy+vvx)
         sxz = fact*(uuz+wwx)
         syz = fact*(vvz+wwy)
-        x2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
-        if (x2 .lt. xminn) then
+        strainmag2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz&
+&         **2
+        if (two*strainmag2 .lt. xminn) then
           max2 = xminn
         else
-          max2 = x2
+          max2 = two*strainmag2
         end if
         strainmag = sqrt(max2)
 ! --- local variables ---
@@ -1655,14 +1586,14 @@ contains
         end if
         rturb = nutsa/max3
         if (w(i, j, k, itu2) .lt. rsagrgammalo) then
-          x3 = rsagrgammalo
+          x2 = rsagrgammalo
         else
-          x3 = w(i, j, k, itu2)
+          x2 = w(i, j, k, itu2)
         end if
-        if (x3 .gt. one) then
+        if (x2 .gt. one) then
           gammalocal = one
         else
-          gammalocal = x3
+          gammalocal = x2
         end if
         if (w(i, j, k, itu3) .lt. one) then
           rethetatilde = one
@@ -1682,14 +1613,24 @@ contains
           max4 = velmag2
         end if
         velmag = sqrt(max4)
-        if (mach*reynolds .lt. xminn) then
+        if (muinf .lt. xminn) then
+          max16 = xminn
+        else
+          max16 = muinf
+        end if
+        x3 = uinf/max16
+        if (x3 .lt. xminn) then
           max5 = xminn
         else
-          max5 = mach*reynolds
+          max5 = x3
         end if
 ! --- vorticity limiting ---
-        vortlim = mach*sqrt(max5)/20.0_realtype
-        vortmaglim = smoothminmax(vortmag, vortlim, rsagrvortlimp)
+! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
+! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
+! scale. translation: m → uinf (the nondim freestream velocity)
+! and re → uinf/muinf (reynolds based on freestream velocity).
+        vortlim = uinf*sqrt(max5)/20.0_realtype
+        vortmaglim = smoothminmax(vortmag, vortlim, -300.0_realtype)
         if (rlv(i, j, k) .lt. xminn) then
           max6 = xminn
         else
@@ -1708,13 +1649,14 @@ contains
         fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*half
 ! --- flength and fturb (modified) ---
         flength_val = flengthcorrelation(rethetatilde)
-!fturb_val = (one - fonset) * exp(-rturb)
-        fturb_val = exp(-((rturb/4.0_realtype)**4))
+        fturb_val = (one-fonset)*exp(-rturb)
         if (gammalocal .lt. xminn) then
           max7 = xminn
         else
           max7 = gammalocal
         end if
+!check here if needed 
+!fturb_val = exp(-(rturb / 4.0_realtype)**4)
 ! --- gamma production and destruction ---
         pgamma = rsagrca1*flength_val*fonset*vortmaglim*sqrt(max7)*(one-&
 &         rsagrce1*gammalocal)
@@ -1794,34 +1736,7 @@ contains
           delta = delta
         end if
         fwake_val = exp(-(res_val/1.0e6_realtype))
-        if (gammalocal .lt. zero) then
-          gammaeff = zero
-        else
-          gammaeff = gammalocal
-        end if
-        gammaterm = one - ((gammaeff-one/rsagrce2)/(one-one/rsagrce2))**&
-&         2
-        if (gammaterm .gt. one) then
-          x4 = one
-        else
-          x4 = gammaterm
-        end if
-        if (x4 .lt. zero) then
-          gammaterm = zero
-        else
-          gammaterm = x4
-        end if
-        x6 = fwake_val*exp(-((ydist/delta)**4))
-        if (x6 .lt. gammaterm) then
-          x5 = gammaterm
-        else
-          x5 = x6
-        end if
-        if (x5 .gt. one) then
-          fthetat = one
-        else
-          fthetat = x5
-        end if
+        fthetat = f_wake*exp(-((ydist/delta)**4))
         if (timescale .lt. xminn) then
           max15 = xminn
         else

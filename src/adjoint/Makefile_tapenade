@@ -62,7 +62,6 @@ ALL_RES_FILES =	$(SRC)/adjoint/adjointExtra.F90\
 		$(SRC)/turbulence/turbBCRoutines.F90\
 		$(SRC)/turbulence/turbMod.F90\
 		$(SRC)/turbulence/sa.F90\
-		$(SRC)/turbulence/saGammaRethetaHelpers.F90\
 		$(SRC)/turbulence/saGammaRetheta.F90\
 		$(SRC)/utils/flowUtils.F90\
 		$(SRC)/utils/utils.F90\
