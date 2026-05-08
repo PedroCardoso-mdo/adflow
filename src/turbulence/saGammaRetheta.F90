@@ -551,10 +551,7 @@ contains
                             / max(velMag, xminn)
                         delta = max(delta, xminn)
                         fWake_val = exp(-reS_val / 1.0e6_realType)
-                        gammaEff = max(gammaLocal, zero)
-                        gammaTerm = one - ((gammaEff - one/rsaGRce2) / (one - one/rsaGRce2))**2
-                        gammaTerm = max(min(gammaTerm, one), zero)
-                        fThetaT = min(max(fWake_val * exp(-(yDist / delta)**4), gammaTerm), one)
+                        fThetaT    = F_wake * exp(-(yDist/delta)**4)
 
                         pReTheta = rsaGRcthetat / max(timeScale, xminn) &
                                    * (reThetaT_target - reThetaTilde) &
