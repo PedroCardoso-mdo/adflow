@@ -2387,7 +2387,7 @@ contains
         real(kind=realType), intent(in) :: g1, g2, p
         real(kind=realType) :: phi
 
-        real(kind=realType), parameter :: p_switch = 1.0e15_realType
+        real(kind=realType), parameter :: p_switch = 1.0e-15_realType
         real(kind=realType) :: a, b, lambda_switch
 
         a = max(g1, g2)
@@ -2395,13 +2395,13 @@ contains
         lambda_switch = log(abs(p) * p_switch) / abs(p)
 
         if (p > 0.0_realType) then
-            if ((a - b) > lambda_switch) then
+            if ((a - b) > -lambda_switch) then
                 phi = a
             else
                 phi = a + log(one + exp(p * (b - a))) / p
             end if
         else
-            if ((a - b) > lambda_switch) then
+            if ((a - b) > -lambda_switch) then
                 phi = b
             else
                 phi = b + log(one + exp(p * (a - b))) / p
