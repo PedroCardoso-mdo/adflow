@@ -1,6 +1,6 @@
 module saGammaReTheta
 
-    ! This module contains the source code related to the SST turbulence
+    ! This module contains the source code for SA-sLM2015 turbulence
     ! model. It is slightly more modularized than the original which makes
     ! performing reverse mode AD simplier.
 
