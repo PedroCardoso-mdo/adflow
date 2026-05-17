@@ -2131,7 +2131,6 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype), intent(out) :: rethetat
     real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
     real(kind=realtype) :: flambdad, f1vald, f2vald, f3vald
-    intrinsic max
     intrinsic exp
     real(kind=realtype) :: arg1
     real(kind=8) :: temp
@@ -2139,11 +2138,7 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: temp1
     real(kind=realtype) :: rsagrpmax
     real(kind=realtype) :: rsagrpmin
-    if (tu .lt. 0.027_realtype) then
-      tu_safe = 0.027_realtype
-    else
-      tu_safe = tu
-    end if
+    tu_safe = smoothminmax(tu, 0.027_realtype, rsagrpmax)
 ! --- smooth f(lambda_theta) eqs. 54-57 ---
 ! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
     temp = 0.275_realtype*exp(-(tu_safe/0.5_realtype))
@@ -2195,16 +2190,11 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype), intent(in) :: tu, lambdatheta
     real(kind=realtype) :: rethetat
     real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
-    intrinsic max
     intrinsic exp
     real(kind=realtype) :: arg1
     real(kind=realtype) :: rsagrpmax
     real(kind=realtype) :: rsagrpmin
-    if (tu .lt. 0.027_realtype) then
-      tu_safe = 0.027_realtype
-    else
-      tu_safe = tu
-    end if
+    tu_safe = smoothminmax(tu, 0.027_realtype, rsagrpmax)
 ! --- smooth f(lambda_theta) eqs. 54-57 ---
 ! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
     f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lambdatheta)))&
@@ -2331,41 +2321,37 @@ nadvloopspectral:do ii=1,nadv
   real(kind=realtype) function smoothminmax_d(g1, g1d, g2, g2d, p, phi) &
 & result (phid)
 !
-!  smooth approximation of max (p > 0) or min (p < 0) of two
-!  real values. implements algorithm 1 of piotrowski & zingg
-!  (aiaa j. 2020, doi:10.2514/1.j059784):
+!  smooth max (p > 0) or min (p < 0) of two variables.
+!  algorithm 1, piotrowski & zingg (aiaa j. 2020,
+!  doi:10.2514/1.j059784), eqs. 43-45.
 !
-!       φ_p(g1, g2) = a + log(1 + exp(p(b-a)))/p     for p > 0
-!                   = b + log(1 + exp(p(a-b)))/p     for p < 0
+!       phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+!                     = b + log(1 + exp(p*(a-b))) / p   [min]
+!  where a = max(g1,g2), b = min(g1,g2).
 !
-!  where a = max(g1, g2), b = min(g1, g2).
+!  proximity switch (eq. 45): when |a-b| > lambda_switch
+!  the smooth correction is below machine epsilon, so the
+!  bare max/min is returned directly.
 !
-!  proximity switch (eq. 45): when |a-b| > λ_switch the smooth
-!  correction is below ~machine epsilon, so the bare min/max
-!  is returned and the log/exp pair is skipped.
-!
-!       λ_switch = log(|p| · p_switch_eps) / |p|
-!
-!  asymptotic guards on the exp argument remain as
-!  defense-in-depth against unusual p magnitudes.
-!
-    use constants, only : realtype, one
+    use constants
     implicit none
     real(kind=realtype), intent(in) :: g1, g2, p
     real(kind=realtype), intent(in) :: g1d, g2d
     real(kind=realtype), intent(out) :: phi
-! cutoff for the proximity check. tuned so the smooth correction
-! is below ~1e-15 outside the kink region for |p| ~ o(100).
-    real(kind=realtype), parameter :: p_switch_eps=1.0e15_realtype
-    real(kind=realtype) :: a, b, abs_p, lambda_switch, arg
-    real(kind=realtype) :: ad, bd, argd
+    real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
+    real(kind=realtype) :: a, b, lambda_switch
+    real(kind=realtype) :: ad, bd
     intrinsic max
     intrinsic min
     intrinsic abs
     intrinsic log
     intrinsic exp
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
     real(kind=realtype) :: arg1
     real(kind=realtype) :: arg1d
+    real(kind=realtype) :: arg2
+    real(kind=realtype) :: arg2d
     if (g1 .lt. g2) then
       ad = g2d
       a = g2
@@ -2381,88 +2367,70 @@ nadvloopspectral:do ii=1,nadv
       b = g1
     end if
     if (p .ge. 0.) then
-      abs_p = p
+      abs0 = p
     else
-      abs_p = -p
+      abs0 = -p
     end if
-! proximity switch threshold (eq. 45)
-    lambda_switch = log(abs_p*p_switch_eps)/abs_p
+    if (p .ge. 0.) then
+      abs1 = p
+    else
+      abs1 = -p
+    end if
+    lambda_switch = log(abs0*p_switch)/abs1
     if (p .gt. 0.0_realtype) then
-! ----- smooth maximum -----
-      if (a - b .gt. lambda_switch) then
-! far from the kink: bare max
+      if (a - b .gt. -lambda_switch) then
         phid = ad
         phi = a
       else
-! near the kink: exponential penalty function
-        argd = p*(bd-ad)
-        arg = p*(b-a)
-        if (arg .lt. -500.0_realtype) then
-          phid = ad
-          phi = a
-        else
-          arg1d = exp(arg)*argd
-          arg1 = one + exp(arg)
-          phid = ad + arg1d/(p*arg1)
-          phi = a + log(arg1)/p
-        end if
+        arg1d = p*(bd-ad)
+        arg1 = p*(b-a)
+        arg2d = exp(arg1)*arg1d
+        arg2 = one + exp(arg1)
+        phid = ad + arg2d/(p*arg2)
+        phi = a + log(arg2)/p
       end if
-    else if (a - b .gt. lambda_switch) then
-! ----- smooth minimum -----
-! far from the kink: bare min
+    else if (a - b .gt. -lambda_switch) then
       phid = bd
       phi = b
     else
-! near the kink: exponential penalty function
-! (p < 0 here, so p*(a-b) ≤ 0 when a > b)
-      argd = p*(ad-bd)
-      arg = p*(a-b)
-      if (arg .lt. -500.0_realtype) then
-        phid = bd
-        phi = b
-      else
-        arg1d = exp(arg)*argd
-        arg1 = one + exp(arg)
-        phid = bd + arg1d/(p*arg1)
-        phi = b + log(arg1)/p
-      end if
+      arg1d = p*(ad-bd)
+      arg1 = p*(a-b)
+      arg2d = exp(arg1)*arg1d
+      arg2 = one + exp(arg1)
+      phid = bd + arg2d/(p*arg2)
+      phi = b + log(arg2)/p
     end if
   end function smoothminmax_d
 
   function smoothminmax(g1, g2, p) result (phi)
 !
-!  smooth approximation of max (p > 0) or min (p < 0) of two
-!  real values. implements algorithm 1 of piotrowski & zingg
-!  (aiaa j. 2020, doi:10.2514/1.j059784):
+!  smooth max (p > 0) or min (p < 0) of two variables.
+!  algorithm 1, piotrowski & zingg (aiaa j. 2020,
+!  doi:10.2514/1.j059784), eqs. 43-45.
 !
-!       φ_p(g1, g2) = a + log(1 + exp(p(b-a)))/p     for p > 0
-!                   = b + log(1 + exp(p(a-b)))/p     for p < 0
+!       phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+!                     = b + log(1 + exp(p*(a-b))) / p   [min]
+!  where a = max(g1,g2), b = min(g1,g2).
 !
-!  where a = max(g1, g2), b = min(g1, g2).
+!  proximity switch (eq. 45): when |a-b| > lambda_switch
+!  the smooth correction is below machine epsilon, so the
+!  bare max/min is returned directly.
 !
-!  proximity switch (eq. 45): when |a-b| > λ_switch the smooth
-!  correction is below ~machine epsilon, so the bare min/max
-!  is returned and the log/exp pair is skipped.
-!
-!       λ_switch = log(|p| · p_switch_eps) / |p|
-!
-!  asymptotic guards on the exp argument remain as
-!  defense-in-depth against unusual p magnitudes.
-!
-    use constants, only : realtype, one
+    use constants
     implicit none
     real(kind=realtype), intent(in) :: g1, g2, p
     real(kind=realtype) :: phi
-! cutoff for the proximity check. tuned so the smooth correction
-! is below ~1e-15 outside the kink region for |p| ~ o(100).
-    real(kind=realtype), parameter :: p_switch_eps=1.0e15_realtype
-    real(kind=realtype) :: a, b, abs_p, lambda_switch, arg
+    real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
+    real(kind=realtype) :: a, b, lambda_switch
     intrinsic max
     intrinsic min
     intrinsic abs
     intrinsic log
     intrinsic exp
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
     real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg2
     if (g1 .lt. g2) then
       a = g2
     else
@@ -2474,41 +2442,30 @@ nadvloopspectral:do ii=1,nadv
       b = g1
     end if
     if (p .ge. 0.) then
-      abs_p = p
+      abs0 = p
     else
-      abs_p = -p
+      abs0 = -p
     end if
-! proximity switch threshold (eq. 45)
-    lambda_switch = log(abs_p*p_switch_eps)/abs_p
+    if (p .ge. 0.) then
+      abs1 = p
+    else
+      abs1 = -p
+    end if
+    lambda_switch = log(abs0*p_switch)/abs1
     if (p .gt. 0.0_realtype) then
-! ----- smooth maximum -----
-      if (a - b .gt. lambda_switch) then
-! far from the kink: bare max
+      if (a - b .gt. -lambda_switch) then
         phi = a
       else
-! near the kink: exponential penalty function
-        arg = p*(b-a)
-        if (arg .lt. -500.0_realtype) then
-          phi = a
-        else
-          arg1 = one + exp(arg)
-          phi = a + log(arg1)/p
-        end if
+        arg1 = p*(b-a)
+        arg2 = one + exp(arg1)
+        phi = a + log(arg2)/p
       end if
-    else if (a - b .gt. lambda_switch) then
-! ----- smooth minimum -----
-! far from the kink: bare min
+    else if (a - b .gt. -lambda_switch) then
       phi = b
     else
-! near the kink: exponential penalty function
-! (p < 0 here, so p*(a-b) ≤ 0 when a > b)
-      arg = p*(a-b)
-      if (arg .lt. -500.0_realtype) then
-        phi = b
-      else
-        arg1 = one + exp(arg)
-        phi = b + log(arg1)/p
-      end if
+      arg1 = p*(a-b)
+      arg2 = one + exp(arg1)
+      phi = b + log(arg2)/p
     end if
   end function smoothminmax
 

@@ -2286,6 +2286,7 @@ contains
         !       lambdaTheta : pressure-gradient parameter (0 for uniform inflow)
         !
         use constants, only: realType, one
+        use paramTurb, only: rsaGRpmax, rsaGRpmin
         implicit none
 
         real(kind=realType), intent(in) :: Tu, lambdaTheta
@@ -2381,7 +2382,7 @@ contains
         !  the smooth correction is below machine epsilon, so the
         !  bare max/min is returned directly.
         !
-        use constants, only: realType, one
+        use constants
         implicit none
 
         real(kind=realType), intent(in) :: g1, g2, p

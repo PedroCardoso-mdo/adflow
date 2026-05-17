@@ -39,8 +39,7 @@ For every task you are asked to do:
 
 ## Hard Rules
 
-1. **One task per session.** Read `02_IMPLEMENTATION_STATUS.md` first to
-   confirm the task is not already ✅.
+1. **One task per session.
 2. **Do not modify the SA model directly.** Transition is a modifier — γ
    multiplies SA production only (Eq. 41).
 3. **Skip multigrid (T1.6) and crossflow (T2.5).** User defers both.
@@ -72,29 +71,7 @@ For every task you are asked to do:
 
 ## AD-Relevant Code (Triggers `TAPENADE NEEDED`)
 
-If a task edits any of these, the AD copies are stale and must be regenerated:
 
-- `src/turbulence/saGammaRetheta.F90`
-- `src/turbulence/saGammaRethetaHelpers.F90`
-- `src/turbulence/turbBCRoutines.F90` (transition BC paths)
-- Any source term, residual, or Jacobian evaluation reachable from
-  `block_res` / `slaveTurbAPI`.
-
-Pure infrastructure changes (input parameters, allocation, output
-registration, Python wrapper) do NOT trigger Tapenade.
-
-## Repo Layout
-
-```
-adflow/
-├── CLAUDE.md                       ← this file, auto-loaded
-├── 00_CLAUDE_CODE_SETUP.md         ← how to install/operate Claude Code
-├── 01_PAPER_REFERENCE.md           ← paper equations — load on demand
-├── 02_IMPLEMENTATION_STATUS.md     ← status + ordered task list — read first
-├── 03_IMPLEMENTATION_PLAN.md       ← per-task specs — load ONLY your task
-├── 04_ARCHITECTURE.md              ← ADflow internals — load on demand
-├── adflow/                         ← ADflow python side
-└── src/                            ← Fortran sources
 ```
 
 ## Build Commands

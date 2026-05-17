@@ -237,7 +237,8 @@ contains
     real(kind=realtype) :: velmagd, velmag2d, timescaled, &
 &   rethetat_targetd
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
-    real(kind=realtype) :: thetabld, deltabld, deltad, fthetatd
+    real(kind=realtype) :: thetabld, deltabld, deltad, fwake_vald, &
+&   fthetatd
     real(kind=realtype) :: gammaeff, gammaterm
     real(kind=realtype) :: pretheta, ydist
     real(kind=realtype) :: prethetad
@@ -274,8 +275,8 @@ contains
     real(kind=realtype) :: max3
     real(kind=realtype) :: max3d
     real(kind=realtype) :: max4
-    real(kind=realtype) :: max4d
     real(kind=realtype) :: max5
+    real(kind=realtype) :: max5d
     real(kind=realtype) :: max6
     real(kind=realtype) :: max6d
     real(kind=realtype) :: max7
@@ -288,16 +289,8 @@ contains
     real(kind=realtype) :: max10d
     real(kind=realtype) :: max11
     real(kind=realtype) :: max11d
-    real(kind=realtype) :: max12
-    real(kind=realtype) :: max12d
-    real(kind=realtype) :: max13
-    real(kind=realtype) :: max13d
-    real(kind=realtype) :: max14
-    real(kind=realtype) :: max14d
-    real(kind=realtype) :: max15
-    real(kind=realtype) :: max15d
     real(kind=realtype) :: abs0
-    real(kind=realtype) :: max16
+    real(kind=realtype) :: max12
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs2
     real(kind=realtype) :: arg1
@@ -311,8 +304,13 @@ contains
     real(kind=realtype) :: tempd1
     real(kind=realtype) :: temp2
     real(kind=realtype) :: tempd2
+    real(kind=realtype) :: tmp0
+    real(kind=realtype) :: dummydiffd
+    real(kind=realtype) :: tmpd0
+    real(kind=realtype) :: tmp1
+    real(kind=realtype) :: dummydiffd0
+    real(kind=realtype) :: tmpd1
     integer :: branch
-    real :: f_wake
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -520,7 +518,7 @@ myIntPtr = myIntPtr + 1
 ! effective term2 with gamma on production only
         term2 = gammaforsa*term2_prod + term2_dest
 ! ========================================================
-! gamma and retheta source terms (langtry-menter)
+! gamma and retheta source terms (slangtry-menter)
 ! ========================================================
 ! --- compute vorticity and strain magnitudes ---
         vortx = two*fact*(wwy-vvz) - two*omegax
@@ -555,17 +553,10 @@ myIntPtr = myIntPtr + 1
         end if
         strainmag = sqrt(max2)
 ! --- local variables ---
+!v_t= ν̃ · fv1 is the sa eddy viscosity
         nutsa = w(i, j, k, itu1)*fv1
-        if (nu .lt. xminn) then
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-          max3 = xminn
-        else
-          max3 = nu
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-        end if
-        rturb = nutsa/max3
+!rturb= ν_t/ν
+        rturb = nutsa/nu
         if (w(i, j, k, itu2) .lt. rsagrgammalo) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
@@ -575,8 +566,8 @@ myIntPtr = myIntPtr + 1
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        if (x2 .gt. one) then
-          gammalocal = one
+        if (x2 .gt. rsagrgammahi) then
+          gammalocal = rsagrgammahi
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
         else
@@ -584,95 +575,64 @@ myIntPtr = myIntPtr + 1
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        if (w(i, j, k, itu3) .lt. one) then
+        if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-          rethetatilde = one
+          rethetatilde = rsagrrethetalo
         else
           rethetatilde = w(i, j, k, itu3)
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        if (d2wall(i, j, k) .lt. xminn) then
-          ydist = xminn
-        else
-          ydist = d2wall(i, j, k)
-        end if
+        ydist = d2wall(i, j, k)
         velmag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, &
 &         ivz)**2
         if (velmag2 .lt. xminn) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-          max4 = xminn
+          max3 = xminn
         else
-          max4 = velmag2
+          max3 = velmag2
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        velmag = sqrt(max4)
+        velmag = sqrt(max3)
         if (muinf .lt. xminn) then
-          max16 = xminn
+          max12 = xminn
         else
-          max16 = muinf
+          max12 = muinf
         end if
-        x3 = uinf/max16
+        x3 = uinf/max12
         if (x3 .lt. xminn) then
-          max5 = xminn
+          max4 = xminn
         else
-          max5 = x3
+          max4 = x3
         end if
 ! --- vorticity limiting ---
 ! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
 ! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
-! scale. translation: m → uinf (the nondim freestream velocity)
-! and re → uinf/muinf (reynolds based on freestream velocity).
-        vortlim = uinf*sqrt(max5)/20.0_realtype
-        vortmaglim = smoothminmax(vortmag, vortlim, -300.0_realtype)
-        if (rlv(i, j, k) .lt. xminn) then
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-          max6 = xminn
-        else
-          max6 = rlv(i, j, k)
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-        end if
+! scale and √(p*ρ) for dynamic viscosity.
+! rotating frame not adress here!!!!! uinf has no meaning on it.
+        vortlim = uinf*sqrt(max4)/20.0_realtype
+        vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
 ! --- fonset (smooth tanh-based transition onset) ---
-        res_val = w(i, j, k, irho)*ydist**2*strainmag/max6
+        res_val = w(i, j, k, irho)*ydist**2*strainmag/rlv(i, j, k)
         rethetac_val = rethetaccorrelation(rethetatilde)
-        if (rethetac_val .lt. xminn) then
-          rethetac_val = xminn
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-        else
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-          rethetac_val = rethetac_val
-        end if
         fonset1 = sqrt((res_val/(2.6_realtype*rethetac_val))**2 + rturb&
 &         **2)
         fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*half
 ! --- flength and fturb (modified) ---
         flength_val = flengthcorrelation(rethetatilde)
         fturb_val = (one-fonset)*exp(-rturb)
-        if (gammalocal .lt. xminn) then
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-          max7 = xminn
-        else
-          max7 = gammalocal
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-        end if
 !check here if needed 
 !fturb_val = exp(-(rturb / 4.0_realtype)**4)
 ! --- gamma production and destruction ---
-        if (w(i, j, k, irho)*velmag2 .lt. xminn) then
-          max8 = xminn
+        if (velmag2 .lt. xminn) then
+          max5 = xminn
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
         else
-          max8 = w(i, j, k, irho)*velmag2
+          max5 = velmag2
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
@@ -681,95 +641,72 @@ myIntPtr = myIntPtr + 1
 ! nondim form: rlv = mu/muref with l_ref=1m so re=1 implicitly
 ! (see initializeflow.f90:62-66). no explicit re factor needed,
 ! consistent with nu = rlv/rho in sa.f90:245.
-        timescale = 500.0_realtype*rlv(i, j, k)/max8
-        if (w(i, j, k, irho)*velmag .lt. xminn) then
+        timescale = 500.0_realtype*nu/max5
+        if (velmag .lt. xminn) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-          max9 = xminn
+          max6 = xminn
         else
-          max9 = w(i, j, k, irho)*velmag
+          max6 = velmag
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
 ! compute thetabl first (needed for lambdatheta)
-        thetabl = rethetatilde*rlv(i, j, k)/max9
+        thetabl = rethetatilde*nu/max6
         if (velmag .lt. xminn) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-          max10 = xminn
+          max7 = xminn
         else
-          max10 = velmag
+          max7 = velmag
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
 ! compute local lambdatheta = (thetabl^2 / nu) * du/ds
-        uxhat = w(i, j, k, ivx)/max10
+        uxhat = w(i, j, k, ivx)/max7
         if (velmag .lt. xminn) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-          max11 = xminn
+          max8 = xminn
         else
-          max11 = velmag
+          max8 = velmag
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        uyhat = w(i, j, k, ivy)/max11
+        uyhat = w(i, j, k, ivy)/max8
         if (velmag .lt. xminn) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-          max12 = xminn
+          max9 = xminn
         else
-          max12 = velmag
+          max9 = velmag
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        uzhat = w(i, j, k, ivz)/max12
+        uzhat = w(i, j, k, ivz)/max9
         duds = two*fact*(uxhat*(uxhat*uux+uyhat*uuy+uzhat*uuz)+uyhat*(&
 &         uxhat*vvx+uyhat*vvy+uzhat*vvz)+uzhat*(uxhat*wwx+uyhat*wwy+&
 &         uzhat*wwz))
-        if (nu .lt. xminn) then
-          max13 = xminn
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-        else
-          max13 = nu
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-        end if
-        lambdathetalocal = thetabl**2/max13*duds
-        if (lambdathetalocal .lt. -0.1_realtype) then
-          lambdathetalocal = -0.1_realtype
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-        else
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-          lambdathetalocal = lambdathetalocal
-        end if
-        if (lambdathetalocal .gt. 0.1_realtype) then
-          lambdathetalocal = 0.1_realtype
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-        else
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-          lambdathetalocal = lambdathetalocal
-        end if
+        lambdathetalocal = thetabl**2/nu*duds
+        tmp0 = smoothminmax(lambdathetalocal, -0.1_realtype, rsagrpmax)
+        lambdathetalocal = tmp0
+        tmp1 = smoothminmax(lambdathetalocal, 0.1_realtype, rsagrpmin)
+        lambdathetalocal = tmp1
         arg1 = turbintensityinf*100.0_realtype
         rethetat_target = rethetatcorrelation(arg1, lambdathetalocal)
 ! ftheta_t shielding: shields bl interior, allows
 ! freestream to drive retheta toward correlation value
         deltabl = 7.5_realtype*thetabl
         if (velmag .lt. xminn) then
-          max14 = xminn
+          max10 = xminn
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
         else
-          max14 = velmag
+          max10 = velmag
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        delta = 50.0_realtype*ydist*vortmag*deltabl/max14
+        delta = 50.0_realtype*ydist*vortmag*deltabl/max10
         if (delta .lt. xminn) then
           delta = xminn
 myIntPtr = myIntPtr + 1
@@ -779,67 +716,67 @@ myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
           delta = delta
         end if
-        fthetat = f_wake*exp(-((ydist/delta)**4))
+        fwake_val = exp(-(res_val/1.0e6_realtype))
+        fthetat = fwake_val*exp(-((ydist/delta)**4))
         if (timescale .lt. xminn) then
-          max15 = xminn
+          max11 = xminn
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
         else
-          max15 = timescale
+          max11 = timescale
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
         prethetad = scratchd(i, j, k, idvt+2)
         scratchd(i, j, k, idvt+2) = 0.0_8
-        temp2 = (rethetat_target-rethetatilde)/max15
-        tempd2 = (one-fthetat)*rsagrcthetat*prethetad/max15
+        temp2 = (rethetat_target-rethetatilde)/max11
+        tempd2 = (one-fthetat)*rsagrcthetat*prethetad/max11
         fthetatd = -(temp2*rsagrcthetat*prethetad)
         rethetat_targetd = tempd2
         rethetatilded = -tempd2
-        max15d = -(temp2*tempd2)
+        max11d = -(temp2*tempd2)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
           timescaled = 0.0_8
         else
-          timescaled = max15d
+          timescaled = max11d
         end if
         temp2 = ydist/delta
-        deltad = temp2**4*4*exp(-(temp2**4))*f_wake*fthetatd/delta
+        temp1 = -(temp2**4)
+        fwake_vald = exp(temp1)*fthetatd
+        deltad = temp2**4*4*exp(temp1)*fwake_val*fthetatd/delta
+        res_vald = -(exp(-(res_val/1.0e6_realtype))*fwake_vald/&
+&         1.0e6_realtype)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) deltad = 0.0_8
-        tempd2 = ydist*50.0_realtype*deltad/max14
+        tempd2 = ydist*50.0_realtype*deltad/max10
         vortmagd = deltabl*tempd2
         deltabld = vortmag*tempd2
-        max14d = -(vortmag*deltabl*tempd2/max14)
+        max10d = -(vortmag*deltabl*tempd2/max10)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
           velmagd = 0.0_8
         else
-          velmagd = max14d
+          velmagd = max10d
         end if
-        thetabld = 7.5_realtype*deltabld
         call rethetatcorrelation_fast_b(arg1, lambdathetalocal, &
 &                                 lambdathetalocald, rethetat_targetd)
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-        if (branch .eq. 0) lambdathetalocald = 0.0_8
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-        if (branch .eq. 0) lambdathetalocald = 0.0_8
-        thetabld = thetabld + 2*thetabl*duds*lambdathetalocald/max13
-        tempd2 = thetabl**2*lambdathetalocald/max13
+        tmpd1 = lambdathetalocald
+        lambdathetalocald = 0.0_8
+        call smoothminmax_fast_b(lambdathetalocal, lambdathetalocald, &
+&                          0.1_realtype, dummydiffd0, rsagrpmin, tmpd1)
+        tmpd0 = lambdathetalocald
+        lambdathetalocald = 0.0_8
+        call smoothminmax_fast_b(lambdathetalocal, lambdathetalocald, -&
+&                          0.1_realtype, dummydiffd, rsagrpmax, tmpd0)
+        thetabld = 7.5_realtype*deltabld + 2*thetabl*duds*&
+&         lambdathetalocald/nu
+        tempd2 = thetabl**2*lambdathetalocald/nu
         dudsd = tempd2
-        max13d = -(duds*tempd2/max13)
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-        if (branch .eq. 0) then
-          nud = 0.0_8
-        else
-          nud = max13d
-        end if
+        nud = -(duds*tempd2/nu)
         tempd1 = two*fact*dudsd
         tempd0 = uxhat*tempd1
         tempd = uyhat*tempd1
@@ -859,41 +796,37 @@ branch = myIntStack(myIntPtr)
         uuxd = uxhat*tempd0
         uuyd = uyhat*tempd0
         uuzd = uzhat*tempd0
-        wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhatd/max12
-        max12d = -(w(i, j, k, ivz)*uzhatd/max12**2)
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhatd/max9
+        max9d = -(w(i, j, k, ivz)*uzhatd/max9**2)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) velmagd = velmagd + max12d
-        wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhatd/max11
-        max11d = -(w(i, j, k, ivy)*uyhatd/max11**2)
+        if (branch .ne. 0) velmagd = velmagd + max9d
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhatd/max8
+        max8d = -(w(i, j, k, ivy)*uyhatd/max8**2)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) velmagd = velmagd + max11d
-        wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhatd/max10
-        max10d = -(w(i, j, k, ivx)*uxhatd/max10**2)
+        if (branch .ne. 0) velmagd = velmagd + max8d
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhatd/max7
+        max7d = -(w(i, j, k, ivx)*uxhatd/max7**2)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) velmagd = velmagd + max10d
-        rlvd(i, j, k) = rlvd(i, j, k) + rethetatilde*thetabld/max9
-        tempd1 = rlv(i, j, k)*thetabld/max9
-        rethetatilded = rethetatilded + tempd1
-        max9d = -(rethetatilde*tempd1/max9)
+        if (branch .ne. 0) velmagd = velmagd + max7d
+        tempd1 = thetabld/max6
+        rethetatilded = rethetatilded + nu*tempd1
+        nud = nud + rethetatilde*tempd1
+        max6d = -(rethetatilde*nu*tempd1/max6)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) then
-          wd(i, j, k, irho) = wd(i, j, k, irho) + velmag*max9d
-          velmagd = velmagd + w(i, j, k, irho)*max9d
-        end if
-        tempd1 = 500.0_realtype*timescaled/max8
-        rlvd(i, j, k) = rlvd(i, j, k) + tempd1
-        max8d = -(rlv(i, j, k)*tempd1/max8)
+        if (branch .ne. 0) velmagd = velmagd + max6d
+        tempd1 = 500.0_realtype*timescaled/max5
+        nud = nud + tempd1
+        max5d = -(nu*tempd1/max5)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
           velmag2d = 0.0_8
         else
-          wd(i, j, k, irho) = wd(i, j, k, irho) + velmag2*max8d
-          velmag2d = w(i, j, k, irho)*max8d
+          velmag2d = max5d
         end if
         pgammad = scratchd(i, j, k, idvt+1)
         egammad = -scratchd(i, j, k, idvt+1)
@@ -901,25 +834,23 @@ branch = myIntStack(myIntPtr)
         tempd1 = (rsagrce2*gammalocal-one)*rsagrca2*egammad
         fturb_vald = vortmaglim*gammalocal*tempd1
         vortmaglimd = fturb_val*gammalocal*tempd1
-        temp0 = sqrt(max7)
+        temp0 = sqrt(gammalocal)
         temp1 = flength_val*fonset*vortmaglim
         tempd = temp0*rsagrca1*pgammad
-        gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*rsagrca2*&
-&         egammad + fturb_val*vortmaglim*tempd1 - rsagrce1*temp1*tempd
-        if (max7 .eq. 0.0_8) then
-          max7d = 0.0_8
+        if (gammalocal .eq. 0.0_8) then
+          gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*&
+&           rsagrca2*egammad + fturb_val*vortmaglim*tempd1 - rsagrce1*&
+&           temp1*tempd
         else
-          max7d = temp1*(one-rsagrce1*gammalocal)*rsagrca1*pgammad/(2.0*&
-&           temp0)
+          gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*&
+&           rsagrca2*egammad + fturb_val*vortmaglim*tempd1 + temp1*(one-&
+&           rsagrce1*gammalocal)*rsagrca1*pgammad/(2.0*temp0) - rsagrce1&
+&           *temp1*tempd
         end if
         tempd1 = (one-rsagrce1*gammalocal)*tempd
         flength_vald = fonset*vortmaglim*tempd1
-        fonsetd = flength_val*vortmaglim*tempd1
+        fonsetd = flength_val*vortmaglim*tempd1 - exp(-rturb)*fturb_vald
         vortmaglimd = vortmaglimd + flength_val*fonset*tempd1
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) gammalocald = gammalocald + max7d
-        fonsetd = fonsetd - exp(-rturb)*fturb_vald
         call flengthcorrelation_fast_b(rethetatilde, rethetatilded, &
 &                                flength_vald)
         fonset1d = 6.0_realtype*(1.0-tanh(6.0_realtype*(fonset1-&
@@ -932,31 +863,26 @@ branch = myIntStack(myIntPtr)
         end if
         rturbd = 2*rturb*tempd - exp(-rturb)*(one-fonset)*fturb_vald
         tempd0 = 2*temp0*tempd/(2.6_realtype*rethetac_val)
-        res_vald = tempd0
+        res_vald = res_vald + tempd0
         rethetac_vald = -(2.6_realtype*temp0*tempd0)
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-        if (branch .eq. 0) rethetac_vald = 0.0_8
         call rethetaccorrelation_fast_b(rethetatilde, rethetatilded, &
 &                                 rethetac_vald)
+        temp = strainmag/rlv(i, j, k)
         tempd0 = ydist**2*res_vald
-        wd(i, j, k, irho) = wd(i, j, k, irho) + strainmag*tempd0/max6
-        tempd = w(i, j, k, irho)*tempd0/max6
+        wd(i, j, k, irho) = wd(i, j, k, irho) + temp*tempd0
+        tempd = w(i, j, k, irho)*tempd0/rlv(i, j, k)
         strainmagd = tempd
-        max6d = -(strainmag*tempd/max6)
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) rlvd(i, j, k) = rlvd(i, j, k) + max6d
-        call smoothminmax_fast_b(vortmag, vortmagd, vortlim, vortlimd, -&
-&                          300.0_realtype, vortmaglimd)
-        if (max4 .eq. 0.0_8) then
-          max4d = 0.0_8
+        rlvd(i, j, k) = rlvd(i, j, k) - temp*tempd
+        call smoothminmax_fast_b(vortmag, vortmagd, vortlim, vortlimd, &
+&                          rsagrpmin, vortmaglimd)
+        if (max3 .eq. 0.0_8) then
+          max3d = 0.0_8
         else
-          max4d = velmagd/(2.0*sqrt(max4))
+          max3d = velmagd/(2.0*sqrt(max3))
         end if
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) velmag2d = velmag2d + max4d
+        if (branch .ne. 0) velmag2d = velmag2d + max3d
         wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*w(i, j, k, ivx)*velmag2d
         wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*w(i, j, k, ivy)*velmag2d
         wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*w(i, j, k, ivz)*velmag2d
@@ -974,11 +900,8 @@ branch = myIntStack(myIntPtr)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .ne. 0) wd(i, j, k, itu2) = wd(i, j, k, itu2) + x2d
-        nutsad = rturbd/max3
-        max3d = -(nutsa*rturbd/max3**2)
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-        if (branch .ne. 0) nud = nud + max3d
+        nutsad = rturbd/nu
+        nud = nud - nutsa*rturbd/nu**2
         wd(i, j, k, itu1) = wd(i, j, k, itu1) + fv1*nutsad
         fv1d = w(i, j, k, itu1)*nutsad
         if (max2 .eq. 0.0_8) then
@@ -1342,16 +1265,11 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: max9
     real(kind=realtype) :: max10
     real(kind=realtype) :: max11
-    real(kind=realtype) :: max12
-    real(kind=realtype) :: max13
-    real(kind=realtype) :: max14
-    real(kind=realtype) :: max15
     real(kind=realtype) :: abs0
-    real(kind=realtype) :: max16
+    real(kind=realtype) :: max12
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs2
     real(kind=realtype) :: arg1
-    real :: f_wake
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -1522,7 +1440,7 @@ branch = myIntStack(myIntPtr)
         scratch(i, j, k, idvt) = (term1+term2*w(i, j, k, itu1))*w(i, j, &
 &         k, itu1)
 ! ========================================================
-! gamma and retheta source terms (langtry-menter)
+! gamma and retheta source terms (slangtry-menter)
 ! ========================================================
 ! --- compute vorticity and strain magnitudes ---
         vortx = two*fact*(wwy-vvz) - two*omegax
@@ -1549,171 +1467,138 @@ branch = myIntStack(myIntPtr)
         end if
         strainmag = sqrt(max2)
 ! --- local variables ---
+!v_t= ν̃ · fv1 is the sa eddy viscosity
         nutsa = w(i, j, k, itu1)*fv1
-        if (nu .lt. xminn) then
-          max3 = xminn
-        else
-          max3 = nu
-        end if
-        rturb = nutsa/max3
+!rturb= ν_t/ν
+        rturb = nutsa/nu
         if (w(i, j, k, itu2) .lt. rsagrgammalo) then
           x2 = rsagrgammalo
         else
           x2 = w(i, j, k, itu2)
         end if
-        if (x2 .gt. one) then
-          gammalocal = one
+        if (x2 .gt. rsagrgammahi) then
+          gammalocal = rsagrgammahi
         else
           gammalocal = x2
         end if
-        if (w(i, j, k, itu3) .lt. one) then
-          rethetatilde = one
+        if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
+          rethetatilde = rsagrrethetalo
         else
           rethetatilde = w(i, j, k, itu3)
         end if
-        if (d2wall(i, j, k) .lt. xminn) then
-          ydist = xminn
-        else
-          ydist = d2wall(i, j, k)
-        end if
+        ydist = d2wall(i, j, k)
         velmag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, &
 &         ivz)**2
         if (velmag2 .lt. xminn) then
+          max3 = xminn
+        else
+          max3 = velmag2
+        end if
+        velmag = sqrt(max3)
+        if (muinf .lt. xminn) then
+          max12 = xminn
+        else
+          max12 = muinf
+        end if
+        x3 = uinf/max12
+        if (x3 .lt. xminn) then
           max4 = xminn
         else
-          max4 = velmag2
-        end if
-        velmag = sqrt(max4)
-        if (muinf .lt. xminn) then
-          max16 = xminn
-        else
-          max16 = muinf
-        end if
-        x3 = uinf/max16
-        if (x3 .lt. xminn) then
-          max5 = xminn
-        else
-          max5 = x3
+          max4 = x3
         end if
 ! --- vorticity limiting ---
 ! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
 ! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
-! scale. translation: m → uinf (the nondim freestream velocity)
-! and re → uinf/muinf (reynolds based on freestream velocity).
-        vortlim = uinf*sqrt(max5)/20.0_realtype
-        vortmaglim = smoothminmax(vortmag, vortlim, -300.0_realtype)
-        if (rlv(i, j, k) .lt. xminn) then
-          max6 = xminn
-        else
-          max6 = rlv(i, j, k)
-        end if
+! scale and √(p*ρ) for dynamic viscosity.
+! rotating frame not adress here!!!!! uinf has no meaning on it.
+        vortlim = uinf*sqrt(max4)/20.0_realtype
+        vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
 ! --- fonset (smooth tanh-based transition onset) ---
-        res_val = w(i, j, k, irho)*ydist**2*strainmag/max6
+        res_val = w(i, j, k, irho)*ydist**2*strainmag/rlv(i, j, k)
         rethetac_val = rethetaccorrelation(rethetatilde)
-        if (rethetac_val .lt. xminn) then
-          rethetac_val = xminn
-        else
-          rethetac_val = rethetac_val
-        end if
         fonset1 = sqrt((res_val/(2.6_realtype*rethetac_val))**2 + rturb&
 &         **2)
         fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*half
 ! --- flength and fturb (modified) ---
         flength_val = flengthcorrelation(rethetatilde)
         fturb_val = (one-fonset)*exp(-rturb)
-        if (gammalocal .lt. xminn) then
-          max7 = xminn
-        else
-          max7 = gammalocal
-        end if
 !check here if needed 
 !fturb_val = exp(-(rturb / 4.0_realtype)**4)
 ! --- gamma production and destruction ---
-        pgamma = rsagrca1*flength_val*fonset*vortmaglim*sqrt(max7)*(one-&
-&         rsagrce1*gammalocal)
+        pgamma = rsagrca1*flength_val*fonset*vortmaglim*sqrt(gammalocal)&
+&         *(one-rsagrce1*gammalocal)
         egamma = rsagrca2*fturb_val*vortmaglim*gammalocal*(rsagrce2*&
 &         gammalocal-one)
         scratch(i, j, k, idvt+1) = pgamma - egamma
-        if (w(i, j, k, irho)*velmag2 .lt. xminn) then
-          max8 = xminn
+        if (velmag2 .lt. xminn) then
+          max5 = xminn
         else
-          max8 = w(i, j, k, irho)*velmag2
+          max5 = velmag2
         end if
 ! --- retheta production (relaxation toward correlation) ---
 ! note: no explicit reynolds factor here.
 ! nondim form: rlv = mu/muref with l_ref=1m so re=1 implicitly
 ! (see initializeflow.f90:62-66). no explicit re factor needed,
 ! consistent with nu = rlv/rho in sa.f90:245.
-        timescale = 500.0_realtype*rlv(i, j, k)/max8
-        if (w(i, j, k, irho)*velmag .lt. xminn) then
-          max9 = xminn
+        timescale = 500.0_realtype*nu/max5
+        if (velmag .lt. xminn) then
+          max6 = xminn
         else
-          max9 = w(i, j, k, irho)*velmag
+          max6 = velmag
         end if
 ! compute thetabl first (needed for lambdatheta)
-        thetabl = rethetatilde*rlv(i, j, k)/max9
+        thetabl = rethetatilde*nu/max6
         if (velmag .lt. xminn) then
-          max10 = xminn
+          max7 = xminn
         else
-          max10 = velmag
+          max7 = velmag
         end if
 ! compute local lambdatheta = (thetabl^2 / nu) * du/ds
-        uxhat = w(i, j, k, ivx)/max10
+        uxhat = w(i, j, k, ivx)/max7
         if (velmag .lt. xminn) then
-          max11 = xminn
+          max8 = xminn
         else
-          max11 = velmag
+          max8 = velmag
         end if
-        uyhat = w(i, j, k, ivy)/max11
+        uyhat = w(i, j, k, ivy)/max8
         if (velmag .lt. xminn) then
-          max12 = xminn
+          max9 = xminn
         else
-          max12 = velmag
+          max9 = velmag
         end if
-        uzhat = w(i, j, k, ivz)/max12
+        uzhat = w(i, j, k, ivz)/max9
         duds = two*fact*(uxhat*(uxhat*uux+uyhat*uuy+uzhat*uuz)+uyhat*(&
 &         uxhat*vvx+uyhat*vvy+uzhat*vvz)+uzhat*(uxhat*wwx+uyhat*wwy+&
 &         uzhat*wwz))
-        if (nu .lt. xminn) then
-          max13 = xminn
-        else
-          max13 = nu
-        end if
-        lambdathetalocal = thetabl**2/max13*duds
-        if (lambdathetalocal .lt. -0.1_realtype) then
-          lambdathetalocal = -0.1_realtype
-        else
-          lambdathetalocal = lambdathetalocal
-        end if
-        if (lambdathetalocal .gt. 0.1_realtype) then
-          lambdathetalocal = 0.1_realtype
-        else
-          lambdathetalocal = lambdathetalocal
-        end if
+        lambdathetalocal = thetabl**2/nu*duds
+        lambdathetalocal = smoothminmax(lambdathetalocal, -0.1_realtype&
+&         , rsagrpmax)
+        lambdathetalocal = smoothminmax(lambdathetalocal, 0.1_realtype, &
+&         rsagrpmin)
         arg1 = turbintensityinf*100.0_realtype
         rethetat_target = rethetatcorrelation(arg1, lambdathetalocal)
 ! ftheta_t shielding: shields bl interior, allows
 ! freestream to drive retheta toward correlation value
         deltabl = 7.5_realtype*thetabl
         if (velmag .lt. xminn) then
-          max14 = xminn
+          max10 = xminn
         else
-          max14 = velmag
+          max10 = velmag
         end if
-        delta = 50.0_realtype*ydist*vortmag*deltabl/max14
+        delta = 50.0_realtype*ydist*vortmag*deltabl/max10
         if (delta .lt. xminn) then
           delta = xminn
         else
           delta = delta
         end if
         fwake_val = exp(-(res_val/1.0e6_realtype))
-        fthetat = f_wake*exp(-((ydist/delta)**4))
+        fthetat = fwake_val*exp(-((ydist/delta)**4))
         if (timescale .lt. xminn) then
-          max15 = xminn
+          max11 = xminn
         else
-          max15 = timescale
+          max11 = timescale
         end if
-        pretheta = rsagrcthetat/max15*(rethetat_target-rethetatilde)*(&
+        pretheta = rsagrcthetat/max11*(rethetat_target-rethetatilde)*(&
 &         one-fthetat)
         scratch(i, j, k, idvt+2) = pretheta
         if (associated(transitiondebug)) then
