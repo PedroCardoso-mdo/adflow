@@ -58,7 +58,6 @@ module sagammaretheta_d
   use constants, only : realtype, zero
   implicit none
   real(kind=realtype), dimension(:, :, :, :, :), allocatable :: qq
-  real(kind=realtype), save :: srcjacdiagmax=zero
 
 contains
   subroutine sagammaretheta_block(resonly)
@@ -137,7 +136,6 @@ contains
     use inputphysics
     use turbmod, only : dvt, vort, prod, kwcd, f1
     use inputdiscretization, only : approxsa
-    use inputiteration, only : srcdtrestrictactive
     use flowvarrefstate
     use turbutils_d, only : rethetatcorrelation, rethetatcorrelation_d, &
 &   flengthcorrelation, flengthcorrelation_d, rethetaccorrelation, &
@@ -269,6 +267,9 @@ contains
     real(kind=realtype) :: x2
     real(kind=realtype) :: x2d
     real(kind=realtype) :: x3
+    real(kind=realtype) :: x4
+    real(kind=realtype) :: y2
+    real(kind=realtype) :: z1
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -292,10 +293,16 @@ contains
     real(kind=realtype) :: max10d
     real(kind=realtype) :: max11
     real(kind=realtype) :: max11d
-    real(kind=realtype) :: abs0
     real(kind=realtype) :: max12
+    real(kind=realtype) :: abs0
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: abs6
+    real(kind=realtype) :: abs7
+    real(kind=realtype) :: abs8
     real(kind=realtype) :: result1
     real(kind=realtype) :: result1d
     real(kind=realtype) :: arg1
@@ -1095,26 +1102,68 @@ contains
           end do
         end do
       end do
-      srcjacdiagmax = zero
-      do k=kl,ke
-        do j=jl,je
-          do i=il,ie
+      do k=2,kl
+        do j=2,jl
+          do i=2,il
             if (qq(i, j, k, 1, 1) .ge. 0.) then
               abs0 = qq(i, j, k, 1, 1)
             else
               abs0 = -qq(i, j, k, 1, 1)
             end if
-            if (qq(i, j, k, 2, 2) .ge. 0.) then
-              abs1 = qq(i, j, k, 2, 2)
+            if (qq(i, j, k, 1, 2) .ge. 0.) then
+              abs3 = qq(i, j, k, 1, 2)
             else
-              abs1 = -qq(i, j, k, 2, 2)
+              abs3 = -qq(i, j, k, 1, 2)
+            end if
+            if (qq(i, j, k, 1, 3) .ge. 0.) then
+              abs6 = qq(i, j, k, 1, 3)
+            else
+              abs6 = -qq(i, j, k, 1, 3)
+            end if
+            x4 = abs0 + abs3 + abs6
+            if (qq(i, j, k, 2, 1) .ge. 0.) then
+              abs1 = qq(i, j, k, 2, 1)
+            else
+              abs1 = -qq(i, j, k, 2, 1)
+            end if
+            if (qq(i, j, k, 2, 2) .ge. 0.) then
+              abs4 = qq(i, j, k, 2, 2)
+            else
+              abs4 = -qq(i, j, k, 2, 2)
+            end if
+            if (qq(i, j, k, 2, 3) .ge. 0.) then
+              abs7 = qq(i, j, k, 2, 3)
+            else
+              abs7 = -qq(i, j, k, 2, 3)
+            end if
+            y2 = abs1 + abs4 + abs7
+            if (qq(i, j, k, 3, 1) .ge. 0.) then
+              abs2 = qq(i, j, k, 3, 1)
+            else
+              abs2 = -qq(i, j, k, 3, 1)
+            end if
+            if (qq(i, j, k, 3, 2) .ge. 0.) then
+              abs5 = qq(i, j, k, 3, 2)
+            else
+              abs5 = -qq(i, j, k, 3, 2)
             end if
             if (qq(i, j, k, 3, 3) .ge. 0.) then
-              abs2 = qq(i, j, k, 3, 3)
+              abs8 = qq(i, j, k, 3, 3)
             else
-              abs2 = -qq(i, j, k, 3, 3)
+              abs8 = -qq(i, j, k, 3, 3)
             end if
-            srcjacdiagmax = max(srcjacdiagmax, abs0, abs1, abs2)
+            z1 = abs2 + abs5 + abs8
+            if (x4 .lt. y2) then
+              if (y2 .lt. z1) then
+                srclambda(i, j, k) = z1
+              else
+                srclambda(i, j, k) = y2
+              end if
+            else if (x4 .lt. z1) then
+              srclambda(i, j, k) = z1
+            else
+              srclambda(i, j, k) = x4
+            end if
           end do
         end do
       end do
@@ -1134,7 +1183,6 @@ contains
     use inputphysics
     use turbmod, only : dvt, vort, prod, kwcd, f1
     use inputdiscretization, only : approxsa
-    use inputiteration, only : srcdtrestrictactive
     use flowvarrefstate
     use turbutils_d, only : rethetatcorrelation, flengthcorrelation, &
 &   rethetaccorrelation, smoothminmax
@@ -1235,6 +1283,9 @@ contains
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
+    real(kind=realtype) :: x4
+    real(kind=realtype) :: y2
+    real(kind=realtype) :: z1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1247,10 +1298,16 @@ contains
     real(kind=realtype) :: max9
     real(kind=realtype) :: max10
     real(kind=realtype) :: max11
-    real(kind=realtype) :: abs0
     real(kind=realtype) :: max12
+    real(kind=realtype) :: abs0
     real(kind=realtype) :: abs1
     real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: abs6
+    real(kind=realtype) :: abs7
+    real(kind=realtype) :: abs8
     real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
 ! set model constants
@@ -1648,26 +1705,68 @@ contains
           end do
         end do
       end do
-      srcjacdiagmax = zero
-      do k=kl,ke
-        do j=jl,je
-          do i=il,ie
+      do k=2,kl
+        do j=2,jl
+          do i=2,il
             if (qq(i, j, k, 1, 1) .ge. 0.) then
               abs0 = qq(i, j, k, 1, 1)
             else
               abs0 = -qq(i, j, k, 1, 1)
             end if
-            if (qq(i, j, k, 2, 2) .ge. 0.) then
-              abs1 = qq(i, j, k, 2, 2)
+            if (qq(i, j, k, 1, 2) .ge. 0.) then
+              abs3 = qq(i, j, k, 1, 2)
             else
-              abs1 = -qq(i, j, k, 2, 2)
+              abs3 = -qq(i, j, k, 1, 2)
+            end if
+            if (qq(i, j, k, 1, 3) .ge. 0.) then
+              abs6 = qq(i, j, k, 1, 3)
+            else
+              abs6 = -qq(i, j, k, 1, 3)
+            end if
+            x4 = abs0 + abs3 + abs6
+            if (qq(i, j, k, 2, 1) .ge. 0.) then
+              abs1 = qq(i, j, k, 2, 1)
+            else
+              abs1 = -qq(i, j, k, 2, 1)
+            end if
+            if (qq(i, j, k, 2, 2) .ge. 0.) then
+              abs4 = qq(i, j, k, 2, 2)
+            else
+              abs4 = -qq(i, j, k, 2, 2)
+            end if
+            if (qq(i, j, k, 2, 3) .ge. 0.) then
+              abs7 = qq(i, j, k, 2, 3)
+            else
+              abs7 = -qq(i, j, k, 2, 3)
+            end if
+            y2 = abs1 + abs4 + abs7
+            if (qq(i, j, k, 3, 1) .ge. 0.) then
+              abs2 = qq(i, j, k, 3, 1)
+            else
+              abs2 = -qq(i, j, k, 3, 1)
+            end if
+            if (qq(i, j, k, 3, 2) .ge. 0.) then
+              abs5 = qq(i, j, k, 3, 2)
+            else
+              abs5 = -qq(i, j, k, 3, 2)
             end if
             if (qq(i, j, k, 3, 3) .ge. 0.) then
-              abs2 = qq(i, j, k, 3, 3)
+              abs8 = qq(i, j, k, 3, 3)
             else
-              abs2 = -qq(i, j, k, 3, 3)
+              abs8 = -qq(i, j, k, 3, 3)
             end if
-            srcjacdiagmax = max(srcjacdiagmax, abs0, abs1, abs2)
+            z1 = abs2 + abs5 + abs8
+            if (x4 .lt. y2) then
+              if (y2 .lt. z1) then
+                srclambda(i, j, k) = z1
+              else
+                srclambda(i, j, k) = y2
+              end if
+            else if (x4 .lt. z1) then
+              srclambda(i, j, k) = z1
+            else
+              srclambda(i, j, k) = x4
+            end if
           end do
         end do
       end do
@@ -2877,9 +2976,8 @@ contains
     real(kind=realtype) :: rblank, factor
     real(kind=realtype) :: gammanew, gammadelta, dampfactor
     integer(kind=inttype) :: mm
-! eigenvalue-based dt cap variables
-    real(kind=realtype) :: lambda_eig, dt_cap_inv
-    real(kind=realtype) :: j2(2, 2), j3(3, 3)
+! source dt restriction (eq. 59)
+    real(kind=realtype) :: dt_inv
 ! scaling values from existing turbulence residual scaling options
     real(kind=realtype) :: scalenu, scalegamma, scaleretheta
 ! scaling ratios (precomputed from scaling values)
@@ -2984,56 +3082,12 @@ contains
               qq(i, j, k, 2, 1) = zero
               qq(i, j, k, 3, 1) = zero
             end if
-! eigenvalue-based source dt restriction (eq. 59)
-            if (transitionsrcdtrestrict .and. srcdtrestrictactive .and. &
-&               turbdadicoupled .gt. 0) then
-              if (turbdadicoupled .eq. 1) then
-! 2x2 eigenvalue of gamma-retheta sub-block
-                j2(1, 1) = qq(i, j, k, 2, 2)
-                j2(1, 2) = qq(i, j, k, 2, 3)
-                j2(2, 1) = qq(i, j, k, 3, 2)
-                j2(2, 2) = qq(i, j, k, 3, 3)
-                lambda_eig = maxposeigenvalue2x2(j2)
-                dt_cap_inv = lambda_eig/rsagrsrcdtlimit
-                if (qq(i, j, k, 2, 2) .lt. dt_cap_inv) then
-                  qq(i, j, k, 2, 2) = dt_cap_inv
-                else
-                  qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2)
-                end if
-                if (qq(i, j, k, 3, 3) .lt. dt_cap_inv) then
-                  qq(i, j, k, 3, 3) = dt_cap_inv
-                else
-                  qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3)
-                end if
-              else
-! full 3x3 eigenvalue
-                j3(1, 1) = qq(i, j, k, 1, 1)
-                j3(1, 2) = qq(i, j, k, 1, 2)
-                j3(1, 3) = qq(i, j, k, 1, 3)
-                j3(2, 1) = qq(i, j, k, 2, 1)
-                j3(2, 2) = qq(i, j, k, 2, 2)
-                j3(2, 3) = qq(i, j, k, 2, 3)
-                j3(3, 1) = qq(i, j, k, 3, 1)
-                j3(3, 2) = qq(i, j, k, 3, 2)
-                j3(3, 3) = qq(i, j, k, 3, 3)
-                lambda_eig = maxposeigenvalue3x3(j3)
-                dt_cap_inv = lambda_eig/rsagrsrcdtlimit
-                if (qq(i, j, k, 1, 1) .lt. dt_cap_inv) then
-                  qq(i, j, k, 1, 1) = dt_cap_inv
-                else
-                  qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1)
-                end if
-                if (qq(i, j, k, 2, 2) .lt. dt_cap_inv) then
-                  qq(i, j, k, 2, 2) = dt_cap_inv
-                else
-                  qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2)
-                end if
-                if (qq(i, j, k, 3, 3) .lt. dt_cap_inv) then
-                  qq(i, j, k, 3, 3) = dt_cap_inv
-                else
-                  qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3)
-                end if
-              end if
+! source dt restriction (eq. 59): additive i/δt inflation
+            if (transitionsrcdtrestrict .and. srcdtrestrictactive) then
+              dt_inv = srclambda(i, j, k)/transitionsrcdtlimit
+              qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + dt_inv
+              qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + dt_inv
+              qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + dt_inv
             end if
 ! symmetric scaling (§4): qq(m,n) *= s_n / s_m
 ! diagonal entries unchanged; only off-diag scaled.
@@ -3545,107 +3599,6 @@ contains
       end do
     end if
   end subroutine sagammarethetasolve
-
-  function maxposeigenvalue2x2(a) result (lambda_max)
-    use constants, only : realtype, zero
-    implicit none
-    real(kind=realtype), intent(in) :: a(2, 2)
-    real(kind=realtype) :: lambda_max
-    real(kind=realtype) :: tr, det, disc, sq, l1, l2
-    intrinsic max
-    intrinsic sqrt
-    real(kind=realtype) :: max1
-    tr = a(1, 1) + a(2, 2)
-    det = a(1, 1)*a(2, 2) - a(1, 2)*a(2, 1)
-    disc = tr*tr - 4.0_realtype*det
-    if (disc .lt. zero) then
-      max1 = zero
-    else
-      max1 = disc
-    end if
-    sq = sqrt(max1)
-    l1 = (tr+sq)*0.5_realtype
-    l2 = (tr-sq)*0.5_realtype
-    if (l1 .lt. l2) then
-      if (l2 .lt. zero) then
-        lambda_max = zero
-      else
-        lambda_max = l2
-      end if
-    else if (l1 .lt. zero) then
-      lambda_max = zero
-    else
-      lambda_max = l1
-    end if
-  end function maxposeigenvalue2x2
-
-  function maxposeigenvalue3x3(a) result (lambda_max)
-    use constants, only : realtype, zero, one, two, three
-    implicit none
-    real(kind=realtype), intent(in) :: a(3, 3)
-    real(kind=realtype) :: lambda_max
-    real(kind=realtype) :: a2, a1, a0, q, r, theta, sq
-    real(kind=realtype) :: l1, l2, l3
-    real(kind=realtype), parameter :: pi=3.141592653589793_realtype
-    real(kind=realtype), parameter :: third=one/three
-    intrinsic max
-    intrinsic sqrt
-    intrinsic min
-    intrinsic acos
-    intrinsic cos
-    real(kind=realtype) :: y1
-    real(kind=realtype) :: y2
-    real(kind=realtype) :: max1
-    real(kind=realtype) :: max2
-    real(kind=realtype) :: max3
-    real(kind=realtype) :: arg1
-! characteristic polynomial: lambda^3 + a2*lambda^2 + a1*lambda + a0 = 0
-    a2 = -(a(1, 1)+a(2, 2)+a(3, 3))
-    a1 = a(1, 1)*a(2, 2) + a(1, 1)*a(3, 3) + a(2, 2)*a(3, 3) - a(1, 2)*a&
-&     (2, 1) - a(1, 3)*a(3, 1) - a(2, 3)*a(3, 2)
-    a0 = -(a(1, 1)*(a(2, 2)*a(3, 3)-a(2, 3)*a(3, 2))-a(1, 2)*(a(2, 1)*a(&
-&     3, 3)-a(2, 3)*a(3, 1))+a(1, 3)*(a(2, 1)*a(3, 2)-a(2, 2)*a(3, 1)))
-! cardano via trigonometric method (all roots real for real symmetric-ish matrices)
-    q = (three*a1-a2*a2)/9.0_realtype
-    r = (9.0_realtype*a2*a1-27.0_realtype*a0-two*a2*a2*a2)/54.0_realtype
-! disc = q^3 + r^2; if disc <= 0, three real roots
-    if (q*q*q + r*r .le. zero) then
-      if (-q .lt. zero) then
-        max1 = zero
-      else
-        max1 = -q
-      end if
-      sq = sqrt(max1)
-      if (sq*sq*sq .lt. 1.0e-30_realtype) then
-        max3 = 1.0e-30_realtype
-      else
-        max3 = sq*sq*sq
-      end if
-      y2 = r/max3
-      if (one .gt. y2) then
-        y1 = y2
-      else
-        y1 = one
-      end if
-      if (-one .lt. y1) then
-        max2 = y1
-      else
-        max2 = -one
-      end if
-      theta = acos(max2)
-      l1 = two*sq*cos(theta*third) - a2*third
-      arg1 = (theta+two*pi)*third
-      l2 = two*sq*cos(arg1) - a2*third
-      arg1 = (theta+4.0_realtype*pi)*third
-      l3 = two*sq*cos(arg1) - a2*third
-    else
-! fallback: use diagonal entries as approximation
-      l1 = a(1, 1)
-      l2 = a(2, 2)
-      l3 = a(3, 3)
-    end if
-    lambda_max = max(l1, l2, l3, zero)
-  end function maxposeigenvalue3x3
 
 end module sagammaretheta_d
 
