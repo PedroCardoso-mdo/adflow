@@ -2339,12 +2339,12 @@ contains
         use flowVarRefState, only: nw, nwf, nt1, nt2, nwt
         use blockPointers, only: nDom, volRef, il, jl, kl, w, dw, dtl, globalCell
         use inputTimeSpectral, only: nTimeIntervalsSpectral
-        use inputIteration, only: turbResScale, transitionSrcDtRestrict, srcDtRestrictActive
+        use inputIteration, only: turbResScale, transitionSrcDtRestrict
         use inputADjoint, only: viscPC
         use inputDiscretization, only: approxSA
         use iteration, only: totalR0, totalR
         use paramTurb, only: rsaGRsrcDtLimit
-        use saGammaReTheta, only: srcJacDiagMax
+        use saGammaReTheta, only: srcLambdaMax
         use utils, only: EChk, setPointers
         use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP
         use communication
@@ -2390,8 +2390,8 @@ contains
 
         ! Source-term dt restriction for Turb-ANK (Eq. 59)
         ANK_CFL_eff = ANK_CFL
-        if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
-            call mpi_allreduce(srcJacDiagMax, srcDiagMaxGlobal, 1, adflow_real, &
+        if (transitionSrcDtRestrict .and. nwt == 3) then
+            call mpi_allreduce(srcLambdaMax, srcDiagMaxGlobal, 1, adflow_real, &
                                MPI_MAX, adflow_comm_world, ierr)
             CFL_cap = rsaGRsrcDtLimit / max(srcDiagMaxGlobal, 1.0e-30_realType)
             ANK_CFL_eff = min(ANK_CFL, CFL_cap)
@@ -3442,8 +3442,7 @@ contains
 
         use constants
         use blockPointers, only: nDom, flowDoms
-        use inputIteration, only: L2conv, transitionSrcDtRestrict, &
-            srcDtRestrictActive, noBacktrackCount
+        use inputIteration, only: L2conv, transitionSrcDtRestrict
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, currentLevel
@@ -3466,10 +3465,8 @@ contains
         real(kind=alwaysRealType) :: rtol, totalR_dummy, linearRes, norm
         real(kind=alwaysRealType) :: resHist(ANK_maxIter + 1)
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old
-        real(kind=alwaysRealType) :: linResMonitorTurb, totalRTurb, totalRTurbOld
+        real(kind=alwaysRealType) :: linResMonitorTurb, totalRTurb
         logical :: correctForK, LSFailed
-
-        totalRTurbOld = huge(1.0_alwaysRealType)
 
         ! Calculate the residuals and set rVecTurb before the first iteration
         call blocketteRes(useFlowRes=.False., useStoreWall=.False.)
@@ -3724,20 +3721,6 @@ contains
             if (myid == 0 .and. ANK_turbDebug) then
                 Write (*, *) "LIN RES, ITER, INITRES, REASON, STEP", linResMonitorTurb, kspIterations, &
                     reshist(1), reason, lambdaTurb
-            end if
-
-            ! 5-iter deactivation switch for source-term dt restriction (§IV.B)
-            if (transitionSrcDtRestrict) then
-                if (LSFailed .or. totalRTurb > totalRTurbOld) then
-                    noBacktrackCount = 0
-                    srcDtRestrictActive = .true.
-                else
-                    noBacktrackCount = noBacktrackCount + 1
-                    if (noBacktrackCount >= 5 .and. totalRTurb > 1.0e-5_alwaysRealType) then
-                        srcDtRestrictActive = .false.
-                    end if
-                end if
-                totalRTurbOld = totalRTurb
             end if
 
         end do

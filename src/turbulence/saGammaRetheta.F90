@@ -58,7 +58,8 @@ module saGammaReTheta
     use constants, only: realType, zero
 
     real(kind=realType), dimension(:, :, :, :, :), allocatable :: qq
-    real(kind=realType) :: srcJacDiagMax = zero
+    real(kind=realType), dimension(:, :, :), allocatable :: srcLambda
+    real(kind=realType) :: srcLambdaMax = zero
 
 contains
 
@@ -90,6 +91,7 @@ contains
 
         ! Alloc central jacobian memory
         allocate (qq(2:il,2:jl,2:kl,3,3))
+        allocate (srcLambda(2:il,2:jl,2:kl))
 
         ! Source Terms
         call Source
@@ -135,6 +137,7 @@ contains
             call applyAllTurbBCThisBlock(.true.)
         end if
         deallocate (qq)
+        deallocate (srcLambda)
 
     end subroutine saGammaReTheta_block
 
@@ -155,7 +158,6 @@ contains
         use inputPhysics
         use turbMod, only: dvt, vort, prod, kwCD, f1
         use inputDiscretization, only: approxSA
-        use inputIteration, only: srcDtRestrictActive
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         implicit none
@@ -642,14 +644,6 @@ contains
                                          * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
                                          - rsaCw1 * dfw)
 
-                        ! Source dt restriction (§2): when production dominates
-                        ! (qq < 0), set qq = |qq|/0.9 instead of clipping to zero.
-                        ! This ensures lambda_source * dt <= 0.9.
-                        if (srcDtRestrictActive) then
-                        qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), &
-                            -qq(i, j, k, 1, 1) / rsaGRsrcDtLimit)
-                        end if
-
                         ! Full gamma source Jacobian: -d(pGamma - eGamma)/dgamma
                         ! Includes both production and destruction linearization.
                         qq(i, j, k, 2, 2) = rsaGRca1 * fLength_val * fOnset &
@@ -658,12 +652,6 @@ contains
                             / sqrt(max(gammaLocal, xminn)) &
                             + rsaGRca2 * fTurb_val * vortMagLim &
                             * (two * rsaGRce2 * gammaLocal - one)
-
-                        ! Source dt restriction for gamma equation.
-                        if (srcDtRestrictActive) then
-                        qq(i, j, k, 2, 2) = max(qq(i, j, k, 2, 2), &
-                            -qq(i, j, k, 2, 2) / rsaGRsrcDtLimit)
-                        end if
 
                         ! ReTheta Jacobian diagonal: -dP_theta/dReTheta_tilde
                         ! Always >= 0 (relaxation), so restriction is a no-op.
@@ -742,14 +730,15 @@ contains
         end do
 #endif
 
-        srcJacDiagMax = zero
-        do k = kl, ke
-            do j = jl, je
-                do i = il, ie
-                    srcJacDiagMax = max(srcJacDiagMax, &
-                        abs(qq(i,j,k,1,1)), &
-                        abs(qq(i,j,k,2,2)), &
-                        abs(qq(i,j,k,3,3)))
+        srcLambdaMax = zero
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    srcLambda(i,j,k) = max( &
+                        abs(qq(i,j,k,1,1)) + abs(qq(i,j,k,1,2)) + abs(qq(i,j,k,1,3)), &
+                        abs(qq(i,j,k,2,1)) + abs(qq(i,j,k,2,2)) + abs(qq(i,j,k,2,3)), &
+                        abs(qq(i,j,k,3,1)) + abs(qq(i,j,k,3,2)) + abs(qq(i,j,k,3,3)))
+                    srcLambdaMax = max(srcLambdaMax, srcLambda(i,j,k))
                 end do
             end do
         end do
@@ -1500,9 +1489,8 @@ contains
         real(kind=realType) :: gammaNew, gammaDelta, dampFactor
         integer(kind=intType) :: mm
 
-        ! Eigenvalue-based dt cap variables
-        real(kind=realType) :: lambda_eig, dt_cap_inv
-        real(kind=realType) :: J2(2,2), J3(3,3)
+        ! Source dt restriction (Eq. 59)
+        real(kind=realType) :: dt_inv
 
         ! Scaling values from existing turbulence residual scaling options
         real(kind=realType) :: scaleNu, scaleGamma, scaleReTheta
@@ -1574,28 +1562,11 @@ contains
                         qq(i, j, k, 3, 1) = zero
                     end if
 
-                    ! Eigenvalue-based source dt restriction (Eq. 59)
-                    if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. TurbDADICoupled > 0) then
-                        if (TurbDADICoupled == 1) then
-                            ! 2x2 eigenvalue of gamma-ReTheta sub-block
-                            J2(1,1) = qq(i,j,k,2,2); J2(1,2) = qq(i,j,k,2,3)
-                            J2(2,1) = qq(i,j,k,3,2); J2(2,2) = qq(i,j,k,3,3)
-                            lambda_eig = maxPosEigenvalue2x2(J2)
-                            dt_cap_inv = lambda_eig / rsaGRsrcDtLimit
-                            qq(i,j,k,2,2) = max(qq(i,j,k,2,2), dt_cap_inv)
-                            qq(i,j,k,3,3) = max(qq(i,j,k,3,3), dt_cap_inv)
-                        else
-                            ! Full 3x3 eigenvalue
-                            J3(1,1) = qq(i,j,k,1,1); J3(1,2) = qq(i,j,k,1,2); J3(1,3) = qq(i,j,k,1,3)
-                            J3(2,1) = qq(i,j,k,2,1); J3(2,2) = qq(i,j,k,2,2); J3(2,3) = qq(i,j,k,2,3)
-                            J3(3,1) = qq(i,j,k,3,1); J3(3,2) = qq(i,j,k,3,2); J3(3,3) = qq(i,j,k,3,3)
-                            lambda_eig = maxPosEigenvalue3x3(J3)
-                            dt_cap_inv = lambda_eig / rsaGRsrcDtLimit
-                            qq(i,j,k,1,1) = max(qq(i,j,k,1,1), dt_cap_inv)
-                            qq(i,j,k,2,2) = max(qq(i,j,k,2,2), dt_cap_inv)
-                            qq(i,j,k,3,3) = max(qq(i,j,k,3,3), dt_cap_inv)
-                        end if
-                    end if
+                    ! Source dt restriction (Eq. 59): additive I/Δt inflation
+                    dt_inv = srcLambda(i,j,k) / rsaGRsrcDtLimit
+                    qq(i,j,k,1,1) = qq(i,j,k,1,1) + dt_inv
+                    qq(i,j,k,2,2) = qq(i,j,k,2,2) + dt_inv
+                    qq(i,j,k,3,3) = qq(i,j,k,3,3) + dt_inv
 
                     ! Symmetric scaling (§4): qq(m,n) *= s_n / s_m
                     ! Diagonal entries unchanged; only off-diag scaled.
@@ -2098,62 +2069,5 @@ contains
         end do
 
     end subroutine saGammaReThetaSolve
-
-    function maxPosEigenvalue2x2(A) result(lambda_max)
-        use constants, only: realType, zero
-        implicit none
-        real(kind=realType), intent(in) :: A(2,2)
-        real(kind=realType) :: lambda_max
-        real(kind=realType) :: tr, det, disc, sq, l1, l2
-
-        tr = A(1,1) + A(2,2)
-        det = A(1,1)*A(2,2) - A(1,2)*A(2,1)
-        disc = tr*tr - 4.0_realType*det
-        sq = sqrt(max(disc, zero))
-        l1 = (tr + sq) * 0.5_realType
-        l2 = (tr - sq) * 0.5_realType
-        lambda_max = max(l1, l2, zero)
-    end function maxPosEigenvalue2x2
-
-    function maxPosEigenvalue3x3(A) result(lambda_max)
-        use constants, only: realType, zero, one, two, three
-        implicit none
-        real(kind=realType), intent(in) :: A(3,3)
-        real(kind=realType) :: lambda_max
-        real(kind=realType) :: a2, a1, a0, Q, R, theta, sq
-        real(kind=realType) :: l1, l2, l3
-        real(kind=realType), parameter :: pi = 3.141592653589793_realType
-        real(kind=realType), parameter :: third = one / three
-
-        ! Characteristic polynomial: lambda^3 + a2*lambda^2 + a1*lambda + a0 = 0
-        a2 = -(A(1,1) + A(2,2) + A(3,3))
-
-        a1 = A(1,1)*A(2,2) + A(1,1)*A(3,3) + A(2,2)*A(3,3) &
-           - A(1,2)*A(2,1) - A(1,3)*A(3,1) - A(2,3)*A(3,2)
-
-        a0 = -(A(1,1)*(A(2,2)*A(3,3) - A(2,3)*A(3,2)) &
-             - A(1,2)*(A(2,1)*A(3,3) - A(2,3)*A(3,1)) &
-             + A(1,3)*(A(2,1)*A(3,2) - A(2,2)*A(3,1)))
-
-        ! Cardano via trigonometric method (all roots real for real symmetric-ish matrices)
-        Q = (three*a1 - a2*a2) / 9.0_realType
-        R = (9.0_realType*a2*a1 - 27.0_realType*a0 - two*a2*a2*a2) / 54.0_realType
-
-        ! disc = Q^3 + R^2; if disc <= 0, three real roots
-        if (Q*Q*Q + R*R <= zero) then
-            sq = sqrt(max(-Q, zero))
-            theta = acos(max(-one, min(one, R / max(sq*sq*sq, 1.0e-30_realType))))
-            l1 = two*sq*cos(theta * third) - a2*third
-            l2 = two*sq*cos((theta + two*pi) * third) - a2*third
-            l3 = two*sq*cos((theta + 4.0_realType*pi) * third) - a2*third
-        else
-            ! Fallback: use diagonal entries as approximation
-            l1 = A(1,1)
-            l2 = A(2,2)
-            l3 = A(3,3)
-        end if
-
-        lambda_max = max(l1, l2, l3, zero)
-    end function maxPosEigenvalue3x3
 
 end module saGammaReTheta

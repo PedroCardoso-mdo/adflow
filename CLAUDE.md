@@ -19,23 +19,7 @@ the end, not task-by-task.
 
 ## Per-Task Workflow
 
-For every task you are asked to do:
 
-1. Read this file (auto-loaded) plus the ONE task block from
-   `03_IMPLEMENTATION_PLAN.md` matching the requested T-ID.
-2. Read other files (`01_PAPER_REFERENCE.md`, `04_ARCHITECTURE.md`, etc.)
-   ONLY if the task block's `Context:` line says to.
-3. Make the edits described in the task block.
-4. Run `cd build && make -j`. Fix any compile errors. Iterate until clean.
-5. Update the corresponding row in `02_IMPLEMENTATION_STATUS.md`.
-6. Commit: `git commit -am "T-ID: short msg"`.
-7. End your turn with one of these status lines, exactly:
-   - `STATUS: TAPENADE NEEDED` — task touched AD-relevant code; user reruns
-     Tapenade then `make`, then the smoke script.
-   - `STATUS: READY TO RUN` — no AD impact; user runs `make` (if not
-     already run) then the smoke script.
-   - `STATUS: BLOCKED — <reason>` — could not finish, need user input.
-8. Stop. Do not start the next task. The user will `/clear` and start fresh.
 
 ## Hard Rules
 
