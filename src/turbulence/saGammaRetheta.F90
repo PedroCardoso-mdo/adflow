@@ -685,15 +685,16 @@ contains
                         ! rTurb = nu_tilde * fv1 / nu
                         drTurb_dnu = (fv1 + chi * dfv1) / nu
 
-                        ! dfTurb/dnu = dfTurb/drTurb * drTurb/dnu
-                        dfTurb_dnu = -fTurb_val * drTurb_dnu
-
                         ! dfOnset/dnu = dfOnset/dfOnset1 * dfOnset1/drTurb * drTurb/dnu
                         ! fOnset1 = sqrt((reS/(2.6*reThetaC))^2 + rTurb^2)
                         dfOnset1_drT = rTurb / max(fOnset1, xminn)
                         ! fOnset = 0.5*(tanh(6*(fOnset1-1.35))+1)
                         dfOnset_dfOnset1 = 12.0_realType * fOnset * (one - fOnset)
                         dfOnset_dnu = dfOnset_dfOnset1 * dfOnset1_drT * drTurb_dnu
+
+                        ! dfTurb/dnu: fTurb = (1-fOnset)*exp(-rTurb)
+                        ! Full chain rule: d/dnu = d/dfOnset*dfOnset/dnu + d/drTurb*drTurb/dnu
+                        dfTurb_dnu = -exp(-rTurb) * dfOnset_dnu - fTurb_val * drTurb_dnu
 
                         ! -d(pGamma - eGamma)/dnu_tilde
                         qq(i, j, k, 2, 1) = &

@@ -2125,6 +2125,7 @@ nadvloopspectral:do ii=1,nadv
 !       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
 !
     use constants, only : realtype, one
+    use paramturb, only : rsagrpmax, rsagrpmin
     implicit none
     real(kind=realtype), intent(in) :: tu, lambdatheta
     real(kind=realtype), intent(in) :: lambdathetad
@@ -2136,8 +2137,6 @@ nadvloopspectral:do ii=1,nadv
     real(kind=8) :: temp
     real(realtype) :: temp0
     real(kind=realtype) :: temp1
-    real(kind=realtype) :: rsagrpmax
-    real(kind=realtype) :: rsagrpmin
     tu_safe = smoothminmax(tu, 0.027_realtype, rsagrpmax)
 ! --- smooth f(lambda_theta) eqs. 54-57 ---
 ! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
@@ -2186,14 +2185,13 @@ nadvloopspectral:do ii=1,nadv
 !       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
 !
     use constants, only : realtype, one
+    use paramturb, only : rsagrpmax, rsagrpmin
     implicit none
     real(kind=realtype), intent(in) :: tu, lambdatheta
     real(kind=realtype) :: rethetat
     real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
     intrinsic exp
     real(kind=realtype) :: arg1
-    real(kind=realtype) :: rsagrpmax
-    real(kind=realtype) :: rsagrpmin
     tu_safe = smoothminmax(tu, 0.027_realtype, rsagrpmax)
 ! --- smooth f(lambda_theta) eqs. 54-57 ---
 ! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
