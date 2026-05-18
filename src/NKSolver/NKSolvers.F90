@@ -2337,14 +2337,12 @@ contains
 
         use constants
         use flowVarRefState, only: nw, nwf, nt1, nt2, nwt
-        use blockPointers, only: nDom, volRef, il, jl, kl, w, dw, dtl, globalCell
+        use blockPointers, only: nDom, volRef, il, jl, kl, w, dw, dtl, globalCell, srcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
-        use inputIteration, only: turbResScale, transitionSrcDtRestrict
+        use inputIteration, only: turbResScale, transitionSrcDtRestrict, transitionSrcDtLimit, srcDtRestrictActive
         use inputADjoint, only: viscPC
         use inputDiscretization, only: approxSA
         use iteration, only: totalR0, totalR
-        use paramTurb, only: rsaGRsrcDtLimit
-        use saGammaReTheta, only: srcLambdaMax
         use utils, only: EChk, setPointers
         use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP
         use communication
@@ -2354,10 +2352,9 @@ contains
         character(len=maxStringLen) :: preConSide, localPCType, kspObjectType, globalPCType, localOrdering
         integer(kind=intType) :: ierr
         logical :: useAD, usePC, useTranspose, useObjective, tmp, frozenTurb
-        real(kind=realType) :: dtinv, rho
+        real(kind=realType) :: dtinv, rho, dtinv_src
         integer(kind=intType) :: i, j, k, l, l1, ii, irow, nn, sps, outerPreConIts, subspace
         real(kind=realType), dimension(:, :), allocatable :: blk
-        real(kind=realType) :: srcDiagMaxGlobal, CFL_cap, ANK_CFL_eff
 
         ! Assemble the approximate PC (fine level, level 1)
         useAD = ANK_ADPC
@@ -2388,15 +2385,6 @@ contains
         ! for each cell, and zero entries will remain zero.
         blk = zero
 
-        ! Source-term dt restriction for Turb-ANK (Eq. 59)
-        ANK_CFL_eff = ANK_CFL
-        if (transitionSrcDtRestrict .and. nwt == 3) then
-            call mpi_allreduce(srcLambdaMax, srcDiagMaxGlobal, 1, adflow_real, &
-                               MPI_MAX, adflow_comm_world, ierr)
-            CFL_cap = rsaGRsrcDtLimit / max(srcDiagMaxGlobal, 1.0e-30_realType)
-            ANK_CFL_eff = min(ANK_CFL, CFL_cap)
-        end if
-
         ! For the coupled solver, CFL number for the turbulent variable needs scaling
         ! because the residuals are scaled, and additional scaling of the time step
         ! for the turbulence variable might be required.
@@ -2408,8 +2396,14 @@ contains
                     do j = 2, jl
                         do i = 2, il
 
-                            ! See the comment for the same calculation above
-                            dtinv = one / (ANK_CFL_eff * dtl(i, j, k) * volRef(i, j, k))
+                            ! Base dtinv from CFL
+                            dtinv = one / (ANK_CFL * dtl(i, j, k) * volRef(i, j, k))
+
+                            ! Per-cell source dt restriction (Eq. 59)
+                            if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
+                                dtinv_src = srcLambda(i, j, k) / transitionSrcDtLimit
+                                dtinv = max(dtinv, dtinv_src)
+                            end if
 
                             do l = nt1, nt2
 

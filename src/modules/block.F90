@@ -665,6 +665,7 @@ module block
         real(kind=realType), dimension(:, :, :), pointer :: d2Wall, filterDES
         real(kind=realType), dimension(:, :, :), pointer :: intermittency
         real(kind=realType), dimension(:, :, :, :), pointer :: transitionDebug
+        real(kind=realType), dimension(:, :, :), pointer :: srcLambda
 
         ! bmti1(je,ke,nt1:nt2,nt1:nt2): Matrix used for the implicit
         !                               boundary condition treatment of

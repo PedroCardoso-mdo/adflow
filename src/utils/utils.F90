@@ -3481,6 +3481,7 @@ contains
 
         d2Wall => flowDoms(nn, mm, ll)%d2Wall
         transitionDebug => flowDoms(nn, mm, ll)%transitionDebug
+        srcLambda => flowDoms(nn, mm, ll)%srcLambda
         filterDES => flowDoms(nn, mm, ll)%filterDES  ! eran-des
 
         ! Arrays used for the implicit treatment of the turbulent wall
@@ -5455,6 +5456,10 @@ contains
 
         if (associated(flowDoms(nn, level, sps)%transitionDebug)) &
             deallocate (flowDoms(nn, level, sps)%transitionDebug, stat=ierr)
+        if (ierr /= 0) deallocationFailure = .true.
+
+        if (associated(flowDoms(nn, level, sps)%srcLambda)) &
+            deallocate (flowDoms(nn, level, sps)%srcLambda, stat=ierr)
         if (ierr /= 0) deallocationFailure = .true.
 
         if (associated(flowDoms(nn, level, sps)%bmti1)) &

@@ -524,6 +524,12 @@ contains
                     call terminate("allocMemFlovarPart1", &
                                    "Memory allocation failure for transitionDebug")
                 flowDoms(nn, level, sps)%transitionDebug = zero
+
+                allocate (flowDoms(nn, level, sps)%srcLambda(2:il, 2:jl, 2:kl), stat=ierr)
+                if (ierr /= 0) &
+                    call terminate("allocMemFlovarPart1", &
+                                   "Memory allocation failure for srcLambda")
+                flowDoms(nn, level, sps)%srcLambda = zero
             end if
 
             ! If this is the finest grid some more memory must be allocated.

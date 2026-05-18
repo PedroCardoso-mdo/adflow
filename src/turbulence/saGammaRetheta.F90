@@ -58,8 +58,6 @@ module saGammaReTheta
     use constants, only: realType, zero
 
     real(kind=realType), dimension(:, :, :, :, :), allocatable :: qq
-    real(kind=realType), dimension(:, :, :), allocatable :: srcLambda
-    real(kind=realType) :: srcLambdaMax = zero
 
 contains
 
@@ -91,7 +89,6 @@ contains
 
         ! Alloc central jacobian memory
         allocate (qq(2:il,2:jl,2:kl,3,3))
-        allocate (srcLambda(2:il,2:jl,2:kl))
 
         ! Source Terms
         call Source
@@ -137,7 +134,6 @@ contains
             call applyAllTurbBCThisBlock(.true.)
         end if
         deallocate (qq)
-        deallocate (srcLambda)
 
     end subroutine saGammaReTheta_block
 
@@ -730,7 +726,6 @@ contains
         end do
 #endif
 
-        srcLambdaMax = zero
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
@@ -738,7 +733,6 @@ contains
                         abs(qq(i,j,k,1,1)) + abs(qq(i,j,k,1,2)) + abs(qq(i,j,k,1,3)), &
                         abs(qq(i,j,k,2,1)) + abs(qq(i,j,k,2,2)) + abs(qq(i,j,k,2,3)), &
                         abs(qq(i,j,k,3,1)) + abs(qq(i,j,k,3,2)) + abs(qq(i,j,k,3,3)))
-                    srcLambdaMax = max(srcLambdaMax, srcLambda(i,j,k))
                 end do
             end do
         end do
@@ -1563,10 +1557,12 @@ contains
                     end if
 
                     ! Source dt restriction (Eq. 59): additive I/Δt inflation
-                    dt_inv = srcLambda(i,j,k) / rsaGRsrcDtLimit
-                    qq(i,j,k,1,1) = qq(i,j,k,1,1) + dt_inv
-                    qq(i,j,k,2,2) = qq(i,j,k,2,2) + dt_inv
-                    qq(i,j,k,3,3) = qq(i,j,k,3,3) + dt_inv
+                    if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+                        dt_inv = srcLambda(i,j,k) / transitionSrcDtLimit
+                        qq(i,j,k,1,1) = qq(i,j,k,1,1) + dt_inv
+                        qq(i,j,k,2,2) = qq(i,j,k,2,2) + dt_inv
+                        qq(i,j,k,3,3) = qq(i,j,k,3,3) + dt_inv
+                    end if
 
                     ! Symmetric scaling (§4): qq(m,n) *= s_n / s_m
                     ! Diagonal entries unchanged; only off-diag scaled.
