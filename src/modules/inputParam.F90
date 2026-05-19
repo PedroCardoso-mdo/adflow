@@ -303,8 +303,6 @@ module inputIteration
     logical :: transitionSrcDtRestrict = .true.
     real(kind=realType) :: transitionSrcDtLimit = 0.9_realType
     logical :: srcDtRestrictActive = .true.
-    ! transitionSrcDtEigMode: 0=gershgorin, 1=eigenvalue (default)
-    integer(kind=intType) :: transitionSrcDtEigMode = 1
     ! srcDtDeactivateIters: deactivate after N clean inexact-Newton iters (P&Z §IV.B.3)
     integer(kind=intType) :: srcDtDeactivateIters = 5
     integer(kind=intType) :: noBacktrackCount = 0

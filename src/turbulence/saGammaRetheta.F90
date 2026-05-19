@@ -2270,6 +2270,8 @@ contains
                  * (rsaGRce2 * gammaLocal - one)
 
         ! A(2,3) = +∂S_gamma/∂ReThetaTilde via one-sided FD
+        ! NOTE: A(2,3) is computed but not used in eigenvalue formulas while A32=0
+        ! (triangular structure). Kept for potential future 3x3 reactivation.
         epsRT = max(1.0e-4_realType * reThetaTilde, 1.0e-2_realType)
         reThetaTilde_p = reThetaTilde + epsRT
         reThetaC_p = rethetacCorrelation(reThetaTilde_p)
@@ -2302,44 +2304,36 @@ contains
         ! Calls evalSrcJacBlock to get A_source = ∂S/∂Q (source-only Jacobian).
         ! Independent of qq — safe to call when qq is deallocated or contaminated.
         !
-        ! mode (from paramTurb):
-        !   srcLambdaModeDecoupled  (0): srcLambda(m) = max(0, A(m,m)) for each equation
-        !   srcLambdaModeTransition (1): srcLambda(1) = diagonal SA, srcLambda(2:3) = 2x2 γ-Re̅θt eigenvalue
-        !   srcLambdaModeFull       (2): srcLambda(1:3) = 3x3 eigenvalue (same for all)
+        ! Exploits block-triangular structure: A13=A31=A32=0 (P&Z §7.1).
+        ! This gives det(A-λI) = (A33-λ)·det([A11-λ,A12;A21,A22-λ]),
+        ! so eigenvalues = {A33} ∪ {2x2 block eigenvalues} — no cubic needed.
         !
-        ! transitionSrcDtEigMode: 0=Gershgorin, 1=exact eigenvalue
+        ! mode (from paramTurb):
+        !   srcLambdaModeDecoupled  (0): srcLambda(m) = max(0, A(m,m))
+        !   srcLambdaModeTransition (1): SA diagonal; γ-Reθ = max(A22,A33) since A32=0
+        !   srcLambdaModeFull       (2): 2x2 eigenvalue + A33
 
         use constants
         use blockPointers, only: il, jl, kl, srcLambda
-        use inputIteration, only: transitionSrcDtEigMode
         use paramTurb, only: srcLambdaModeDecoupled, srcLambdaModeTransition, srcLambdaModeFull
         implicit none
 
         integer(kind=intType), intent(in) :: mode
         integer(kind=intType) :: i, j, k
         real(kind=realType) :: A(3,3)
-        real(kind=realType) :: A11, A12, A13, A21, A22, A23, A31, A32, A33
-        real(kind=realType) :: g1, g2, g3, lambda3x3, lambda2x2
-        real(kind=realType) :: pc, qcc, rc, trc, m1c, m2c, discc, phic, tc, sqrtPc
-        real(kind=realType) :: tr2, det2, disc2
-        real(kind=realType), parameter :: oneThird = one / three
-        real(kind=realType), parameter :: piVal = 3.14159265358979323846_realType
+        real(kind=realType) :: A11, A12, A21, A22, A33
+        real(kind=realType) :: lambda3x3, lambda2x2
+        real(kind=realType) :: tr2, disc2
 
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
-                    ! Get source Jacobian from evalSrcJacBlock (independent of qq)
                     call evalSrcJacBlock(i, j, k, A)
 
-                    ! A_source = ∂S/∂Q (evalSrcJacBlock returns ∂S/∂Q directly)
                     A11 = A(1,1)
                     A12 = A(1,2)
-                    A13 = A(1,3)
                     A21 = A(2,1)
                     A22 = A(2,2)
-                    A23 = A(2,3)
-                    A31 = A(3,1)
-                    A32 = A(3,2)
                     A33 = A(3,3)
 
                     if (mode == srcLambdaModeDecoupled) then
@@ -2349,75 +2343,27 @@ contains
                         srcLambda(i,j,k,3) = max(zero, A33)
 
                     else if (mode == srcLambdaModeTransition) then
-                        ! Transition: SA diagonal, γ-Re̅θt 2x2 eigenvalue
+                        ! Transition: SA diagonal; γ-Reθ block [A22,A23;0,A33] is triangular
+                        ! since A32=0, so eigenvalues = diagonal. If A32 becomes nonzero,
+                        ! this must change to the 2x2 quadratic formula.
                         srcLambda(i,j,k,1) = max(zero, A11)
-
-                        ! 2x2 eigenvalue for γ-Re̅θt subsystem
-                        tr2 = A22 + A33
-                        det2 = A22*A33 - A23*A32
-                        disc2 = tr2*tr2 - four*det2
-                        if (disc2 >= zero) then
-                            lambda2x2 = half * (tr2 + sqrt(disc2))
-                        else
-                            lambda2x2 = half * tr2
-                        end if
-                        lambda2x2 = max(zero, lambda2x2)
+                        lambda2x2 = max(zero, A22, A33)
                         srcLambda(i,j,k,2) = lambda2x2
                         srcLambda(i,j,k,3) = lambda2x2
 
                     else
-                        ! Full 3x3 coupling
-                        if (transitionSrcDtEigMode == 0) then
-                            ! Gershgorin upper bound
-                            g1 = A11 + abs(A12) + abs(A13)
-                            g2 = A22 + abs(A21) + abs(A23)
-                            g3 = A33 + abs(A31) + abs(A32)
-                            lambda3x3 = max(g1, g2, g3)
+                        ! Full: 2x2 eigenvalue for [A11,A12;A21,A22] + A33
+                        ! Since A13=A31=A32=0, the 3x3 factorizes exactly.
+                        ! If any of these off-diagonals become nonzero, must solve full 3x3.
+                        tr2 = A11 + A22
+                        disc2 = ((A11 - A22) * half)**2 + A12 * A21
+                        if (disc2 >= zero) then
+                            lambda2x2 = tr2 * half + sqrt(disc2)
                         else
-                            ! Exact 3x3 eigenvalue via cubic formula
-                            trc = A11 + A22 + A33
-                            m1c = A11*A22 + A22*A33 + A33*A11 &
-                                - A12*A21 - A23*A32 - A31*A13
-                            m2c = A11*(A22*A33 - A23*A32) &
-                                - A12*(A21*A33 - A23*A31) &
-                                + A13*(A21*A32 - A22*A31)
-
-                            pc = m1c - trc*trc*oneThird
-                            qcc = -two*trc*trc*trc/27.0_realType + trc*m1c*oneThird - m2c
-                            discc = qcc*qcc/four + pc*pc*pc/27.0_realType
-
-                            if (discc <= zero) then
-                                sqrtPc = sqrt(-pc*oneThird)
-                                phic = zero
-                                if (sqrtPc > 1.0e-30_realType) then
-                                    phic = acos(max(-one, min(one, -qcc/(two*sqrtPc**3))))
-                                    tc = two * sqrtPc * cos(phic * oneThird)
-                                else
-                                    tc = zero
-                                end if
-                                lambda3x3 = tc + trc * oneThird
-                                tc = two * sqrtPc * cos((phic + two*piVal) * oneThird)
-                                lambda3x3 = max(lambda3x3, tc + trc * oneThird)
-                                tc = two * sqrtPc * cos((phic + four*piVal) * oneThird)
-                                lambda3x3 = max(lambda3x3, tc + trc * oneThird)
-                            else
-                                rc = sqrt(discc)
-                                tc = sign(abs(-qcc*half + rc)**oneThird, -qcc*half + rc) &
-                                   + sign(abs(-qcc*half - rc)**oneThird, -qcc*half - rc)
-                                lambda3x3 = tc + trc * oneThird
-                                lambda3x3 = max(lambda3x3, (trc - lambda3x3) * half)
-                            end if
-
-                            ! Fallback to Gershgorin if NaN
-                            if (lambda3x3 /= lambda3x3) then
-                                g1 = A11 + abs(A12) + abs(A13)
-                                g2 = A22 + abs(A21) + abs(A23)
-                                g3 = A33 + abs(A31) + abs(A32)
-                                lambda3x3 = max(g1, g2, g3)
-                            end if
+                            ! Complex conjugate pair: real part = tr2/2
+                            lambda2x2 = tr2 * half
                         end if
-
-                        lambda3x3 = max(zero, lambda3x3)
+                        lambda3x3 = max(zero, lambda2x2, A33)
                         srcLambda(i,j,k,1) = lambda3x3
                         srcLambda(i,j,k,2) = lambda3x3
                         srcLambda(i,j,k,3) = lambda3x3
