@@ -308,6 +308,8 @@ module inputIteration
     ! srcDtDeactivateIters: deactivate after N clean inexact-Newton iters (P&Z §IV.B.3)
     integer(kind=intType) :: srcDtDeactivateIters = 5
     integer(kind=intType) :: noBacktrackCount = 0
+    ! verifySrcJac: enable verification of evalSrcJacBlock vs Source qq
+    logical :: verifySrcJac = .false.
 
 end module inputIteration
 
