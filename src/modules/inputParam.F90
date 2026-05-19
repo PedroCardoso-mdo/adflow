@@ -303,6 +303,10 @@ module inputIteration
     logical :: transitionSrcDtRestrict = .true.
     real(kind=realType) :: transitionSrcDtLimit = 0.9_realType
     logical :: srcDtRestrictActive = .true.
+    ! NEW: transitionSrcDtEigMode - eigenvalue computation mode for srcLambda
+    ! 0 = signed Gershgorin upper bound (AD-safe, cheap)
+    ! 1 = exact 3x3 eigenvalue via cubic formula (default, more accurate)
+    integer(kind=intType) :: transitionSrcDtEigMode = 1
     integer(kind=intType) :: noBacktrackCount = 0
 
 end module inputIteration

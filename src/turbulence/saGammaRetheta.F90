@@ -726,16 +726,7 @@ contains
         end do
 #endif
 
-        do k = 2, kl
-            do j = 2, jl
-                do i = 2, il
-                    srcLambda(i,j,k) = max( &
-                        abs(qq(i,j,k,1,1)) + abs(qq(i,j,k,1,2)) + abs(qq(i,j,k,1,3)), &
-                        abs(qq(i,j,k,2,1)) + abs(qq(i,j,k,2,2)) + abs(qq(i,j,k,2,3)), &
-                        abs(qq(i,j,k,3,1)) + abs(qq(i,j,k,3,2)) + abs(qq(i,j,k,3,3)))
-                end do
-            end do
-        end do
+        call computeSrcLambda()
 
     end subroutine Source
 
@@ -2065,5 +2056,100 @@ contains
         end do
 
     end subroutine saGammaReThetaSolve
+
+    subroutine computeSrcLambda()
+        ! Compute srcLambda = max(0, λ_max) where λ_max is the largest positive
+        ! eigenvalue of A_source = -qq (P&Z 2020 Eq. 59).
+        ! Note: qq stores -∂S/∂Q, so A_source = -qq.
+        !
+        ! Mode 0: Signed Gershgorin upper bound (AD-safe)
+        !   srcLambda = max(0, max_i[ A_ii + Σ_{j≠i} |A_ij| ])
+        ! Mode 1: Exact 3x3 eigenvalue via cubic formula
+
+        use constants
+        use blockPointers, only: il, jl, kl, srcLambda
+        use inputIteration, only: transitionSrcDtEigMode
+        implicit none
+
+        integer(kind=intType) :: i, j, k
+        real(kind=realType) :: A11, A12, A13, A21, A22, A23, A31, A32, A33
+        real(kind=realType) :: g1, g2, g3, lambdaMax
+        real(kind=realType) :: p, qc, r, a, b, c, disc, phi, t, sqrtP
+        real(kind=realType), parameter :: oneThird = one / three
+        real(kind=realType), parameter :: piVal = 3.14159265358979323846_realType
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    ! A_source = -qq (qq stores -∂S/∂Q)
+                    A11 = -qq(i,j,k,1,1)
+                    A12 = -qq(i,j,k,1,2)
+                    A13 = -qq(i,j,k,1,3)
+                    A21 = -qq(i,j,k,2,1)
+                    A22 = -qq(i,j,k,2,2)
+                    A23 = -qq(i,j,k,2,3)
+                    A31 = -qq(i,j,k,3,1)
+                    A32 = -qq(i,j,k,3,2)
+                    A33 = -qq(i,j,k,3,3)
+
+                    if (transitionSrcDtEigMode == 0) then
+                        ! Mode 0: Signed Gershgorin upper bound
+                        g1 = A11 + abs(A12) + abs(A13)
+                        g2 = A22 + abs(A21) + abs(A23)
+                        g3 = A33 + abs(A31) + abs(A32)
+                        lambdaMax = max(g1, g2, g3)
+                    else
+                        ! Mode 1: Exact eigenvalues via cubic formula
+                        ! Characteristic polynomial: λ³ - aλ² + bλ - c = 0
+                        ! where a = tr(A), b = (tr(A)² - tr(A²))/2, c = det(A)
+                        a = A11 + A22 + A33
+                        b = A11*A22 + A22*A33 + A33*A11 &
+                          - A12*A21 - A23*A32 - A31*A13
+                        c = A11*(A22*A33 - A23*A32) &
+                          - A12*(A21*A33 - A23*A31) &
+                          + A13*(A21*A32 - A22*A31)
+
+                        ! Depressed cubic: t³ + pt + qc = 0, λ = t + a/3
+                        p = b - a*a*oneThird
+                        qc = two*a*a*a/27.0_realType - a*b*oneThird + c
+                        disc = qc*qc/four + p*p*p/27.0_realType
+
+                        if (disc <= zero) then
+                            ! Three real roots (trigonometric solution)
+                            sqrtP = sqrt(-p*oneThird)
+                            if (sqrtP > 1.0e-30_realType) then
+                                phi = acos(max(-one, min(one, -qc/(two*sqrtP**3))))
+                                t = two * sqrtP * cos(phi * oneThird)
+                            else
+                                t = zero
+                            end if
+                            lambdaMax = t + a * oneThird
+                            t = two * sqrtP * cos((phi + two*piVal) * oneThird)
+                            lambdaMax = max(lambdaMax, t + a * oneThird)
+                            t = two * sqrtP * cos((phi + four*piVal) * oneThird)
+                            lambdaMax = max(lambdaMax, t + a * oneThird)
+                        else
+                            ! One real root, two complex conjugates
+                            r = sqrt(disc)
+                            t = sign(abs(-qc*half + r)**oneThird, -qc*half + r) &
+                              + sign(abs(-qc*half - r)**oneThird, -qc*half - r)
+                            lambdaMax = t + a * oneThird
+                        end if
+
+                        ! Fallback to Gershgorin if eigenvalue computation produces NaN
+                        if (lambdaMax /= lambdaMax) then
+                            g1 = A11 + abs(A12) + abs(A13)
+                            g2 = A22 + abs(A21) + abs(A23)
+                            g3 = A33 + abs(A31) + abs(A32)
+                            lambdaMax = max(g1, g2, g3)
+                        end if
+                    end if
+
+                    srcLambda(i,j,k) = max(zero, lambdaMax)
+                end do
+            end do
+        end do
+
+    end subroutine computeSrcLambda
 
 end module saGammaReTheta

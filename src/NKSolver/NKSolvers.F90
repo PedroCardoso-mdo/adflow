@@ -2554,10 +2554,10 @@ contains
         ! for the GMRES solver used in ANK
 
         use constants
-        use blockPointers, only: nDom, volRef, il, jl, kl, dw, dtl
+        use blockPointers, only: nDom, volRef, il, jl, kl, dw, dtl, srcLambda
         use inputtimespectral, only: nTimeIntervalsSpectral
-        use inputIteration, only: turbResScale
-        use flowvarrefstate, only: nwf, nt1, nt2
+        use inputIteration, only: turbResScale, transitionSrcDtRestrict, srcDtRestrictActive, transitionSrcDtLimit
+        use flowvarrefstate, only: nwf, nt1, nt2, nwt
         use NKSolver, only: setRvec
         use utils, only: setPointers, EChk
         use blockette, only: blocketteRes
@@ -2566,7 +2566,7 @@ contains
         ! PETSc Variables
         PetscFortranAddr ctx(*)
         Vec inVec, rVec
-        real(kind=realType) :: dtinv, rho
+        real(kind=realType) :: dtinv, rho, dtinv_src
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii, iiRho
         real(kind=realType), pointer :: rvec_pointer(:)
         real(kind=realType), pointer :: invec_pointer(:)
@@ -2597,6 +2597,12 @@ contains
                         do i = 2, il
                             ! needs to be modified
                             dtinv = one / (ANK_CFL * dtl(i, j, k) * volRef(i, j, k))
+
+                            ! Per-cell source dt restriction (Eq. 59) - must match PC
+                            if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
+                                dtinv_src = srcLambda(i, j, k) / transitionSrcDtLimit
+                                dtinv = max(dtinv, dtinv_src)
+                            end if
 
                             do l = nt1, nt2
                                 ! turbulence variable needs additional scaling, and it may
