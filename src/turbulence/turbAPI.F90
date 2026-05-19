@@ -17,7 +17,7 @@ contains
         use turbMod
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use sa
-        use saGammaRetheta
+        use saGammaRetheta, only: saGammaRetheta_block, computeSrcLambda
         use kw
         use kt
         use SST
@@ -72,6 +72,10 @@ contains
                         call sa_block(.false.)
 
                     case (spalartallmarasnoft2gammaretheta)
+                        ! Compute srcLambda before solve (frozen for entire DADI)
+                        if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+                            call computeSrcLambda(TurbDADICoupled)
+                        end if
                         call saGammaRetheta_block(.false.)
 
                     case (komegaWilcox, komegaModified)

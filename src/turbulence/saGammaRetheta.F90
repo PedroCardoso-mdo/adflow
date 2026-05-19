@@ -1504,12 +1504,6 @@ contains
             end select
         end if
 
-        ! Compute srcLambda from qq (frozen for entire DADI solve).
-        ! Map TurbDADICoupled to srcLambdaMode (numerically identical but conceptually separate).
-        if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-            call computeSrcLambda(TurbDADICoupled)
-        end if
-
         cb3Inv = one / rsaCb3
         cv13 = rsaCv1**3
 
@@ -2061,12 +2055,252 @@ contains
 
     end subroutine saGammaReThetaSolve
 
+    subroutine evalSrcJacBlock(i, j, k, A)
+        !
+        ! Compute the source-term Jacobian A_source = ∂S/∂Q for cell (i,j,k).
+        ! Returns the 5 non-zero entries: A(1,1), A(1,2), A(2,1), A(2,2), A(3,3).
+        ! Entries A(1,3), A(3,1), A(3,2) are zero per P&Z §7.1.
+        ! A(2,3) is computed via one-sided finite difference.
+        !
+        ! This routine is independent of qq — it recomputes everything from w.
+        ! Used by computeSrcLambda for the source dt restriction (Eq. 59).
+        !
+        use blockPointers
+        use constants
+        use paramTurb
+        use section
+        use inputPhysics
+        use flowVarRefState
+        use turbUtils, only: flengthCorrelation, rethetacCorrelation
+        implicit none
+
+        integer(kind=intType), intent(in) :: i, j, k
+        real(kind=realType), intent(out) :: A(3,3)
+
+        ! Local parameters
+        real(kind=realType), parameter :: f23 = two * third
+        real(kind=realType), parameter :: xminn = 1.e-10_realType
+
+        ! Local variables
+        real(kind=realType) :: fv1, fv2, ft2
+        real(kind=realType) :: ss, sst, nu, dist2Inv, chi, chi2, chi3
+        real(kind=realType) :: rr, gg, gg6, termFw, fwSa, term2
+        real(kind=realType) :: term2_prod, term2_dest
+        real(kind=realType) :: cv13, kar2Inv, cw36
+        real(kind=realType) :: dfv1, dfv2, dft2, drr, dgg, dfw
+        real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
+        real(kind=realType) :: fact, sxx, syy, szz, sxy, sxz, syz
+        real(kind=realType) :: vortx, vorty, vortz
+        real(kind=realType) :: omegax, omegay, omegaz
+        real(kind=realType) :: strainMag2
+
+        ! Gamma-ReTheta variables
+        real(kind=realType) :: vortMag, strainMag
+        real(kind=realType) :: nutSA, rTurb, gammaLocal, reThetaTilde
+        real(kind=realType) :: gammaForSA
+        real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
+        real(kind=realType) :: fOnset, fOnset1
+        real(kind=realType) :: vortLim, vortMagLim
+        real(kind=realType) :: pGamma
+        real(kind=realType) :: velMag, velMag2, timeScale
+        real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
+        real(kind=realType) :: yDist
+        real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
+        real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
+        real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
+        real(kind=realType) :: dfOnset1_drT, dfOnset_dfOnset1
+
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+
+        ! Rotation rates
+        omegax = timeRef * sections(sectionID)%rotRate(1)
+        omegay = timeRef * sections(sectionID)%rotRate(2)
+        omegaz = timeRef * sections(sectionID)%rotRate(3)
+
+        ! Initialize output
+        A = zero
+
+        ! Compute velocity gradients (scaled by 2*vol)
+        uux = w(i + 1, j, k, ivx) * si(i, j, k, 1) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 1) &
+              + w(i, j + 1, k, ivx) * sj(i, j, k, 1) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 1) &
+              + w(i, j, k + 1, ivx) * sk(i, j, k, 1) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 1)
+        uuy = w(i + 1, j, k, ivx) * si(i, j, k, 2) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 2) &
+              + w(i, j + 1, k, ivx) * sj(i, j, k, 2) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 2) &
+              + w(i, j, k + 1, ivx) * sk(i, j, k, 2) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 2)
+        uuz = w(i + 1, j, k, ivx) * si(i, j, k, 3) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 3) &
+              + w(i, j + 1, k, ivx) * sj(i, j, k, 3) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 3) &
+              + w(i, j, k + 1, ivx) * sk(i, j, k, 3) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 3)
+
+        vvx = w(i + 1, j, k, ivy) * si(i, j, k, 1) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 1) &
+              + w(i, j + 1, k, ivy) * sj(i, j, k, 1) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 1) &
+              + w(i, j, k + 1, ivy) * sk(i, j, k, 1) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 1)
+        vvy = w(i + 1, j, k, ivy) * si(i, j, k, 2) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 2) &
+              + w(i, j + 1, k, ivy) * sj(i, j, k, 2) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 2) &
+              + w(i, j, k + 1, ivy) * sk(i, j, k, 2) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 2)
+        vvz = w(i + 1, j, k, ivy) * si(i, j, k, 3) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 3) &
+              + w(i, j + 1, k, ivy) * sj(i, j, k, 3) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 3) &
+              + w(i, j, k + 1, ivy) * sk(i, j, k, 3) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 3)
+
+        wwx = w(i + 1, j, k, ivz) * si(i, j, k, 1) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 1) &
+              + w(i, j + 1, k, ivz) * sj(i, j, k, 1) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 1) &
+              + w(i, j, k + 1, ivz) * sk(i, j, k, 1) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 1)
+        wwy = w(i + 1, j, k, ivz) * si(i, j, k, 2) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 2) &
+              + w(i, j + 1, k, ivz) * sj(i, j, k, 2) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 2) &
+              + w(i, j, k + 1, ivz) * sk(i, j, k, 2) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 2)
+        wwz = w(i + 1, j, k, ivz) * si(i, j, k, 3) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 3) &
+              + w(i, j + 1, k, ivz) * sj(i, j, k, 3) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 3) &
+              + w(i, j, k + 1, ivz) * sk(i, j, k, 3) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 3)
+
+        fact = fourth / vol(i, j, k)
+
+        ! Compute vorticity for ss (production term)
+        vortx = two * fact * (wwy - vvz) - two * omegax
+        vorty = two * fact * (uuz - wwx) - two * omegay
+        vortz = two * fact * (vvx - uuy) - two * omegaz
+        ss = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+        ! SA auxiliary functions
+        nu = rlv(i, j, k) / w(i, j, k, irho)
+        dist2Inv = one / (d2Wall(i, j, k)**2)
+        chi = w(i, j, k, itu1) / nu
+        chi2 = chi * chi
+        chi3 = chi * chi2
+        fv1 = chi3 / (chi3 + cv13)
+        fv2 = one - chi / (one + chi * fv1)
+
+        if (useft2SA) then
+            ft2 = rsaCt3 * exp(-rsaCt4 * chi2)
+        else
+            ft2 = zero
+        end if
+
+        sst = ss + w(i, j, k, itu1) * fv2 * kar2Inv * dist2Inv
+        sst = max(sst, xminn)
+
+        rr = w(i, j, k, itu1) * kar2Inv * dist2Inv / sst
+        rr = min(rr, 10.0_realType)
+        gg = rr + rsaCw2 * (rr**6 - rr)
+        gg6 = gg**6
+        termFw = ((one + cw36) / (gg6 + cw36))**sixth
+        fwSa = gg * termFw
+
+        gammaForSA = min(max(w(i, j, k, itu2), zero), one)
+
+        term2_prod = dist2Inv * kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2)
+        term2_dest = -dist2Inv * rsaCw1 * fwSa
+        term2 = gammaForSA * term2_prod + term2_dest
+
+        ! Derivatives for A(1,1)
+        dfv1 = three * chi2 * cv13 / ((chi3 + cv13)**2)
+        dfv2 = (chi2 * dfv1 - one) / (nu * ((one + chi * fv1)**2))
+        dft2 = -two * rsaCt4 * chi * ft2 / nu
+
+        drr = (one - rr * (fv2 + w(i, j, k, itu1) * dfv2)) * kar2Inv * dist2Inv / sst
+        dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
+        dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
+
+        ! A(1,1) = -∂S_nu/∂nu_tilde (note: stores -dS/dQ)
+        A(1,1) = two * term2 * w(i, j, k, itu1) &
+               + dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
+               * (gammaForSA * rsaCb1 * kar2Inv &
+                  * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
+                  - rsaCw1 * dfw)
+
+        ! --- Gamma-ReTheta variables for A(2,*) ---
+        vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+        sxx = two * fact * uux
+        syy = two * fact * vvy
+        szz = two * fact * wwz
+        sxy = fact * (uuy + vvx)
+        sxz = fact * (uuz + wwx)
+        syz = fact * (vvz + wwy)
+        strainMag2 = two*(sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
+        strainMag = sqrt(max(two*strainMag2, xminn))
+
+        nutSA = w(i, j, k, itu1) * fv1
+        rTurb = nutSA / nu
+        gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
+        reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
+        yDist = d2Wall(i, j, k)
+        velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
+        velMag = sqrt(max(velMag2, xminn))
+
+        vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) / 20.0_realType
+        vortMagLim = min(vortMag, vortLim)
+
+        reS_val = w(i, j, k, irho) * yDist**2 * strainMag / rlv(i, j, k)
+        reThetaC_val = rethetacCorrelation(reThetaTilde)
+        fOnset1 = sqrt((reS_val / (2.6_realType * reThetaC_val))**2 + rTurb**2)
+        fOnset = (tanh(6.0_realType * (fOnset1 - 1.35_realType)) + one) * half
+
+        fLength_val = flengthCorrelation(reThetaTilde)
+        fTurb_val = (one - fOnset) * exp(-rTurb)
+
+        pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                 * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
+
+        ! A(2,2) = -∂S_gamma/∂gamma
+        A(2,2) = -(rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                   * (1.5_realType * rsaGRce1 * gammaLocal - half) &
+                   / sqrt(max(gammaLocal, xminn)) &
+                   + rsaGRca2 * fTurb_val * vortMagLim &
+                   * (two * rsaGRce2 * gammaLocal - one))
+
+        ! A(1,2) = -∂S_nu/∂gamma
+        A(1,2) = (rsaCb1 * (one - ft2) * ss &
+                  + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
+
+        ! A(2,1) = -∂S_gamma/∂nu_tilde
+        drTurb_dnu = (fv1 + chi * dfv1) / nu
+        dfOnset1_drT = rTurb / max(fOnset1, xminn)
+        dfOnset_dfOnset1 = 12.0_realType * fOnset * (one - fOnset)
+        dfOnset_dnu = dfOnset_dfOnset1 * dfOnset1_drT * drTurb_dnu
+        dfTurb_dnu = -exp(-rTurb) * dfOnset_dnu - fTurb_val * drTurb_dnu
+
+        A(2,1) = (rsaGRca1 * fLength_val * dfOnset_dnu * vortMagLim &
+                  * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)) &
+               - rsaGRca2 * dfTurb_dnu * vortMagLim * gammaLocal &
+                 * (rsaGRce2 * gammaLocal - one)
+
+        ! A(2,3) = -∂S_gamma/∂ReThetaTilde via one-sided FD (matches Source exactly)
+        epsRT = max(1.0e-4_realType * reThetaTilde, 1.0e-2_realType)
+        reThetaTilde_p = reThetaTilde + epsRT
+        reThetaC_p = rethetacCorrelation(reThetaTilde_p)
+        reThetaC_p = max(reThetaC_p, xminn)
+        fOnset1_p = sqrt((reS_val / (2.6_realType * reThetaC_p))**2 + rTurb**2)
+        fOnset_p = (tanh(6.0_realType * (fOnset1_p - 1.35_realType)) + one) * half
+        fLength_p = flengthCorrelation(reThetaTilde_p)
+        pGamma_p = rsaGRca1 * fLength_p * fOnset_p * vortMagLim &
+                   * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
+        A(2,3) = (pGamma_p - pGamma) / epsRT
+
+        ! A(3,3) = -∂S_retheta/∂ReThetaTilde
+        timeScale = 500.0_realType * nu / max(velMag2, xminn)
+        thetaBL = reThetaTilde * nu / max(velMag, xminn)
+        deltaBL = 7.5_realType * thetaBL
+        delta = 50.0_realType * yDist * vortMag * deltaBL / max(velMag, xminn)
+        delta = max(delta, xminn)
+        fWake_val = exp(-reS_val / 1.0e6_realType)
+        fThetaT = fWake_val * exp(-(yDist/delta)**4)
+
+        A(3,3) = -(rsaGRcthetat / max(timeScale, xminn) * (one - fThetaT))
+        A(3,3) = min(A(3,3), zero)  ! Always <= 0 (relaxation)
+
+        ! A(1,3), A(3,1), A(3,2) are zero per P&Z §7.1
+
+    end subroutine evalSrcJacBlock
+
     subroutine computeSrcLambda(mode)
         ! Compute srcLambda(i,j,k,1:3) per equation based on mode argument.
-        ! A_source = -qq (qq stores -∂S/∂Q).
+        ! Calls evalSrcJacBlock to get A_source = ∂S/∂Q (source-only Jacobian).
+        ! Independent of qq — safe to call when qq is deallocated or contaminated.
         !
         ! mode (from paramTurb):
-        !   srcLambdaModeDecoupled  (0): srcLambda(m) = max(0, -qq(m,m)) for each equation
+        !   srcLambdaModeDecoupled  (0): srcLambda(m) = max(0, A(m,m)) for each equation
         !   srcLambdaModeTransition (1): srcLambda(1) = diagonal SA, srcLambda(2:3) = 2x2 γ-Re̅θt eigenvalue
         !   srcLambdaModeFull       (2): srcLambda(1:3) = 3x3 eigenvalue (same for all)
         !
@@ -2080,9 +2314,10 @@ contains
 
         integer(kind=intType), intent(in) :: mode
         integer(kind=intType) :: i, j, k
+        real(kind=realType) :: A(3,3)
         real(kind=realType) :: A11, A12, A13, A21, A22, A23, A31, A32, A33
         real(kind=realType) :: g1, g2, g3, lambda3x3, lambda2x2
-        real(kind=realType) :: p, qc, r, a, b, c, disc, phi, t, sqrtP
+        real(kind=realType) :: pc, qcc, rc, trc, m1c, m2c, discc, phic, tc, sqrtPc
         real(kind=realType) :: tr2, det2, disc2
         real(kind=realType), parameter :: oneThird = one / three
         real(kind=realType), parameter :: piVal = 3.14159265358979323846_realType
@@ -2090,16 +2325,19 @@ contains
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
-                    ! A_source = -qq (qq stores -∂S/∂Q)
-                    A11 = -qq(i,j,k,1,1)
-                    A12 = -qq(i,j,k,1,2)
-                    A13 = -qq(i,j,k,1,3)
-                    A21 = -qq(i,j,k,2,1)
-                    A22 = -qq(i,j,k,2,2)
-                    A23 = -qq(i,j,k,2,3)
-                    A31 = -qq(i,j,k,3,1)
-                    A32 = -qq(i,j,k,3,2)
-                    A33 = -qq(i,j,k,3,3)
+                    ! Get source Jacobian from evalSrcJacBlock (independent of qq)
+                    call evalSrcJacBlock(i, j, k, A)
+
+                    ! A_source = ∂S/∂Q (evalSrcJacBlock returns ∂S/∂Q directly)
+                    A11 = A(1,1)
+                    A12 = A(1,2)
+                    A13 = A(1,3)
+                    A21 = A(2,1)
+                    A22 = A(2,2)
+                    A23 = A(2,3)
+                    A31 = A(3,1)
+                    A32 = A(3,2)
+                    A33 = A(3,3)
 
                     if (mode == srcLambdaModeDecoupled) then
                         ! Decoupled: each equation uses its own diagonal
@@ -2134,37 +2372,37 @@ contains
                             lambda3x3 = max(g1, g2, g3)
                         else
                             ! Exact 3x3 eigenvalue via cubic formula
-                            a = A11 + A22 + A33
-                            b = A11*A22 + A22*A33 + A33*A11 &
-                              - A12*A21 - A23*A32 - A31*A13
-                            c = A11*(A22*A33 - A23*A32) &
-                              - A12*(A21*A33 - A23*A31) &
-                              + A13*(A21*A32 - A22*A31)
+                            trc = A11 + A22 + A33
+                            m1c = A11*A22 + A22*A33 + A33*A11 &
+                                - A12*A21 - A23*A32 - A31*A13
+                            m2c = A11*(A22*A33 - A23*A32) &
+                                - A12*(A21*A33 - A23*A31) &
+                                + A13*(A21*A32 - A22*A31)
 
-                            p = b - a*a*oneThird
-                            qc = -two*a*a*a/27.0_realType + a*b*oneThird - c
-                            disc = qc*qc/four + p*p*p/27.0_realType
+                            pc = m1c - trc*trc*oneThird
+                            qcc = -two*trc*trc*trc/27.0_realType + trc*m1c*oneThird - m2c
+                            discc = qcc*qcc/four + pc*pc*pc/27.0_realType
 
-                            if (disc <= zero) then
-                                sqrtP = sqrt(-p*oneThird)
-                                phi = zero
-                                if (sqrtP > 1.0e-30_realType) then
-                                    phi = acos(max(-one, min(one, -qc/(two*sqrtP**3))))
-                                    t = two * sqrtP * cos(phi * oneThird)
+                            if (discc <= zero) then
+                                sqrtPc = sqrt(-pc*oneThird)
+                                phic = zero
+                                if (sqrtPc > 1.0e-30_realType) then
+                                    phic = acos(max(-one, min(one, -qcc/(two*sqrtPc**3))))
+                                    tc = two * sqrtPc * cos(phic * oneThird)
                                 else
-                                    t = zero
+                                    tc = zero
                                 end if
-                                lambda3x3 = t + a * oneThird
-                                t = two * sqrtP * cos((phi + two*piVal) * oneThird)
-                                lambda3x3 = max(lambda3x3, t + a * oneThird)
-                                t = two * sqrtP * cos((phi + four*piVal) * oneThird)
-                                lambda3x3 = max(lambda3x3, t + a * oneThird)
+                                lambda3x3 = tc + trc * oneThird
+                                tc = two * sqrtPc * cos((phic + two*piVal) * oneThird)
+                                lambda3x3 = max(lambda3x3, tc + trc * oneThird)
+                                tc = two * sqrtPc * cos((phic + four*piVal) * oneThird)
+                                lambda3x3 = max(lambda3x3, tc + trc * oneThird)
                             else
-                                r = sqrt(disc)
-                                t = sign(abs(-qc*half + r)**oneThird, -qc*half + r) &
-                                  + sign(abs(-qc*half - r)**oneThird, -qc*half - r)
-                                lambda3x3 = t + a * oneThird
-                                lambda3x3 = max(lambda3x3, (a - lambda3x3) * half)
+                                rc = sqrt(discc)
+                                tc = sign(abs(-qcc*half + rc)**oneThird, -qcc*half + rc) &
+                                   + sign(abs(-qcc*half - rc)**oneThird, -qcc*half - rc)
+                                lambda3x3 = tc + trc * oneThird
+                                lambda3x3 = max(lambda3x3, (trc - lambda3x3) * half)
                             end if
 
                             ! Fallback to Gershgorin if NaN
