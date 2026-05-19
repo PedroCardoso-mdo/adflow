@@ -51,6 +51,12 @@ module paramTurb
 !
     real(kind=realType), parameter :: rsaGRsrcDtLimit = 0.9_realType
 
+!       srcLambda eigenvalue modes (distinct from TurbDADICoupled).
+!
+    integer(kind=intType), parameter :: srcLambdaModeDecoupled  = 0_intType
+    integer(kind=intType), parameter :: srcLambdaModeTransition = 1_intType
+    integer(kind=intType), parameter :: srcLambdaModeFull       = 2_intType
+
 !       transitionDebug slot count (must match comment block in saGammaRetheta.F90).
 !       Do NOT renumber existing slots — append new ones at the end.
     integer(kind=intType), parameter :: nTransitionDebug = 48_intType

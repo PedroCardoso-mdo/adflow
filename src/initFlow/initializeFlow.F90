@@ -525,7 +525,7 @@ contains
                                    "Memory allocation failure for transitionDebug")
                 flowDoms(nn, level, sps)%transitionDebug = zero
 
-                allocate (flowDoms(nn, level, sps)%srcLambda(2:il, 2:jl, 2:kl), stat=ierr)
+                allocate (flowDoms(nn, level, sps)%srcLambda(2:il, 2:jl, 2:kl, 3), stat=ierr)
                 if (ierr /= 0) &
                     call terminate("allocMemFlovarPart1", &
                                    "Memory allocation failure for srcLambda")

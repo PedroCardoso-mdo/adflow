@@ -727,10 +727,6 @@ contains
         end do
 #endif
 
-        if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-            call computeSrcLambda()
-        end if
-
     end subroutine Source
 
     subroutine Viscous
@@ -1508,6 +1504,12 @@ contains
             end select
         end if
 
+        ! Compute srcLambda from qq (frozen for entire DADI solve).
+        ! Map TurbDADICoupled to srcLambdaMode (numerically identical but conceptually separate).
+        if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+            call computeSrcLambda(TurbDADICoupled)
+        end if
+
         cb3Inv = one / rsaCb3
         cv13 = rsaCv1**3
 
@@ -1550,12 +1552,11 @@ contains
                         qq(i, j, k, 3, 1) = zero
                     end if
 
-                    ! Source dt restriction (Eq. 59): additive I/Δt inflation
+                    ! Source dt restriction (Eq. 59): per-equation additive I/Δt inflation
                     if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-                        dt_inv = srcLambda(i,j,k) / transitionSrcDtLimit
-                        qq(i,j,k,1,1) = qq(i,j,k,1,1) + dt_inv
-                        qq(i,j,k,2,2) = qq(i,j,k,2,2) + dt_inv
-                        qq(i,j,k,3,3) = qq(i,j,k,3,3) + dt_inv
+                        qq(i,j,k,1,1) = qq(i,j,k,1,1) + srcLambda(i,j,k,1) / transitionSrcDtLimit
+                        qq(i,j,k,2,2) = qq(i,j,k,2,2) + srcLambda(i,j,k,2) / transitionSrcDtLimit
+                        qq(i,j,k,3,3) = qq(i,j,k,3,3) + srcLambda(i,j,k,3) / transitionSrcDtLimit
                     end if
 
                     ! Symmetric scaling (§4): qq(m,n) *= s_n / s_m
@@ -2060,24 +2061,29 @@ contains
 
     end subroutine saGammaReThetaSolve
 
-    subroutine computeSrcLambda()
-        ! Compute srcLambda = max(0, λ_max) where λ_max is the largest positive
-        ! eigenvalue of A_source = -qq (P&Z 2020 Eq. 59).
-        ! Note: qq stores -∂S/∂Q, so A_source = -qq.
+    subroutine computeSrcLambda(mode)
+        ! Compute srcLambda(i,j,k,1:3) per equation based on mode argument.
+        ! A_source = -qq (qq stores -∂S/∂Q).
         !
-        ! Mode 0: Signed Gershgorin upper bound (AD-safe)
-        !   srcLambda = max(0, max_i[ A_ii + Σ_{j≠i} |A_ij| ])
-        ! Mode 1: Exact 3x3 eigenvalue via cubic formula
+        ! mode (from paramTurb):
+        !   srcLambdaModeDecoupled  (0): srcLambda(m) = max(0, -qq(m,m)) for each equation
+        !   srcLambdaModeTransition (1): srcLambda(1) = diagonal SA, srcLambda(2:3) = 2x2 γ-Re̅θt eigenvalue
+        !   srcLambdaModeFull       (2): srcLambda(1:3) = 3x3 eigenvalue (same for all)
+        !
+        ! transitionSrcDtEigMode: 0=Gershgorin, 1=exact eigenvalue
 
         use constants
         use blockPointers, only: il, jl, kl, srcLambda
         use inputIteration, only: transitionSrcDtEigMode
+        use paramTurb, only: srcLambdaModeDecoupled, srcLambdaModeTransition, srcLambdaModeFull
         implicit none
 
+        integer(kind=intType), intent(in) :: mode
         integer(kind=intType) :: i, j, k
         real(kind=realType) :: A11, A12, A13, A21, A22, A23, A31, A32, A33
-        real(kind=realType) :: g1, g2, g3, lambdaMax
+        real(kind=realType) :: g1, g2, g3, lambda3x3, lambda2x2
         real(kind=realType) :: p, qc, r, a, b, c, disc, phi, t, sqrtP
+        real(kind=realType) :: tr2, det2, disc2
         real(kind=realType), parameter :: oneThird = one / three
         real(kind=realType), parameter :: piVal = 3.14159265358979323846_realType
 
@@ -2095,64 +2101,86 @@ contains
                     A32 = -qq(i,j,k,3,2)
                     A33 = -qq(i,j,k,3,3)
 
-                    if (transitionSrcDtEigMode == 0) then
-                        ! Mode 0: Signed Gershgorin upper bound
-                        g1 = A11 + abs(A12) + abs(A13)
-                        g2 = A22 + abs(A21) + abs(A23)
-                        g3 = A33 + abs(A31) + abs(A32)
-                        lambdaMax = max(g1, g2, g3)
-                    else
-                        ! Mode 1: Exact eigenvalues via cubic formula
-                        ! Characteristic polynomial: λ³ - aλ² + bλ - c = 0
-                        ! where a = tr(A), b = (tr(A)² - tr(A²))/2, c = det(A)
-                        a = A11 + A22 + A33
-                        b = A11*A22 + A22*A33 + A33*A11 &
-                          - A12*A21 - A23*A32 - A31*A13
-                        c = A11*(A22*A33 - A23*A32) &
-                          - A12*(A21*A33 - A23*A31) &
-                          + A13*(A21*A32 - A22*A31)
+                    if (mode == srcLambdaModeDecoupled) then
+                        ! Decoupled: each equation uses its own diagonal
+                        srcLambda(i,j,k,1) = max(zero, A11)
+                        srcLambda(i,j,k,2) = max(zero, A22)
+                        srcLambda(i,j,k,3) = max(zero, A33)
 
-                        ! Depressed cubic: t³ + pt + qc = 0, λ = t + a/3
-                        p = b - a*a*oneThird
-                        qc = -two*a*a*a/27.0_realType + a*b*oneThird - c
-                        disc = qc*qc/four + p*p*p/27.0_realType
+                    else if (mode == srcLambdaModeTransition) then
+                        ! Transition: SA diagonal, γ-Re̅θt 2x2 eigenvalue
+                        srcLambda(i,j,k,1) = max(zero, A11)
 
-                        if (disc <= zero) then
-                            ! Three real roots (trigonometric solution)
-                            sqrtP = sqrt(-p*oneThird)
-                            phi = zero
-                            if (sqrtP > 1.0e-30_realType) then
-                                phi = acos(max(-one, min(one, -qc/(two*sqrtP**3))))
-                                t = two * sqrtP * cos(phi * oneThird)
-                            else
-                                t = zero
-                            end if
-                            lambdaMax = t + a * oneThird
-                            t = two * sqrtP * cos((phi + two*piVal) * oneThird)
-                            lambdaMax = max(lambdaMax, t + a * oneThird)
-                            t = two * sqrtP * cos((phi + four*piVal) * oneThird)
-                            lambdaMax = max(lambdaMax, t + a * oneThird)
+                        ! 2x2 eigenvalue for γ-Re̅θt subsystem
+                        tr2 = A22 + A33
+                        det2 = A22*A33 - A23*A32
+                        disc2 = tr2*tr2 - four*det2
+                        if (disc2 >= zero) then
+                            lambda2x2 = half * (tr2 + sqrt(disc2))
                         else
-                            ! One real root, two complex conjugates
-                            ! Real root: λ₁ = t + a/3
-                            ! Complex pair real part: Re(λ₂,₃) = (a - λ₁)/2
-                            r = sqrt(disc)
-                            t = sign(abs(-qc*half + r)**oneThird, -qc*half + r) &
-                              + sign(abs(-qc*half - r)**oneThird, -qc*half - r)
-                            lambdaMax = t + a * oneThird
-                            lambdaMax = max(lambdaMax, (a - lambdaMax) * half)
+                            lambda2x2 = half * tr2
                         end if
+                        lambda2x2 = max(zero, lambda2x2)
+                        srcLambda(i,j,k,2) = lambda2x2
+                        srcLambda(i,j,k,3) = lambda2x2
 
-                        ! Fallback to Gershgorin if eigenvalue computation produces NaN
-                        if (lambdaMax /= lambdaMax) then
+                    else
+                        ! Full 3x3 coupling
+                        if (transitionSrcDtEigMode == 0) then
+                            ! Gershgorin upper bound
                             g1 = A11 + abs(A12) + abs(A13)
                             g2 = A22 + abs(A21) + abs(A23)
                             g3 = A33 + abs(A31) + abs(A32)
-                            lambdaMax = max(g1, g2, g3)
-                        end if
-                    end if
+                            lambda3x3 = max(g1, g2, g3)
+                        else
+                            ! Exact 3x3 eigenvalue via cubic formula
+                            a = A11 + A22 + A33
+                            b = A11*A22 + A22*A33 + A33*A11 &
+                              - A12*A21 - A23*A32 - A31*A13
+                            c = A11*(A22*A33 - A23*A32) &
+                              - A12*(A21*A33 - A23*A31) &
+                              + A13*(A21*A32 - A22*A31)
 
-                    srcLambda(i,j,k) = max(zero, lambdaMax)
+                            p = b - a*a*oneThird
+                            qc = -two*a*a*a/27.0_realType + a*b*oneThird - c
+                            disc = qc*qc/four + p*p*p/27.0_realType
+
+                            if (disc <= zero) then
+                                sqrtP = sqrt(-p*oneThird)
+                                phi = zero
+                                if (sqrtP > 1.0e-30_realType) then
+                                    phi = acos(max(-one, min(one, -qc/(two*sqrtP**3))))
+                                    t = two * sqrtP * cos(phi * oneThird)
+                                else
+                                    t = zero
+                                end if
+                                lambda3x3 = t + a * oneThird
+                                t = two * sqrtP * cos((phi + two*piVal) * oneThird)
+                                lambda3x3 = max(lambda3x3, t + a * oneThird)
+                                t = two * sqrtP * cos((phi + four*piVal) * oneThird)
+                                lambda3x3 = max(lambda3x3, t + a * oneThird)
+                            else
+                                r = sqrt(disc)
+                                t = sign(abs(-qc*half + r)**oneThird, -qc*half + r) &
+                                  + sign(abs(-qc*half - r)**oneThird, -qc*half - r)
+                                lambda3x3 = t + a * oneThird
+                                lambda3x3 = max(lambda3x3, (a - lambda3x3) * half)
+                            end if
+
+                            ! Fallback to Gershgorin if NaN
+                            if (lambda3x3 /= lambda3x3) then
+                                g1 = A11 + abs(A12) + abs(A13)
+                                g2 = A22 + abs(A21) + abs(A23)
+                                g3 = A33 + abs(A31) + abs(A32)
+                                lambda3x3 = max(g1, g2, g3)
+                            end if
+                        end if
+
+                        lambda3x3 = max(zero, lambda3x3)
+                        srcLambda(i,j,k,1) = lambda3x3
+                        srcLambda(i,j,k,2) = lambda3x3
+                        srcLambda(i,j,k,3) = lambda3x3
+                    end if
                 end do
             end do
         end do

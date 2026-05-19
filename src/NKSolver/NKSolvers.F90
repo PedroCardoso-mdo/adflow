@@ -2399,22 +2399,17 @@ contains
                             ! Base dtinv from CFL
                             dtinv = one / (ANK_CFL * dtl(i, j, k) * volRef(i, j, k))
 
-                            ! Per-cell source dt restriction (Eq. 59)
-                            if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
-                                dtinv_src = srcLambda(i, j, k) / transitionSrcDtLimit
-                                dtinv = max(dtinv, dtinv_src)
-                            end if
-
                             do l = nt1, nt2
-
                                 ! l1 is just l that starts with 1 on the turb variables
                                 l1 = l - nt1 + 1
 
-                                ! For the turbulence variable, additionally scale the cfl.
-                                ! turbresscale is required because the turbulent residuals
-                                ! are scaled with it. Furthermore, the turbulence variable
-                                ! can get a different CFL number. Scale it by turbCFLScale
-                                blk(l1, l1) = dtinv * turbResScale(l1) / ANK_turbCFLScale
+                                ! Per-equation source dt restriction (Eq. 59)
+                                if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
+                                    dtinv_src = srcLambda(i, j, k, l1) / transitionSrcDtLimit
+                                    blk(l1, l1) = max(dtinv, dtinv_src) * turbResScale(l1) / ANK_turbCFLScale
+                                else
+                                    blk(l1, l1) = dtinv * turbResScale(l1) / ANK_turbCFLScale
+                                end if
                             end do
 
                             ! get the global cell index
@@ -2567,7 +2562,7 @@ contains
         PetscFortranAddr ctx(*)
         Vec inVec, rVec
         real(kind=realType) :: dtinv, rho, dtinv_src
-        integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii, iiRho
+        integer(kind=intType) :: ierr, nn, sps, i, j, k, l, l1, ii, iiRho
         real(kind=realType), pointer :: rvec_pointer(:)
         real(kind=realType), pointer :: invec_pointer(:)
 
@@ -2598,17 +2593,17 @@ contains
                             ! needs to be modified
                             dtinv = one / (ANK_CFL * dtl(i, j, k) * volRef(i, j, k))
 
-                            ! Per-cell source dt restriction (Eq. 59) - must match PC
-                            if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
-                                dtinv_src = srcLambda(i, j, k) / transitionSrcDtLimit
-                                dtinv = max(dtinv, dtinv_src)
-                            end if
-
                             do l = nt1, nt2
-                                ! turbulence variable needs additional scaling, and it may
-                                ! get a different CFL number
-                                rvec_pointer(ii) = rvec_pointer(ii) + invec_pointer(ii) * &
-                                                   dtinv * turbResScale(l - nt1 + 1) / ANK_turbCFLScale
+                                l1 = l - nt1 + 1
+                                ! Per-equation source dt restriction (Eq. 59) - must match PC
+                                if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
+                                    dtinv_src = srcLambda(i, j, k, l1) / transitionSrcDtLimit
+                                    rvec_pointer(ii) = rvec_pointer(ii) + invec_pointer(ii) * &
+                                                       max(dtinv, dtinv_src) * turbResScale(l1) / ANK_turbCFLScale
+                                else
+                                    rvec_pointer(ii) = rvec_pointer(ii) + invec_pointer(ii) * &
+                                                       dtinv * turbResScale(l1) / ANK_turbCFLScale
+                                end if
                                 ii = ii + 1
                             end do
                         end do
@@ -3442,7 +3437,9 @@ contains
 
         use constants
         use blockPointers, only: nDom, flowDoms
-        use inputIteration, only: L2conv, transitionSrcDtRestrict
+        use inputIteration, only: L2conv, transitionSrcDtRestrict, srcDtRestrictActive
+        use paramTurb, only: srcLambdaModeFull
+        use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, currentLevel
@@ -3471,6 +3468,11 @@ contains
         ! Calculate the residuals and set rVecTurb before the first iteration
         call blocketteRes(useFlowRes=.False., useStoreWall=.False.)
         call setRVecANKTurb(rVecTurb)
+
+        ! Freeze srcLambda at base state before ANK iterations
+        if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+            call computeSrcLambda(srcLambdaModeFull)
+        end if
 
         do n = 1, ANK_nsubIterTurb
 
@@ -3560,6 +3562,11 @@ contains
             call EChk(ierr, __FILE__, __LINE__)
             call MatMFFDSetBase(dRdWTurb, wVecTurb, baseResTurb, ierr)
             call EChk(ierr, __FILE__, __LINE__)
+
+            ! Refresh srcLambda from updated base state before KSPSolve
+            if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+                call computeSrcLambda(srcLambdaModeFull)
+            end if
 
             ! Actually do the Linear Krylov Solve
             call KSPSolve(ANK_KSPTurb, rVecTurb, deltaWTurb, ierr)

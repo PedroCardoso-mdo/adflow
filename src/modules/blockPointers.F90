@@ -154,7 +154,7 @@ module blockPointers
     real(kind=realType), dimension(:, :, :), pointer :: d2Wall
     real(kind=realType), dimension(:, :, :), pointer :: intermittency
     real(kind=realType), dimension(:, :, :, :), pointer :: transitionDebug
-    real(kind=realType), dimension(:, :, :), pointer :: srcLambda
+    real(kind=realType), dimension(:, :, :, :), pointer :: srcLambda
     real(kind=realType), dimension(:, :, :), pointer :: filterDES  ! eran-des
     real(kind=realType), dimension(:, :, :, :), pointer :: bmti1
     real(kind=realType), dimension(:, :, :, :), pointer :: bmti2
