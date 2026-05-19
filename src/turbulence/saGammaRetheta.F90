@@ -156,7 +156,7 @@ contains
         use inputDiscretization, only: approxSA
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
-        use inputIteration, only: transitionSrcDtRestrict, srcDtRestrictActive, verifySrcJac
+        use inputIteration, only: transitionSrcDtRestrict, srcDtRestrictActive
         implicit none
 
         ! Local parameters
@@ -725,14 +725,6 @@ contains
                 end do
             end do
         end do
-#endif
-
-#ifndef USE_TAPENADE
-        ! Verification: compare evalSrcJacBlock with qq (source-only, before advection/viscous)
-        ! Enable via verifySrcJac flag in inputIteration
-        if (verifySrcJac) then
-            call verifySrcJacBlock()
-        end if
 #endif
 
     end subroutine Source
@@ -2210,7 +2202,7 @@ contains
         dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
         dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
 
-        ! A(1,1) = -∂S_nu/∂nu_tilde (note: stores -dS/dQ)
+        ! A(1,1) = +∂S_nu/∂nu_tilde
         A(1,1) = two * term2 * w(i, j, k, itu1) &
                + dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
                * (gammaForSA * rsaCb1 * kar2Inv &
@@ -2251,18 +2243,18 @@ contains
         pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
                  * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
 
-        ! A(2,2) = -∂S_gamma/∂gamma
+        ! A(2,2) = +∂S_gamma/∂gamma
         A(2,2) = -(rsaGRca1 * fLength_val * fOnset * vortMagLim &
                    * (1.5_realType * rsaGRce1 * gammaLocal - half) &
                    / sqrt(max(gammaLocal, xminn)) &
                    + rsaGRca2 * fTurb_val * vortMagLim &
                    * (two * rsaGRce2 * gammaLocal - one))
 
-        ! A(1,2) = -∂S_nu/∂gamma
+        ! A(1,2) = +∂S_nu/∂gamma
         A(1,2) = (rsaCb1 * (one - ft2) * ss &
                   + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
 
-        ! A(2,1) = -∂S_gamma/∂nu_tilde
+        ! A(2,1) = +∂S_gamma/∂nu_tilde
         drTurb_dnu = (fv1 + chi * dfv1) / nu
         dfOnset1_drT = rTurb / max(fOnset1, xminn)
         dfOnset_dfOnset1 = 12.0_realType * fOnset * (one - fOnset)
@@ -2274,7 +2266,7 @@ contains
                - rsaGRca2 * dfTurb_dnu * vortMagLim * gammaLocal &
                  * (rsaGRce2 * gammaLocal - one)
 
-        ! A(2,3) = -∂S_gamma/∂ReThetaTilde via one-sided FD (matches Source exactly)
+        ! A(2,3) = +∂S_gamma/∂ReThetaTilde via one-sided FD
         epsRT = max(1.0e-4_realType * reThetaTilde, 1.0e-2_realType)
         reThetaTilde_p = reThetaTilde + epsRT
         reThetaC_p = rethetacCorrelation(reThetaTilde_p)
@@ -2286,7 +2278,7 @@ contains
                    * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
         A(2,3) = (pGamma_p - pGamma) / epsRT
 
-        ! A(3,3) = -∂S_retheta/∂ReThetaTilde
+        ! A(3,3) = +∂S_retheta/∂ReThetaTilde
         timeScale = 500.0_realType * nu / max(velMag2, xminn)
         thetaBL = reThetaTilde * nu / max(velMag, xminn)
         deltaBL = 7.5_realType * thetaBL
@@ -2301,90 +2293,6 @@ contains
         ! A(1,3), A(3,1), A(3,2) are zero per P&Z §7.1
 
     end subroutine evalSrcJacBlock
-
-    subroutine verifySrcJacBlock()
-        !
-        ! Verification routine: compare evalSrcJacBlock output with qq from Source.
-        ! MUST be called immediately after Source, before turbAdvection/Viscous.
-        ! Reports max absolute difference for the 5 non-zero entries.
-        ! Acceptance: diff < 1e-12 for analytic entries, ~1e-10 for A(2,3) (FD).
-        !
-        use blockPointers, only: il, jl, kl
-        use constants
-        use communication, only: myid
-        implicit none
-
-        integer(kind=intType) :: i, j, k
-        real(kind=realType) :: A(3,3)
-        real(kind=realType) :: diff11, diff12, diff21, diff22, diff23, diff33
-        real(kind=realType) :: maxDiff11, maxDiff12, maxDiff21, maxDiff22, maxDiff23, maxDiff33
-        real(kind=realType) :: fOnsetVal
-        integer(kind=intType) :: nTransitionCells
-
-        maxDiff11 = zero
-        maxDiff12 = zero
-        maxDiff21 = zero
-        maxDiff22 = zero
-        maxDiff23 = zero
-        maxDiff33 = zero
-        nTransitionCells = 0
-
-        do k = 2, kl
-            do j = 2, jl
-                do i = 2, il
-                    call evalSrcJacBlock(i, j, k, A)
-
-                    ! qq stores -∂S/∂Q, evalSrcJacBlock returns ∂S/∂Q
-                    ! So compare A with -qq
-                    diff11 = abs(A(1,1) - (-qq(i,j,k,1,1)))
-                    diff12 = abs(A(1,2) - (-qq(i,j,k,1,2)))
-                    diff21 = abs(A(2,1) - (-qq(i,j,k,2,1)))
-                    diff22 = abs(A(2,2) - (-qq(i,j,k,2,2)))
-                    diff23 = abs(A(2,3) - (-qq(i,j,k,2,3)))
-                    diff33 = abs(A(3,3) - (-qq(i,j,k,3,3)))
-
-                    maxDiff11 = max(maxDiff11, diff11)
-                    maxDiff12 = max(maxDiff12, diff12)
-                    maxDiff21 = max(maxDiff21, diff21)
-                    maxDiff22 = max(maxDiff22, diff22)
-                    maxDiff23 = max(maxDiff23, diff23)
-                    maxDiff33 = max(maxDiff33, diff33)
-
-                    ! Count transition cells (fOnset > 0.5)
-                    if (abs(A(2,1)) > 1.0e-8_realType .or. abs(A(2,2)) > 1.0e-8_realType) then
-                        nTransitionCells = nTransitionCells + 1
-                    end if
-                end do
-            end do
-        end do
-
-        if (myid == 0) then
-            write(*,'(A)') '=== verifySrcJacBlock: evalSrcJacBlock vs Source qq ==='
-            write(*,'(A,ES12.4)') '  max|A11 - (-qq11)| = ', maxDiff11
-            write(*,'(A,ES12.4)') '  max|A12 - (-qq12)| = ', maxDiff12
-            write(*,'(A,ES12.4)') '  max|A21 - (-qq21)| = ', maxDiff21
-            write(*,'(A,ES12.4)') '  max|A22 - (-qq22)| = ', maxDiff22
-            write(*,'(A,ES12.4)') '  max|A23 - (-qq23)| = ', maxDiff23
-            write(*,'(A,ES12.4)') '  max|A33 - (-qq33)| = ', maxDiff33
-            write(*,'(A,I8)') '  Transition cells (|A21|>1e-8 or |A22|>1e-8): ', nTransitionCells
-
-            if (maxDiff11 > 1.0e-12_realType .or. maxDiff12 > 1.0e-12_realType .or. &
-                maxDiff21 > 1.0e-12_realType .or. maxDiff22 > 1.0e-12_realType .or. &
-                maxDiff33 > 1.0e-12_realType) then
-                write(*,'(A)') '  WARNING: Analytic entries diff > 1e-12'
-            end if
-            if (maxDiff23 > 1.0e-10_realType) then
-                write(*,'(A)') '  WARNING: FD entry A23 diff > 1e-10'
-            end if
-            if (maxDiff11 < 1.0e-12_realType .and. maxDiff12 < 1.0e-12_realType .and. &
-                maxDiff21 < 1.0e-12_realType .and. maxDiff22 < 1.0e-12_realType .and. &
-                maxDiff33 < 1.0e-12_realType .and. maxDiff23 < 1.0e-10_realType) then
-                write(*,'(A)') '  PASS: All entries within tolerance'
-            end if
-            write(*,'(A)') '========================================================='
-        end if
-
-    end subroutine verifySrcJacBlock
 
     subroutine computeSrcLambda(mode)
         ! Compute srcLambda(i,j,k,1:3) per equation based on mode argument.
