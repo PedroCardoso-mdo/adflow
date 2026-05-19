@@ -156,6 +156,7 @@ contains
         use inputDiscretization, only: approxSA
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
+        use inputIteration, only: transitionSrcDtRestrict, srcDtRestrictActive
         implicit none
 
         ! Local parameters
@@ -726,7 +727,9 @@ contains
         end do
 #endif
 
-        call computeSrcLambda()
+        if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+            call computeSrcLambda()
+        end if
 
     end subroutine Source
 

@@ -3732,7 +3732,8 @@ contains
         use constants
         use blockPointers, only: nDom, flowDoms, shockSensor, ib, jb, kb, p, w, gamma
         use inputPhysics, only: equations
-        use inputIteration, only: L2conv
+        use inputIteration, only: L2conv, transitionSrcDtRestrict, srcDtRestrictActive, &
+                                   noBacktrackCount, srcDtDeactivateIters
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: lumpedDiss, approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, stepMonitor, linResMonitor, currentLevel, iterType
@@ -4143,6 +4144,21 @@ contains
                 end if
                 feval = feval + 1
             else
+            end if
+        end if
+
+        ! ============== Source-dt deactivation (P&Z §IV.B.3) =============
+        if (transitionSrcDtRestrict) then
+            if (LSFailed) then
+                ! Backtracking used: reset counter and reactivate
+                noBacktrackCount = 0
+                srcDtRestrictActive = .true.
+            else
+                ! No backtracking: increment clean iteration counter
+                noBacktrackCount = noBacktrackCount + 1
+                if (noBacktrackCount >= srcDtDeactivateIters) then
+                    srcDtRestrictActive = .false.
+                end if
             end if
         end if
 

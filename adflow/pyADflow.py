@@ -5692,6 +5692,8 @@ class ADFLOW(AeroSolver):
             "transitionFirstOrderUpwind": [bool, True],
             "transitionSrcDtRestrict": [bool, True],
             "transitionSrcDtLimit": [float, 0.9],
+            "transitionSrcDtEigMode": [str, "eigenvalue"],
+            "srcDtDeactivateIters": [int, 5],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6088,6 +6090,12 @@ class ADFLOW(AeroSolver):
             "transitionfirstorderupwind": ["iter", "transitionfirstorderupwind"],
             "transitionsrcdtrestrict": ["iter", "transitionsrcdtrestrict"],
             "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
+            "transitionsrcdteigmode": {
+                "gershgorin": 0,
+                "eigenvalue": 1,
+                "location": ["iter", "transitionsrcdteigmode"],
+            },
+            "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {
