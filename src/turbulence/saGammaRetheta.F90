@@ -1546,7 +1546,10 @@ contains
                         qq(i, j, k, 3, 1) = zero
                     end if
 
-                    ! Source dt restriction (Eq. 59): per-equation additive I/Δt inflation
+                    ! Source dt restriction (P&Z Eq. 59): ADDITIVE form.
+                    ! In DD-ADI there is no separate dtinv_CFL; srcLambda/limit IS the
+                    ! pseudo-transient term added to the diagonal. Contrast with turbKSP
+                    ! (NKSolvers.F90) which uses MAX form to restrict an existing dtinv_CFL.
                     if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
                         qq(i,j,k,1,1) = qq(i,j,k,1,1) + srcLambda(i,j,k,1) / transitionSrcDtLimit
                         qq(i,j,k,2,2) = qq(i,j,k,2,2) + srcLambda(i,j,k,2) / transitionSrcDtLimit

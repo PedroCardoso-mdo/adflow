@@ -2403,7 +2403,10 @@ contains
                                 ! l1 is just l that starts with 1 on the turb variables
                                 l1 = l - nt1 + 1
 
-                                ! Per-equation source dt restriction (Eq. 59)
+                                ! Source dt restriction (P&Z Eq. 59): MAX form.
+                                ! turbKSP has a dtinv_CFL from the CFL ramp; Eq. 59 restricts it.
+                                ! Contrast with DD-ADI (saGammaRetheta.F90) which uses ADDITIVE
+                                ! form because there is no separate dtinv_CFL in the smoother.
                                 if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
                                     dtinv_src = srcLambda(i, j, k, l1) / transitionSrcDtLimit
                                     blk(l1, l1) = max(dtinv, dtinv_src) * turbResScale(l1) / ANK_turbCFLScale
@@ -2595,7 +2598,7 @@ contains
 
                             do l = nt1, nt2
                                 l1 = l - nt1 + 1
-                                ! Per-equation source dt restriction (Eq. 59) - must match PC
+                                ! Source dt restriction (P&Z Eq. 59): MAX form - must match PC above.
                                 if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
                                     dtinv_src = srcLambda(i, j, k, l1) / transitionSrcDtLimit
                                     rvec_pointer(ii) = rvec_pointer(ii) + invec_pointer(ii) * &
