@@ -1710,6 +1710,8 @@ module ANKSolver
     logical :: ANK_turbSetup = .False.
     integer(kind=intType) :: ANK_iterTurb, nStateTurb
     real(kind=realType) :: lambdaTurb, ANK_physLSTolTurb
+    real(kind=realType) :: ANK_physLSTolReTheta = 0.99_realType
+    real(kind=realType) :: omegaMinGamma = 0.05_realType
     real(kind=alwaysRealType) :: linResOldTurb
 
 contains
@@ -3298,7 +3300,7 @@ contains
         real(kind=alwaysRealType) :: lambdaL ! L is for local
         real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
         real(kind=alwaysRealType) :: ratio
-        real(kind=alwaysRealType) :: wval, dval, ratioBound
+        real(kind=alwaysRealType) :: wval, dval, ratioBound, gammaFull
 
         ! Determine the maximum step size that would yield
         ! a maximum change of 10% in density, total energy,
@@ -3363,47 +3365,72 @@ contains
                             ! Physicality checks for gamma and ReTheta
                             do l = nt1 + 1, nt2
 #ifndef USE_COMPLEX
-                                ratio = (wvec_pointer(ii) / (dvec_pointer(ii) + eps)) * ANK_physLSTolTurb
                                 wval = wvec_pointer(ii)
                                 dval = dvec_pointer(ii)
 #else
-                                ratio = (real(wvec_pointer(ii)) &
-                                         / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTolTurb)
                                 wval = real(wvec_pointer(ii))
                                 dval = real(dvec_pointer(ii))
 #endif
 
-                                ! For SA-gamma-ReTheta, also enforce variable bounds by
-                                ! limiting the global step with the local admissible step.
                                 if (turbModel == spalartallmarasnoft2gammaretheta) then
-                                    ratioBound = one
-
                                     if (l == nt1 + 1) then
-                                        ! gamma lower and upper bounds
-                                        if (dval > zero) then
-                                            ratioBound = min(ratioBound, &
-                                                (wval - rsaGRgammaLo) / (dval + eps))
-                                        else if (dval < zero) then
-                                            ratioBound = min(ratioBound, &
-                                                (rsaGRgammaHi - wval) / (-dval + eps))
+                                        ! GAMMA: absolute bound enforcement, no relative check.
+                                        ! Full step allowed if result stays in [gammaLo, gammaHi].
+                                        ratio = one
+                                        gammaFull = wval - dval
+
+                                        if (gammaFull > rsaGRgammaHi) then
+                                            ratio = (wval - rsaGRgammaHi) / (dval + eps)
+                                        else if (gammaFull < rsaGRgammaLo) then
+                                            ratio = (wval - rsaGRgammaLo) / (dval + eps)
                                         end if
+
+                                        ratio = max(ratio, zero)
+
+                                        if (ratio < omegaMinGamma) then
+                                            ! Clip individual update to stay in bounds
+                                            if (dval > zero) then
+                                                dvec_pointer(ii) = wval - rsaGRgammaLo
+                                            else if (dval < zero) then
+                                                dvec_pointer(ii) = wval - rsaGRgammaHi
+                                            end if
+                                            ratio = one
+                                        end if
+
                                     else if (l == nt1 + 2) then
-                                        ! ReTheta lower bound
+                                        ! RETHETA: relative check with own tolerance + lower bound.
+#ifndef USE_COMPLEX
+                                        ratio = (wval / (dval + eps)) * ANK_physLSTolReTheta
+#else
+                                        ratio = (wval / real(dval + eps)) * real(ANK_physLSTolReTheta)
+#endif
+                                        ! Lower bound enforcement
                                         if (dval > zero) then
-                                            ratioBound = min(ratioBound, &
-                                                (wval - rsaGRreThetaLo) / (dval + eps))
+                                            ratioBound = (wval - rsaGRreThetaLo) / (dval + eps)
+                                            ratioBound = max(ratioBound, zero)
+                                            ratio = min(ratio, ratioBound)
+                                        end if
+
+                                        if (ratio < ANK_stepFactor * ANK_stepMin) then
+                                            if (ratio > zero) &
+                                                dvec_pointer(ii) = wval * ANK_physLSTolReTheta
+                                            ratio = one
                                         end if
                                     end if
-
-                                    ratioBound = max(ratioBound, zero)
-                                    ratio = min(ratio, ratioBound)
+                                else
+                                    ! Non-transition: use standard relative check
+#ifndef USE_COMPLEX
+                                    ratio = (wval / (dval + eps)) * ANK_physLSTolTurb
+#else
+                                    ratio = (wval / real(dval + eps)) * real(ANK_physLSTolTurb)
+#endif
+                                    if (ratio < ANK_stepFactor * ANK_stepMin) then
+                                        if (ratio > zero) &
+                                            dvec_pointer(ii) = wval * ANK_physLSTolTurb
+                                        ratio = one
+                                    end if
                                 end if
 
-                                if (ratio .lt. ANK_stepFactor * ANK_stepMin) then
-                                    if (ratio .gt. zero) &
-                                        dvec_pointer(ii) = wvec_pointer(ii) * ANK_physLSTolTurb
-                                    ratio = one
-                                end if
                                 lambdaL = min(lambdaL, ratio)
                                 ii = ii + 1
                             end do
