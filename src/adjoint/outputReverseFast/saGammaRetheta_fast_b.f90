@@ -138,8 +138,7 @@ contains
 &   rethetatcorrelation_fast_b, flengthcorrelation, &
 &   flengthcorrelation_fast_b, rethetaccorrelation, &
 &   rethetaccorrelation_fast_b, smoothminmax, smoothminmax_fast_b
-    use inputiteration, only : transitionsrcdtrestrict, &
-&   srcdtrestrictactive
+    use inputiteration, only : transitionsrcdtrestrict
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1146,8 +1145,7 @@ branch = myIntStack(myIntPtr)
     use flowvarrefstate
     use turbutils_fast_b, only : rethetatcorrelation, flengthcorrelation&
 &   , rethetaccorrelation, smoothminmax
-    use inputiteration, only : transitionsrcdtrestrict, &
-&   srcdtrestrictactive
+    use inputiteration, only : transitionsrcdtrestrict
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -2987,10 +2985,6 @@ branch = myIntStack(myIntPtr)
 &         turbdadicoupled
         end select
       end if
-! compute srclambda from qq (frozen for entire dadi solve).
-! map turbdadicoupled to srclambdamode (numerically identical but conceptually separate).
-      if (transitionsrcdtrestrict .and. srcdtrestrictactive) call &
-&       computesrclambda(turbdadicoupled)
       cb3inv = one/rsacb3
       cv13 = rsacv1**3
       if (turbresscale(1) .ge. 0.) then
@@ -3059,8 +3053,12 @@ branch = myIntStack(myIntPtr)
               qq(i, j, k, 2, 1) = zero
               qq(i, j, k, 3, 1) = zero
             end if
-! source dt restriction (eq. 59): per-equation additive i/δt inflation
-            if (transitionsrcdtrestrict .and. srcdtrestrictactive) then
+! source dt restriction (p&z eq. 59): additive form.
+! in dd-adi there is no separate dtinv_cfl; srclambda/limit is the
+! pseudo-transient term added to the diagonal. contrast with turbksp
+! (nksolvers.f90) which uses max form to restrict an existing dtinv_cfl.
+! dd-adi: controlled by transitionsrcdtrestrict only (no deactivation).
+            if (transitionsrcdtrestrict) then
               qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + srclambda(i, j, k&
 &               , 1)/transitionsrcdtlimit
               qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + srclambda(i, j, k&
@@ -3579,67 +3577,395 @@ branch = myIntStack(myIntPtr)
     end if
   end subroutine sagammarethetasolve
 
+  subroutine evalsrcjacblock(i, j, k, a)
+!
+! compute the source-term jacobian a_source = ∂s/∂q for cell (i,j,k).
+! returns the 5 non-zero entries: a(1,1), a(1,2), a(2,1), a(2,2), a(3,3).
+! entries a(1,3), a(3,1), a(3,2) are zero per p&z §7.1.
+! a(2,3) is computed via one-sided finite difference.
+!
+! this routine is independent of qq — it recomputes everything from w.
+! used by computesrclambda for the source dt restriction (eq. 59).
+!
+    use blockpointers
+    use constants
+    use paramturb
+    use section
+    use inputphysics
+    use flowvarrefstate
+    use turbutils_fast_b, only : flengthcorrelation, rethetaccorrelation
+    implicit none
+    integer(kind=inttype), intent(in) :: i, j, k
+    real(kind=realtype), intent(out) :: a(3, 3)
+! local parameters
+    real(kind=realtype), parameter :: f23=two*third
+    real(kind=realtype), parameter :: xminn=1.e-10_realtype
+! local variables
+    real(kind=realtype) :: fv1, fv2, ft2
+    real(kind=realtype) :: ss, sst, nu, dist2inv, chi, chi2, chi3
+    real(kind=realtype) :: rr, gg, gg6, termfw, fwsa, term2
+    real(kind=realtype) :: term2_prod, term2_dest
+    real(kind=realtype) :: cv13, kar2inv, cw36
+    real(kind=realtype) :: dfv1, dfv2, dft2, drr, dgg, dfw
+    real(kind=realtype) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
+    real(kind=realtype) :: fact, sxx, syy, szz, sxy, sxz, syz
+    real(kind=realtype) :: vortx, vorty, vortz
+    real(kind=realtype) :: omegax, omegay, omegaz
+    real(kind=realtype) :: strainmag2
+! gamma-retheta variables
+    real(kind=realtype) :: vortmag, strainmag
+    real(kind=realtype) :: nutsa, rturb, gammalocal, rethetatilde
+    real(kind=realtype) :: gammaforsa
+    real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
+    real(kind=realtype) :: fonset, fonset1
+    real(kind=realtype) :: vortlim, vortmaglim
+    real(kind=realtype) :: pgamma
+    real(kind=realtype) :: velmag, velmag2, timescale
+    real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
+    real(kind=realtype) :: ydist
+    real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
+    real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
+    real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
+    real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
+    intrinsic max
+    intrinsic sqrt
+    intrinsic exp
+    intrinsic min
+    intrinsic tanh
+    real(kind=realtype) :: x1
+    real(kind=realtype) :: x2
+    real(kind=realtype) :: x3
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max6
+    real(kind=realtype) :: max7
+    real(kind=realtype) :: max8
+    real(kind=realtype) :: max9
+    real(kind=realtype) :: max10
+    real(kind=realtype) :: max11
+    real(kind=realtype) :: max12
+    real(kind=realtype) :: max13
+    real(kind=realtype) :: max14
+    real(kind=realtype) :: max15
+! set model constants
+    cv13 = rsacv1**3
+    kar2inv = one/rsak**2
+    cw36 = rsacw3**6
+! rotation rates
+    omegax = timeref*sections(sectionid)%rotrate(1)
+    omegay = timeref*sections(sectionid)%rotrate(2)
+    omegaz = timeref*sections(sectionid)%rotrate(3)
+! initialize output
+    a = zero
+! compute velocity gradients (scaled by 2*vol)
+    uux = w(i+1, j, k, ivx)*si(i, j, k, 1) - w(i-1, j, k, ivx)*si(i-1, j&
+&     , k, 1) + w(i, j+1, k, ivx)*sj(i, j, k, 1) - w(i, j-1, k, ivx)*sj(&
+&     i, j-1, k, 1) + w(i, j, k+1, ivx)*sk(i, j, k, 1) - w(i, j, k-1, &
+&     ivx)*sk(i, j, k-1, 1)
+    uuy = w(i+1, j, k, ivx)*si(i, j, k, 2) - w(i-1, j, k, ivx)*si(i-1, j&
+&     , k, 2) + w(i, j+1, k, ivx)*sj(i, j, k, 2) - w(i, j-1, k, ivx)*sj(&
+&     i, j-1, k, 2) + w(i, j, k+1, ivx)*sk(i, j, k, 2) - w(i, j, k-1, &
+&     ivx)*sk(i, j, k-1, 2)
+    uuz = w(i+1, j, k, ivx)*si(i, j, k, 3) - w(i-1, j, k, ivx)*si(i-1, j&
+&     , k, 3) + w(i, j+1, k, ivx)*sj(i, j, k, 3) - w(i, j-1, k, ivx)*sj(&
+&     i, j-1, k, 3) + w(i, j, k+1, ivx)*sk(i, j, k, 3) - w(i, j, k-1, &
+&     ivx)*sk(i, j, k-1, 3)
+    vvx = w(i+1, j, k, ivy)*si(i, j, k, 1) - w(i-1, j, k, ivy)*si(i-1, j&
+&     , k, 1) + w(i, j+1, k, ivy)*sj(i, j, k, 1) - w(i, j-1, k, ivy)*sj(&
+&     i, j-1, k, 1) + w(i, j, k+1, ivy)*sk(i, j, k, 1) - w(i, j, k-1, &
+&     ivy)*sk(i, j, k-1, 1)
+    vvy = w(i+1, j, k, ivy)*si(i, j, k, 2) - w(i-1, j, k, ivy)*si(i-1, j&
+&     , k, 2) + w(i, j+1, k, ivy)*sj(i, j, k, 2) - w(i, j-1, k, ivy)*sj(&
+&     i, j-1, k, 2) + w(i, j, k+1, ivy)*sk(i, j, k, 2) - w(i, j, k-1, &
+&     ivy)*sk(i, j, k-1, 2)
+    vvz = w(i+1, j, k, ivy)*si(i, j, k, 3) - w(i-1, j, k, ivy)*si(i-1, j&
+&     , k, 3) + w(i, j+1, k, ivy)*sj(i, j, k, 3) - w(i, j-1, k, ivy)*sj(&
+&     i, j-1, k, 3) + w(i, j, k+1, ivy)*sk(i, j, k, 3) - w(i, j, k-1, &
+&     ivy)*sk(i, j, k-1, 3)
+    wwx = w(i+1, j, k, ivz)*si(i, j, k, 1) - w(i-1, j, k, ivz)*si(i-1, j&
+&     , k, 1) + w(i, j+1, k, ivz)*sj(i, j, k, 1) - w(i, j-1, k, ivz)*sj(&
+&     i, j-1, k, 1) + w(i, j, k+1, ivz)*sk(i, j, k, 1) - w(i, j, k-1, &
+&     ivz)*sk(i, j, k-1, 1)
+    wwy = w(i+1, j, k, ivz)*si(i, j, k, 2) - w(i-1, j, k, ivz)*si(i-1, j&
+&     , k, 2) + w(i, j+1, k, ivz)*sj(i, j, k, 2) - w(i, j-1, k, ivz)*sj(&
+&     i, j-1, k, 2) + w(i, j, k+1, ivz)*sk(i, j, k, 2) - w(i, j, k-1, &
+&     ivz)*sk(i, j, k-1, 2)
+    wwz = w(i+1, j, k, ivz)*si(i, j, k, 3) - w(i-1, j, k, ivz)*si(i-1, j&
+&     , k, 3) + w(i, j+1, k, ivz)*sj(i, j, k, 3) - w(i, j-1, k, ivz)*sj(&
+&     i, j-1, k, 3) + w(i, j, k+1, ivz)*sk(i, j, k, 3) - w(i, j, k-1, &
+&     ivz)*sk(i, j, k-1, 3)
+    fact = fourth/vol(i, j, k)
+! compute vorticity for ss (production term)
+    vortx = two*fact*(wwy-vvz) - two*omegax
+    vorty = two*fact*(uuz-wwx) - two*omegay
+    vortz = two*fact*(vvx-uuy) - two*omegaz
+    if (vortx**2 + vorty**2 + vortz**2 .lt. xminn) then
+      max1 = xminn
+    else
+      max1 = vortx**2 + vorty**2 + vortz**2
+    end if
+    ss = sqrt(max1)
+! sa auxiliary functions
+    nu = rlv(i, j, k)/w(i, j, k, irho)
+    dist2inv = one/d2wall(i, j, k)**2
+    chi = w(i, j, k, itu1)/nu
+    chi2 = chi*chi
+    chi3 = chi*chi2
+    fv1 = chi3/(chi3+cv13)
+    fv2 = one - chi/(one+chi*fv1)
+    if (useft2sa) then
+      ft2 = rsact3*exp(-(rsact4*chi2))
+    else
+      ft2 = zero
+    end if
+    sst = ss + w(i, j, k, itu1)*fv2*kar2inv*dist2inv
+    if (sst .lt. xminn) then
+      sst = xminn
+    else
+      sst = sst
+    end if
+    rr = w(i, j, k, itu1)*kar2inv*dist2inv/sst
+    if (rr .gt. 10.0_realtype) then
+      rr = 10.0_realtype
+    else
+      rr = rr
+    end if
+    gg = rr + rsacw2*(rr**6-rr)
+    gg6 = gg**6
+    termfw = ((one+cw36)/(gg6+cw36))**sixth
+    fwsa = gg*termfw
+    if (w(i, j, k, itu2) .lt. zero) then
+      x1 = zero
+    else
+      x1 = w(i, j, k, itu2)
+    end if
+    if (x1 .gt. one) then
+      gammaforsa = one
+    else
+      gammaforsa = x1
+    end if
+    term2_prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
+    term2_dest = -(dist2inv*rsacw1*fwsa)
+    term2 = gammaforsa*term2_prod + term2_dest
+! derivatives for a(1,1)
+    dfv1 = three*chi2*cv13/(chi3+cv13)**2
+    dfv2 = (chi2*dfv1-one)/(nu*(one+chi*fv1)**2)
+    dft2 = -(two*rsact4*chi*ft2/nu)
+    drr = (one-rr*(fv2+w(i, j, k, itu1)*dfv2))*kar2inv*dist2inv/sst
+    dgg = (one-rsacw2+six*rsacw2*rr**5)*drr
+    dfw = cw36/(gg6+cw36)*termfw*dgg
+! a(1,1) = +∂s_nu/∂nu_tilde
+    a(1, 1) = two*term2*w(i, j, k, itu1) + dist2inv*w(i, j, k, itu1)*w(i&
+&     , j, k, itu1)*(gammaforsa*rsacb1*kar2inv*(dfv2-ft2*dfv2-fv2*dft2+&
+&     dft2)-rsacw1*dfw)
+    if (vortx**2 + vorty**2 + vortz**2 .lt. xminn) then
+      max2 = xminn
+    else
+      max2 = vortx**2 + vorty**2 + vortz**2
+    end if
+! --- gamma-retheta variables for a(2,*) ---
+    vortmag = sqrt(max2)
+    sxx = two*fact*uux
+    syy = two*fact*vvy
+    szz = two*fact*wwz
+    sxy = fact*(uuy+vvx)
+    sxz = fact*(uuz+wwx)
+    syz = fact*(vvz+wwy)
+    strainmag2 = two*(sxy**2+sxz**2+syz**2) + sxx**2 + syy**2 + szz**2
+    if (two*strainmag2 .lt. xminn) then
+      max3 = xminn
+    else
+      max3 = two*strainmag2
+    end if
+    strainmag = sqrt(max3)
+    nutsa = w(i, j, k, itu1)*fv1
+    rturb = nutsa/nu
+    if (w(i, j, k, itu2) .lt. rsagrgammalo) then
+      x2 = rsagrgammalo
+    else
+      x2 = w(i, j, k, itu2)
+    end if
+    if (x2 .gt. rsagrgammahi) then
+      gammalocal = rsagrgammahi
+    else
+      gammalocal = x2
+    end if
+    if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
+      rethetatilde = rsagrrethetalo
+    else
+      rethetatilde = w(i, j, k, itu3)
+    end if
+    ydist = d2wall(i, j, k)
+    velmag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)&
+&     **2
+    if (velmag2 .lt. xminn) then
+      max4 = xminn
+    else
+      max4 = velmag2
+    end if
+    velmag = sqrt(max4)
+    if (muinf .lt. xminn) then
+      max15 = xminn
+    else
+      max15 = muinf
+    end if
+    x3 = uinf/max15
+    if (x3 .lt. xminn) then
+      max5 = xminn
+    else
+      max5 = x3
+    end if
+    vortlim = uinf*sqrt(max5)/20.0_realtype
+    if (vortmag .gt. vortlim) then
+      vortmaglim = vortlim
+    else
+      vortmaglim = vortmag
+    end if
+    res_val = w(i, j, k, irho)*ydist**2*strainmag/rlv(i, j, k)
+    rethetac_val = rethetaccorrelation(rethetatilde)
+    fonset1 = sqrt((res_val/(2.6_realtype*rethetac_val))**2 + rturb**2)
+    fonset = (tanh(6.0_realtype*(fonset1-1.35_realtype))+one)*half
+    flength_val = flengthcorrelation(rethetatilde)
+    fturb_val = (one-fonset)*exp(-rturb)
+    if (gammalocal .lt. xminn) then
+      max6 = xminn
+    else
+      max6 = gammalocal
+    end if
+    pgamma = rsagrca1*flength_val*fonset*vortmaglim*sqrt(max6)*(one-&
+&     rsagrce1*gammalocal)
+    if (gammalocal .lt. xminn) then
+      max7 = xminn
+    else
+      max7 = gammalocal
+    end if
+! a(2,2) = +∂s_gamma/∂gamma
+    a(2, 2) = -(rsagrca1*flength_val*fonset*vortmaglim*(1.5_realtype*&
+&     rsagrce1*gammalocal-half)/sqrt(max7)+rsagrca2*fturb_val*vortmaglim&
+&     *(two*rsagrce2*gammalocal-one))
+! a(1,2) = +∂s_nu/∂gamma
+    a(1, 2) = (rsacb1*(one-ft2)*ss+term2_prod*w(i, j, k, itu1))*w(i, j, &
+&     k, itu1)
+! a(2,1) = +∂s_gamma/∂nu_tilde
+    drturb_dnu = (fv1+chi*dfv1)/nu
+    if (fonset1 .lt. xminn) then
+      max8 = xminn
+    else
+      max8 = fonset1
+    end if
+    dfonset1_drt = rturb/max8
+    dfonset_dfonset1 = 12.0_realtype*fonset*(one-fonset)
+    dfonset_dnu = dfonset_dfonset1*dfonset1_drt*drturb_dnu
+    dfturb_dnu = -(exp(-rturb)*dfonset_dnu) - fturb_val*drturb_dnu
+    if (gammalocal .lt. xminn) then
+      max9 = xminn
+    else
+      max9 = gammalocal
+    end if
+    a(2, 1) = rsagrca1*flength_val*dfonset_dnu*vortmaglim*sqrt(max9)*(&
+&     one-rsagrce1*gammalocal) - rsagrca2*dfturb_dnu*vortmaglim*&
+&     gammalocal*(rsagrce2*gammalocal-one)
+    if (1.0e-4_realtype*rethetatilde .lt. 1.0e-2_realtype) then
+      epsrt = 1.0e-2_realtype
+    else
+      epsrt = 1.0e-4_realtype*rethetatilde
+    end if
+    rethetatilde_p = rethetatilde + epsrt
+    rethetac_p = rethetaccorrelation(rethetatilde_p)
+    if (rethetac_p .lt. xminn) then
+      rethetac_p = xminn
+    else
+      rethetac_p = rethetac_p
+    end if
+    fonset1_p = sqrt((res_val/(2.6_realtype*rethetac_p))**2 + rturb**2)
+    fonset_p = (tanh(6.0_realtype*(fonset1_p-1.35_realtype))+one)*half
+    flength_p = flengthcorrelation(rethetatilde_p)
+    if (gammalocal .lt. xminn) then
+      max10 = xminn
+    else
+      max10 = gammalocal
+    end if
+    pgamma_p = rsagrca1*flength_p*fonset_p*vortmaglim*sqrt(max10)*(one-&
+&     rsagrce1*gammalocal)
+    a(2, 3) = (pgamma_p-pgamma)/epsrt
+    if (velmag2 .lt. xminn) then
+      max11 = xminn
+    else
+      max11 = velmag2
+    end if
+! a(3,3) = +∂s_retheta/∂rethetatilde
+    timescale = 500.0_realtype*nu/max11
+    if (velmag .lt. xminn) then
+      max12 = xminn
+    else
+      max12 = velmag
+    end if
+    thetabl = rethetatilde*nu/max12
+    deltabl = 7.5_realtype*thetabl
+    if (velmag .lt. xminn) then
+      max13 = xminn
+    else
+      max13 = velmag
+    end if
+    delta = 50.0_realtype*ydist*vortmag*deltabl/max13
+    if (delta .lt. xminn) then
+      delta = xminn
+    else
+      delta = delta
+    end if
+    fwake_val = exp(-(res_val/1.0e6_realtype))
+    fthetat = fwake_val*exp(-((ydist/delta)**4))
+    if (timescale .lt. xminn) then
+      max14 = xminn
+    else
+      max14 = timescale
+    end if
+    a(3, 3) = -(rsagrcthetat/max14*(one-fthetat))
+    if (a(3, 3) .gt. zero) then
+      a(3, 3) = zero
+    else
+      a(3, 3) = a(3, 3)
+    end if
+  end subroutine evalsrcjacblock
+
   subroutine computesrclambda(mode)
 ! compute srclambda(i,j,k,1:3) per equation based on mode argument.
-! a_source = -qq (qq stores -∂s/∂q).
+! calls evalsrcjacblock to get a_source = ∂s/∂q (source-only jacobian).
+! independent of qq — safe to call when qq is deallocated or contaminated.
+!
+! exploits block-triangular structure: a13=a31=a32=0 (p&z §7.1).
+! this gives det(a-λi) = (a33-λ)·det([a11-λ,a12;a21,a22-λ]),
+! so eigenvalues = {a33} ∪ {2x2 block eigenvalues} — no cubic needed.
 !
 ! mode (from paramturb):
-!   srclambdamodedecoupled  (0): srclambda(m) = max(0, -qq(m,m)) for each equation
-!   srclambdamodetransition (1): srclambda(1) = diagonal sa, srclambda(2:3) = 2x2 γ-re̅θt eigenvalue
-!   srclambdamodefull       (2): srclambda(1:3) = 3x3 eigenvalue (same for all)
-!
-! transitionsrcdteigmode: 0=gershgorin, 1=exact eigenvalue
+!   srclambdamodedecoupled  (0): srclambda(m) = max(0, a(m,m))
+!   srclambdamodetransition (1): sa diagonal; γ-reθ = max(a22,a33) since a32=0
+!   srclambdamodefull       (2): 2x2 eigenvalue + a33
     use constants
     use blockpointers, only : il, jl, kl, srclambda
-    use inputiteration, only : transitionsrcdteigmode
     use paramturb, only : srclambdamodedecoupled, &
 &   srclambdamodetransition, srclambdamodefull
     implicit none
     integer(kind=inttype), intent(in) :: mode
     integer(kind=inttype) :: i, j, k
-    real(kind=realtype) :: a11, a12, a13, a21, a22, a23, a31, a32, a33
-    real(kind=realtype) :: g1, g2, g3, lambda3x3, lambda2x2
-    real(kind=realtype) :: p, qc, r, a, b, c, disc, phi, t, sqrtp
-    real(kind=realtype) :: tr2, det2, disc2
-    real(kind=realtype), parameter :: onethird=one/three
-    real(kind=realtype), parameter :: pival=&
-&     3.14159265358979323846_realtype
+    real(kind=realtype) :: a(3, 3)
+    real(kind=realtype) :: a11, a12, a21, a22, a33
+    real(kind=realtype) :: lambda3x3, lambda2x2
+    real(kind=realtype) :: tr2, disc2
     intrinsic max
     intrinsic sqrt
-    intrinsic abs
-    intrinsic min
-    intrinsic acos
-    intrinsic cos
-    intrinsic sign
-    real(kind=realtype) :: y1
-    real(kind=realtype) :: abs0
-    real(kind=realtype) :: abs1
-    real(kind=realtype) :: abs2
-    real(kind=realtype) :: max1
-    real(kind=realtype) :: abs3
-    real(kind=realtype) :: abs4
-    real(kind=realtype) :: abs5
-    real(kind=realtype) :: abs6
-    real(kind=realtype) :: abs7
-    real(kind=realtype) :: abs8
-    real(kind=realtype) :: abs9
-    real(kind=realtype) :: abs10
-    real(kind=realtype) :: abs11
-    real(kind=realtype) :: abs12
-    real(kind=realtype) :: abs13
     do k=2,kl
       do j=2,jl
         do i=2,il
-! a_source = -qq (qq stores -∂s/∂q)
-          a11 = -qq(i, j, k, 1, 1)
-          a12 = -qq(i, j, k, 1, 2)
-          a13 = -qq(i, j, k, 1, 3)
-          a21 = -qq(i, j, k, 2, 1)
-          a22 = -qq(i, j, k, 2, 2)
-          a23 = -qq(i, j, k, 2, 3)
-          a31 = -qq(i, j, k, 3, 1)
-          a32 = -qq(i, j, k, 3, 2)
-          a33 = -qq(i, j, k, 3, 3)
+          call evalsrcjacblock(i, j, k, a)
+          a11 = a(1, 1)
+          a12 = a(1, 2)
+          a21 = a(2, 1)
+          a22 = a(2, 2)
+          a33 = a(3, 3)
           if (mode .eq. srclambdamodedecoupled) then
             if (zero .lt. a11) then
               srclambda(i, j, k, 1) = a11
@@ -3662,183 +3988,39 @@ branch = myIntStack(myIntPtr)
             else
               srclambda(i, j, k, 1) = zero
             end if
-! 2x2 eigenvalue for γ-re̅θt subsystem
-            tr2 = a22 + a33
-            det2 = a22*a33 - a23*a32
-            disc2 = tr2*tr2 - four*det2
-            if (disc2 .ge. zero) then
-              lambda2x2 = half*(tr2+sqrt(disc2))
-            else
-              lambda2x2 = half*tr2
-            end if
-            if (zero .lt. lambda2x2) then
-              lambda2x2 = lambda2x2
+            if (zero .lt. a22) then
+              if (a22 .lt. a33) then
+                lambda2x2 = a33
+              else
+                lambda2x2 = a22
+              end if
+            else if (zero .lt. a33) then
+              lambda2x2 = a33
             else
               lambda2x2 = zero
             end if
             srclambda(i, j, k, 2) = lambda2x2
             srclambda(i, j, k, 3) = lambda2x2
           else
-! full 3x3 coupling
-            if (transitionsrcdteigmode .eq. 0) then
-              if (a12 .ge. 0.) then
-                abs0 = a12
-              else
-                abs0 = -a12
-              end if
-              if (a13 .ge. 0.) then
-                abs7 = a13
-              else
-                abs7 = -a13
-              end if
-! gershgorin upper bound
-              g1 = a11 + abs0 + abs7
-              if (a21 .ge. 0.) then
-                abs1 = a21
-              else
-                abs1 = -a21
-              end if
-              if (a23 .ge. 0.) then
-                abs8 = a23
-              else
-                abs8 = -a23
-              end if
-              g2 = a22 + abs1 + abs8
-              if (a31 .ge. 0.) then
-                abs2 = a31
-              else
-                abs2 = -a31
-              end if
-              if (a32 .ge. 0.) then
-                abs9 = a32
-              else
-                abs9 = -a32
-              end if
-              g3 = a33 + abs2 + abs9
-              if (g1 .lt. g2) then
-                if (g2 .lt. g3) then
-                  lambda3x3 = g3
-                else
-                  lambda3x3 = g2
-                end if
-              else if (g1 .lt. g3) then
-                lambda3x3 = g3
-              else
-                lambda3x3 = g1
-              end if
+! full: 2x2 eigenvalue for [a11,a12;a21,a22] + a33
+! since a13=a31=a32=0, the 3x3 factorizes exactly.
+! if any of these off-diagonals become nonzero, must solve full 3x3.
+            tr2 = a11 + a22
+            disc2 = ((a11-a22)*half)**2 + a12*a21
+            if (disc2 .ge. zero) then
+              lambda2x2 = tr2*half + sqrt(disc2)
             else
-! exact 3x3 eigenvalue via cubic formula
-              a = a11 + a22 + a33
-              b = a11*a22 + a22*a33 + a33*a11 - a12*a21 - a23*a32 - a31*&
-&               a13
-              c = a11*(a22*a33-a23*a32) - a12*(a21*a33-a23*a31) + a13*(&
-&               a21*a32-a22*a31)
-              p = b - a*a*onethird
-              qc = -(two*a*a*a/27.0_realtype) + a*b*onethird - c
-              disc = qc*qc/four + p*p*p/27.0_realtype
-              if (disc .le. zero) then
-                sqrtp = sqrt(-(p*onethird))
-                phi = zero
-                if (sqrtp .gt. 1.0e-30_realtype) then
-                  if (one .gt. -(qc/(two*sqrtp**3))) then
-                    y1 = -(qc/(two*sqrtp**3))
-                  else
-                    y1 = one
-                  end if
-                  if (-one .lt. y1) then
-                    max1 = y1
-                  else
-                    max1 = -one
-                  end if
-                  phi = acos(max1)
-                  t = two*sqrtp*cos(phi*onethird)
-                else
-                  t = zero
-                end if
-                lambda3x3 = t + a*onethird
-                t = two*sqrtp*cos((phi+two*pival)*onethird)
-                if (lambda3x3 .lt. t + a*onethird) then
-                  lambda3x3 = t + a*onethird
-                else
-                  lambda3x3 = lambda3x3
-                end if
-                t = two*sqrtp*cos((phi+four*pival)*onethird)
-                if (lambda3x3 .lt. t + a*onethird) then
-                  lambda3x3 = t + a*onethird
-                else
-                  lambda3x3 = lambda3x3
-                end if
-              else
-                r = sqrt(disc)
-                if (-(qc*half) + r .ge. 0.) then
-                  abs3 = -(qc*half) + r
-                else
-                  abs3 = -(-(qc*half)+r)
-                end if
-                if (-(qc*half) - r .ge. 0.) then
-                  abs10 = -(qc*half) - r
-                else
-                  abs10 = -(-(qc*half)-r)
-                end if
-                t = sign(abs3**onethird, -(qc*half) + r) + sign(abs10**&
-&                 onethird, -(qc*half) - r)
-                lambda3x3 = t + a*onethird
-                if (lambda3x3 .lt. (a-lambda3x3)*half) then
-                  lambda3x3 = (a-lambda3x3)*half
-                else
-                  lambda3x3 = lambda3x3
-                end if
-              end if
-! fallback to gershgorin if nan
-              if (lambda3x3 .ne. lambda3x3) then
-                if (a12 .ge. 0.) then
-                  abs4 = a12
-                else
-                  abs4 = -a12
-                end if
-                if (a13 .ge. 0.) then
-                  abs11 = a13
-                else
-                  abs11 = -a13
-                end if
-                g1 = a11 + abs4 + abs11
-                if (a21 .ge. 0.) then
-                  abs5 = a21
-                else
-                  abs5 = -a21
-                end if
-                if (a23 .ge. 0.) then
-                  abs12 = a23
-                else
-                  abs12 = -a23
-                end if
-                g2 = a22 + abs5 + abs12
-                if (a31 .ge. 0.) then
-                  abs6 = a31
-                else
-                  abs6 = -a31
-                end if
-                if (a32 .ge. 0.) then
-                  abs13 = a32
-                else
-                  abs13 = -a32
-                end if
-                g3 = a33 + abs6 + abs13
-                if (g1 .lt. g2) then
-                  if (g2 .lt. g3) then
-                    lambda3x3 = g3
-                  else
-                    lambda3x3 = g2
-                  end if
-                else if (g1 .lt. g3) then
-                  lambda3x3 = g3
-                else
-                  lambda3x3 = g1
-                end if
-              end if
+! complex conjugate pair: real part = tr2/2
+              lambda2x2 = tr2*half
             end if
-            if (zero .lt. lambda3x3) then
-              lambda3x3 = lambda3x3
+            if (zero .lt. lambda2x2) then
+              if (lambda2x2 .lt. a33) then
+                lambda3x3 = a33
+              else
+                lambda3x3 = lambda2x2
+              end if
+            else if (zero .lt. a33) then
+              lambda3x3 = a33
             else
               lambda3x3 = zero
             end if
