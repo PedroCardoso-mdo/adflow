@@ -259,7 +259,6 @@ contains
     intrinsic max
     intrinsic tanh
     intrinsic associated
-    intrinsic abs
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
     real(kind=realtype) :: x1
@@ -267,9 +266,6 @@ contains
     real(kind=realtype) :: x2
     real(kind=realtype) :: x2d
     real(kind=realtype) :: x3
-    real(kind=realtype) :: x4
-    real(kind=realtype) :: y2
-    real(kind=realtype) :: z1
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -294,15 +290,6 @@ contains
     real(kind=realtype) :: max11
     real(kind=realtype) :: max11d
     real(kind=realtype) :: max12
-    real(kind=realtype) :: abs0
-    real(kind=realtype) :: abs1
-    real(kind=realtype) :: abs2
-    real(kind=realtype) :: abs3
-    real(kind=realtype) :: abs4
-    real(kind=realtype) :: abs5
-    real(kind=realtype) :: abs6
-    real(kind=realtype) :: abs7
-    real(kind=realtype) :: abs8
     real(kind=realtype) :: result1
     real(kind=realtype) :: result1d
     real(kind=realtype) :: arg1
@@ -1102,71 +1089,7 @@ contains
           end do
         end do
       end do
-      do k=2,kl
-        do j=2,jl
-          do i=2,il
-            if (qq(i, j, k, 1, 1) .ge. 0.) then
-              abs0 = qq(i, j, k, 1, 1)
-            else
-              abs0 = -qq(i, j, k, 1, 1)
-            end if
-            if (qq(i, j, k, 1, 2) .ge. 0.) then
-              abs3 = qq(i, j, k, 1, 2)
-            else
-              abs3 = -qq(i, j, k, 1, 2)
-            end if
-            if (qq(i, j, k, 1, 3) .ge. 0.) then
-              abs6 = qq(i, j, k, 1, 3)
-            else
-              abs6 = -qq(i, j, k, 1, 3)
-            end if
-            x4 = abs0 + abs3 + abs6
-            if (qq(i, j, k, 2, 1) .ge. 0.) then
-              abs1 = qq(i, j, k, 2, 1)
-            else
-              abs1 = -qq(i, j, k, 2, 1)
-            end if
-            if (qq(i, j, k, 2, 2) .ge. 0.) then
-              abs4 = qq(i, j, k, 2, 2)
-            else
-              abs4 = -qq(i, j, k, 2, 2)
-            end if
-            if (qq(i, j, k, 2, 3) .ge. 0.) then
-              abs7 = qq(i, j, k, 2, 3)
-            else
-              abs7 = -qq(i, j, k, 2, 3)
-            end if
-            y2 = abs1 + abs4 + abs7
-            if (qq(i, j, k, 3, 1) .ge. 0.) then
-              abs2 = qq(i, j, k, 3, 1)
-            else
-              abs2 = -qq(i, j, k, 3, 1)
-            end if
-            if (qq(i, j, k, 3, 2) .ge. 0.) then
-              abs5 = qq(i, j, k, 3, 2)
-            else
-              abs5 = -qq(i, j, k, 3, 2)
-            end if
-            if (qq(i, j, k, 3, 3) .ge. 0.) then
-              abs8 = qq(i, j, k, 3, 3)
-            else
-              abs8 = -qq(i, j, k, 3, 3)
-            end if
-            z1 = abs2 + abs5 + abs8
-            if (x4 .lt. y2) then
-              if (y2 .lt. z1) then
-                srclambda(i, j, k) = z1
-              else
-                srclambda(i, j, k) = y2
-              end if
-            else if (x4 .lt. z1) then
-              srclambda(i, j, k) = z1
-            else
-              srclambda(i, j, k) = x4
-            end if
-          end do
-        end do
-      end do
+      call computesrclambda()
     end if
   end subroutine source_d
 
@@ -1278,14 +1201,10 @@ contains
     intrinsic max
     intrinsic tanh
     intrinsic associated
-    intrinsic abs
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
-    real(kind=realtype) :: x4
-    real(kind=realtype) :: y2
-    real(kind=realtype) :: z1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1299,15 +1218,6 @@ contains
     real(kind=realtype) :: max10
     real(kind=realtype) :: max11
     real(kind=realtype) :: max12
-    real(kind=realtype) :: abs0
-    real(kind=realtype) :: abs1
-    real(kind=realtype) :: abs2
-    real(kind=realtype) :: abs3
-    real(kind=realtype) :: abs4
-    real(kind=realtype) :: abs5
-    real(kind=realtype) :: abs6
-    real(kind=realtype) :: abs7
-    real(kind=realtype) :: abs8
     real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
 ! set model constants
@@ -1705,71 +1615,7 @@ contains
           end do
         end do
       end do
-      do k=2,kl
-        do j=2,jl
-          do i=2,il
-            if (qq(i, j, k, 1, 1) .ge. 0.) then
-              abs0 = qq(i, j, k, 1, 1)
-            else
-              abs0 = -qq(i, j, k, 1, 1)
-            end if
-            if (qq(i, j, k, 1, 2) .ge. 0.) then
-              abs3 = qq(i, j, k, 1, 2)
-            else
-              abs3 = -qq(i, j, k, 1, 2)
-            end if
-            if (qq(i, j, k, 1, 3) .ge. 0.) then
-              abs6 = qq(i, j, k, 1, 3)
-            else
-              abs6 = -qq(i, j, k, 1, 3)
-            end if
-            x4 = abs0 + abs3 + abs6
-            if (qq(i, j, k, 2, 1) .ge. 0.) then
-              abs1 = qq(i, j, k, 2, 1)
-            else
-              abs1 = -qq(i, j, k, 2, 1)
-            end if
-            if (qq(i, j, k, 2, 2) .ge. 0.) then
-              abs4 = qq(i, j, k, 2, 2)
-            else
-              abs4 = -qq(i, j, k, 2, 2)
-            end if
-            if (qq(i, j, k, 2, 3) .ge. 0.) then
-              abs7 = qq(i, j, k, 2, 3)
-            else
-              abs7 = -qq(i, j, k, 2, 3)
-            end if
-            y2 = abs1 + abs4 + abs7
-            if (qq(i, j, k, 3, 1) .ge. 0.) then
-              abs2 = qq(i, j, k, 3, 1)
-            else
-              abs2 = -qq(i, j, k, 3, 1)
-            end if
-            if (qq(i, j, k, 3, 2) .ge. 0.) then
-              abs5 = qq(i, j, k, 3, 2)
-            else
-              abs5 = -qq(i, j, k, 3, 2)
-            end if
-            if (qq(i, j, k, 3, 3) .ge. 0.) then
-              abs8 = qq(i, j, k, 3, 3)
-            else
-              abs8 = -qq(i, j, k, 3, 3)
-            end if
-            z1 = abs2 + abs5 + abs8
-            if (x4 .lt. y2) then
-              if (y2 .lt. z1) then
-                srclambda(i, j, k) = z1
-              else
-                srclambda(i, j, k) = y2
-              end if
-            else if (x4 .lt. z1) then
-              srclambda(i, j, k) = z1
-            else
-              srclambda(i, j, k) = x4
-            end if
-          end do
-        end do
-      end do
+      call computesrclambda()
     end if
   end subroutine source
 
@@ -3599,6 +3445,241 @@ contains
       end do
     end if
   end subroutine sagammarethetasolve
+
+  subroutine computesrclambda()
+! compute srclambda = max(0, λ_max) where λ_max is the largest positive
+! eigenvalue of a_source = -qq (p&z 2020 eq. 59).
+! note: qq stores -∂s/∂q, so a_source = -qq.
+!
+! mode 0: signed gershgorin upper bound (ad-safe)
+!   srclambda = max(0, max_i[ a_ii + σ_{j≠i} |a_ij| ])
+! mode 1: exact 3x3 eigenvalue via cubic formula
+    use constants
+    use blockpointers, only : il, jl, kl, srclambda
+    use inputiteration, only : transitionsrcdteigmode
+    implicit none
+    integer(kind=inttype) :: i, j, k
+    real(kind=realtype) :: a11, a12, a13, a21, a22, a23, a31, a32, a33
+    real(kind=realtype) :: g1, g2, g3, lambdamax
+    real(kind=realtype) :: p, qc, r, a, b, c, disc, phi, t, sqrtp
+    real(kind=realtype), parameter :: onethird=one/three
+    real(kind=realtype), parameter :: pival=&
+&     3.14159265358979323846_realtype
+    intrinsic abs
+    intrinsic max
+    intrinsic sqrt
+    intrinsic min
+    intrinsic acos
+    intrinsic cos
+    intrinsic sign
+    real(kind=realtype) :: y1
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs2
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: abs6
+    real(kind=realtype) :: abs7
+    real(kind=realtype) :: abs8
+    real(kind=realtype) :: abs9
+    real(kind=realtype) :: abs10
+    real(kind=realtype) :: abs11
+    real(kind=realtype) :: abs12
+    real(kind=realtype) :: abs13
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg2
+    do k=2,kl
+      do j=2,jl
+        do i=2,il
+! a_source = -qq (qq stores -∂s/∂q)
+          a11 = -qq(i, j, k, 1, 1)
+          a12 = -qq(i, j, k, 1, 2)
+          a13 = -qq(i, j, k, 1, 3)
+          a21 = -qq(i, j, k, 2, 1)
+          a22 = -qq(i, j, k, 2, 2)
+          a23 = -qq(i, j, k, 2, 3)
+          a31 = -qq(i, j, k, 3, 1)
+          a32 = -qq(i, j, k, 3, 2)
+          a33 = -qq(i, j, k, 3, 3)
+          if (transitionsrcdteigmode .eq. 0) then
+            if (a12 .ge. 0.) then
+              abs0 = a12
+            else
+              abs0 = -a12
+            end if
+            if (a13 .ge. 0.) then
+              abs7 = a13
+            else
+              abs7 = -a13
+            end if
+! mode 0: signed gershgorin upper bound
+            g1 = a11 + abs0 + abs7
+            if (a21 .ge. 0.) then
+              abs1 = a21
+            else
+              abs1 = -a21
+            end if
+            if (a23 .ge. 0.) then
+              abs8 = a23
+            else
+              abs8 = -a23
+            end if
+            g2 = a22 + abs1 + abs8
+            if (a31 .ge. 0.) then
+              abs2 = a31
+            else
+              abs2 = -a31
+            end if
+            if (a32 .ge. 0.) then
+              abs9 = a32
+            else
+              abs9 = -a32
+            end if
+            g3 = a33 + abs2 + abs9
+            if (g1 .lt. g2) then
+              if (g2 .lt. g3) then
+                lambdamax = g3
+              else
+                lambdamax = g2
+              end if
+            else if (g1 .lt. g3) then
+              lambdamax = g3
+            else
+              lambdamax = g1
+            end if
+          else
+! mode 1: exact eigenvalues via cubic formula
+! characteristic polynomial: λ³ - aλ² + bλ - c = 0
+! where a = tr(a), b = (tr(a)² - tr(a²))/2, c = det(a)
+            a = a11 + a22 + a33
+            b = a11*a22 + a22*a33 + a33*a11 - a12*a21 - a23*a32 - a31*&
+&             a13
+            c = a11*(a22*a33-a23*a32) - a12*(a21*a33-a23*a31) + a13*(a21&
+&             *a32-a22*a31)
+! depressed cubic: t³ + pt + qc = 0, λ = t + a/3
+            p = b - a*a*onethird
+            qc = -(two*a*a*a/27.0_realtype) + a*b*onethird - c
+            disc = qc*qc/four + p*p*p/27.0_realtype
+            if (disc .le. zero) then
+! three real roots (trigonometric solution)
+              sqrtp = sqrt(-(p*onethird))
+              phi = zero
+              if (sqrtp .gt. 1.0e-30_realtype) then
+                if (one .gt. -(qc/(two*sqrtp**3))) then
+                  y1 = -(qc/(two*sqrtp**3))
+                else
+                  y1 = one
+                end if
+                if (-one .lt. y1) then
+                  max1 = y1
+                else
+                  max1 = -one
+                end if
+                phi = acos(max1)
+                t = two*sqrtp*cos(phi*onethird)
+              else
+                t = zero
+              end if
+              lambdamax = t + a*onethird
+              arg1 = (phi+two*pival)*onethird
+              t = two*sqrtp*cos(arg1)
+              if (lambdamax .lt. t + a*onethird) then
+                lambdamax = t + a*onethird
+              else
+                lambdamax = lambdamax
+              end if
+              arg1 = (phi+four*pival)*onethird
+              t = two*sqrtp*cos(arg1)
+              if (lambdamax .lt. t + a*onethird) then
+                lambdamax = t + a*onethird
+              else
+                lambdamax = lambdamax
+              end if
+            else
+! one real root, two complex conjugates
+! real root: λ₁ = t + a/3
+! complex pair real part: re(λ₂,₃) = (a - λ₁)/2
+              r = sqrt(disc)
+              if (-(qc*half) + r .ge. 0.) then
+                abs3 = -(qc*half) + r
+              else
+                abs3 = -(-(qc*half)+r)
+              end if
+              if (-(qc*half) - r .ge. 0.) then
+                abs10 = -(qc*half) - r
+              else
+                abs10 = -(-(qc*half)-r)
+              end if
+              arg1 = abs3**onethird
+              arg2 = abs10**onethird
+              t = sign(arg1, -(qc*half) + r) + sign(arg2, -(qc*half) - r&
+&               )
+              lambdamax = t + a*onethird
+              if (lambdamax .lt. (a-lambdamax)*half) then
+                lambdamax = (a-lambdamax)*half
+              else
+                lambdamax = lambdamax
+              end if
+            end if
+! fallback to gershgorin if eigenvalue computation produces nan
+            if (lambdamax .ne. lambdamax) then
+              if (a12 .ge. 0.) then
+                abs4 = a12
+              else
+                abs4 = -a12
+              end if
+              if (a13 .ge. 0.) then
+                abs11 = a13
+              else
+                abs11 = -a13
+              end if
+              g1 = a11 + abs4 + abs11
+              if (a21 .ge. 0.) then
+                abs5 = a21
+              else
+                abs5 = -a21
+              end if
+              if (a23 .ge. 0.) then
+                abs12 = a23
+              else
+                abs12 = -a23
+              end if
+              g2 = a22 + abs5 + abs12
+              if (a31 .ge. 0.) then
+                abs6 = a31
+              else
+                abs6 = -a31
+              end if
+              if (a32 .ge. 0.) then
+                abs13 = a32
+              else
+                abs13 = -a32
+              end if
+              g3 = a33 + abs6 + abs13
+              if (g1 .lt. g2) then
+                if (g2 .lt. g3) then
+                  lambdamax = g3
+                else
+                  lambdamax = g2
+                end if
+              else if (g1 .lt. g3) then
+                lambdamax = g3
+              else
+                lambdamax = g1
+              end if
+            end if
+          end if
+          if (zero .lt. lambdamax) then
+            srclambda(i, j, k) = lambdamax
+          else
+            srclambda(i, j, k) = zero
+          end if
+        end do
+      end do
+    end do
+  end subroutine computesrclambda
 
 end module sagammaretheta_d
 
