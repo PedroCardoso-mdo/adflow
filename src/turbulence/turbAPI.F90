@@ -73,7 +73,9 @@ contains
 
                     case (spalartallmarasnoft2gammaretheta)
                         ! Compute srcLambda before solve (frozen for entire DADI)
-                        if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+                        ! DD-ADI: restriction controlled by transitionSrcDtRestrict alone.
+                        ! No deactivation logic — DD-ADI has no line search/backtracking.
+                        if (transitionSrcDtRestrict) then
                             call computeSrcLambda(TurbDADICoupled)
                         end if
                         call saGammaRetheta_block(.false.)

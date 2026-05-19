@@ -156,7 +156,7 @@ contains
         use inputDiscretization, only: approxSA
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
-        use inputIteration, only: transitionSrcDtRestrict, srcDtRestrictActive
+        use inputIteration, only: transitionSrcDtRestrict
         implicit none
 
         ! Local parameters
@@ -1550,7 +1550,8 @@ contains
                     ! In DD-ADI there is no separate dtinv_CFL; srcLambda/limit IS the
                     ! pseudo-transient term added to the diagonal. Contrast with turbKSP
                     ! (NKSolvers.F90) which uses MAX form to restrict an existing dtinv_CFL.
-                    if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
+                    ! DD-ADI: controlled by transitionSrcDtRestrict only (no deactivation).
+                    if (transitionSrcDtRestrict) then
                         qq(i,j,k,1,1) = qq(i,j,k,1,1) + srcLambda(i,j,k,1) / transitionSrcDtLimit
                         qq(i,j,k,2,2) = qq(i,j,k,2,2) + srcLambda(i,j,k,2) / transitionSrcDtLimit
                         qq(i,j,k,3,3) = qq(i,j,k,3,3) + srcLambda(i,j,k,3) / transitionSrcDtLimit

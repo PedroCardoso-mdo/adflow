@@ -2339,7 +2339,8 @@ contains
         use flowVarRefState, only: nw, nwf, nt1, nt2, nwt
         use blockPointers, only: nDom, volRef, il, jl, kl, w, dw, dtl, globalCell, srcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
-        use inputIteration, only: turbResScale, transitionSrcDtRestrict, transitionSrcDtLimit, srcDtRestrictActive
+        use inputIteration, only: turbResScale, transitionSrcDtRestrict, transitionSrcDtLimit, &
+                                   noBacktrackCount, srcDtDeactivateIters
         use inputADjoint, only: viscPC
         use inputDiscretization, only: approxSA
         use iteration, only: totalR0, totalR
@@ -2351,10 +2352,13 @@ contains
         ! Local Variables
         character(len=maxStringLen) :: preConSide, localPCType, kspObjectType, globalPCType, localOrdering
         integer(kind=intType) :: ierr
-        logical :: useAD, usePC, useTranspose, useObjective, tmp, frozenTurb
+        logical :: useAD, usePC, useTranspose, useObjective, tmp, frozenTurb, srcDtRestrictActive
         real(kind=realType) :: dtinv, rho, dtinv_src
         integer(kind=intType) :: i, j, k, l, l1, ii, irow, nn, sps, outerPreConIts, subspace
         real(kind=realType), dimension(:, :), allocatable :: blk
+
+        ! Derived condition for source dt restriction (ANK turbKSP path)
+        srcDtRestrictActive = transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)
 
         ! Assemble the approximate PC (fine level, level 1)
         useAD = ANK_ADPC
@@ -2554,7 +2558,8 @@ contains
         use constants
         use blockPointers, only: nDom, volRef, il, jl, kl, dw, dtl, srcLambda
         use inputtimespectral, only: nTimeIntervalsSpectral
-        use inputIteration, only: turbResScale, transitionSrcDtRestrict, srcDtRestrictActive, transitionSrcDtLimit
+        use inputIteration, only: turbResScale, transitionSrcDtRestrict, transitionSrcDtLimit, &
+                                   noBacktrackCount, srcDtDeactivateIters
         use flowvarrefstate, only: nwf, nt1, nt2, nwt
         use NKSolver, only: setRvec
         use utils, only: setPointers, EChk
@@ -2566,8 +2571,12 @@ contains
         Vec inVec, rVec
         real(kind=realType) :: dtinv, rho, dtinv_src
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, l1, ii, iiRho
+        logical :: srcDtRestrictActive
         real(kind=realType), pointer :: rvec_pointer(:)
         real(kind=realType), pointer :: invec_pointer(:)
+
+        ! Derived condition for source dt restriction (ANK turbKSP path)
+        srcDtRestrictActive = transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)
 
         ! get the input vector
         call setWANK(inVec, nt1, nt2)
@@ -3440,7 +3449,7 @@ contains
 
         use constants
         use blockPointers, only: nDom, flowDoms
-        use inputIteration, only: L2conv, transitionSrcDtRestrict, srcDtRestrictActive
+        use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
@@ -3466,7 +3475,11 @@ contains
         real(kind=alwaysRealType) :: resHist(ANK_maxIter + 1)
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old
         real(kind=alwaysRealType) :: linResMonitorTurb, totalRTurb
-        logical :: correctForK, LSFailed
+        logical :: correctForK, LSFailed, srcDtRestrictActive
+
+        ! Derived condition for source dt restriction (ANK turbKSP path)
+        ! DD-ADI uses transitionSrcDtRestrict alone; ANK adds deactivation after clean iters.
+        srcDtRestrictActive = transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)
 
         ! Calculate the residuals and set rVecTurb before the first iteration
         call blocketteRes(useFlowRes=.False., useStoreWall=.False.)
@@ -3733,6 +3746,21 @@ contains
                     reshist(1), reason, lambdaTurb
             end if
 
+            ! ============== Source-dt deactivation switch (P&Z §IV.B.3) ==============
+            ! Increment counter when line search accepts step without backtracking.
+            ! After srcDtDeactivateIters clean iterations, deactivate source dt restriction.
+            ! Reactivate (reset counter) when backtracking is triggered.
+            ! NOTE: P&Z also reactivate on relative residual increase; not implemented here
+            ! since ANKTurbSolveKSP does not track relative residual — only backtracking.
+            if (transitionSrcDtRestrict) then
+                if (LSFailed) then
+                    noBacktrackCount = 0
+                else
+                    noBacktrackCount = noBacktrackCount + 1
+                end if
+                srcDtRestrictActive = noBacktrackCount < srcDtDeactivateIters
+            end if
+
         end do
 
     end subroutine ANKTurbSolveKSP
@@ -3742,8 +3770,7 @@ contains
         use constants
         use blockPointers, only: nDom, flowDoms, shockSensor, ib, jb, kb, p, w, gamma
         use inputPhysics, only: equations
-        use inputIteration, only: L2conv, transitionSrcDtRestrict, srcDtRestrictActive, &
-                                   noBacktrackCount, srcDtDeactivateIters
+        use inputIteration, only: L2conv
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: lumpedDiss, approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, stepMonitor, linResMonitor, currentLevel, iterType
@@ -4154,21 +4181,6 @@ contains
                 end if
                 feval = feval + 1
             else
-            end if
-        end if
-
-        ! ============== Source-dt deactivation (P&Z §IV.B.3) =============
-        if (transitionSrcDtRestrict) then
-            if (LSFailed) then
-                ! Backtracking used: reset counter and reactivate
-                noBacktrackCount = 0
-                srcDtRestrictActive = .true.
-            else
-                ! No backtracking: increment clean iteration counter
-                noBacktrackCount = noBacktrackCount + 1
-                if (noBacktrackCount >= srcDtDeactivateIters) then
-                    srcDtRestrictActive = .false.
-                end if
             end if
         end if
 
