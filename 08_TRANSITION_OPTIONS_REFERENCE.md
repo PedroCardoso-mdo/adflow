@@ -13,10 +13,18 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"transitionFirstOrderUpwind"` | bool | `True` | First-order upwind for γ and Re̅θt convection. More dissipative but more robust. |
 | `"transitionSrcDtRestrict"` | bool | `True` | Enable source-term dt restriction (P&Z Eq. 59). Caps λ_source × dt ≤ 0.9. |
 | `"transitionSrcDtLimit"` | float | `0.9` | Threshold for source-term dt restriction (λ_source × dt ≤ this value). |
-| `"transitionSrcDtEigMode"` | str | `"eigenvalue"` | How to compute λ_source: `"gershgorin"` (signed upper bound, cheap) or `"eigenvalue"` (exact 3×3 cubic formula). |
 | `"srcDtDeactivateIters"` | int | `5` | Deactivate source-dt restriction after N consecutive ANK iterations without backtracking (P&Z §IV.B.3). Set to 0 to never deactivate. |
 | `"TurbDADICoupled"` | str | `"full"` | DADI coupling mode: `"decoupled"` (3 scalar solves), `"transition"` (SA alone + γ-Re̅θt 2×2), `"full"` (3×3 block). |
 | `"turbResScale"` | list/None | `None` (auto) | Residual scaling per equation. Auto-set to `[10000, 10, 10000]` for this model. Override to tune convergence balance. |
+| `"transitionDampTheta"` | float | `0.99` | Back-off factor for iterative γ/Re̅θt update damping in DD-ADI (P&Z §3). |
+| `"transitionDampMaxIter"` | int | `40` | Max back-off iterations for γ/Re̅θt bounds enforcement in DD-ADI. |
+
+### Turb-ANK KSP physicality options (transition-specific)
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `"ANKPhysicalLSTolReTheta"` | float | `0.99` | Relative physicality tolerance for Re̅θt in Turb-ANK (replaces `ANKPhysicalLSTolTurb` for Re̅θt). |
+| `"omegaMinGamma"` | float | `0.05` | Minimum step factor floor for γ. Prevents collapse in laminar regions where γ→0. |
 
 ### Existing ADflow options relevant to turbulent solver path
 
@@ -26,7 +34,7 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"ANKNSubiterTurb"` | int | `1` | Inner turbulence iterations per outer ANK step. |
 | `"ANKTurbCFLScale"` | float | `1.0` | CFL multiplier for turb equations relative to flow. |
 | `"ANKTurbKSPDebug"` | bool | `False` | Print linear residual, KSP iters, step size each Turb-ANK iteration. |
-| `"ANKPhysicalLSTolTurb"` | float | `0.99` | Physicality line-search tolerance for Turb-ANK. |
+| `"ANKPhysicalLSTolTurb"` | float | `0.99` | Physicality line-search tolerance for ν̃ in Turb-ANK (γ uses absolute bounds instead). |
 
 ---
 
@@ -39,7 +47,6 @@ solverOptions = {
     # Transition-specific (new)
     "transitionFirstOrderUpwind": True,      # robust convection for γ, Re̅θt
     "transitionSrcDtRestrict": True,         # source limiting ON
-    "transitionSrcDtEigMode": "eigenvalue",  # exact 3×3 eigenvalue (or "gershgorin")
     "srcDtDeactivateIters": 5,               # deactivate after 5 clean ANK iters
     "TurbDADICoupled": "full",               # 3×3 coupled DADI
     # turbResScale auto-set to [10000, 10, 10000]
@@ -132,20 +139,21 @@ The source-term dt restriction prevents unbounded solution updates by limiting:
 where `λ_source` is the **largest positive eigenvalue** of the 3×3 source-term Jacobian:
 
 ```
-            ⎡ ∂S_ν̃/∂ν̃      ∂S_ν̃/∂γ      ∂S_ν̃/∂Re̅θt  ⎤
+            ⎡ ∂S_ν̃/∂ν̃      ∂S_ν̃/∂γ      0           ⎤
 A_source =  ⎢ ∂S_γ/∂ν̃      ∂S_γ/∂γ      ∂S_γ/∂Re̅θt   ⎥
-            ⎣ ∂S_Re̅θt/∂ν̃  ∂S_Re̅θt/∂γ  ∂S_Re̅θt/∂Re̅θt ⎦
+            ⎣ 0            0            ∂S_Re̅θt/∂Re̅θt ⎦
 ```
 
 ### Key points
 
-1. **Always computed on full 3×3 matrix** — independent of `TurbDADICoupled` mode. The coupling mode only affects how DDADI solves the system, not the eigenvalue stability check.
+1. **Block-triangular structure**: A13=A31=A32=0 (P&Z §7.1), so eigenvalues are computed exactly without a cubic solver:
+   - λ₃ = A33 (Re̅θt diagonal)
+   - λ₁,₂ from 2×2 block [A11,A12; A21,A22] via quadratic formula
+   - `λ_source = max(0, λ₁, λ₂, λ₃)`
 
-2. **Two computation modes**:
-   - `"eigenvalue"` (default): exact eigenvalues via cubic formula (Cardano). More accurate.
-   - `"gershgorin"`: signed Gershgorin bound `max(0, max_i[A_ii + Σ|A_ij|])`. Cheaper, always ≥ true eigenvalue.
+2. **Independent of `TurbDADICoupled` mode** — coupling mode only affects how DADI solves the system, not eigenvalue computation.
 
-3. **Auto-deactivation**: After `srcDtDeactivateIters` consecutive ANK iterations without backtracking, the restriction turns off (eigenvalues may stay large but solution is stable). Reactivates on backtracking.
+3. **Auto-deactivation**: After `srcDtDeactivateIters` consecutive ANK iterations without backtracking, the restriction turns off. Reactivates on backtracking.
 
 ### Examples
 
@@ -154,40 +162,42 @@ A_source =  ⎢ ∂S_γ/∂ν̃      ∂S_γ/∂γ      ∂S_γ/∂Re̅θt   ⎥
 ```python
 solverOptions = {
     "transitionSrcDtRestrict": True,
-    "transitionSrcDtEigMode": "eigenvalue",  # exact (default)
     "transitionSrcDtLimit": 0.7,             # stricter than default 0.9
     "srcDtDeactivateIters": 10,              # wait longer before deactivating
 }
 ```
 
-#### 8. Fast eigenvalue (large cases, prioritize speed)
+#### 8. Debug eigenvalue issues
 
 ```python
 solverOptions = {
     "transitionSrcDtRestrict": True,
-    "transitionSrcDtEigMode": "gershgorin",  # cheaper upper bound
-    "srcDtDeactivateIters": 3,               # deactivate quickly
-}
-```
-
-#### 9. Debug eigenvalue issues
-
-```python
-solverOptions = {
-    "transitionSrcDtRestrict": True,
-    "transitionSrcDtEigMode": "eigenvalue",
     "srcDtDeactivateIters": 0,               # NEVER deactivate — always restrict
     "ANKTurbKSPDebug": True,                 # print iteration info
 }
 ```
 
-#### 10. Disable source-dt restriction entirely
+#### 9. Disable source-dt restriction entirely
 
 ```python
 solverOptions = {
     "transitionSrcDtRestrict": False,        # no eigenvalue computation, no restriction
 }
 ```
+
+---
+
+## γ Physicality Check in Turb-ANK (Redesigned)
+
+In the Turb-ANK KSP path (`ANKUseTurbDADI = False`), γ uses **absolute bound enforcement** instead of a relative tolerance:
+
+- **Full step allowed** if result stays in [gammaLo, gammaHi] (~[1e-10, 2.0])
+- **Only reduced** when full step would violate bounds
+- **`omegaMinGamma`** (default 0.05) prevents step collapse in laminar regions where γ→0
+
+This differs from ν̃ and Re̅θt which use relative tolerances (`ANKPhysicalLSTolTurb`, `ANKPhysicalLSTolReTheta`).
+
+**Why**: In laminar flow, γ≈0. The old relative check `ratio = γ/update × tol` collapses to near-zero, killing the transition front before it can develop.
 
 ---
 
