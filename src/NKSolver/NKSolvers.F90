@@ -3785,7 +3785,7 @@ contains
                 else
                     noBacktrackCount = noBacktrackCount + 1
                 end if
-                srcDtRestrictActive = noBacktrackCount < srcDtDeactivateIters
+                srcDtRestrictActive = transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)
             end if
 
         end do
