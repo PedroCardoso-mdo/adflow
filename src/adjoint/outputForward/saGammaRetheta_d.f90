@@ -140,6 +140,8 @@ contains
     use turbutils_d, only : rethetatcorrelation, rethetatcorrelation_d, &
 &   flengthcorrelation, flengthcorrelation_d, rethetaccorrelation, &
 &   rethetaccorrelation_d, smoothminmax, smoothminmax_d
+    use inputiteration, only : transitionsrcdtrestrict, &
+&   srcdtrestrictactive
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1089,7 +1091,6 @@ contains
           end do
         end do
       end do
-      call computesrclambda()
     end if
   end subroutine source_d
 
@@ -1109,6 +1110,8 @@ contains
     use flowvarrefstate
     use turbutils_d, only : rethetatcorrelation, flengthcorrelation, &
 &   rethetaccorrelation, smoothminmax
+    use inputiteration, only : transitionsrcdtrestrict, &
+&   srcdtrestrictactive
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1615,7 +1618,6 @@ contains
           end do
         end do
       end do
-      call computesrclambda()
     end if
   end subroutine source
 
@@ -2860,6 +2862,10 @@ contains
 &         turbdadicoupled
         end select
       end if
+! compute srclambda from qq (frozen for entire dadi solve).
+! map turbdadicoupled to srclambdamode (numerically identical but conceptually separate).
+      if (transitionsrcdtrestrict .and. srcdtrestrictactive) call &
+&       computesrclambda(turbdadicoupled)
       cb3inv = one/rsacb3
       cv13 = rsacv1**3
       if (turbresscale(1) .ge. 0.) then
@@ -2928,12 +2934,14 @@ contains
               qq(i, j, k, 2, 1) = zero
               qq(i, j, k, 3, 1) = zero
             end if
-! source dt restriction (eq. 59): additive i/δt inflation
+! source dt restriction (eq. 59): per-equation additive i/δt inflation
             if (transitionsrcdtrestrict .and. srcdtrestrictactive) then
-              dt_inv = srclambda(i, j, k)/transitionsrcdtlimit
-              qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + dt_inv
-              qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + dt_inv
-              qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + dt_inv
+              qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + srclambda(i, j, k&
+&               , 1)/transitionsrcdtlimit
+              qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + srclambda(i, j, k&
+&               , 2)/transitionsrcdtlimit
+              qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + srclambda(i, j, k&
+&               , 3)/transitionsrcdtlimit
             end if
 ! symmetric scaling (§4): qq(m,n) *= s_n / s_m
 ! diagonal entries unchanged; only off-diag scaled.
@@ -3446,28 +3454,34 @@ contains
     end if
   end subroutine sagammarethetasolve
 
-  subroutine computesrclambda()
-! compute srclambda = max(0, λ_max) where λ_max is the largest positive
-! eigenvalue of a_source = -qq (p&z 2020 eq. 59).
-! note: qq stores -∂s/∂q, so a_source = -qq.
+  subroutine computesrclambda(mode)
+! compute srclambda(i,j,k,1:3) per equation based on mode argument.
+! a_source = -qq (qq stores -∂s/∂q).
 !
-! mode 0: signed gershgorin upper bound (ad-safe)
-!   srclambda = max(0, max_i[ a_ii + σ_{j≠i} |a_ij| ])
-! mode 1: exact 3x3 eigenvalue via cubic formula
+! mode (from paramturb):
+!   srclambdamodedecoupled  (0): srclambda(m) = max(0, -qq(m,m)) for each equation
+!   srclambdamodetransition (1): srclambda(1) = diagonal sa, srclambda(2:3) = 2x2 γ-re̅θt eigenvalue
+!   srclambdamodefull       (2): srclambda(1:3) = 3x3 eigenvalue (same for all)
+!
+! transitionsrcdteigmode: 0=gershgorin, 1=exact eigenvalue
     use constants
     use blockpointers, only : il, jl, kl, srclambda
     use inputiteration, only : transitionsrcdteigmode
+    use paramturb, only : srclambdamodedecoupled, &
+&   srclambdamodetransition, srclambdamodefull
     implicit none
+    integer(kind=inttype), intent(in) :: mode
     integer(kind=inttype) :: i, j, k
     real(kind=realtype) :: a11, a12, a13, a21, a22, a23, a31, a32, a33
-    real(kind=realtype) :: g1, g2, g3, lambdamax
+    real(kind=realtype) :: g1, g2, g3, lambda3x3, lambda2x2
     real(kind=realtype) :: p, qc, r, a, b, c, disc, phi, t, sqrtp
+    real(kind=realtype) :: tr2, det2, disc2
     real(kind=realtype), parameter :: onethird=one/three
     real(kind=realtype), parameter :: pival=&
 &     3.14159265358979323846_realtype
-    intrinsic abs
     intrinsic max
     intrinsic sqrt
+    intrinsic abs
     intrinsic min
     intrinsic acos
     intrinsic cos
@@ -3488,6 +3502,7 @@ contains
     real(kind=realtype) :: abs11
     real(kind=realtype) :: abs12
     real(kind=realtype) :: abs13
+    real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
     real(kind=realtype) :: arg2
     do k=2,kl
@@ -3503,178 +3518,216 @@ contains
           a31 = -qq(i, j, k, 3, 1)
           a32 = -qq(i, j, k, 3, 2)
           a33 = -qq(i, j, k, 3, 3)
-          if (transitionsrcdteigmode .eq. 0) then
-            if (a12 .ge. 0.) then
-              abs0 = a12
+          if (mode .eq. srclambdamodedecoupled) then
+            if (zero .lt. a11) then
+              srclambda(i, j, k, 1) = a11
             else
-              abs0 = -a12
+              srclambda(i, j, k, 1) = zero
             end if
-            if (a13 .ge. 0.) then
-              abs7 = a13
+            if (zero .lt. a22) then
+              srclambda(i, j, k, 2) = a22
             else
-              abs7 = -a13
+              srclambda(i, j, k, 2) = zero
             end if
-! mode 0: signed gershgorin upper bound
-            g1 = a11 + abs0 + abs7
-            if (a21 .ge. 0.) then
-              abs1 = a21
+            if (zero .lt. a33) then
+              srclambda(i, j, k, 3) = a33
             else
-              abs1 = -a21
+              srclambda(i, j, k, 3) = zero
             end if
-            if (a23 .ge. 0.) then
-              abs8 = a23
+          else if (mode .eq. srclambdamodetransition) then
+            if (zero .lt. a11) then
+              srclambda(i, j, k, 1) = a11
             else
-              abs8 = -a23
+              srclambda(i, j, k, 1) = zero
             end if
-            g2 = a22 + abs1 + abs8
-            if (a31 .ge. 0.) then
-              abs2 = a31
+! 2x2 eigenvalue for γ-re̅θt subsystem
+            tr2 = a22 + a33
+            det2 = a22*a33 - a23*a32
+            disc2 = tr2*tr2 - four*det2
+            if (disc2 .ge. zero) then
+              result1 = sqrt(disc2)
+              lambda2x2 = half*(tr2+result1)
             else
-              abs2 = -a31
+              lambda2x2 = half*tr2
             end if
-            if (a32 .ge. 0.) then
-              abs9 = a32
+            if (zero .lt. lambda2x2) then
+              lambda2x2 = lambda2x2
             else
-              abs9 = -a32
+              lambda2x2 = zero
             end if
-            g3 = a33 + abs2 + abs9
-            if (g1 .lt. g2) then
-              if (g2 .lt. g3) then
-                lambdamax = g3
-              else
-                lambdamax = g2
-              end if
-            else if (g1 .lt. g3) then
-              lambdamax = g3
-            else
-              lambdamax = g1
-            end if
+            srclambda(i, j, k, 2) = lambda2x2
+            srclambda(i, j, k, 3) = lambda2x2
           else
-! mode 1: exact eigenvalues via cubic formula
-! characteristic polynomial: λ³ - aλ² + bλ - c = 0
-! where a = tr(a), b = (tr(a)² - tr(a²))/2, c = det(a)
-            a = a11 + a22 + a33
-            b = a11*a22 + a22*a33 + a33*a11 - a12*a21 - a23*a32 - a31*&
-&             a13
-            c = a11*(a22*a33-a23*a32) - a12*(a21*a33-a23*a31) + a13*(a21&
-&             *a32-a22*a31)
-! depressed cubic: t³ + pt + qc = 0, λ = t + a/3
-            p = b - a*a*onethird
-            qc = -(two*a*a*a/27.0_realtype) + a*b*onethird - c
-            disc = qc*qc/four + p*p*p/27.0_realtype
-            if (disc .le. zero) then
-! three real roots (trigonometric solution)
-              sqrtp = sqrt(-(p*onethird))
-              phi = zero
-              if (sqrtp .gt. 1.0e-30_realtype) then
-                if (one .gt. -(qc/(two*sqrtp**3))) then
-                  y1 = -(qc/(two*sqrtp**3))
-                else
-                  y1 = one
-                end if
-                if (-one .lt. y1) then
-                  max1 = y1
-                else
-                  max1 = -one
-                end if
-                phi = acos(max1)
-                t = two*sqrtp*cos(phi*onethird)
-              else
-                t = zero
-              end if
-              lambdamax = t + a*onethird
-              arg1 = (phi+two*pival)*onethird
-              t = two*sqrtp*cos(arg1)
-              if (lambdamax .lt. t + a*onethird) then
-                lambdamax = t + a*onethird
-              else
-                lambdamax = lambdamax
-              end if
-              arg1 = (phi+four*pival)*onethird
-              t = two*sqrtp*cos(arg1)
-              if (lambdamax .lt. t + a*onethird) then
-                lambdamax = t + a*onethird
-              else
-                lambdamax = lambdamax
-              end if
-            else
-! one real root, two complex conjugates
-! real root: λ₁ = t + a/3
-! complex pair real part: re(λ₂,₃) = (a - λ₁)/2
-              r = sqrt(disc)
-              if (-(qc*half) + r .ge. 0.) then
-                abs3 = -(qc*half) + r
-              else
-                abs3 = -(-(qc*half)+r)
-              end if
-              if (-(qc*half) - r .ge. 0.) then
-                abs10 = -(qc*half) - r
-              else
-                abs10 = -(-(qc*half)-r)
-              end if
-              arg1 = abs3**onethird
-              arg2 = abs10**onethird
-              t = sign(arg1, -(qc*half) + r) + sign(arg2, -(qc*half) - r&
-&               )
-              lambdamax = t + a*onethird
-              if (lambdamax .lt. (a-lambdamax)*half) then
-                lambdamax = (a-lambdamax)*half
-              else
-                lambdamax = lambdamax
-              end if
-            end if
-! fallback to gershgorin if eigenvalue computation produces nan
-            if (lambdamax .ne. lambdamax) then
+! full 3x3 coupling
+            if (transitionsrcdteigmode .eq. 0) then
               if (a12 .ge. 0.) then
-                abs4 = a12
+                abs0 = a12
               else
-                abs4 = -a12
+                abs0 = -a12
               end if
               if (a13 .ge. 0.) then
-                abs11 = a13
+                abs7 = a13
               else
-                abs11 = -a13
+                abs7 = -a13
               end if
-              g1 = a11 + abs4 + abs11
+! gershgorin upper bound
+              g1 = a11 + abs0 + abs7
               if (a21 .ge. 0.) then
-                abs5 = a21
+                abs1 = a21
               else
-                abs5 = -a21
+                abs1 = -a21
               end if
               if (a23 .ge. 0.) then
-                abs12 = a23
+                abs8 = a23
               else
-                abs12 = -a23
+                abs8 = -a23
               end if
-              g2 = a22 + abs5 + abs12
+              g2 = a22 + abs1 + abs8
               if (a31 .ge. 0.) then
-                abs6 = a31
+                abs2 = a31
               else
-                abs6 = -a31
+                abs2 = -a31
               end if
               if (a32 .ge. 0.) then
-                abs13 = a32
+                abs9 = a32
               else
-                abs13 = -a32
+                abs9 = -a32
               end if
-              g3 = a33 + abs6 + abs13
+              g3 = a33 + abs2 + abs9
               if (g1 .lt. g2) then
                 if (g2 .lt. g3) then
-                  lambdamax = g3
+                  lambda3x3 = g3
                 else
-                  lambdamax = g2
+                  lambda3x3 = g2
                 end if
               else if (g1 .lt. g3) then
-                lambdamax = g3
+                lambda3x3 = g3
               else
-                lambdamax = g1
+                lambda3x3 = g1
+              end if
+            else
+! exact 3x3 eigenvalue via cubic formula
+              a = a11 + a22 + a33
+              b = a11*a22 + a22*a33 + a33*a11 - a12*a21 - a23*a32 - a31*&
+&               a13
+              c = a11*(a22*a33-a23*a32) - a12*(a21*a33-a23*a31) + a13*(&
+&               a21*a32-a22*a31)
+              p = b - a*a*onethird
+              qc = -(two*a*a*a/27.0_realtype) + a*b*onethird - c
+              disc = qc*qc/four + p*p*p/27.0_realtype
+              if (disc .le. zero) then
+                sqrtp = sqrt(-(p*onethird))
+                phi = zero
+                if (sqrtp .gt. 1.0e-30_realtype) then
+                  if (one .gt. -(qc/(two*sqrtp**3))) then
+                    y1 = -(qc/(two*sqrtp**3))
+                  else
+                    y1 = one
+                  end if
+                  if (-one .lt. y1) then
+                    max1 = y1
+                  else
+                    max1 = -one
+                  end if
+                  phi = acos(max1)
+                  t = two*sqrtp*cos(phi*onethird)
+                else
+                  t = zero
+                end if
+                lambda3x3 = t + a*onethird
+                arg1 = (phi+two*pival)*onethird
+                t = two*sqrtp*cos(arg1)
+                if (lambda3x3 .lt. t + a*onethird) then
+                  lambda3x3 = t + a*onethird
+                else
+                  lambda3x3 = lambda3x3
+                end if
+                arg1 = (phi+four*pival)*onethird
+                t = two*sqrtp*cos(arg1)
+                if (lambda3x3 .lt. t + a*onethird) then
+                  lambda3x3 = t + a*onethird
+                else
+                  lambda3x3 = lambda3x3
+                end if
+              else
+                r = sqrt(disc)
+                if (-(qc*half) + r .ge. 0.) then
+                  abs3 = -(qc*half) + r
+                else
+                  abs3 = -(-(qc*half)+r)
+                end if
+                if (-(qc*half) - r .ge. 0.) then
+                  abs10 = -(qc*half) - r
+                else
+                  abs10 = -(-(qc*half)-r)
+                end if
+                arg1 = abs3**onethird
+                arg2 = abs10**onethird
+                t = sign(arg1, -(qc*half) + r) + sign(arg2, -(qc*half) -&
+&                 r)
+                lambda3x3 = t + a*onethird
+                if (lambda3x3 .lt. (a-lambda3x3)*half) then
+                  lambda3x3 = (a-lambda3x3)*half
+                else
+                  lambda3x3 = lambda3x3
+                end if
+              end if
+! fallback to gershgorin if nan
+              if (lambda3x3 .ne. lambda3x3) then
+                if (a12 .ge. 0.) then
+                  abs4 = a12
+                else
+                  abs4 = -a12
+                end if
+                if (a13 .ge. 0.) then
+                  abs11 = a13
+                else
+                  abs11 = -a13
+                end if
+                g1 = a11 + abs4 + abs11
+                if (a21 .ge. 0.) then
+                  abs5 = a21
+                else
+                  abs5 = -a21
+                end if
+                if (a23 .ge. 0.) then
+                  abs12 = a23
+                else
+                  abs12 = -a23
+                end if
+                g2 = a22 + abs5 + abs12
+                if (a31 .ge. 0.) then
+                  abs6 = a31
+                else
+                  abs6 = -a31
+                end if
+                if (a32 .ge. 0.) then
+                  abs13 = a32
+                else
+                  abs13 = -a32
+                end if
+                g3 = a33 + abs6 + abs13
+                if (g1 .lt. g2) then
+                  if (g2 .lt. g3) then
+                    lambda3x3 = g3
+                  else
+                    lambda3x3 = g2
+                  end if
+                else if (g1 .lt. g3) then
+                  lambda3x3 = g3
+                else
+                  lambda3x3 = g1
+                end if
               end if
             end if
-          end if
-          if (zero .lt. lambdamax) then
-            srclambda(i, j, k) = lambdamax
-          else
-            srclambda(i, j, k) = zero
+            if (zero .lt. lambda3x3) then
+              lambda3x3 = lambda3x3
+            else
+              lambda3x3 = zero
+            end if
+            srclambda(i, j, k, 1) = lambda3x3
+            srclambda(i, j, k, 2) = lambda3x3
+            srclambda(i, j, k, 3) = lambda3x3
           end if
         end do
       end do
