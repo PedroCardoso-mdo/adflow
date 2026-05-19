@@ -2033,10 +2033,10 @@ contains
                                  * scratch(i, j, k, idvt + 1)
                     gammaNew = w(i, j, k, itu2) + gammaDelta
                     dampFactor = one
-                    do mm = 1, 40
+                    do mm = 1, transitionDampMaxIter
                         if (gammaNew >= rsaGRgammaLo .and. &
                             gammaNew <= rsaGRgammaHi) exit
-                        dampFactor = dampFactor * rsaGRdampTheta
+                        dampFactor = dampFactor * transitionDampTheta
                         gammaNew = w(i, j, k, itu2) + dampFactor * gammaDelta
                     end do
                     w(i, j, k, itu2) = min(max(gammaNew, rsaGRgammaLo), &
@@ -2047,9 +2047,9 @@ contains
                                  * scratch(i, j, k, idvt + 2)
                     gammaNew = w(i, j, k, itu3) + gammaDelta
                     dampFactor = one
-                    do mm = 1, 40
+                    do mm = 1, transitionDampMaxIter
                         if (gammaNew >= rsaGRreThetaLo) exit
-                        dampFactor = dampFactor * rsaGRdampTheta
+                        dampFactor = dampFactor * transitionDampTheta
                         gammaNew = w(i, j, k, itu3) + dampFactor * gammaDelta
                     end do
                     w(i, j, k, itu3) = max(gammaNew, rsaGRreThetaLo)

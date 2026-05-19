@@ -42,7 +42,7 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRfonsetS  = 1.35_realType
     real(kind=realType), parameter :: rsaGRpmin = -300.0_realType
     real(kind=realType), parameter :: rsaGRpmax  =  300.0_realType
-    real(kind=realType), parameter :: rsaGRdampTheta = 0.99_realType
+    ! rsaGRdampTheta moved to inputIteration as transitionDampTheta (configurable)
     real(kind=realType), parameter :: rsaGRgammaLo  = 1.e-10_realType
     real(kind=realType), parameter :: rsaGRgammaHi  = 2.0_realType
     real(kind=realType), parameter :: rsaGRreThetaLo = 20.0_realType

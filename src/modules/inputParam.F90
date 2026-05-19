@@ -305,6 +305,9 @@ module inputIteration
     ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)
     integer(kind=intType) :: srcDtDeactivateIters = 5
     integer(kind=intType) :: noBacktrackCount = 0
+    ! Damping parameters for γ/Reθt iterative update (P&Z §3)
+    real(kind=realType) :: transitionDampTheta = 0.99_realType
+    integer(kind=intType) :: transitionDampMaxIter = 40
 
 end module inputIteration
 
