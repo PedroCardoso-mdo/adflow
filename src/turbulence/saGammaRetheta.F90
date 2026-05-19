@@ -2111,12 +2111,13 @@ contains
 
                         ! Depressed cubic: t³ + pt + qc = 0, λ = t + a/3
                         p = b - a*a*oneThird
-                        qc = two*a*a*a/27.0_realType - a*b*oneThird + c
+                        qc = -two*a*a*a/27.0_realType + a*b*oneThird - c
                         disc = qc*qc/four + p*p*p/27.0_realType
 
                         if (disc <= zero) then
                             ! Three real roots (trigonometric solution)
                             sqrtP = sqrt(-p*oneThird)
+                            phi = zero
                             if (sqrtP > 1.0e-30_realType) then
                                 phi = acos(max(-one, min(one, -qc/(two*sqrtP**3))))
                                 t = two * sqrtP * cos(phi * oneThird)
@@ -2130,10 +2131,13 @@ contains
                             lambdaMax = max(lambdaMax, t + a * oneThird)
                         else
                             ! One real root, two complex conjugates
+                            ! Real root: λ₁ = t + a/3
+                            ! Complex pair real part: Re(λ₂,₃) = (a - λ₁)/2
                             r = sqrt(disc)
                             t = sign(abs(-qc*half + r)**oneThird, -qc*half + r) &
                               + sign(abs(-qc*half - r)**oneThird, -qc*half - r)
                             lambdaMax = t + a * oneThird
+                            lambdaMax = max(lambdaMax, (a - lambdaMax) * half)
                         end if
 
                         ! Fallback to Gershgorin if eigenvalue computation produces NaN
