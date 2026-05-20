@@ -5694,6 +5694,9 @@ class ADFLOW(AeroSolver):
             "transitionSrcDtLimit": [float, 0.9],
             "transitionSrcDtEigMode": [str, "eigenvalue"],
             "srcDtDeactivateIters": [int, 5],
+            # SA-γ-Reθt damping params (not in canonical ADflow)
+            "transitionDampTheta": [float, 0.99],
+            "transitionDampMaxIter": [int, 40],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -5853,6 +5856,9 @@ class ADFLOW(AeroSolver):
             "ANKConstCFLStep": [float, 0.4],
             "ANKPhysicalLSTol": [float, 0.2],
             "ANKPhysicalLSTolTurb": [float, 0.99],
+            # SA-γ-Reθt physicality options (not in canonical ADflow)
+            "ANKPhysicalLSTolReTheta": [float, 0.99],
+            "omegaMinGamma": [float, 0.05],
             "ANKUnsteadyLSTol": [float, 1.0],
             "ANKSecondOrdSwitchTol": [float, 1e-16],
             "ANKCoupledSwitchTol": [float, 1e-16],
@@ -6096,6 +6102,8 @@ class ADFLOW(AeroSolver):
                 "location": ["iter", "transitionsrcdteigmode"],
             },
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
+            "transitiondamptheta": ["iter", "transitiondamptheta"],
+            "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {
@@ -6287,6 +6295,8 @@ class ADFLOW(AeroSolver):
             "ankconstcflstep": ["ank", "ank_constcflstep"],
             "ankphysicallstol": ["ank", "ank_physlstol"],
             "ankphysicallstolturb": ["ank", "ank_physlstolturb"],
+            "ankphysicallstolretheta": ["ank", "ank_physlstolretheta"],
+            "omegamingamma": ["ank", "omegamingamma"],
             "ankunsteadylstol": ["ank", "ank_unstdylstol"],
             "anksecondordswitchtol": ["ank", "ank_secondordswitchtol"],
             "ankcoupledswitchtol": ["ank", "ank_coupledswitchtol"],
