@@ -3535,12 +3535,12 @@ branch = myIntStack(myIntPtr)
             gammadelta = factor*scalegamma*scratch(i, j, k, idvt+1)
             gammanew = w(i, j, k, itu2) + gammadelta
             dampfactor = one
-            do mm=1,40
+            do mm=1,transitiondampmaxiter
               if (gammanew .ge. rsagrgammalo .and. gammanew .le. &
 &                 rsagrgammahi) then
                 goto 100
               else
-                dampfactor = dampfactor*rsagrdamptheta
+                dampfactor = dampfactor*transitiondamptheta
                 gammanew = w(i, j, k, itu2) + dampfactor*gammadelta
               end if
             end do
@@ -3558,11 +3558,11 @@ branch = myIntStack(myIntPtr)
             gammadelta = factor*scaleretheta*scratch(i, j, k, idvt+2)
             gammanew = w(i, j, k, itu3) + gammadelta
             dampfactor = one
-            do mm=1,40
+            do mm=1,transitiondampmaxiter
               if (gammanew .ge. rsagrrethetalo) then
                 goto 110
               else
-                dampfactor = dampfactor*rsagrdamptheta
+                dampfactor = dampfactor*transitiondamptheta
                 gammanew = w(i, j, k, itu3) + dampfactor*gammadelta
               end if
             end do
