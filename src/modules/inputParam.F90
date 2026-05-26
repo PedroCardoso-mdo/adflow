@@ -308,6 +308,8 @@ module inputIteration
     ! Damping parameters for γ/Reθt iterative update (P&Z §3)
     real(kind=realType) :: transitionDampTheta = 0.99_realType
     integer(kind=intType) :: transitionDampMaxIter = 40
+    ! Use approxSA simplification in SA-gamma-rethetha (default true for stability)
+    logical :: transitionUseApproxSA = .true.
 
 end module inputIteration
 

@@ -156,7 +156,7 @@ contains
         use inputDiscretization, only: approxSA
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
-        use inputIteration, only: transitionSrcDtRestrict
+        use inputIteration, only: transitionSrcDtRestrict, transitionUseApproxSA
         implicit none
 
         ! Local parameters
@@ -432,7 +432,7 @@ contains
                         ! Clamp gamma to the physical range for SA production coupling.
                         gammaForSA = min(max(w(i, j, k, itu2), zero), one)
 
-                        if (approxSA) then
+                        if (approxSA .and. transitionUseApproxSA) then
                             term1 = zero
                         else
                             term1 = gammaForSA * rsaCb1 * (one - ft2) * ss

@@ -5697,6 +5697,7 @@ class ADFLOW(AeroSolver):
             # SA-γ-Reθt damping params (not in canonical ADflow)
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 40],
+            "transitionUseApproxSA": [bool, True],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6104,6 +6105,7 @@ class ADFLOW(AeroSolver):
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
+            "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {

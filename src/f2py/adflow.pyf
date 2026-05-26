@@ -1108,6 +1108,7 @@ python module libadflow
          real(kind=realtype) :: disscontmidpoint
          real(kind=realtype) :: disscontsharpness
          integer(kind=4) :: turbdadicoupled
+         logical :: transitionuseapproxsa
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90
