@@ -1325,14 +1325,14 @@ bocos:do nn=1,nbocos
 !        ================================================================
     case (spalartallmarasnoft2gammaretheta) 
 ! sa + transition model wall values:
-! nu~ = 0, gamma = 0, retheta uses zero-gradient.
+! nu~ = 0, gamma uses zero-gradient, retheta uses zero-gradient.
 ! use linear relation whalo = bvt - bmt*wint.
       select case  (bcfaceid(nn)) 
       case (imin) 
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmti1(i, j, itu1, itu1) = one
-            bmti1(i, j, itu2, itu2) = one
+            bmti1(i, j, itu2, itu2) = -one
             bmti1(i, j, itu3, itu3) = -one
             bvti1d(i, j, itu3) = 0.0_8
             bvti1(i, j, itu3) = zero
@@ -1342,7 +1342,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmti2(i, j, itu1, itu1) = one
-            bmti2(i, j, itu2, itu2) = one
+            bmti2(i, j, itu2, itu2) = -one
             bmti2(i, j, itu3, itu3) = -one
             bvti2d(i, j, itu3) = 0.0_8
             bvti2(i, j, itu3) = zero
@@ -1352,7 +1352,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtj1(i, j, itu1, itu1) = one
-            bmtj1(i, j, itu2, itu2) = one
+            bmtj1(i, j, itu2, itu2) = -one
             bmtj1(i, j, itu3, itu3) = -one
             bvtj1d(i, j, itu3) = 0.0_8
             bvtj1(i, j, itu3) = zero
@@ -1362,7 +1362,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtj2(i, j, itu1, itu1) = one
-            bmtj2(i, j, itu2, itu2) = one
+            bmtj2(i, j, itu2, itu2) = -one
             bmtj2(i, j, itu3, itu3) = -one
             bvtj2d(i, j, itu3) = 0.0_8
             bvtj2(i, j, itu3) = zero
@@ -1372,7 +1372,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtk1(i, j, itu1, itu1) = one
-            bmtk1(i, j, itu2, itu2) = one
+            bmtk1(i, j, itu2, itu2) = -one
             bmtk1(i, j, itu3, itu3) = -one
             bvtk1d(i, j, itu3) = 0.0_8
             bvtk1(i, j, itu3) = zero
@@ -1382,7 +1382,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtk2(i, j, itu1, itu1) = one
-            bmtk2(i, j, itu2, itu2) = one
+            bmtk2(i, j, itu2, itu2) = -one
             bmtk2(i, j, itu3, itu3) = -one
             bvtk2d(i, j, itu3) = 0.0_8
             bvtk2(i, j, itu3) = zero
@@ -1774,14 +1774,14 @@ bocos:do nn=1,nbocos
 !        ================================================================
     case (spalartallmarasnoft2gammaretheta) 
 ! sa + transition model wall values:
-! nu~ = 0, gamma = 0, retheta uses zero-gradient.
+! nu~ = 0, gamma uses zero-gradient, retheta uses zero-gradient.
 ! use linear relation whalo = bvt - bmt*wint.
       select case  (bcfaceid(nn)) 
       case (imin) 
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmti1(i, j, itu1, itu1) = one
-            bmti1(i, j, itu2, itu2) = one
+            bmti1(i, j, itu2, itu2) = -one
             bmti1(i, j, itu3, itu3) = -one
             bvti1(i, j, itu3) = zero
           end do
@@ -1790,7 +1790,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmti2(i, j, itu1, itu1) = one
-            bmti2(i, j, itu2, itu2) = one
+            bmti2(i, j, itu2, itu2) = -one
             bmti2(i, j, itu3, itu3) = -one
             bvti2(i, j, itu3) = zero
           end do
@@ -1799,7 +1799,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtj1(i, j, itu1, itu1) = one
-            bmtj1(i, j, itu2, itu2) = one
+            bmtj1(i, j, itu2, itu2) = -one
             bmtj1(i, j, itu3, itu3) = -one
             bvtj1(i, j, itu3) = zero
           end do
@@ -1808,7 +1808,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtj2(i, j, itu1, itu1) = one
-            bmtj2(i, j, itu2, itu2) = one
+            bmtj2(i, j, itu2, itu2) = -one
             bmtj2(i, j, itu3, itu3) = -one
             bvtj2(i, j, itu3) = zero
           end do
@@ -1817,7 +1817,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtk1(i, j, itu1, itu1) = one
-            bmtk1(i, j, itu2, itu2) = one
+            bmtk1(i, j, itu2, itu2) = -one
             bmtk1(i, j, itu3, itu3) = -one
             bvtk1(i, j, itu3) = zero
           end do
@@ -1826,7 +1826,7 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtk2(i, j, itu1, itu1) = one
-            bmtk2(i, j, itu2, itu2) = one
+            bmtk2(i, j, itu2, itu2) = -one
             bmtk2(i, j, itu3, itu3) = -one
             bvtk2(i, j, itu3) = zero
           end do
