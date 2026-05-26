@@ -138,7 +138,8 @@ contains
 &   rethetatcorrelation_fast_b, flengthcorrelation, &
 &   flengthcorrelation_fast_b, rethetaccorrelation, &
 &   rethetaccorrelation_fast_b, smoothminmax, smoothminmax_fast_b
-    use inputiteration, only : transitionsrcdtrestrict
+    use inputiteration, only : transitionsrcdtrestrict, &
+&   transitionuseapproxsa
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -491,7 +492,7 @@ myIntPtr = myIntPtr + 1
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        if (approxsa) then
+        if (approxsa .and. transitionuseapproxsa) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
           term1 = zero
@@ -1145,7 +1146,8 @@ branch = myIntStack(myIntPtr)
     use flowvarrefstate
     use turbutils_fast_b, only : rethetatcorrelation, flengthcorrelation&
 &   , rethetaccorrelation, smoothminmax
-    use inputiteration, only : transitionsrcdtrestrict
+    use inputiteration, only : transitionsrcdtrestrict, &
+&   transitionuseapproxsa
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1411,7 +1413,7 @@ branch = myIntStack(myIntPtr)
         else
           gammaforsa = x1
         end if
-        if (approxsa) then
+        if (approxsa .and. transitionuseapproxsa) then
           term1 = zero
         else
           term1 = gammaforsa*rsacb1*(one-ft2)*ss

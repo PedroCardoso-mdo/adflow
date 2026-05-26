@@ -140,7 +140,8 @@ contains
     use turbutils_d, only : rethetatcorrelation, rethetatcorrelation_d, &
 &   flengthcorrelation, flengthcorrelation_d, rethetaccorrelation, &
 &   rethetaccorrelation_d, smoothminmax, smoothminmax_d
-    use inputiteration, only : transitionsrcdtrestrict
+    use inputiteration, only : transitionsrcdtrestrict, &
+&   transitionuseapproxsa
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -692,7 +693,7 @@ contains
               gammaforsad = x1d
               gammaforsa = x1
             end if
-            if (approxsa) then
+            if (approxsa .and. transitionuseapproxsa) then
               term1 = zero
               term1d = 0.0_8
             else
@@ -1109,7 +1110,8 @@ contains
     use flowvarrefstate
     use turbutils_d, only : rethetatcorrelation, flengthcorrelation, &
 &   rethetaccorrelation, smoothminmax
-    use inputiteration, only : transitionsrcdtrestrict
+    use inputiteration, only : transitionsrcdtrestrict, &
+&   transitionuseapproxsa
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1373,7 +1375,7 @@ contains
             else
               gammaforsa = x1
             end if
-            if (approxsa) then
+            if (approxsa .and. transitionuseapproxsa) then
               term1 = zero
             else
               term1 = gammaforsa*rsacb1*(one-ft2)*ss
