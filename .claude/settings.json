@@ -48,14 +48,6 @@
       "Edit(.gitignore)"
     ],
     "deny": [
-      "Edit(src/adjoint/output*/**)",
-      "Edit(src/adjoint/outputForward/**)",
-      "Edit(src/adjoint/outputReverse/**)",
-      "Edit(src/adjoint/outputReverseFast/**)",
-      "Edit(src/modules/constants.F90)",
-      "Edit(src/modules/turbMod.F90)",
-      "Edit(src/turbulence/saModel.F90)",
-      "Edit(src/turbulence/saSource.F90)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
       "Bash(git reset --hard origin/*)",
