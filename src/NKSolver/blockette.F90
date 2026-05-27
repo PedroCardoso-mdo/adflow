@@ -21,7 +21,7 @@ module blockette
     integer(kind=intType) :: ii, jj, kk
 
     ! Double halos
-    real(kind=realType), dimension(0:bbib, 0:bbjb, 0:bbkb, 1:6) :: w
+    real(kind=realType), dimension(0:bbib, 0:bbjb, 0:bbkb, 1:8) :: w
     real(kind=realType), dimension(0:bbib, 0:bbjb, 0:bbkb) :: P, gamma
     real(kind=realType), dimension(0:bbib, 0:bbjb, 0:bbkb) :: ss ! Entropy
 
@@ -42,7 +42,7 @@ module blockette
 
     ! Single halos (only owned cells significant)
     real(kind=realType), dimension(1:bbie, 1:bbje, 1:bbke, 1:5) :: fw
-    real(kind=realType), dimension(1:bbie, 1:bbje, 1:bbke, 1:6) :: dw
+    real(kind=realType), dimension(1:bbie, 1:bbje, 1:bbke, 1:8) :: dw
 
     ! Face projected areas
     real(kind=realType), dimension(0:bbie, 1:bbje, 1:bbke, 3) :: sI
@@ -625,6 +625,12 @@ contains
                             !call unsteadyTurbTerm(1_intType, 1_intType, itu1-1, qq)
                             call saViscous
                             call saResScale
+
+                        case (spalartallmarasnoft2gammaretheta)
+                            call saGammaRethetaSource
+                            call saGammaRethetaAdvection
+                            call saGammaRethetaViscous
+                            call saGammaRethetaResScale
                         end select
                     end if
 
@@ -6889,5 +6895,667 @@ contains
         end do
 
     end subroutine resScale
+
+    ! =========================================================================
+    !                    SA-GAMMA-RETHETA BLOCKETTE ROUTINES
+    ! =========================================================================
+
+    subroutine saGammaRethetaSource
+        ! -----------------------------------------------------------------
+        !  Source terms for SA-gamma-ReTheta transition model
+        !  Computes: SA source (modified by gamma), gamma P/D, ReTheta relax
+        ! -----------------------------------------------------------------
+
+        use constants
+        use paramTurb
+        use blockPointers, only: sectionID
+        use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, turbIntensityInf
+        use inputDiscretization, only: approxSA
+        use inputIteration, only: transitionUseApproxSA
+        use section, only: sections
+        use sa, only: cv13, kar2Inv, cw36, cb3Inv
+        use flowvarRefState, only: timeRef, muInf, uInf
+        use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
+
+        implicit none
+
+        real(kind=realType) :: fv1, fv2, ft2
+        real(kind=realType) :: sst, nu, dist2Inv, chi, chi2, chi3
+        real(kind=realType) :: rr, gg, gg6, termFw, fwSa, term1, term2
+        real(kind=realType) :: sqrtProd, ss
+        real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
+        real(kind=realType) :: div2, fact, sxx, syy, szz, sxy, sxz, syz
+        real(kind=realType) :: vortx, vorty, vortz
+        real(kind=realType) :: omegax, omegay, omegaz
+        real(kind=realType) :: strainMag2, strainMag, vortMag, vortMagLim, vortLim
+        real(kind=realType), parameter :: xminn = 1.e-10_realType
+        real(kind=realType), parameter :: f23 = two * third
+        integer(kind=intType) :: i, j, k
+
+        ! SA-gamma-ReTheta specific variables
+        real(kind=realType) :: gammaForSA, gammaLocal, reThetaTilde
+        real(kind=realType) :: term2_prod, term2_dest
+        real(kind=realType) :: nutSA, rTurb, yDist, velMag2, velMag
+        real(kind=realType) :: reS_val, reThetaC_val, fOnset1, fOnset
+        real(kind=realType) :: fLength_val, fTurb_val
+        real(kind=realType) :: pGamma, eGamma
+        real(kind=realType) :: timeScale, thetaBL, lambdaThetaLocal
+        real(kind=realType) :: uxhat, uyhat, uzhat, dUds
+        real(kind=realType) :: reThetaT_target, deltaBL, delta, fWake_val, fThetaT
+        real(kind=realType) :: pReTheta
+
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+        cb3Inv = one / rsaCb3
+
+        ! Determine the non-dimensional wheel speed of this block.
+        omegax = timeRef * sections(sectionID)%rotRate(1)
+        omegay = timeRef * sections(sectionID)%rotRate(2)
+        omegaz = timeRef * sections(sectionID)%rotRate(3)
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+
+                    ! Compute the gradient of u in the cell center.
+                    uux = w(i + 1, j, k, ivx) * si(i, j, k, 1) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 1) &
+                          + w(i, j + 1, k, ivx) * sj(i, j, k, 1) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 1) &
+                          + w(i, j, k + 1, ivx) * sk(i, j, k, 1) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 1)
+                    uuy = w(i + 1, j, k, ivx) * si(i, j, k, 2) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 2) &
+                          + w(i, j + 1, k, ivx) * sj(i, j, k, 2) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 2) &
+                          + w(i, j, k + 1, ivx) * sk(i, j, k, 2) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 2)
+                    uuz = w(i + 1, j, k, ivx) * si(i, j, k, 3) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 3) &
+                          + w(i, j + 1, k, ivx) * sj(i, j, k, 3) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 3) &
+                          + w(i, j, k + 1, ivx) * sk(i, j, k, 3) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 3)
+
+                    ! Gradient of v.
+                    vvx = w(i + 1, j, k, ivy) * si(i, j, k, 1) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 1) &
+                          + w(i, j + 1, k, ivy) * sj(i, j, k, 1) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 1) &
+                          + w(i, j, k + 1, ivy) * sk(i, j, k, 1) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 1)
+                    vvy = w(i + 1, j, k, ivy) * si(i, j, k, 2) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 2) &
+                          + w(i, j + 1, k, ivy) * sj(i, j, k, 2) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 2) &
+                          + w(i, j, k + 1, ivy) * sk(i, j, k, 2) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 2)
+                    vvz = w(i + 1, j, k, ivy) * si(i, j, k, 3) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 3) &
+                          + w(i, j + 1, k, ivy) * sj(i, j, k, 3) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 3) &
+                          + w(i, j, k + 1, ivy) * sk(i, j, k, 3) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 3)
+
+                    ! Gradient of w.
+                    wwx = w(i + 1, j, k, ivz) * si(i, j, k, 1) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 1) &
+                          + w(i, j + 1, k, ivz) * sj(i, j, k, 1) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 1) &
+                          + w(i, j, k + 1, ivz) * sk(i, j, k, 1) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 1)
+                    wwy = w(i + 1, j, k, ivz) * si(i, j, k, 2) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 2) &
+                          + w(i, j + 1, k, ivz) * sj(i, j, k, 2) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 2) &
+                          + w(i, j, k + 1, ivz) * sk(i, j, k, 2) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 2)
+                    wwz = w(i + 1, j, k, ivz) * si(i, j, k, 3) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 3) &
+                          + w(i, j + 1, k, ivz) * sj(i, j, k, 3) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 3) &
+                          + w(i, j, k + 1, ivz) * sk(i, j, k, 3) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 3)
+
+                    fact = fourth / vol(i, j, k)
+
+                    ! Strain components
+                    sxx = two * fact * uux
+                    syy = two * fact * vvy
+                    szz = two * fact * wwz
+                    sxy = fact * (uuy + vvx)
+                    sxz = fact * (uuz + wwx)
+                    syz = fact * (vvz + wwy)
+
+                    div2 = f23 * (sxx + syy + szz)**2
+                    strainMag2 = two * (sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
+                    strainMag = sqrt(max(two * strainMag2, xminn))
+
+                    ! Vorticity components
+                    vortx = two * fact * (wwy - vvz) - two * omegax
+                    vorty = two * fact * (uuz - wwx) - two * omegay
+                    vortz = two * fact * (vvx - uuy) - two * omegaz
+                    vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+                    if (turbProd == strain) then
+                        sqrtProd = sqrt(max(two * strainMag2 - div2, eps))
+                        ss = sqrtProd
+                    else
+                        sqrtProd = vortMag
+                        ss = sqrtProd
+                    end if
+
+                    ! Compute laminar viscosity, wall distance, chi, fv1, fv2
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    dist2Inv = one / (d2Wall(i, j, k)**2)
+                    chi = w(i, j, k, itu1) / nu
+                    chi2 = chi * chi
+                    chi3 = chi * chi2
+                    fv1 = chi3 / (chi3 + cv13)
+                    fv2 = one - chi / (one + chi * fv1)
+
+                    ft2 = zero
+                    if (useft2SA) then
+                        ft2 = rsaCt3 * exp(-rsaCt4 * chi2)
+                    end if
+
+                    ! Corrected production term
+                    sst = ss + w(i, j, k, itu1) * fv2 * kar2Inv * dist2Inv
+                    if (useRotationSA) then
+                        sst = sst + rsaCrot * min(zero, sqrt(two * strainMag2))
+                    end if
+                    sst = max(sst, xminn)
+
+                    ! fw function
+                    rr = w(i, j, k, itu1) * kar2Inv * dist2Inv / sst
+                    rr = min(rr, 10.0_realType)
+                    gg = rr + rsaCw2 * (rr**6 - rr)
+                    gg6 = gg**6
+                    termFw = ((one + cw36) / (gg6 + cw36))**sixth
+                    fwSa = gg * termFw
+
+                    ! ========================================================
+                    ! SA SOURCE (modified by gamma)
+                    ! ========================================================
+                    gammaForSA = min(max(w(i, j, k, itu2), zero), one)
+
+                    if (approxSA .and. transitionUseApproxSA) then
+                        term1 = zero
+                    else
+                        term1 = gammaForSA * rsaCb1 * (one - ft2) * ss
+                    end if
+
+                    term2_prod = dist2Inv * kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2)
+                    term2_dest = -dist2Inv * rsaCw1 * fwSa
+                    term2 = gammaForSA * term2_prod + term2_dest
+
+                    dw(i, j, k, itu1) = dw(i, j, k, itu1) + (term1 + term2 * w(i, j, k, itu1)) * w(i, j, k, itu1)
+
+                    ! ========================================================
+                    ! GAMMA AND RETHETA SOURCE TERMS
+                    ! ========================================================
+                    nutSA = w(i, j, k, itu1) * fv1
+                    rTurb = nutSA / nu
+                    gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
+                    reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
+                    yDist = d2Wall(i, j, k)
+                    velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
+                    velMag = sqrt(max(velMag2, xminn))
+
+                    ! Vorticity limiting
+                    vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) / 20.0_realType
+                    vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
+
+                    ! Fonset
+                    reS_val = w(i, j, k, irho) * yDist**2 * strainMag / rlv(i, j, k)
+                    reThetaC_val = rethetacCorrelation(reThetaTilde)
+                    fOnset1 = sqrt((reS_val / (2.6_realType * reThetaC_val))**2 + rTurb**2)
+                    fOnset = (tanh(6.0_realType * (fOnset1 - 1.35_realType)) + one) * half
+
+                    ! Flength and Fturb
+                    fLength_val = flengthCorrelation(reThetaTilde)
+                    fTurb_val = (one - fOnset) * exp(-rTurb)
+
+                    ! Gamma production and destruction
+                    pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                             * sqrt(gammaLocal) * (one - rsaGRce1 * gammaLocal)
+                    eGamma = rsaGRca2 * fTurb_val * vortMagLim * gammaLocal &
+                             * (rsaGRce2 * gammaLocal - one)
+
+                    dw(i, j, k, itu2) = dw(i, j, k, itu2) + pGamma - eGamma
+
+                    ! ReTheta production (relaxation toward correlation)
+                    timeScale = 500.0_realType * nu / max(velMag2, xminn)
+                    thetaBL = reThetaTilde * nu / max(velMag, xminn)
+
+                    ! Local lambdaTheta
+                    uxhat = w(i, j, k, ivx) / max(velMag, xminn)
+                    uyhat = w(i, j, k, ivy) / max(velMag, xminn)
+                    uzhat = w(i, j, k, ivz) / max(velMag, xminn)
+                    dUds = two * fact &
+                         * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
+                          + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
+                          + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
+                    lambdaThetaLocal = (thetaBL**2 / nu) * dUds
+                    lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, -0.1_realType, rsaGRpmax)
+                    lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, 0.1_realType, rsaGRpmin)
+
+                    reThetaT_target = reThetaTCorrelation(turbIntensityInf * 100.0_realType, lambdaThetaLocal)
+
+                    ! Ftheta_t shielding
+                    deltaBL = 7.5_realType * thetaBL
+                    delta = 50.0_realType * yDist * vortMag * deltaBL / max(velMag, xminn)
+                    delta = max(delta, xminn)
+                    fWake_val = exp(-reS_val / 1.0e6_realType)
+                    fThetaT = fWake_val * exp(-(yDist / delta)**4)
+
+                    pReTheta = rsaGRcthetat / max(timeScale, xminn) &
+                               * (reThetaT_target - reThetaTilde) * (one - fThetaT)
+
+                    dw(i, j, k, itu3) = dw(i, j, k, itu3) + pReTheta
+
+                end do
+            end do
+        end do
+    end subroutine saGammaRethetaSource
+
+    subroutine saGammaRethetaAdvection
+        ! -----------------------------------------------------------------
+        !  Advection terms for SA-gamma-ReTheta (first-order upwind)
+        ! -----------------------------------------------------------------
+        use constants
+        use inputDiscretization, only: orderTurb
+        use iteration, only: groundlevel
+        use turbMod, only: secondOrd
+        implicit none
+
+        real(kind=realType) :: uu, dwt, dwtm1, dwtp1, dwti, dwtj, dwtk, qs
+        real(kind=realType) :: voli, xa, ya, za
+        integer(kind=intType), parameter :: nAdv = 3
+        integer(kind=intType) :: offset, i, j, k, ii, jj
+
+        secondOrd = .false.
+        if (groundLevel == 1_intType .and. orderTurb == secondOrder) secondOrd = .true.
+
+        offset = itu1 - 1
+
+        ! K-direction advection
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = half / vol(i, j, k)
+                    qs = (sFaceK(i, j, k) + sFaceK(i, j, k - 1)) * voli
+
+                    xa = (sk(i, j, k, 1) + sk(i, j, k - 1, 1)) * voli
+                    ya = (sk(i, j, k, 2) + sk(i, j, k - 1, 2)) * voli
+                    za = (sk(i, j, k, 3) + sk(i, j, k - 1, 3)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) + za * w(i, j, k, ivz) - qs
+
+                    if (uu > zero) then
+                        do ii = 1, nAdv
+                            jj = ii + offset
+                            if (secondOrd .and. k > 2) then
+                                dwtm1 = w(i, j, k - 1, jj) - w(i, j, k - 2, jj)
+                                dwt = w(i, j, k, jj) - w(i, j, k - 1, jj)
+                                dwtk = half * (sign(one, dwtm1) + sign(one, dwt)) &
+                                       * min(abs(dwtm1), abs(dwt))
+                            else
+                                dwtk = zero
+                            end if
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j, k - 1, jj) + dwtk - w(i, j, k, jj))
+                        end do
+                    else
+                        do ii = 1, nAdv
+                            jj = ii + offset
+                            if (secondOrd .and. k < kl) then
+                                dwt = w(i, j, k + 1, jj) - w(i, j, k, jj)
+                                dwtp1 = w(i, j, k + 2, jj) - w(i, j, k + 1, jj)
+                                dwtk = half * (sign(one, dwt) + sign(one, dwtp1)) &
+                                       * min(abs(dwt), abs(dwtp1))
+                            else
+                                dwtk = zero
+                            end if
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j, k + 1, jj) - dwtk - w(i, j, k, jj))
+                        end do
+                    end if
+                end do
+            end do
+        end do
+
+        ! J-direction advection
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = half / vol(i, j, k)
+                    qs = (sFaceJ(i, j, k) + sFaceJ(i, j - 1, k)) * voli
+
+                    xa = (sj(i, j, k, 1) + sj(i, j - 1, k, 1)) * voli
+                    ya = (sj(i, j, k, 2) + sj(i, j - 1, k, 2)) * voli
+                    za = (sj(i, j, k, 3) + sj(i, j - 1, k, 3)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) + za * w(i, j, k, ivz) - qs
+
+                    if (uu > zero) then
+                        do ii = 1, nAdv
+                            jj = ii + offset
+                            if (secondOrd .and. j > 2) then
+                                dwtm1 = w(i, j - 1, k, jj) - w(i, j - 2, k, jj)
+                                dwt = w(i, j, k, jj) - w(i, j - 1, k, jj)
+                                dwtj = half * (sign(one, dwtm1) + sign(one, dwt)) &
+                                       * min(abs(dwtm1), abs(dwt))
+                            else
+                                dwtj = zero
+                            end if
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j - 1, k, jj) + dwtj - w(i, j, k, jj))
+                        end do
+                    else
+                        do ii = 1, nAdv
+                            jj = ii + offset
+                            if (secondOrd .and. j < jl) then
+                                dwt = w(i, j + 1, k, jj) - w(i, j, k, jj)
+                                dwtp1 = w(i, j + 2, k, jj) - w(i, j + 1, k, jj)
+                                dwtj = half * (sign(one, dwt) + sign(one, dwtp1)) &
+                                       * min(abs(dwt), abs(dwtp1))
+                            else
+                                dwtj = zero
+                            end if
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j + 1, k, jj) - dwtj - w(i, j, k, jj))
+                        end do
+                    end if
+                end do
+            end do
+        end do
+
+        ! I-direction advection
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = half / vol(i, j, k)
+                    qs = (sFaceI(i, j, k) + sFaceI(i - 1, j, k)) * voli
+
+                    xa = (si(i, j, k, 1) + si(i - 1, j, k, 1)) * voli
+                    ya = (si(i, j, k, 2) + si(i - 1, j, k, 2)) * voli
+                    za = (si(i, j, k, 3) + si(i - 1, j, k, 3)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) + za * w(i, j, k, ivz) - qs
+
+                    if (uu > zero) then
+                        do ii = 1, nAdv
+                            jj = ii + offset
+                            if (secondOrd .and. i > 2) then
+                                dwtm1 = w(i - 1, j, k, jj) - w(i - 2, j, k, jj)
+                                dwt = w(i, j, k, jj) - w(i - 1, j, k, jj)
+                                dwti = half * (sign(one, dwtm1) + sign(one, dwt)) &
+                                       * min(abs(dwtm1), abs(dwt))
+                            else
+                                dwti = zero
+                            end if
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i - 1, j, k, jj) + dwti - w(i, j, k, jj))
+                        end do
+                    else
+                        do ii = 1, nAdv
+                            jj = ii + offset
+                            if (secondOrd .and. i < il) then
+                                dwt = w(i + 1, j, k, jj) - w(i, j, k, jj)
+                                dwtp1 = w(i + 2, j, k, jj) - w(i + 1, j, k, jj)
+                                dwti = half * (sign(one, dwt) + sign(one, dwtp1)) &
+                                       * min(abs(dwt), abs(dwtp1))
+                            else
+                                dwti = zero
+                            end if
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i + 1, j, k, jj) - dwti - w(i, j, k, jj))
+                        end do
+                    end if
+                end do
+            end do
+        end do
+    end subroutine saGammaRethetaAdvection
+
+    subroutine saGammaRethetaViscous
+        ! -----------------------------------------------------------------
+        !  Viscous/diffusion terms for SA-gamma-ReTheta
+        !  SA: (nu + (1+Cb2)*nuTilde)/sigma
+        !  gamma: nu + nut/sigma_gamma
+        !  ReTheta: sigma_theta * (nu + nut)
+        ! -----------------------------------------------------------------
+
+        use constants
+        use sa, only: cv13, kar2Inv, cw36, cb3Inv
+        use paramTurb
+        implicit none
+
+        real(kind=realType) :: voli, volmi, volpi, xm, ym, zm, xp, yp, zp
+        real(kind=realType) :: xa, ya, za, ttm, ttp, cnud, cam, cap
+        real(kind=realType) :: nutm, nutp, num, nup, nu
+        real(kind=realType) :: cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt
+        real(kind=realType) :: c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30
+        real(kind=realType) :: nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp
+        real(kind=realType) :: nuTilde, nuTilde_m, nuTilde_p
+        real(kind=realType) :: chi, chi3, chi_m, chi3_m, chi_p, chi3_p
+        real(kind=realType) :: fv1, fv1_m, fv1_p
+        integer(Kind=intType) :: i, j, k
+
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+        cb3Inv = one / rsaCb3
+
+        ! Viscous terms in k-direction
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = one / vol(i, j, k)
+                    volmi = two / (vol(i, j, k) + vol(i, j, k - 1))
+                    volpi = two / (vol(i, j, k) + vol(i, j, k + 1))
+
+                    xm = sk(i, j, k - 1, 1) * volmi
+                    ym = sk(i, j, k - 1, 2) * volmi
+                    zm = sk(i, j, k - 1, 3) * volmi
+                    xp = sk(i, j, k, 1) * volpi
+                    yp = sk(i, j, k, 2) * volpi
+                    zp = sk(i, j, k, 3) * volpi
+
+                    xa = half * (sk(i, j, k, 1) + sk(i, j, k - 1, 1)) * voli
+                    ya = half * (sk(i, j, k, 2) + sk(i, j, k - 1, 2)) * voli
+                    za = half * (sk(i, j, k, 3) + sk(i, j, k - 1, 3)) * voli
+                    ttm = xm * xa + ym * ya + zm * za
+                    ttp = xp * xa + yp * ya + zp * za
+
+                    ! SA nonlinear correction
+                    cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                    cam = ttm * cnud
+                    cap = ttp * cnud
+
+                    nutm = half * (w(i, j, k - 1, itu1) + w(i, j, k, itu1))
+                    nutp = half * (w(i, j, k + 1, itu1) + w(i, j, k, itu1))
+
+                    ! Viscosities
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    nuTilde = w(i, j, k, itu1)
+                    chi = nuTilde / nu; chi3 = chi * chi * chi
+                    fv1 = chi3 / (chi3 + cv13)
+                    nut = nuTilde * fv1
+
+                    nu_m = rlv(i, j, k - 1) / w(i, j, k - 1, irho)
+                    nuTilde_m = w(i, j, k - 1, itu1)
+                    chi_m = nuTilde_m / nu_m; chi3_m = chi_m * chi_m * chi_m
+                    fv1_m = chi3_m / (chi3_m + cv13)
+                    nut_m = nuTilde_m * fv1_m
+
+                    nu_p = rlv(i, j, k + 1) / w(i, j, k + 1, irho)
+                    nuTilde_p = w(i, j, k + 1, itu1)
+                    chi_p = nuTilde_p / nu_p; chi3_p = chi_p * chi_p * chi_p
+                    fv1_p = chi3_p / (chi3_p + cv13)
+                    nut_p = nuTilde_p * fv1_p
+
+                    num = half * (nu_m + nu)
+                    nup = half * (nu_p + nu)
+                    nu_tm = half * (nut_m + nut)
+                    nu_tp = half * (nut_p + nut)
+
+                    ! Diffusion coefficients
+                    cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                    cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
+                    cdm_gamma = (num + nu_tm / sigmaF) * ttm
+                    cdp_gamma = (nup + nu_tp / sigmaF) * ttp
+                    cdm_rt = sigmaTheta * (num + nu_tm) * ttm
+                    cdp_rt = sigmaTheta * (nup + nu_tp) * ttp
+
+                    c1m = max(cdm + cam, zero); c1p = max(cdp + cap, zero); c10 = c1m + c1p
+                    c2m = max(cdm_gamma, zero); c2p = max(cdp_gamma, zero); c20 = c2m + c2p
+                    c3m = max(cdm_rt, zero); c3p = max(cdp_rt, zero); c30 = c3m + c3p
+
+                    dw(i, j, k, itu1) = dw(i, j, k, itu1) + c1m * w(i, j, k - 1, itu1) &
+                                        - c10 * w(i, j, k, itu1) + c1p * w(i, j, k + 1, itu1)
+                    dw(i, j, k, itu2) = dw(i, j, k, itu2) + c2m * w(i, j, k - 1, itu2) &
+                                        - c20 * w(i, j, k, itu2) + c2p * w(i, j, k + 1, itu2)
+                    dw(i, j, k, itu3) = dw(i, j, k, itu3) + c3m * w(i, j, k - 1, itu3) &
+                                        - c30 * w(i, j, k, itu3) + c3p * w(i, j, k + 1, itu3)
+                end do
+            end do
+        end do
+
+        ! Viscous terms in j-direction
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = one / vol(i, j, k)
+                    volmi = two / (vol(i, j, k) + vol(i, j - 1, k))
+                    volpi = two / (vol(i, j, k) + vol(i, j + 1, k))
+
+                    xm = sj(i, j - 1, k, 1) * volmi
+                    ym = sj(i, j - 1, k, 2) * volmi
+                    zm = sj(i, j - 1, k, 3) * volmi
+                    xp = sj(i, j, k, 1) * volpi
+                    yp = sj(i, j, k, 2) * volpi
+                    zp = sj(i, j, k, 3) * volpi
+
+                    xa = half * (sj(i, j, k, 1) + sj(i, j - 1, k, 1)) * voli
+                    ya = half * (sj(i, j, k, 2) + sj(i, j - 1, k, 2)) * voli
+                    za = half * (sj(i, j, k, 3) + sj(i, j - 1, k, 3)) * voli
+                    ttm = xm * xa + ym * ya + zm * za
+                    ttp = xp * xa + yp * ya + zp * za
+
+                    cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                    cam = ttm * cnud
+                    cap = ttp * cnud
+
+                    nutm = half * (w(i, j - 1, k, itu1) + w(i, j, k, itu1))
+                    nutp = half * (w(i, j + 1, k, itu1) + w(i, j, k, itu1))
+
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    nuTilde = w(i, j, k, itu1)
+                    chi = nuTilde / nu; chi3 = chi * chi * chi
+                    fv1 = chi3 / (chi3 + cv13)
+                    nut = nuTilde * fv1
+
+                    nu_m = rlv(i, j - 1, k) / w(i, j - 1, k, irho)
+                    nuTilde_m = w(i, j - 1, k, itu1)
+                    chi_m = nuTilde_m / nu_m; chi3_m = chi_m * chi_m * chi_m
+                    fv1_m = chi3_m / (chi3_m + cv13)
+                    nut_m = nuTilde_m * fv1_m
+
+                    nu_p = rlv(i, j + 1, k) / w(i, j + 1, k, irho)
+                    nuTilde_p = w(i, j + 1, k, itu1)
+                    chi_p = nuTilde_p / nu_p; chi3_p = chi_p * chi_p * chi_p
+                    fv1_p = chi3_p / (chi3_p + cv13)
+                    nut_p = nuTilde_p * fv1_p
+
+                    num = half * (nu_m + nu)
+                    nup = half * (nu_p + nu)
+                    nu_tm = half * (nut_m + nut)
+                    nu_tp = half * (nut_p + nut)
+
+                    cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                    cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
+                    cdm_gamma = (num + nu_tm / sigmaF) * ttm
+                    cdp_gamma = (nup + nu_tp / sigmaF) * ttp
+                    cdm_rt = sigmaTheta * (num + nu_tm) * ttm
+                    cdp_rt = sigmaTheta * (nup + nu_tp) * ttp
+
+                    c1m = max(cdm + cam, zero); c1p = max(cdp + cap, zero); c10 = c1m + c1p
+                    c2m = max(cdm_gamma, zero); c2p = max(cdp_gamma, zero); c20 = c2m + c2p
+                    c3m = max(cdm_rt, zero); c3p = max(cdp_rt, zero); c30 = c3m + c3p
+
+                    dw(i, j, k, itu1) = dw(i, j, k, itu1) + c1m * w(i, j - 1, k, itu1) &
+                                        - c10 * w(i, j, k, itu1) + c1p * w(i, j + 1, k, itu1)
+                    dw(i, j, k, itu2) = dw(i, j, k, itu2) + c2m * w(i, j - 1, k, itu2) &
+                                        - c20 * w(i, j, k, itu2) + c2p * w(i, j + 1, k, itu2)
+                    dw(i, j, k, itu3) = dw(i, j, k, itu3) + c3m * w(i, j - 1, k, itu3) &
+                                        - c30 * w(i, j, k, itu3) + c3p * w(i, j + 1, k, itu3)
+                end do
+            end do
+        end do
+
+        ! Viscous terms in i-direction
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = one / vol(i, j, k)
+                    volmi = two / (vol(i, j, k) + vol(i - 1, j, k))
+                    volpi = two / (vol(i, j, k) + vol(i + 1, j, k))
+
+                    xm = si(i - 1, j, k, 1) * volmi
+                    ym = si(i - 1, j, k, 2) * volmi
+                    zm = si(i - 1, j, k, 3) * volmi
+                    xp = si(i, j, k, 1) * volpi
+                    yp = si(i, j, k, 2) * volpi
+                    zp = si(i, j, k, 3) * volpi
+
+                    xa = half * (si(i, j, k, 1) + si(i - 1, j, k, 1)) * voli
+                    ya = half * (si(i, j, k, 2) + si(i - 1, j, k, 2)) * voli
+                    za = half * (si(i, j, k, 3) + si(i - 1, j, k, 3)) * voli
+                    ttm = xm * xa + ym * ya + zm * za
+                    ttp = xp * xa + yp * ya + zp * za
+
+                    cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                    cam = ttm * cnud
+                    cap = ttp * cnud
+
+                    nutm = half * (w(i - 1, j, k, itu1) + w(i, j, k, itu1))
+                    nutp = half * (w(i + 1, j, k, itu1) + w(i, j, k, itu1))
+
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    nuTilde = w(i, j, k, itu1)
+                    chi = nuTilde / nu; chi3 = chi * chi * chi
+                    fv1 = chi3 / (chi3 + cv13)
+                    nut = nuTilde * fv1
+
+                    nu_m = rlv(i - 1, j, k) / w(i - 1, j, k, irho)
+                    nuTilde_m = w(i - 1, j, k, itu1)
+                    chi_m = nuTilde_m / nu_m; chi3_m = chi_m * chi_m * chi_m
+                    fv1_m = chi3_m / (chi3_m + cv13)
+                    nut_m = nuTilde_m * fv1_m
+
+                    nu_p = rlv(i + 1, j, k) / w(i + 1, j, k, irho)
+                    nuTilde_p = w(i + 1, j, k, itu1)
+                    chi_p = nuTilde_p / nu_p; chi3_p = chi_p * chi_p * chi_p
+                    fv1_p = chi3_p / (chi3_p + cv13)
+                    nut_p = nuTilde_p * fv1_p
+
+                    num = half * (nu_m + nu)
+                    nup = half * (nu_p + nu)
+                    nu_tm = half * (nut_m + nut)
+                    nu_tp = half * (nut_p + nut)
+
+                    cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                    cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
+                    cdm_gamma = (num + nu_tm / sigmaF) * ttm
+                    cdp_gamma = (nup + nu_tp / sigmaF) * ttp
+                    cdm_rt = sigmaTheta * (num + nu_tm) * ttm
+                    cdp_rt = sigmaTheta * (nup + nu_tp) * ttp
+
+                    c1m = max(cdm + cam, zero); c1p = max(cdp + cap, zero); c10 = c1m + c1p
+                    c2m = max(cdm_gamma, zero); c2p = max(cdp_gamma, zero); c20 = c2m + c2p
+                    c3m = max(cdm_rt, zero); c3p = max(cdp_rt, zero); c30 = c3m + c3p
+
+                    dw(i, j, k, itu1) = dw(i, j, k, itu1) + c1m * w(i - 1, j, k, itu1) &
+                                        - c10 * w(i, j, k, itu1) + c1p * w(i + 1, j, k, itu1)
+                    dw(i, j, k, itu2) = dw(i, j, k, itu2) + c2m * w(i - 1, j, k, itu2) &
+                                        - c20 * w(i, j, k, itu2) + c2p * w(i + 1, j, k, itu2)
+                    dw(i, j, k, itu3) = dw(i, j, k, itu3) + c3m * w(i - 1, j, k, itu3) &
+                                        - c30 * w(i, j, k, itu3) + c3p * w(i + 1, j, k, itu3)
+                end do
+            end do
+        end do
+    end subroutine saGammaRethetaViscous
+
+    subroutine saGammaRethetaResScale
+        ! -----------------------------------------------------------------
+        !  Scale residuals by -vol for all 3 turbulent variables
+        ! -----------------------------------------------------------------
+        use constants
+        implicit none
+
+        integer(kind=intType) :: i, j, k
+        real(kind=realType) :: rblank
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    rblank = max(real(iblank(i, j, k), realType), zero)
+                    dw(i, j, k, itu1) = -volRef(i, j, k) * dw(i, j, k, itu1) * rblank
+                    dw(i, j, k, itu2) = -volRef(i, j, k) * dw(i, j, k, itu2) * rblank
+                    dw(i, j, k, itu3) = -volRef(i, j, k) * dw(i, j, k, itu3) * rblank
+                end do
+            end do
+        end do
+    end subroutine saGammaRethetaResScale
 
 end module blockette
