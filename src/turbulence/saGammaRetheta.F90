@@ -242,10 +242,12 @@ contains
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
         real(kind=realType) :: dwdx, dwdy, dwdz
-        real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
-        real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
         real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
         real(kind=realType) :: dfOnset1_drT, dfOnset_dfOnset1
+        real(kind=realType) :: F1_val, base_val, inner_val
+        real(kind=realType) :: dFlength_dReT, dReThetaC_dReT
+        real(kind=realType) :: dfOnset1_dReT, dfOnset_dReT, dPgamma_dReT
+        real(kind=realType) :: pGamma_common, sech2_val
 
 
 
@@ -689,22 +691,36 @@ contains
                             + rsaGRca2 * dfTurb_dnu * vortMagLim * gammaLocal &
                               * (rsaGRce2 * gammaLocal - one)
 
-                        ! qq(2,3) = -dS_gamma/dReThetaTilde: P_gamma depends on
-                        ! fOnset(reThetaC(reThetaTilde)) and fLength(reThetaTilde).
-                        ! Use one-sided finite difference on P_gamma.
-                        epsRT = max(1.0e-4_realType * reThetaTilde, 1.0e-2_realType)
-                        reThetaTilde_p = reThetaTilde + epsRT
-                        reThetaC_p = rethetacCorrelation(reThetaTilde_p)
-                        reThetaC_p = max(reThetaC_p, xminn)
-                        fOnset1_p = sqrt((reS_val &
-                            / (2.6_realType * reThetaC_p))**2 + rTurb**2)
-                        fOnset_p = (tanh(6.0_realType &
-                            * (fOnset1_p - 1.35_realType)) + one) * half
-                        fLength_p = flengthCorrelation(reThetaTilde_p)
-                        pGamma_p = rsaGRca1 * fLength_p * fOnset_p * vortMagLim &
-                            * sqrt(max(gammaLocal, xminn)) &
-                            * (one - rsaGRce1 * gammaLocal)
-                        qq(i, j, k, 2, 3) = -(pGamma_p - pGamma) / epsRT
+                        ! qq(2,3) = -dS_gamma/dReThetaTilde: analytical derivative
+                        ! dFlength/dReThetaTilde (Eqs. 49-50)
+                        F1_val = exp(-3.0e-2_realType * (reThetaTilde - 460.0_realType))
+                        base_val = one + F1_val
+                        inner_val = 44.0_realType - (0.5_realType &
+                                    - 3.0e-4_realType * (reThetaTilde - 596.0_realType))
+                        dFlength_dReT = -3.0e-4_realType / base_val**(one/6.0_realType) &
+                                      - inner_val * (one/6.0_realType) &
+                                        * base_val**(-7.0_realType/6.0_realType) &
+                                        * F1_val * 3.0e-2_realType
+
+                        ! dReThetaC/dReThetaTilde (Eq. 51)
+                        dReThetaC_dReT = 0.67_realType &
+                            + 0.1_realType * cos(reThetaTilde/240.0_realType + 0.5_realType)
+
+                        ! dfOnset/dReThetaTilde via chain rule
+                        dfOnset1_dReT = -(reS_val / (2.6_realType * reThetaC_val))**2 &
+                                      / (max(reThetaC_val, xminn) * max(fOnset1, xminn)) &
+                                      * dReThetaC_dReT
+                        sech2_val = one - tanh(6.0_realType * (fOnset1 - 1.35_realType))**2
+                        dfOnset_dReT = 3.0_realType * sech2_val * dfOnset1_dReT
+
+                        ! dP_gamma/dReThetaTilde
+                        pGamma_common = rsaGRca1 * vortMagLim &
+                                      * sqrt(max(gammaLocal, xminn)) &
+                                      * (one - rsaGRce1 * gammaLocal)
+                        dPgamma_dReT = pGamma_common * (fOnset * dFlength_dReT &
+                                     + fLength_val * dfOnset_dReT)
+
+                        qq(i, j, k, 2, 3) = -dPgamma_dReT
 
                         ! qq(3,1) = -dS_retheta/dnu_tilde: ~0 (paper §7.1)
                         qq(i, j, k, 3, 1) = zero
