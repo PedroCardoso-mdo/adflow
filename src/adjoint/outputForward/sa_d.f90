@@ -85,7 +85,11 @@ contains
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
     real(kind=realtype) :: max2
-    real(kind=realtype) :: max2d
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max3d
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max5d
     real(kind=realtype) :: arg1
     real(kind=realtype) :: arg1d
     real(kind=realtype) :: result1
@@ -505,20 +509,32 @@ contains
 ! re_theta critical
               re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(&
 &               -1.027_realtype)
+              if (rlv(i, j, k) .lt. 1e-20_realtype) then
+                max1 = 1e-20_realtype
+                max1d = 0.0_8
+              else
+                max1d = rlvd(i, j, k)
+                max1 = rlv(i, j, k)
+              end if
 ! re_theta actual
-              temp10 = sqrtvort/rlv(i, j, k)
-              temp9 = d2wall(i, j, k)
+              temp10 = d2wall(i, j, k)
+              temp9 = sqrtvort/max1
               temp8 = w(i, j, k, irho)
-              temp7 = temp8*(temp9*temp9)
-              re_vortyd = temp10*(temp9**2*wd(i, j, k, irho)+temp8*2*&
-&               temp9*d2walld(i, j, k)) + temp7*(sqrtvortd-temp10*rlvd(i&
-&               , j, k))/rlv(i, j, k)
-              re_vorty = temp7*temp10
+              temp7 = temp8*temp9
+              re_vortyd = temp10**2*(temp9*wd(i, j, k, irho)+temp8*(&
+&               sqrtvortd-temp9*max1d)/max1) + temp7*2*temp10*d2walld(i&
+&               , j, k)
+              re_vorty = temp7*(temp10*temp10)
               re_thetad = re_vortyd/2.193_realtype
               re_theta = re_vorty/2.193_realtype
+              if (re_theta_c*sabcm_const1 .lt. 1e-20_realtype) then
+                max2 = 1e-20_realtype
+              else
+                max2 = re_theta_c*sabcm_const1
+              end if
 ! tterm1 (can be huge ~1e5)
-              tterm1d = re_thetad/(re_theta_c*sabcm_const1)
-              tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+              tterm1d = re_thetad/max2
+              tterm1 = (re_theta-re_theta_c)/max2
               stransitiond = sabcm_maxsmooth*tterm1d
               stransition = sabcm_maxsmooth*tterm1
               if (stransition .lt. xminn) then
@@ -536,32 +552,32 @@ contains
 ! choose between tanh (current) and reference exp-sqrt formula
               if (sabcm_exp) then
                 if (tterm1 .lt. zero) then
-                  max1 = zero
-                  max1d = 0.0_8
+                  max3 = zero
+                  max3d = 0.0_8
                 else
-                  max1d = tterm1d
-                  max1 = tterm1
+                  max3d = tterm1d
+                  max3 = tterm1
                 end if
                 if (tterm2 .lt. zero) then
-                  max2 = zero
-                  max2d = 0.0_8
+                  max5 = zero
+                  max5d = 0.0_8
                 else
-                  max2d = tterm2d
-                  max2 = tterm2
+                  max5d = tterm2d
+                  max5 = tterm2
                 end if
 ! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-                temp10 = sqrt(max1)
-                if (max1 .eq. 0.0_8) then
+                temp10 = sqrt(max3)
+                if (max3 .eq. 0.0_8) then
                   result1d = 0.0_8
                 else
-                  result1d = max1d/(2.0*temp10)
+                  result1d = max3d/(2.0*temp10)
                 end if
                 result1 = temp10
-                temp10 = sqrt(max2)
-                if (max2 .eq. 0.0_8) then
+                temp10 = sqrt(max5)
+                if (max5 .eq. 0.0_8) then
                   result2d = 0.0_8
                 else
-                  result2d = max2d/(2.0*temp10)
+                  result2d = max5d/(2.0*temp10)
                 end if
                 result2 = temp10
                 arg_gammad = result1d + result2d
@@ -583,9 +599,14 @@ contains
                   ttgamma = x1
                 end if
               else
+                if (sabcm_fsmooth .lt. 1e-20_realtype) then
+                  max4 = 1e-20_realtype
+                else
+                  max4 = sabcm_fsmooth
+                end if
 ! current tanh-based formula
-                arg_tanhd = (tterm1d+tterm2d)/sabcm_fsmooth
-                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+                arg_tanhd = (tterm1d+tterm2d)/max4
+                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/max4
                 ttgammad = 0.5_realtype*(1.0-tanh(arg_tanh)**2)*&
 &                 arg_tanhd
                 ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
@@ -667,6 +688,9 @@ contains
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
     real(kind=realtype) :: arg1
     real(kind=realtype) :: result1
     real(kind=realtype) :: result2
@@ -830,12 +854,22 @@ contains
 ! re_theta critical
               re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(&
 &               -1.027_realtype)
+              if (rlv(i, j, k) .lt. 1e-20_realtype) then
+                max1 = 1e-20_realtype
+              else
+                max1 = rlv(i, j, k)
+              end if
 ! re_theta actual
-              re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i&
-&               , j, k)**2
+              re_vorty = sqrtvort*w(i, j, k, irho)/max1*d2wall(i, j, k)&
+&               **2
               re_theta = re_vorty/2.193_realtype
+              if (re_theta_c*sabcm_const1 .lt. 1e-20_realtype) then
+                max2 = 1e-20_realtype
+              else
+                max2 = re_theta_c*sabcm_const1
+              end if
 ! tterm1 (can be huge ~1e5)
-              tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+              tterm1 = (re_theta-re_theta_c)/max2
               stransition = sabcm_maxsmooth*tterm1
               if (stransition .lt. xminn) then
                 k_max = xminn
@@ -847,18 +881,18 @@ contains
 ! choose between tanh (current) and reference exp-sqrt formula
               if (sabcm_exp) then
                 if (tterm1 .lt. zero) then
-                  max1 = zero
+                  max3 = zero
                 else
-                  max1 = tterm1
+                  max3 = tterm1
                 end if
                 if (tterm2 .lt. zero) then
-                  max2 = zero
+                  max5 = zero
                 else
-                  max2 = tterm2
+                  max5 = tterm2
                 end if
 ! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-                result1 = sqrt(max1)
-                result2 = sqrt(max2)
+                result1 = sqrt(max3)
+                result2 = sqrt(max5)
                 arg_gamma = result1 + result2
                 ttgamma = one - exp(-arg_gamma)
                 if (ttgamma .lt. zero) then
@@ -872,8 +906,13 @@ contains
                   ttgamma = x1
                 end if
               else
+                if (sabcm_fsmooth .lt. 1e-20_realtype) then
+                  max4 = 1e-20_realtype
+                else
+                  max4 = sabcm_fsmooth
+                end if
 ! current tanh-based formula
-                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/max4
                 ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
               end if
               tgamma(i, j, k) = ttgamma

@@ -88,7 +88,11 @@ contains
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
     real(kind=realtype) :: max2
-    real(kind=realtype) :: max2d
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max3d
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max5d
     real(kind=realtype) :: temp
     real(kind=realtype) :: tempd
     real(kind=realtype) :: temp0
@@ -277,12 +281,23 @@ contains
 ! re_theta critical
           re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
 &           1.027_realtype)
+          if (rlv(i, j, k) .lt. 1e-20_realtype) then
+            call pushcontrol1b(0)
+            max1 = 1e-20_realtype
+          else
+            max1 = rlv(i, j, k)
+            call pushcontrol1b(1)
+          end if
 ! re_theta actual
-          re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
-&           , k)**2
+          re_vorty = sqrtvort*w(i, j, k, irho)/max1*d2wall(i, j, k)**2
           re_theta = re_vorty/2.193_realtype
+          if (re_theta_c*sabcm_const1 .lt. 1e-20_realtype) then
+            max2 = 1e-20_realtype
+          else
+            max2 = re_theta_c*sabcm_const1
+          end if
 ! tterm1 (can be huge ~1e5)
-          tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+          tterm1 = (re_theta-re_theta_c)/max2
           stransition = sabcm_maxsmooth*tterm1
           if (stransition .lt. xminn) then
             call pushcontrol1b(0)
@@ -296,21 +311,21 @@ contains
 ! choose between tanh (current) and reference exp-sqrt formula
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
-              max1 = zero
+              max3 = zero
               call pushcontrol1b(1)
             else
-              max1 = tterm1
+              max3 = tterm1
               call pushcontrol1b(0)
             end if
             if (tterm2 .lt. zero) then
-              max2 = zero
+              max5 = zero
               call pushcontrol1b(0)
             else
-              max2 = tterm2
+              max5 = tterm2
               call pushcontrol1b(1)
             end if
 ! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-            arg_gamma = sqrt(max1) + sqrt(max2)
+            arg_gamma = sqrt(max3) + sqrt(max5)
             ttgamma = one - exp(-arg_gamma)
             if (ttgamma .lt. zero) then
               x1 = zero
@@ -327,8 +342,13 @@ contains
               call pushcontrol2b(1)
             end if
           else
+            if (sabcm_fsmooth .lt. 1e-20_realtype) then
+              max4 = 1e-20_realtype
+            else
+              max4 = sabcm_fsmooth
+            end if
 ! current tanh-based formula
-            arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+            arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/max4
             ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
             call pushcontrol2b(0)
           end if
@@ -373,8 +393,8 @@ contains
         if (branch .lt. 2) then
           if (branch .eq. 0) then
             arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*ttgammad
-            tterm1d = arg_tanhd/sabcm_fsmooth
-            tterm2d = arg_tanhd/sabcm_fsmooth
+            tterm1d = arg_tanhd/max4
+            tterm2d = arg_tanhd/max4
             goto 100
           else
             x1d = ttgammad
@@ -400,25 +420,25 @@ contains
           ttgammad = x1d
         end if
         arg_gammad = exp(-arg_gamma)*ttgammad
-        if (max1 .eq. 0.0_8) then
-          max1d = 0.0_8
+        if (max3 .eq. 0.0_8) then
+          max3d = 0.0_8
         else
-          max1d = arg_gammad/(2.0*sqrt(max1))
+          max3d = arg_gammad/(2.0*sqrt(max3))
         end if
-        if (max2 .eq. 0.0_8) then
-          max2d = 0.0_8
+        if (max5 .eq. 0.0_8) then
+          max5d = 0.0_8
         else
-          max2d = arg_gammad/(2.0*sqrt(max2))
+          max5d = arg_gammad/(2.0*sqrt(max5))
         end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
           tterm2d = 0.0_8
         else
-          tterm2d = max2d
+          tterm2d = max5d
         end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
-          tterm1d = max1d
+          tterm1d = max3d
         else
           tterm1d = 0.0_8
         end if
@@ -430,17 +450,19 @@ contains
         call popcontrol1b(branch)
         if (branch .ne. 0) stransitiond = stransitiond + k_maxd
         tterm1d = sabcm_maxsmooth*stransitiond
-        re_thetad = tterm1d/(re_theta_c*sabcm_const1)
+        re_thetad = tterm1d/max2
         re_vortyd = re_thetad/2.193_realtype
-        temp0 = sqrtvort/rlv(i, j, k)
-        temp = d2wall(i, j, k)
+        temp = sqrtvort/max1
         temp1 = w(i, j, k, irho)
-        wd(i, j, k, irho) = wd(i, j, k, irho) + temp**2*temp0*re_vortyd
-        d2walld(i, j, k) = d2walld(i, j, k) + 2*temp*temp1*temp0*&
-&         re_vortyd
-        tempd0 = temp1*temp**2*re_vortyd/rlv(i, j, k)
-        sqrtvortd = tempd0
-        rlvd(i, j, k) = rlvd(i, j, k) - temp0*tempd0
+        tempd0 = d2wall(i, j, k)**2*re_vortyd
+        d2walld(i, j, k) = d2walld(i, j, k) + 2*d2wall(i, j, k)*temp1*&
+&         temp*re_vortyd
+        wd(i, j, k, irho) = wd(i, j, k, irho) + temp*tempd0
+        tempd = temp1*tempd0/max1
+        sqrtvortd = tempd
+        max1d = -(temp*tempd)
+        call popcontrol1b(branch)
+        if (branch .ne. 0) rlvd(i, j, k) = rlvd(i, j, k) + max1d
         fv1d = chi*tterm2d/sabcm_const2
         chid = fv1*tterm2d/sabcm_const2
         if (vortprod .eq. 0.0_8) then
@@ -732,6 +754,9 @@ contains
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -894,12 +919,21 @@ contains
 ! re_theta critical
           re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
 &           1.027_realtype)
+          if (rlv(i, j, k) .lt. 1e-20_realtype) then
+            max1 = 1e-20_realtype
+          else
+            max1 = rlv(i, j, k)
+          end if
 ! re_theta actual
-          re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
-&           , k)**2
+          re_vorty = sqrtvort*w(i, j, k, irho)/max1*d2wall(i, j, k)**2
           re_theta = re_vorty/2.193_realtype
+          if (re_theta_c*sabcm_const1 .lt. 1e-20_realtype) then
+            max2 = 1e-20_realtype
+          else
+            max2 = re_theta_c*sabcm_const1
+          end if
 ! tterm1 (can be huge ~1e5)
-          tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+          tterm1 = (re_theta-re_theta_c)/max2
           stransition = sabcm_maxsmooth*tterm1
           if (stransition .lt. xminn) then
             k_max = xminn
@@ -911,17 +945,17 @@ contains
 ! choose between tanh (current) and reference exp-sqrt formula
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
-              max1 = zero
+              max3 = zero
             else
-              max1 = tterm1
+              max3 = tterm1
             end if
             if (tterm2 .lt. zero) then
-              max2 = zero
+              max5 = zero
             else
-              max2 = tterm2
+              max5 = tterm2
             end if
 ! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-            arg_gamma = sqrt(max1) + sqrt(max2)
+            arg_gamma = sqrt(max3) + sqrt(max5)
             ttgamma = one - exp(-arg_gamma)
             if (ttgamma .lt. zero) then
               x1 = zero
@@ -934,8 +968,13 @@ contains
               ttgamma = x1
             end if
           else
+            if (sabcm_fsmooth .lt. 1e-20_realtype) then
+              max4 = 1e-20_realtype
+            else
+              max4 = sabcm_fsmooth
+            end if
 ! current tanh-based formula
-            arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+            arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/max4
             ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
           end if
           tgamma(i, j, k) = ttgamma
