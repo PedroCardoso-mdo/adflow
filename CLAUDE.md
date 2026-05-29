@@ -28,7 +28,7 @@ When running with >64 MPI ranks, SA-BCM + timing crashes with NaNs.
 ## Build
 
 ```bash
-pip install -e .
+make
 ```
 
 ## Enable Features
