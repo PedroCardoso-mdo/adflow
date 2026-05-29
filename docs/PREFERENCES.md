@@ -1,18 +1,11 @@
-# User Preferences
+# Project Preferences
 
-## Documentation Style
-- Token-efficient .md files
-- Layered documentation (tree → specific topics)
-- Tables for quick reference
+## SA-BCM Timing Branch Specific
 
-## Workflow
-- Use subagents for parallel exploration
-- Create docs for future context reduction
-- Update docs as decisions are made
-- After each change: check for errors, fix if needed, then commit with descriptive message
+- Focus on >64 rank NaN debugging
+- SA-BCM and timing instrumentation are priority features
+- Fortran 90 codebase with Python API
 
-## Code Preferences
-- (Add as discovered)
-
-## Communication
-- (Add as discovered)
+## Build & Test
+- Build with `pip install -e .`
+- Test with MPI runs at various rank counts
