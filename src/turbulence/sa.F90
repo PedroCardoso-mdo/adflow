@@ -320,11 +320,11 @@ contains
                             Re_theta_c = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
 
                             ! Re_theta actual
-                            Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
+                            Re_vorty = sqrtVort * w(i, j, k, irho) / max(rlv(i, j, k), 1e-20_realType) * (d2wall(i, j, k)**2)
                             Re_theta = Re_vorty / 2.193_realType
 
                             ! tterm1 (can be huge ~1e5)
-                            tterm1 = (Re_theta - Re_theta_c) / (Re_theta_c * SABCM_Const1)
+                            tterm1 = (Re_theta - Re_theta_c) / max(Re_theta_c * SABCM_Const1, 1e-20_realType)
 
 
                             stransition =  SABCM_maxsmooth* tterm1
@@ -342,7 +342,7 @@ contains
                                 tTgamma = min(max(tTgamma, zero), one)
                             else
                                 ! Current tanh-based formula
-                                arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
+                                arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / max(SABCM_fsmooth, 1e-20_realType)
                                 tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
                             end if
                                                                               
