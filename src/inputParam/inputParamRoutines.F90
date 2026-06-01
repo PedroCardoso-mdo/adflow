@@ -4115,6 +4115,14 @@ contains
 
         ! Additional Paramters Requiring Defaults
         use_ANKProfiling = .False.
+        use_SABCM = .False.
+        SABCM_Exp = .False.
+        SABCM_Const1 = 0.002_realType
+        SABCM_Const2 = 0.02_realType
+        SABCM_TU = 0.5_realType
+        SABCM_S0_tanh = 0.5_realType
+        SABCM_fsmooth = 0.08_realType
+        SABCM_maxsmooth = 50.0_realType
         printIterations = .True. 
         routineFailed = .False.
         fatalFail = .False.
