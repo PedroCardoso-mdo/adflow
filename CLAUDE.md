@@ -4,6 +4,10 @@
 
 ADflow CFD solver with SA-BCM turbulence model and ANK timing instrumentation.
 
+## Current Objective
+
+Debug and verify existing OpenMP parallelization in the codebase. OpenMP is already coded but appears not to be working. Goal: get OpenMP working and demonstrate it with measurable speedup. See `docs/OPENMP.md` for detailed analysis.
+
 ## Key Files
 
 | File | Purpose |
@@ -43,5 +47,6 @@ See `docs/` for detailed documentation:
 - `PROJECT_TREE.md` - Project structure
 - `SA_BCM.md` - SA-BCM model details
 - `TIMING.md` - Timing instrumentation
+- `OPENMP.md` - OpenMP parallelization analysis
 - `known_problems/` - Known issues (e.g., `NAN_ISSUE_64RANKS.md`)
 - `fixed_problems/` - Resolved issues with root cause, solution, and related commits
