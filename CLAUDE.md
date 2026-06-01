@@ -13,18 +13,6 @@ ADflow CFD solver with SA-BCM turbulence model and ANK timing instrumentation.
 | `src/modules/inputParam.F90` | SA-BCM parameters |
 | `adflow/pyADflow.py` | Python API (`use_ANKProfiling` line 5862) |
 
-## Known Issue: NaN with >64 Ranks
-
-When running with >64 MPI ranks, SA-BCM + timing crashes with NaNs.
-
-**Suspect locations in `src/turbulence/sa.F90`:**
-- Line 323: `Re_vorty = sqrtVort * rho / rlv` (division by viscosity)
-- Line 327: Division by `Re_theta_c * SABCM_Const1`
-- Line 335: Large exponential from `stransition`
-- Line 345: Division by `SABCM_fsmooth`
-
-**Root cause hypothesis:** Finer domain decomposition exposes cells with zero/invalid viscosity `rlv`.
-
 ## Build
 
 ```bash
