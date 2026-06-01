@@ -53,6 +53,10 @@ Docs to consider: `docs/MEMORY.md`, `docs/PREFERENCES.md`, topic-specific docs.
 2. Fix any errors found
 3. Commit with descriptive message
 
+## Current Task
+
+See `docs/CURRENT_TASK.md` for active work status and plan.
+
 ## Documentation
 
 See `docs/` for detailed documentation:

@@ -65,6 +65,8 @@ module blockette
     !$OMP THREADPRIVATE(w, p, gamma, ss, x, rlv, rev, vol, aa, radI, radJ, radK)
     !$OMP THREADPRIVATE(dss, volRef, d2wall, iblank, porI, porJ, porK, fw, dw)
     !$OMP THREADPRIVATE(sI, sJ, sK, ux, uy, uz, vx, vy, vz, wx, wy, wz, qx, qy, qz)
+    !$OMP THREADPRIVATE(singleHaloStart, doubleHaloStart, nodeStart)
+    !$OMP THREADPRIVATE(dtl, sFaceI, sFaceJ, sFaceK)
 contains
 
     subroutine blocketteRes(useDissApprox, useViscApprox, useUpdateIntermed, useFlowRes, useTurbRes, useSpatial, &
@@ -446,7 +448,7 @@ contains
         end if
 
         ! Block loop over the owned cells
-        !$OMP parallel do private(i,j,k,l,tCopyStart) collapse(2) reduction(+:copyTime)
+        !$OMP parallel do private(i,j,k,l,tCopyStart,ii,jj,kk) collapse(2) reduction(+:copyTime)
         do kk = 2, bkl, BS
             do jj = 2, bjl, BS
                 do ii = 2, bil, BS
