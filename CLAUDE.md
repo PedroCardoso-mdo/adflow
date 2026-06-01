@@ -19,9 +19,21 @@ Debug and verify existing OpenMP parallelization in the codebase. OpenMP is alre
 
 ## Build
 
+Use `/build-and-test` skill to:
+1. Check if AD needed, run `./AD_sh` if so
+2. Run `make`
+3. Activate venv: `source /home/mdo/packages_v2/mach/bin/activate`
+4. Install: `pip install .`
+5. Run test case in `Test_OpenMp/`
+
+Or manually:
 ```bash
 make
+source /home/mdo/packages_v2/mach/bin/activate
+pip install .
 ```
+
+Note: `Test_OpenMp/` is excluded from git.
 
 ## Enable Features
 
