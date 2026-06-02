@@ -5,7 +5,11 @@
 module sa
 
     use constants
-    real(kind=realType) :: cv13, kar2Inv, cw36, cb3Inv
+    ! OpenMP-safe: these are compile-time constants, not computed at runtime
+    real(kind=realType), parameter :: cv13 = 357.911_realType      ! rsaCv1**3 = 7.1**3
+    real(kind=realType), parameter :: kar2Inv = 5.9488399_realType ! 1/(0.41**2)
+    real(kind=realType), parameter :: cw36 = 0.000729_realType     ! rsaCw3**6 = 0.3**6
+    real(kind=realType), parameter :: cb3Inv = 1.6077170_realType  ! 1/rsaCb3 = 1/0.622
     real(kind=realType), dimension(:, :, :), allocatable :: qq
     real(kind=realType), dimension(:, :, :), pointer :: ddw, ww, ddvt
     real(kind=realType), dimension(:, :), pointer :: rrlv
@@ -117,11 +121,7 @@ contains
         real(kind=realType) :: strainMag2, strainProd, vortProd
         real(kind=realType), parameter :: xminn = 1.e-10_realType
 
-        ! Set model constants
-        cv13 = rsaCv1**3
-        kar2Inv = one / (rsaK**2)
-        cw36 = rsaCw3**6
-        cb3Inv = one / rsaCb3
+        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now module-level PARAMETERs
 
         ! Determine the non-dimensional wheel speed of this block.
 
@@ -359,11 +359,7 @@ contains
         real(kind=realType) :: nutm, nutp, num, nup, cdm, cdp
         real(kind=realType) :: c1m, c1p, c10, b1, c1, d1, qs
 
-        ! Set model constants
-        cv13 = rsaCv1**3
-        kar2Inv = one / (rsaK**2)
-        cw36 = rsaCw3**6
-        cb3Inv = one / rsaCb3
+        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now module-level PARAMETERs
 
         !
         !       Viscous terms in k-direction.

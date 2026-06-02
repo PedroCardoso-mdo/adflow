@@ -60,11 +60,13 @@ module blockette
     real(kind=realType), dimension(1:bbil, 1:bbjl, 1:bbkl) :: wx, wy, wz
     real(kind=realType), dimension(1:bbil, 1:bbjl, 1:bbkl) :: qx, qy, qz
 
-    ! Make *all* of these variables tread-private
+    ! Make *all* of these variables thread-private
     !$OMP THREADPRIVATE(nx, ny, nz, il, jl, kl, ie, je, ke, ib, jb, kb)
     !$OMP THREADPRIVATE(w, p, gamma, ss, x, rlv, rev, vol, aa, radI, radJ, radK)
     !$OMP THREADPRIVATE(dss, volRef, d2wall, iblank, porI, porJ, porK, fw, dw)
     !$OMP THREADPRIVATE(sI, sJ, sK, ux, uy, uz, vx, vy, vz, wx, wy, wz, qx, qy, qz)
+    !$OMP THREADPRIVATE(singleHaloStart, doubleHaloStart, nodeStart)
+    !$OMP THREADPRIVATE(dtl, sFaceI, sFaceJ, sFaceK)
 contains
 
     subroutine blocketteRes(useDissApprox, useViscApprox, useUpdateIntermed, useFlowRes, useTurbRes, useSpatial, &
@@ -351,7 +353,7 @@ contains
         end if
 
         ! Block loop over the owned cells
-        !$OMP parallel do private(i,j,k,l) collapse(2)
+        !$OMP parallel do private(i,j,k,l,ii,jj,kk) collapse(2)
         do kk = 2, bkl, BS
             do jj = 2, bjl, BS
                 do ii = 2, bil, BS
@@ -1013,11 +1015,7 @@ contains
         integer(kind=intType) :: i, j, k
         real(kind=realType) :: term1Fact
 
-        ! Set model constants
-        cv13 = rsaCv1**3
-        kar2Inv = one / (rsaK**2)
-        cw36 = rsaCw3**6
-        cb3Inv = one / rsaCb3
+        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
 
         ! set the approximate multiplier here
         term1Fact = one
@@ -1192,11 +1190,7 @@ contains
         real(kind=realType) :: c1m, c1p, c10, b1, c1, d1, qs, nu
         integer(Kind=intType) :: i, j, k
 
-        ! Set model constants
-        cv13 = rsaCv1**3
-        kar2Inv = one / (rsaK**2)
-        cw36 = rsaCw3**6
-        cb3Inv = one / rsaCb3
+        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
 
         !
         !       Viscous terms in k-direction.
@@ -6944,11 +6938,7 @@ contains
         real(kind=realType) :: reThetaT_target, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: pReTheta
 
-        ! Set model constants
-        cv13 = rsaCv1**3
-        kar2Inv = one / (rsaK**2)
-        cw36 = rsaCw3**6
-        cb3Inv = one / rsaCb3
+        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
 
         ! Determine the non-dimensional wheel speed of this block.
         omegax = timeRef * sections(sectionID)%rotRate(1)
@@ -7311,10 +7301,7 @@ contains
         real(kind=realType) :: fv1, fv1_m, fv1_p
         integer(Kind=intType) :: i, j, k
 
-        cv13 = rsaCv1**3
-        kar2Inv = one / (rsaK**2)
-        cw36 = rsaCw3**6
-        cb3Inv = one / rsaCb3
+        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
 
         ! Viscous terms in k-direction
         do k = 2, kl
