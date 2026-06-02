@@ -283,6 +283,27 @@ contains
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
 #else
+            ! OpenMP: cells are independent (each writes its own scratch/qq/
+            ! transitionDebug; neighbor reads are from w/metrics only). Loop-
+            ! invariant cv13/kar2Inv/cw36/cb3Inv/omega* stay shared. Primal
+            ! branch only; the TAPENADE_REVERSE path above is untouched.
+            !$OMP parallel do collapse(3) private(i, j, k, &
+            !$OMP fv1, fv2, ft2, ss, sst, nu, dist2Inv, chi, chi2, chi3, &
+            !$OMP rr, gg, gg6, termFw, fwSa, term1, term2, term2_prod, term2_dest, &
+            !$OMP dfv1, dfv2, dft2, drr, dgg, dfw, &
+            !$OMP uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz, &
+            !$OMP div2, fact, sxx, syy, szz, sxy, sxz, syz, &
+            !$OMP vortx, vorty, vortz, strainMag2, strainProd, vortProd, &
+            !$OMP vortMag, strainMag, nutSA, rTurb, gammaLocal, reThetaTilde, gammaForSA, &
+            !$OMP reS_val, reThetaC_val, fLength_val, fTurb_val, fOnset, fOnset1, &
+            !$OMP vortLim, vortMagLim, pGamma, eGamma, &
+            !$OMP velMag, velMag2, timeScale, reThetaT_target, &
+            !$OMP thetaBL, deltaBL, delta, fWake_val, fThetaT, gammaEff, gammaTerm, &
+            !$OMP pReTheta, yDist, uxhat, uyhat, uzhat, dUds, lambdaThetaLocal, &
+            !$OMP dudx, dudy, dudz, dvdx, dvdy, dvdz, dwdx, dwdy, dwdz, &
+            !$OMP drTurb_dnu, dfTurb_dnu, dfOnset_dnu, dfOnset1_drT, dfOnset_dfOnset1, &
+            !$OMP F1_val, base_val, inner_val, dFlength_dReT, dReThetaC_dReT, &
+            !$OMP dfOnset1_dReT, dfOnset_dReT, dPgamma_dReT, pGamma_common, sech2_val)
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
@@ -741,6 +762,7 @@ contains
                 end do
             end do
         end do
+        !$OMP end parallel do
 #endif
 
     end subroutine Source
@@ -813,6 +835,17 @@ contains
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
 #else
+            ! OpenMP: per-cell writes to scratch/qq; cb3Inv/cv13 loop-invariant
+            ! (shared). Primal branch only; TAPENADE_REVERSE path untouched.
+            !$OMP parallel do collapse(3) private(i, j, k, &
+            !$OMP nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+            !$OMP nuTilde, nuTilde_m, nuTilde_p, &
+            !$OMP chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+            !$OMP voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+            !$OMP num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+            !$OMP cnud, cam, cap, nutm, nutp, &
+            !$OMP c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+            !$OMP b1, c1, d1, b2, c2, d2, b3, c3, d3)
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
@@ -997,6 +1030,7 @@ contains
                 end do
             end do
         end do
+        !$OMP end parallel do
 #endif
         ! Viscous terms in j-direction.
 #ifdef TAPENADE_REVERSE
@@ -1006,6 +1040,17 @@ contains
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
 #else
+            ! OpenMP: per-cell writes to scratch/qq; cb3Inv/cv13 loop-invariant
+            ! (shared). Primal branch only; TAPENADE_REVERSE path untouched.
+            !$OMP parallel do collapse(3) private(i, j, k, &
+            !$OMP nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+            !$OMP nuTilde, nuTilde_m, nuTilde_p, &
+            !$OMP chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+            !$OMP voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+            !$OMP num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+            !$OMP cnud, cam, cap, nutm, nutp, &
+            !$OMP c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+            !$OMP b1, c1, d1, b2, c2, d2, b3, c3, d3)
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
@@ -1188,6 +1233,7 @@ contains
                 end do
             end do
         end do
+        !$OMP end parallel do
 #endif
         ! Viscous terms in i-direction.
 #ifdef TAPENADE_REVERSE
@@ -1197,6 +1243,17 @@ contains
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
 #else
+            ! OpenMP: per-cell writes to scratch/qq; cb3Inv/cv13 loop-invariant
+            ! (shared). Primal branch only; TAPENADE_REVERSE path untouched.
+            !$OMP parallel do collapse(3) private(i, j, k, &
+            !$OMP nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+            !$OMP nuTilde, nuTilde_m, nuTilde_p, &
+            !$OMP chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+            !$OMP voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+            !$OMP num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+            !$OMP cnud, cam, cap, nutm, nutp, &
+            !$OMP c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+            !$OMP b1, c1, d1, b2, c2, d2, b3, c3, d3)
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
@@ -1378,6 +1435,7 @@ contains
                 end do
             end do
         end do
+        !$OMP end parallel do
 #endif
     end subroutine Viscous
 
