@@ -68,3 +68,6 @@ tests/output_files/*.plt
 .claude/.credentials*
 .claude/transcripts/
 .claude/.cache/
+
+# OpenMP test case (local only)
+TestOpenMp/

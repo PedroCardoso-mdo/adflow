@@ -24,8 +24,15 @@ the end, not task-by-task.
 ## Hard Rules
 
 1. **One task per session.
-2. **Do not modify the SA model directly.** Transition is a modifier — γ
-   multiplies SA production only (Eq. 41).
+2. **Never change SA-model code. Ever.** The plain SA model files — chiefly
+   `src/turbulence/sa.F90` and all SA-only routines/paths — must stay
+   byte-identical to their upstream/`sa-bcm-timing` form. All work belongs in
+   the SA-gamma-rethetha model (`src/turbulence/saGammaRetheta.F90` and adjacent
+   SA-GR code). Transition is a modifier — γ multiplies SA production only
+   (Eq. 41). Do NOT "fix" SA code for thread-safety/perf: benign same-value
+   races in shared module scalars are not bugs, and the working `sa-bcm-timing`
+   reference leaves `sa.F90` untouched — so must we. If unsure whether a file is
+   SA-only, diff against `sa-bcm-timing` first.
 3. **Skip multigrid (T1.6) and crossflow (T2.5).** User defers both.
 4. **All transition diagnostics go to the volume CGNS** via the
    `transitionDebug` array. No new ASCII debug files. No per-cell printouts.

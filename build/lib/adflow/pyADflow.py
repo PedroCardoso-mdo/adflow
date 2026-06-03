@@ -6594,9 +6594,13 @@ class ADFLOW(AeroSolver):
 
         turbModel = self.getOption("turbulencemodel")
 
-        # SA-GR model is not implemented in blocketteResCore,
-        # so always force blockResCore path for correct residual computation.
-        if turbModel == "SA-noft2-Gamma-Retheta":
+        # SA-GR model is not (fully) validated in blocketteResCore, so by
+        # default force the blockResCore path for correct residual computation.
+        # Set ADFLOW_ALLOW_SAGR_BLOCKETTES=1 to bypass this guard and test the
+        # blockette SA-GR path (e.g. OpenMP timing experiments).
+        _allow_sagr_blk = os.environ.get(
+            "ADFLOW_ALLOW_SAGR_BLOCKETTES", "0").lower() in ("1", "true", "yes")
+        if turbModel == "SA-noft2-Gamma-Retheta" and not _allow_sagr_blk:
             self.setOption("useBlockettes", False)
 
         if self.getOption("turbresscale") is None:

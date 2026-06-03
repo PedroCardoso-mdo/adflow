@@ -251,10 +251,12 @@ contains
 &   lambdathetalocald
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
-    real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
-    real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
     real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
+    real(kind=realtype) :: f1_val, base_val, inner_val
+    real(kind=realtype) :: dflength_dret, drethetac_dret
+    real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
+    real(kind=realtype) :: pgamma_common, sech2_val
     intrinsic sqrt
     intrinsic exp
     intrinsic min
@@ -332,6 +334,27 @@ contains
       if (associated(scratchd)) scratchd = 0.0_8
       strainmag2d = 0.0_8
       ssd = 0.0_8
+! openmp: cells are independent (each writes its own scratch/qq/
+! transitiondebug; neighbor reads are from w/metrics only). loop-
+! invariant cv13/kar2inv/cw36/cb3inv/omega* stay shared. primal
+! branch only; the tapenade_reverse path above is untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp fv1, fv2, ft2, ss, sst, nu, dist2inv, chi, chi2, chi3, &
+!$omp rr, gg, gg6, termfw, fwsa, term1, term2, term2_prod, term2_dest, &
+!$omp dfv1, dfv2, dft2, drr, dgg, dfw, &
+!$omp uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz, &
+!$omp div2, fact, sxx, syy, szz, sxy, sxz, syz, &
+!$omp vortx, vorty, vortz, strainmag2, strainprod, vortprod, &
+!$omp vortmag, strainmag, nutsa, rturb, gammalocal, rethetatilde, gammaforsa, &
+!$omp res_val, rethetac_val, flength_val, fturb_val, fonset, fonset1, &
+!$omp vortlim, vortmaglim, pgamma, egamma, &
+!$omp velmag, velmag2, timescale, rethetat_target, &
+!$omp thetabl, deltabl, delta, fwake_val, fthetat, gammaeff, gammaterm, &
+!$omp pretheta, ydist, uxhat, uyhat, uzhat, duds, lambdathetalocal, &
+!$omp dudx, dudy, dudz, dvdx, dvdy, dvdz, dwdx, dwdy, dwdz, &
+!$omp drturb_dnu, dfturb_dnu, dfonset_dnu, dfonset1_drt, dfonset_dfonset1, &
+!$omp f1_val, base_val, inner_val, dflength_dret, drethetac_dret, &
+!$omp dfonset1_dret, dfonset_dret, dpgamma_dret, pgamma_common, sech2_val)
       do k=2,kl
         do j=2,jl
           do i=2,il
@@ -1091,6 +1114,8 @@ contains
           end do
         end do
       end do
+!$omp end parallel do
+
     end if
   end subroutine source_d
 
@@ -1194,10 +1219,12 @@ contains
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
-    real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
-    real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
     real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
+    real(kind=realtype) :: f1_val, base_val, inner_val
+    real(kind=realtype) :: dflength_dret, drethetac_dret
+    real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
+    real(kind=realtype) :: pgamma_common, sech2_val
     intrinsic sqrt
     intrinsic exp
     intrinsic min
@@ -1238,6 +1265,27 @@ contains
       print*, 'katolaunder production term not supported for sa'
       stop
     else
+! openmp: cells are independent (each writes its own scratch/qq/
+! transitiondebug; neighbor reads are from w/metrics only). loop-
+! invariant cv13/kar2inv/cw36/cb3inv/omega* stay shared. primal
+! branch only; the tapenade_reverse path above is untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp fv1, fv2, ft2, ss, sst, nu, dist2inv, chi, chi2, chi3, &
+!$omp rr, gg, gg6, termfw, fwsa, term1, term2, term2_prod, term2_dest, &
+!$omp dfv1, dfv2, dft2, drr, dgg, dfw, &
+!$omp uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz, &
+!$omp div2, fact, sxx, syy, szz, sxy, sxz, syz, &
+!$omp vortx, vorty, vortz, strainmag2, strainprod, vortprod, &
+!$omp vortmag, strainmag, nutsa, rturb, gammalocal, rethetatilde, gammaforsa, &
+!$omp res_val, rethetac_val, flength_val, fturb_val, fonset, fonset1, &
+!$omp vortlim, vortmaglim, pgamma, egamma, &
+!$omp velmag, velmag2, timescale, rethetat_target, &
+!$omp thetabl, deltabl, delta, fwake_val, fthetat, gammaeff, gammaterm, &
+!$omp pretheta, ydist, uxhat, uyhat, uzhat, duds, lambdathetalocal, &
+!$omp dudx, dudy, dudz, dvdx, dvdy, dvdz, dwdx, dwdy, dwdz, &
+!$omp drturb_dnu, dfturb_dnu, dfonset_dnu, dfonset1_drt, dfonset_dfonset1, &
+!$omp f1_val, base_val, inner_val, dflength_dret, drethetac_dret, &
+!$omp dfonset1_dret, dfonset_dret, dpgamma_dret, pgamma_common, sech2_val)
       do k=2,kl
         do j=2,jl
           do i=2,il
@@ -1618,6 +1666,8 @@ contains
           end do
         end do
       end do
+!$omp end parallel do
+
     end if
   end subroutine source
 
@@ -1701,6 +1751,17 @@ contains
     cb3inv = one/rsacb3
     cv13 = rsacv1**3
 ! viscous terms in k-direction.
+! openmp: per-cell writes to scratch/qq; cb3inv/cv13 loop-invariant
+! (shared). primal branch only; tapenade_reverse path untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+!$omp nutilde, nutilde_m, nutilde_p, &
+!$omp chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+!$omp voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+!$omp num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+!$omp cnud, cam, cap, nutm, nutp, &
+!$omp c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+!$omp b1, c1, d1, b2, c2, d2, b3, c3, d3)
     do k=2,kl
       do j=2,jl
         do i=2,il
@@ -1910,7 +1971,19 @@ contains
         end do
       end do
     end do
+!$omp end parallel do
 ! viscous terms in j-direction.
+! openmp: per-cell writes to scratch/qq; cb3inv/cv13 loop-invariant
+! (shared). primal branch only; tapenade_reverse path untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+!$omp nutilde, nutilde_m, nutilde_p, &
+!$omp chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+!$omp voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+!$omp num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+!$omp cnud, cam, cap, nutm, nutp, &
+!$omp c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+!$omp b1, c1, d1, b2, c2, d2, b3, c3, d3)
     do k=2,kl
       do j=2,jl
         do i=2,il
@@ -2119,7 +2192,19 @@ contains
         end do
       end do
     end do
+!$omp end parallel do
 ! viscous terms in i-direction.
+! openmp: per-cell writes to scratch/qq; cb3inv/cv13 loop-invariant
+! (shared). primal branch only; tapenade_reverse path untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+!$omp nutilde, nutilde_m, nutilde_p, &
+!$omp chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+!$omp voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+!$omp num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+!$omp cnud, cam, cap, nutm, nutp, &
+!$omp c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+!$omp b1, c1, d1, b2, c2, d2, b3, c3, d3)
     do k=2,kl
       do j=2,jl
         do i=2,il
@@ -2328,6 +2413,8 @@ contains
         end do
       end do
     end do
+!$omp end parallel do
+
   end subroutine viscous_d
 
   subroutine viscous()
@@ -2377,6 +2464,17 @@ contains
     cb3inv = one/rsacb3
     cv13 = rsacv1**3
 ! viscous terms in k-direction.
+! openmp: per-cell writes to scratch/qq; cb3inv/cv13 loop-invariant
+! (shared). primal branch only; tapenade_reverse path untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+!$omp nutilde, nutilde_m, nutilde_p, &
+!$omp chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+!$omp voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+!$omp num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+!$omp cnud, cam, cap, nutm, nutp, &
+!$omp c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+!$omp b1, c1, d1, b2, c2, d2, b3, c3, d3)
     do k=2,kl
       do j=2,jl
         do i=2,il
@@ -2478,7 +2576,19 @@ contains
         end do
       end do
     end do
+!$omp end parallel do
 ! viscous terms in j-direction.
+! openmp: per-cell writes to scratch/qq; cb3inv/cv13 loop-invariant
+! (shared). primal branch only; tapenade_reverse path untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+!$omp nutilde, nutilde_m, nutilde_p, &
+!$omp chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+!$omp voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+!$omp num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+!$omp cnud, cam, cap, nutm, nutp, &
+!$omp c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+!$omp b1, c1, d1, b2, c2, d2, b3, c3, d3)
     do k=2,kl
       do j=2,jl
         do i=2,il
@@ -2579,7 +2689,19 @@ contains
         end do
       end do
     end do
+!$omp end parallel do
 ! viscous terms in i-direction.
+! openmp: per-cell writes to scratch/qq; cb3inv/cv13 loop-invariant
+! (shared). primal branch only; tapenade_reverse path untouched.
+!$omp parallel do collapse(3) private(i, j, k, &
+!$omp nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
+!$omp nutilde, nutilde_m, nutilde_p, &
+!$omp chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
+!$omp voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
+!$omp num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+!$omp cnud, cam, cap, nutm, nutp, &
+!$omp c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
+!$omp b1, c1, d1, b2, c2, d2, b3, c3, d3)
     do k=2,kl
       do j=2,jl
         do i=2,il
@@ -2680,6 +2802,8 @@ contains
         end do
       end do
     end do
+!$omp end parallel do
+
   end subroutine viscous
 
 !  differentiation of resscale in forward (tangent) mode (with options i4 dr8 r8):
