@@ -1015,7 +1015,11 @@ contains
         integer(kind=intType) :: i, j, k
         real(kind=realType) :: term1Fact
 
-        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+        cb3Inv = one / rsaCb3
 
         ! set the approximate multiplier here
         term1Fact = one
@@ -1190,7 +1194,11 @@ contains
         real(kind=realType) :: c1m, c1p, c10, b1, c1, d1, qs, nu
         integer(Kind=intType) :: i, j, k
 
-        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+        cb3Inv = one / rsaCb3
 
         !
         !       Viscous terms in k-direction.
@@ -6938,7 +6946,11 @@ contains
         real(kind=realType) :: reThetaT_target, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: pReTheta
 
-        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+        cb3Inv = one / rsaCb3
 
         ! Determine the non-dimensional wheel speed of this block.
         omegax = timeRef * sections(sectionID)%rotRate(1)
@@ -7301,7 +7313,11 @@ contains
         real(kind=realType) :: fv1, fv1_m, fv1_p
         integer(Kind=intType) :: i, j, k
 
-        ! Model constants cv13, kar2Inv, cw36, cb3Inv are now PARAMETERs in sa module
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+        cb3Inv = one / rsaCb3
 
         ! Viscous terms in k-direction
         do k = 2, kl
