@@ -15,30 +15,50 @@
   region; `saGammaReThetaSolve` qq-prep + j/i/k sweeps with private tridiagonal
   buffers; new SA-GR-local `saGRAdvection`. 55 OMP pragma lines, all in primal
   `#else` branches → no Tapenade regen.
-- **Phase C — measurement (blk=False only, configs #1 & #2):**
-  - Determinism: omp 1 vs 12 @ 200 cyc → **bit-identical CD 0.016210** (race-free).
-  - DADI-phase speedup @ 12 threads: **3.49×** subtotal (Source 4.84×, Viscous
-    4.15×, DADI-solve 3.99×, SA-GR resid 4.39×, Advection 1.36× [mesh-limited]).
-  - Full-convergence omp=12: **CD=0.007009** (EXACT match to serial reference),
-    CL=0.000010, NK@1826, no NaN, 1015s wall (vs 1082s serial = 1.07× total,
-    Amdahl-limited by serial flow residual at blk=False — as predicted).
-- Build clean with `-fopenmp -DTURB_TIMING`; venv reinstalled (md5 verified).
+- **Phase C — measurement: FULL 2×2 matrix complete + correctness gate PASSED.**
+  - Determinism: omp 1 vs 12 @ 200 cyc, blk=False → **bit-identical CD 0.016210**
+    (proves race-free/deterministic parallelization).
+  - DADI-phase OpenMP speedup @ 12 threads (200 cyc, blk=False): **3.49×**
+    subtotal (Source 4.84×, Viscous 4.15×, DADI-solve 3.99×, SA-GR resid 4.39×,
+    Advection 1.36× [mesh-limited — light/memory-bound + 3 barriers on thin 2D]).
+  - Full-convergence 2×2 matrix (RUN_NCYCLES=25000; all reach CD≈0.007009, no NaN):
 
-### ❌ MISSING / TODO
-- **Configs #3 & #4 (blk=True)** — the production path (parallel flow residual +
-  DADI OMP). Requires `ADFLOW_ALLOW_SAGR_BLOCKETTES=1` guard bypass AND a
-  correctness check that the SA-GR blockette residual gives CD=0.007009 (pyADflow
-  force-disables it; path is unverified). This is where total-wall speedup > 1.07×
-  actually appears.
-- **Prod build without `-DTURB_TIMING`** — confirm timing fully removable
-  (compiles, zero residue). Plan verification requirement.
-- **3D mesh data point** — advection 1.36× is thin-2D-limited; unconfirmed it
-  scales on a real 3D mesh.
+    | # | blk | omp | wall (s) | CD       |
+    |---|-----|----:|---------:|----------|
+    | 1 | F   | 1   | 1082     | 0.007009 |
+    | 2 | F   | 12  | **1015** | 0.007009 |
+    | 3 | T   | 1   | 3798     | 0.007010 |
+    | 4 | T   | 12  | 1856     | 0.007010 |
+
+  - **CONCLUSION: blk=False + 12 threads (1015s) is the best config on this mesh.**
+    Blockettes HURT here even with threads (1856 > 1015s): the blockette SA-GR
+    trajectory needs more outer iters (~6700 vs ~5200) and cache-blocking overhead
+    isn't amortized on a small 2D case. Threads do help within blk=True
+    (3798→1856 = 2.05×), just not enough to beat blk=False. Blockettes are
+    expected to pay off only on large cache-pressured 3D meshes.
+  - blk=True is CORRECT (CD=0.007010 ≈ blk=False 0.007009) → the pyADflow guard
+    that force-disables SA-GR blockettes is conservative, not because the path is
+    wrong. It can be relaxed, but blk=True is a perf trap without enough threads
+    AND on small meshes.
+- **Prod build WITHOUT `-DTURB_TIMING` verified:** compiles clean + imports;
+  timing call-sites compile out (turbTiming module object still links but is never
+  called → zero runtime overhead). Build deterministic (md5 stable).
+- Build clean with `-fopenmp -DTURB_TIMING`; venv reinstalled (md5 verified).
+- **Committed** validated work as `bbff8d42` on top of `8c4e6652` (revert point).
+
+### ❌ MISSING / TODO (out of this task's scope)
+- **3D mesh data point** — advection 1.36× and the blockette verdict are both
+  thin-2D-limited; neither is confirmed on a real cache-pressured 3D mesh, where
+  blockettes (and advection threading) are expected to actually pay off.
+- **Context-B timers don't instrument the blockette path** — `T_RESID_FLOW`/
+  `T_RESID_TURB` read 0.000 under blk=True (they're hooked on the non-blockette
+  `blockResCore`, not `blocketteResCore`). Measuring per-phase blockette speedup
+  would need new hooks in the blockette residual routines.
 - **GOTCHA recorded:** `vars_master.py nCycles=1000` caps a plain run at
   itertot~1000 (~iter 110, NOT converged). Must set `RUN_NCYCLES=25000` to
   actually converge.
-- Not committed at time of writing → first action is to commit the validated
-  blk=False work on top of `8c4e6652` (revert point preserved).
+- **Physics correctness** (CL/CD vs experiment) is still the user's end check —
+  these runs only verify self-consistency (all configs agree on CD).
 
 ## Rollback points (safe versions if everything goes badly)
 
