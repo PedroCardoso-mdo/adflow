@@ -21,6 +21,9 @@ contains
         use multiGrid, only: transferToFineGrid
         use partitioning, only: updateCoorFineMesh
         use commonFormats, only: stringInt1
+#ifdef TURB_TIMING
+        use turbTiming, only: turbTimingReset, printTurbTiming
+#endif
         implicit none
         !
         !      Local variables.
@@ -50,6 +53,11 @@ contains
         ! Determine the reference time for the solver.
 
         t0Solver = mpi_wtime()
+
+#ifdef TURB_TIMING
+        ! Zero the SA-gamma-Retheta turbulence timers for this solve.
+        call turbTimingReset
+#endif
 
         ! Set timeUnsteady to zero; this is amount of time simulated
         ! in unsteady mode.
@@ -115,6 +123,11 @@ contains
 
         ! Explictly set groundlevel to 1
         groundLevel = 1
+
+#ifdef TURB_TIMING
+        ! Print the SA-gamma-Retheta DADI / residual timing breakdown once.
+        call printTurbTiming
+#endif
 
     end subroutine solver
 

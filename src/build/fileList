@@ -46,6 +46,7 @@ fortranFiles=	ADT/adtUtils.F90\
 		modules/iteration.f90\
 		modules/monitor.f90\
 		modules/paramTurb.F90\
+		modules/turbTiming.F90\
 		modules/stencils.f90\
 		modules/diffSizes.f90\
 		modules/overset.F90\

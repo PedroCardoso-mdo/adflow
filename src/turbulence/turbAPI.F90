@@ -25,6 +25,9 @@ contains
         use haloExchange, only: whalo2
         use utils, only: setPointers
         use turbUtils, only: unsteadyTurbSpectral
+#ifdef TURB_TIMING
+        use turbTiming, only: turbTic, turbToc, T_TURBTOTAL, T_TURBHALO
+#endif
         implicit none
         !
         !      Local variables.
@@ -33,6 +36,9 @@ contains
 
         ! Loop over the number of iterations for the turbulence.
 
+#ifdef TURB_TIMING
+        call turbTic(T_TURBTOTAL)
+#endif
         do iter = 1, nSubIterTurb
 
             ! Compute the quantities for certain turbulence models that
@@ -100,9 +106,19 @@ contains
             ! Exchange the halo data. As it is guaranteed that we are on the
             ! finest mesh, exchange both layers of halo's.
 
+#ifdef TURB_TIMING
+            call turbTic(T_TURBHALO)
+#endif
             call whalo2(groundLevel, nt1, nt2, .false., .false., .true.)
+#ifdef TURB_TIMING
+            call turbToc(T_TURBHALO)
+#endif
 
         end do
+
+#ifdef TURB_TIMING
+        call turbToc(T_TURBTOTAL)
+#endif
 
     end subroutine turbSolveDDADI
 

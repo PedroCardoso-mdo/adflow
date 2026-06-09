@@ -99,6 +99,9 @@ contains
         use inputOverset, only: oversetUpdateMode
         use oversetCommUtilities, only: updateOversetConnectivity
         use actuatorRegionData, only: nActuatorRegions
+#ifdef TURB_TIMING
+        use turbTiming, only: turbTic, turbToc, T_RESID_TOTAL, T_RESID_HALO
+#endif
         implicit none
 
         ! Input/Output
@@ -164,6 +167,10 @@ contains
         if (present(useStoreWall)) then
             storeWall = useStoreWall
         end if
+
+#ifdef TURB_TIMING
+        call turbTic(T_RESID_TOTAL)
+#endif
 
         ! Spatial-only updates first
         if (spatial) then
@@ -245,7 +252,13 @@ contains
         end if
 
         ! Exchange values
+#ifdef TURB_TIMING
+        call turbTic(T_RESID_HALO)
+#endif
         call whalo2(1_intType, lStart, lEnd, .True., .True., .True.)
+#ifdef TURB_TIMING
+        call turbToc(T_RESID_HALO)
+#endif
 
         ! Need to re-apply the BCs. The reason is that BC halos behind
         ! interpolated cells need to be recomputed with their new
@@ -296,6 +309,9 @@ contains
                 call getForces(forces(:, :, sps), fSize, sps)
             end do
         end if
+#ifdef TURB_TIMING
+        call turbToc(T_RESID_TOTAL)
+#endif
     end subroutine blocketteRes
 
     subroutine blocketteResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall)
@@ -781,6 +797,9 @@ contains
         use inputDiscretization, only: spaceDiscr
         use flowUtils, only: allNodalGradients_block => allNodalGradients, &
                              computeSpeedOfSoundSquared_block => computeSpeedOfSoundSquared
+#ifdef TURB_TIMING
+        use turbTiming, only: turbTic, turbToc, T_RESID_FLOW, T_RESID_TURB
+#endif
 
         implicit none
         ! Input
@@ -816,6 +835,9 @@ contains
             ! Compute the skin-friction velocity (wall functions only)
             !call computeUtau_block
 
+#ifdef TURB_TIMING
+            call turbTic(T_RESID_TURB)
+#endif
             ! Now call the selected turbulence model
             select case (turbModel)
             case (spalartAllmaras)
@@ -823,10 +845,16 @@ contains
             case (spalartallmarasnoft2gammaretheta)
                 call saGammaRetheta_block(.true.)
             end select
+#ifdef TURB_TIMING
+            call turbToc(T_RESID_TURB)
+#endif
         end if
 
         if (flowRes) then
 
+#ifdef TURB_TIMING
+            call turbTic(T_RESID_FLOW)
+#endif
             call inviscidCentralFlux_block
             if (dissApprox) then
                 select case (spaceDiscr)
@@ -859,6 +887,9 @@ contains
             end if
 
             call sumDwAndFw_block
+#ifdef TURB_TIMING
+            call turbToc(T_RESID_FLOW)
+#endif
         end if
     end subroutine blockResCore
 

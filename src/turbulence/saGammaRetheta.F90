@@ -71,6 +71,10 @@ contains
         use turbBCRoutines, only: bcTurbTreatment, applyAllTurbBCThisBlock
         use inputIteration, only: transitionFirstOrderUpwind
         use inputDiscretization, only: orderTurb
+#ifdef TURB_TIMING
+        use turbTiming, only: turbTic, turbToc, &
+                              T_SOURCE, T_VISCOUS, T_ADV, T_UNSTEADY, T_DADI, T_RESSCALE
+#endif
         implicit none
 
         !
@@ -91,26 +95,53 @@ contains
         allocate (qq(2:il,2:jl,2:kl,3,3))
 
         ! Source Terms
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbTic(T_SOURCE)
+#endif
         call Source
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbToc(T_SOURCE)
+#endif
 
-        ! Advection Term
+        ! Advection Term. Use the SA-GR-local, OpenMP-parallel, first-order
+        ! upwind advection (paper IV.A) instead of the generic shared
+        ! turbAdvection, so the SA-GR advection can be threaded without
+        ! touching shared code. saGRAdvection is hardcoded first order, so the
+        ! transitionFirstOrderUpwind / orderTurb dance is no longer needed here.
         nn = itu1 - 1
-        if (transitionFirstOrderUpwind) then
-            orderTurbSave = orderTurb
-            orderTurb = firstOrder
-        end if
-        call turbAdvection(3_intType, 3_intType, nn, qq)
-        if (transitionFirstOrderUpwind) then
-            orderTurb = orderTurbSave
-        end if
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbTic(T_ADV)
+#endif
+        call saGRAdvection(nn)
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbToc(T_ADV)
+#endif
 
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbTic(T_UNSTEADY)
+#endif
         call unsteadyTurbTerm(3_intType, 3_intType, nn, qq)
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbToc(T_UNSTEADY)
+#endif
 
         ! Viscous Terms
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbTic(T_VISCOUS)
+#endif
         call Viscous
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbToc(T_VISCOUS)
+#endif
 
         ! Perform the residual scaling
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbTic(T_RESSCALE)
+#endif
         call ResScale
+#ifdef TURB_TIMING
+        if (.not. resOnly) call turbToc(T_RESSCALE)
+#endif
 
 
 
@@ -121,7 +152,13 @@ contains
 
             ! Solve the transport equations for v, gamma, Retheta.
 
+#ifdef TURB_TIMING
+            call turbTic(T_DADI)
+#endif
             call saGammaReThetaSolve(resOnly)
+#ifdef TURB_TIMING
+            call turbToc(T_DADI)
+#endif
 
             ! Compute the corresponding eddy viscosity.
 
@@ -835,9 +872,12 @@ contains
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
 #else
-            ! OpenMP: per-cell writes to scratch/qq; cb3Inv/cv13 loop-invariant
-            ! (shared). Primal branch only; TAPENADE_REVERSE path untouched.
-            !$OMP parallel do collapse(3) private(i, j, k, &
+            ! OpenMP: ONE parallel region spans all three directional sweeps
+            ! (Part 3: 3 fork/joins -> 1). Per-cell writes to scratch/qq;
+            ! cb3Inv/cv13 loop-invariant (shared). The implicit barrier at each
+            ! !$OMP end do preserves the k->j->i accumulation order into qq.
+            ! Primal branch only; TAPENADE_REVERSE path untouched.
+            !$OMP parallel default(shared) private(i, j, k, &
             !$OMP nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
             !$OMP nuTilde, nuTilde_m, nuTilde_p, &
             !$OMP chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
@@ -846,6 +886,7 @@ contains
             !$OMP cnud, cam, cap, nutm, nutp, &
             !$OMP c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
             !$OMP b1, c1, d1, b2, c2, d2, b3, c3, d3)
+            !$OMP do collapse(3) schedule(static)
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
@@ -1030,7 +1071,7 @@ contains
                 end do
             end do
         end do
-        !$OMP end parallel do
+        !$OMP end do
 #endif
         ! Viscous terms in j-direction.
 #ifdef TAPENADE_REVERSE
@@ -1040,17 +1081,7 @@ contains
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
 #else
-            ! OpenMP: per-cell writes to scratch/qq; cb3Inv/cv13 loop-invariant
-            ! (shared). Primal branch only; TAPENADE_REVERSE path untouched.
-            !$OMP parallel do collapse(3) private(i, j, k, &
-            !$OMP nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
-            !$OMP nuTilde, nuTilde_m, nuTilde_p, &
-            !$OMP chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
-            !$OMP voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
-            !$OMP num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
-            !$OMP cnud, cam, cap, nutm, nutp, &
-            !$OMP c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
-            !$OMP b1, c1, d1, b2, c2, d2, b3, c3, d3)
+            !$OMP do collapse(3) schedule(static)
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
@@ -1233,7 +1264,7 @@ contains
                 end do
             end do
         end do
-        !$OMP end parallel do
+        !$OMP end do
 #endif
         ! Viscous terms in i-direction.
 #ifdef TAPENADE_REVERSE
@@ -1243,17 +1274,7 @@ contains
             j = mod(ii / nx, ny) + 2
             k = ii / (nx * ny) + 2
 #else
-            ! OpenMP: per-cell writes to scratch/qq; cb3Inv/cv13 loop-invariant
-            ! (shared). Primal branch only; TAPENADE_REVERSE path untouched.
-            !$OMP parallel do collapse(3) private(i, j, k, &
-            !$OMP nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp, &
-            !$OMP nuTilde, nuTilde_m, nuTilde_p, &
-            !$OMP chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p, &
-            !$OMP voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp, &
-            !$OMP num, nup, cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
-            !$OMP cnud, cam, cap, nutm, nutp, &
-            !$OMP c1m, c1p, c10, c2m, c2p, c20, c3m, c3p, c30, &
-            !$OMP b1, c1, d1, b2, c2, d2, b3, c3, d3)
+            !$OMP do collapse(3) schedule(static)
             do k = 2, kl
                 do j = 2, jl
                     do i = 2, il
@@ -1435,7 +1456,8 @@ contains
                 end do
             end do
         end do
-        !$OMP end parallel do
+        !$OMP end do
+        !$OMP end parallel
 #endif
     end subroutine Viscous
 
@@ -1601,6 +1623,9 @@ contains
         if (turbRelax == turbRelaxImplicit) &
             factor = one + (one - alfaTurb) / alfaTurb
 
+        ! qq prep / RHS scaling: per-cell independent (writes only (i,j,k)).
+        ! Scalars factor, s12..s32, scale* are loop-invariant shared reads.
+        !$OMP parallel do collapse(3) schedule(static) private(i, j, k)
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
@@ -1658,6 +1683,7 @@ contains
                 end do
             end do
         end do
+        !$OMP end parallel do
 
         ! Initialize grid velocity to zero.
         qs = zero
@@ -1665,6 +1691,18 @@ contains
         !       DD-ADI step in j-direction. As we solve in j-direction,
         !       the j-loop is the innermost loop.
         !
+        ! Parallel across (k,i) lines: each thread owns a distinct j-line and
+        ! its own tridiagonal buffers bb/cc/dd/ff (private). qs is firstprivate
+        ! so the qs=zero default is preserved when addGridVelocities is false.
+        !$OMP parallel do collapse(2) schedule(static) firstprivate(qs) &
+        !$OMP private(i, j, k, voli, volmi, volpi, xm, ym, zm, xp, yp, zp, &
+        !$OMP xa, ya, za, ttm, ttp, cnud, cam, cap, nutm, nutp, &
+        !$OMP nu, nuTilde, chi, chi3, fv1, nut, &
+        !$OMP nu_m, nuTilde_m, chi_m, chi3_m, fv1_m, nut_m, &
+        !$OMP nu_p, nuTilde_p, chi_p, chi3_p, fv1_p, nut_p, &
+        !$OMP num_v, nup_v, nu_tm, nu_tp, &
+        !$OMP cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+        !$OMP c1m, c1p, c2m, c2p, c3m, c3p, uu, um, up, rblank, bb, cc, dd, ff)
         do k = 2, kl
             do i = 2, il
                 do j = 2, jl
@@ -1804,10 +1842,21 @@ contains
 
             end do
         end do
+        !$OMP end parallel do
         !
         !       DD-ADI step in i-direction. As we solve in i-direction,
         !       the i-loop is the innermost loop.
         !
+        ! Parallel across (k,j) lines (see j-direction note above).
+        !$OMP parallel do collapse(2) schedule(static) firstprivate(qs) &
+        !$OMP private(i, j, k, voli, volmi, volpi, xm, ym, zm, xp, yp, zp, &
+        !$OMP xa, ya, za, ttm, ttp, cnud, cam, cap, nutm, nutp, &
+        !$OMP nu, nuTilde, chi, chi3, fv1, nut, &
+        !$OMP nu_m, nuTilde_m, chi_m, chi3_m, fv1_m, nut_m, &
+        !$OMP nu_p, nuTilde_p, chi_p, chi3_p, fv1_p, nut_p, &
+        !$OMP num_v, nup_v, nu_tm, nu_tp, &
+        !$OMP cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+        !$OMP c1m, c1p, c2m, c2p, c3m, c3p, uu, um, up, rblank, bb, cc, dd, ff)
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
@@ -1945,10 +1994,21 @@ contains
 
             end do
         end do
+        !$OMP end parallel do
         !
         !       DD-ADI step in k-direction. As we solve in k-direction,
         !       the k-loop is the innermost loop.
         !
+        ! Parallel across (j,i) lines (see j-direction note above).
+        !$OMP parallel do collapse(2) schedule(static) firstprivate(qs) &
+        !$OMP private(i, j, k, voli, volmi, volpi, xm, ym, zm, xp, yp, zp, &
+        !$OMP xa, ya, za, ttm, ttp, cnud, cam, cap, nutm, nutp, &
+        !$OMP nu, nuTilde, chi, chi3, fv1, nut, &
+        !$OMP nu_m, nuTilde_m, chi_m, chi3_m, fv1_m, nut_m, &
+        !$OMP nu_p, nuTilde_p, chi_p, chi3_p, fv1_p, nut_p, &
+        !$OMP num_v, nup_v, nu_tm, nu_tp, &
+        !$OMP cdm, cdp, cdm_gamma, cdp_gamma, cdm_rt, cdp_rt, &
+        !$OMP c1m, c1p, c2m, c2p, c3m, c3p, uu, um, up, rblank, bb, cc, dd, ff)
         do j = 2, jl
             do i = 2, il
                 do k = 2, kl
@@ -2083,6 +2143,7 @@ contains
 
             end do
         end do
+        !$OMP end parallel do
         !
         !       Update the turbulent variables. For explicit relaxation the
         !       update must be relaxed; for implicit relaxation this has been
@@ -2092,6 +2153,9 @@ contains
         factor = one
         if (turbRelax == turbRelaxExplicit) factor = alfaTurb
 
+        ! Per-cell update (writes only (i,j,k)); damping temporaries private.
+        !$OMP parallel do collapse(3) schedule(static) &
+        !$OMP private(i, j, k, mm, gammaNew, gammaDelta, dampFactor)
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
@@ -2130,8 +2194,224 @@ contains
                 end do
             end do
         end do
+        !$OMP end parallel do
 
     end subroutine saGammaReThetaSolve
+
+    subroutine saGRAdvection(offset)
+        !
+        !  SA-gamma-ReTheta-LOCAL, OpenMP-parallel, FIRST-ORDER-upwind advection
+        !  of the three transport variables (nuTilde, gamma, ReTheta).
+        !
+        !  This is a SPECIALIZED copy of the generic turbUtils:turbAdvection,
+        !  fixed at mAdv = nAdv = 3 and first-order upwind only (Piotrowski &
+        !  Zingg 2020, paper IV.A). It exists so the SA-GR advection can be
+        !  threaded without modifying the shared turbAdvection (CLAUDE.md rule
+        !  #2). It was DERIVED FROM src/turbulence/turbUtils.F90:turbAdvection
+        !  (commit-current first-order branches; the secondOrd branches are
+        !  intentionally dropped). >>> KEEP IN SYNC <<< with that routine if its
+        !  first-order discretization or boundary-Jacobian (bmt*) treatment
+        !  changes -- this is the same divergence hazard as the sa.F90 incident.
+        !
+        !  Each cell (i,j,k) writes only its own scratch/qq entries; w, bmt*
+        !  and the metrics are read-only, so the per-cell loops are
+        !  embarrassingly parallel. One parallel region with three !$OMP do
+        !  (one per direction) keeps fork/join to 1; the implicit barrier after
+        !  each !$OMP do makes the k->j->i accumulation into qq safe.
+        !
+        use constants
+        use blockPointers, only: il, jl, kl, vol, sFaceI, sFaceJ, sFaceK, &
+                                 w, si, sj, sk, addGridVelocities, &
+                                 bmti1, bmti2, bmtj1, bmtj2, bmtk1, bmtk2, scratch
+        implicit none
+        !
+        !      Subroutine arguments.
+        !
+        integer(kind=intType), intent(in) :: offset
+        !
+        !      Local variables.
+        !
+        integer(kind=intType) :: i, j, k, ii, jj, kk
+        real(kind=realType) :: qs, voli, xa, ya, za, uu, dwt
+        real(kind=realType) :: impl(3)
+
+        !$OMP parallel default(shared) private(i, j, k, ii, jj, kk, &
+        !$OMP qs, voli, xa, ya, za, uu, dwt, impl)
+
+        ! ---- k (zeta) direction -----------------------------------------
+        !$OMP do collapse(3) schedule(static)
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = half / vol(i, j, k)
+                    qs = zero
+                    if (addGridVelocities) &
+                        qs = (sFaceK(i, j, k) + sFaceK(i, j, k - 1)) * voli
+
+                    xa = (sk(i, j, k, 1) + sk(i, j, k - 1, 1)) * voli
+                    ya = (sk(i, j, k, 2) + sk(i, j, k - 1, 2)) * voli
+                    za = (sk(i, j, k, 3) + sk(i, j, k - 1, 3)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) &
+                         + za * w(i, j, k, ivz) - qs
+
+                    if (uu > zero) then
+                        do ii = 1, 3
+                            jj = ii + offset
+                            dwt = w(i, j, k, jj) - w(i, j, k - 1, jj)
+                            scratch(i, j, k, idvt + ii - 1) = &
+                                scratch(i, j, k, idvt + ii - 1) - uu * dwt
+                            qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) + uu
+                            if (k == 2) then
+                                do kk = 1, 3
+                                    impl(kk) = bmtk1(i, j, jj, kk + offset)
+                                end do
+                                impl(ii) = max(impl(ii), zero)
+                                do kk = 1, 3
+                                    qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) + uu * impl(kk)
+                                end do
+                            end if
+                        end do
+                    else
+                        do ii = 1, 3
+                            jj = ii + offset
+                            dwt = w(i, j, k + 1, jj) - w(i, j, k, jj)
+                            scratch(i, j, k, idvt + ii - 1) = &
+                                scratch(i, j, k, idvt + ii - 1) - uu * dwt
+                            qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) - uu
+                            if (k == kl) then
+                                do kk = 1, 3
+                                    impl(kk) = bmtk2(i, j, jj, kk + offset)
+                                end do
+                                impl(ii) = max(impl(ii), zero)
+                                do kk = 1, 3
+                                    qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) - uu * impl(kk)
+                                end do
+                            end if
+                        end do
+                    end if
+                end do
+            end do
+        end do
+        !$OMP end do
+
+        ! ---- j (eta) direction ------------------------------------------
+        !$OMP do collapse(3) schedule(static)
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = half / vol(i, j, k)
+                    qs = zero
+                    if (addGridVelocities) &
+                        qs = (sFaceJ(i, j, k) + sFaceJ(i, j - 1, k)) * voli
+
+                    xa = (sj(i, j, k, 1) + sj(i, j - 1, k, 1)) * voli
+                    ya = (sj(i, j, k, 2) + sj(i, j - 1, k, 2)) * voli
+                    za = (sj(i, j, k, 3) + sj(i, j - 1, k, 3)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) &
+                         + za * w(i, j, k, ivz) - qs
+
+                    if (uu > zero) then
+                        do ii = 1, 3
+                            jj = ii + offset
+                            dwt = w(i, j, k, jj) - w(i, j - 1, k, jj)
+                            scratch(i, j, k, idvt + ii - 1) = &
+                                scratch(i, j, k, idvt + ii - 1) - uu * dwt
+                            qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) + uu
+                            if (j == 2) then
+                                do kk = 1, 3
+                                    impl(kk) = bmtj1(i, k, jj, kk + offset)
+                                end do
+                                impl(ii) = max(impl(ii), zero)
+                                do kk = 1, 3
+                                    qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) + uu * impl(kk)
+                                end do
+                            end if
+                        end do
+                    else
+                        do ii = 1, 3
+                            jj = ii + offset
+                            dwt = w(i, j + 1, k, jj) - w(i, j, k, jj)
+                            scratch(i, j, k, idvt + ii - 1) = &
+                                scratch(i, j, k, idvt + ii - 1) - uu * dwt
+                            qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) - uu
+                            if (j == jl) then
+                                do kk = 1, 3
+                                    impl(kk) = bmtj2(i, k, jj, kk + offset)
+                                end do
+                                impl(ii) = max(impl(ii), zero)
+                                do kk = 1, 3
+                                    qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) - uu * impl(kk)
+                                end do
+                            end if
+                        end do
+                    end if
+                end do
+            end do
+        end do
+        !$OMP end do
+
+        ! ---- i (xi) direction -------------------------------------------
+        !$OMP do collapse(3) schedule(static)
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    voli = half / vol(i, j, k)
+                    qs = zero
+                    if (addGridVelocities) &
+                        qs = (sFaceI(i, j, k) + sFaceI(i - 1, j, k)) * voli
+
+                    xa = (si(i, j, k, 1) + si(i - 1, j, k, 1)) * voli
+                    ya = (si(i, j, k, 2) + si(i - 1, j, k, 2)) * voli
+                    za = (si(i, j, k, 3) + si(i - 1, j, k, 3)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) &
+                         + za * w(i, j, k, ivz) - qs
+
+                    if (uu > zero) then
+                        do ii = 1, 3
+                            jj = ii + offset
+                            dwt = w(i, j, k, jj) - w(i - 1, j, k, jj)
+                            scratch(i, j, k, idvt + ii - 1) = &
+                                scratch(i, j, k, idvt + ii - 1) - uu * dwt
+                            qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) + uu
+                            if (i == 2) then
+                                do kk = 1, 3
+                                    impl(kk) = bmti1(j, k, jj, kk + offset)
+                                end do
+                                impl(ii) = max(impl(ii), zero)
+                                do kk = 1, 3
+                                    qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) + uu * impl(kk)
+                                end do
+                            end if
+                        end do
+                    else
+                        do ii = 1, 3
+                            jj = ii + offset
+                            dwt = w(i + 1, j, k, jj) - w(i, j, k, jj)
+                            scratch(i, j, k, idvt + ii - 1) = &
+                                scratch(i, j, k, idvt + ii - 1) - uu * dwt
+                            qq(i, j, k, ii, ii) = qq(i, j, k, ii, ii) - uu
+                            if (i == il) then
+                                do kk = 1, 3
+                                    impl(kk) = bmti2(j, k, jj, kk + offset)
+                                end do
+                                impl(ii) = max(impl(ii), zero)
+                                do kk = 1, 3
+                                    qq(i, j, k, ii, kk) = qq(i, j, k, ii, kk) - uu * impl(kk)
+                                end do
+                            end if
+                        end do
+                    end if
+                end do
+            end do
+        end do
+        !$OMP end do
+
+        !$OMP end parallel
+
+    end subroutine saGRAdvection
 
     subroutine evalSrcJacBlock(i, j, k, A)
         !
