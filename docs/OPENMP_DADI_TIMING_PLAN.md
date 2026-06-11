@@ -60,6 +60,71 @@
 - **Physics correctness** (CL/CD vs experiment) is still the user's end check —
   these runs only verify self-consistency (all configs agree on CD).
 
+---
+
+## Findings & Decision Register
+
+> Condensed from four now-deleted docs (`BLOCKETTE_DADI_INTEGRATION_PLAN.md`,
+> `OPENMP_TURB_DADI_REPORT.md`, `TODO_OPENMP_DADI_ASSEMBLY.md`,
+> `BLOCKETTE_SA_GAMMA_RETHETHA_PLAN.md`). This is the single source of truth for
+> the SA-γ-Reθ OpenMP/blockette effort.
+
+### D1 — Architecture decision: `!$OMP` on primal loops, NOT blockette (Option B)
+The DADI residual/Jacobian assembly is parallelized by adding `!$OMP parallel do`
+directly onto the existing primal loops in `saGammaRetheta.F90`. We do **not**
+route DADI through the blockette path. Why:
+- `Source()`/`Viscous()` already write the per-block `scratch`/`qq` the DADI solve
+  consumes → **nothing to copy** (the kernel is memory-bound; copies would eat the
+  gain).
+- The `qq` Jacobian stays in **one** place. Routing DADI through blockette would
+  force a 2nd copy of the transition Jacobian into `blockette.F90` — a divergence
+  hazard. Rejected. (Pointer-remap variant also rejected: fragile, still dup'd.)
+- Pragmas live only in the primal `#else` branch → differentiated math unchanged →
+  no Tapenade regen, adjoint can't desync.
+
+### D2 — The sa.F90 constant episode (RESOLVED → reverted; do not redo)
+An earlier change (`d2b837b6`) converted `sa.F90` module constants to `parameter`s
+and **hardcoded wrong values** (`cw36` 0.3⁶=0.000729 instead of 2.0⁶=64.0, off by
+~88000×; `cb3Inv` 1/0.622 instead of 1/0.6667). This broke the SA destruction/
+diffusion terms — but **only on the blockette path**, which reads the `sa` module
+constants. The **DADI path computes them at runtime → never affected** (the serial
+reference was always valid). Per CLAUDE.md rule #2 (never touch SA code) this was
+**reverted** in `057b000b`; `sa.F90` is byte-identical to upstream again.
+**Lesson:** leave `sa.F90` alone; the benign same-value module-scalar races there
+are not bugs. See memory `never-touch-sa-model-code`.
+
+### D3 — Blockette OpenMP thread-safety (done, in history)
+`blockette.F90` block-level parallelism needed (commit `d2b837b6`, retained):
+THREADPRIVATE for `singleHaloStart/doubleHaloStart/nodeStart` and `sFaceI/J/K`;
+`ii,jj,kk` added to the `private()` clause of the `collapse(2)` block loop.
+Symptom before fix: 1-thread CL=0.0328 vs 4-thread CL=0.0094 (race).
+
+### D4 — Phase B parallelization (done, commit `bbff8d42`)
+Implemented the former TODO: collapsed the 4 assembly fork/joins toward fewer
+regions (Viscous 3→1), parallelized the `saGammaReThetaSolve` sweeps (private
+tridiagonal buffers), and added an **SA-GR-local** parallel `saGRAdvection`
+(first-order upwind, derived from shared `turbAdvection` but kept separate so
+shared/`turbUtils.F90` code is untouched). DADI tridiagonal solve stays serial.
+
+### D5 — Quantified results (see STATUS for the table)
+DADI phase 3.49× @12 threads (heavy kernels 4–5×, advection 1.36× mesh-limited);
+total-wall 1.07× (Amdahl, serial flow residual dominates at blk=False). Full 2×2
+matrix all converge to CD≈0.007009; **blk=False+12threads (1015s) is best on this
+thin L2 mesh; blockettes hurt here** (correct but slower — more outer iters +
+unamortized cache-blocking).
+
+### D6 — Still open (not done)
+- **Helper-correlation inlining** (`smoothMinMax`, `flength/rethetac Correlation`)
+  in the SA-GR source — proposed for ~5–10% kernel gain, **never implemented**.
+  All four turbUtils correlations are pure/thread-safe, so inlining is safe but is
+  a manual copy → sync hazard. Low priority.
+- **3D mesh validation** — advection scaling and the blockette verdict are both
+  thin-2D artifacts.
+- **Context-B timers don't instrument the blockette residual path** (read 0.000
+  under blk=True; hooked on `blockResCore`, not `blocketteResCore`).
+
+---
+
 ## Rollback points (safe versions if everything goes badly)
 
 - **Pre-OpenMP baseline (the version to `git reset`/`checkout` to if it all goes
