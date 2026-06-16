@@ -100,7 +100,9 @@ contains
         use oversetCommUtilities, only: updateOversetConnectivity
         use actuatorRegionData, only: nActuatorRegions
 #ifdef TURB_TIMING
-        use turbTiming, only: turbTic, turbToc, T_RESID_TOTAL, T_RESID_HALO
+        use turbTiming, only: turbTic, turbToc, turbCount, T_RESID_TOTAL, T_RESID_HALO, &
+                              T_RESID_FLOW, T_RESID_TURB, T_RESID_BOTH, &
+                              C_RFLOW, C_RTURB, C_RBOTH
 #endif
         implicit none
 
@@ -118,6 +120,9 @@ contains
         logical :: dissApprox, viscApprox, updateIntermed, flowRes, turbRes, spatial, storeWall
         integer(kind=intType) :: nn, sps, fSize, lstart, lend, iRegion
         real(kind=realType) :: pLocal
+#ifdef TURB_TIMING
+        integer(kind=intType) :: resTid, resCid
+#endif
 
         ! Set the defaults. The default is to compute the full, exact,
         ! RANS residual without updating the spatial values or the local
@@ -284,7 +289,25 @@ contains
 
                 rFil = one
                 blockettes: if (useBlockettes) then
+#ifdef TURB_TIMING
+                    ! Time the blockette residual at the (serial) call site and bin
+                    ! by flag. Flow and turb are fused inside one OpenMP sweep that
+                    ! cannot be split race-free, so pure-flow -> FLOW, pure-turb ->
+                    ! TURB (comparable to blk=False), fused -> BOTH (not mis-split).
+                    if (flowRes .and. turbRes) then
+                        resTid = T_RESID_BOTH; resCid = C_RBOTH
+                    else if (flowRes) then
+                        resTid = T_RESID_FLOW; resCid = C_RFLOW
+                    else
+                        resTid = T_RESID_TURB; resCid = C_RTURB
+                    end if
+                    call turbCount(resCid)
+                    call turbTic(resTid)
+#endif
                     call blocketteResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall)
+#ifdef TURB_TIMING
+                    call turbToc(resTid)
+#endif
                 else
                     call blockResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall, nn, sps)
                 end if blockettes
@@ -345,6 +368,9 @@ contains
         use utils, only: setPointers, EChk
         use turbUtils, only: computeEddyViscosity
         use oversetData, only: oversetPresent
+#ifdef TURB_TIMING
+        use turbTiming, only: turbAddTS
+#endif
 
         implicit none
 
@@ -353,6 +379,11 @@ contains
 
         ! Working:
         integer(kind=intType) :: i, j, k, l, lStart, lEnd
+#ifdef TURB_TIMING
+        ! Thread-summed turb/flow section times within the fused OpenMP sweep.
+        ! tsTurb/tsFlow are OpenMP reduction(+) vars; t0sec is per-thread private.
+        real(kind=realType) :: tsTurb, tsFlow, t0sec
+#endif
 
         ! Compute the ranges of the residuals we are dealing with:
         if (flowRes .and. turbRes) then
@@ -369,7 +400,13 @@ contains
         end if
 
         ! Block loop over the owned cells
+#ifdef TURB_TIMING
+        tsTurb = zero
+        tsFlow = zero
+        !$OMP parallel do private(i,j,k,l,ii,jj,kk,t0sec) collapse(2) reduction(+:tsTurb,tsFlow)
+#else
         !$OMP parallel do private(i,j,k,l,ii,jj,kk) collapse(2)
+#endif
         do kk = 2, bkl, BS
             do jj = 2, bjl, BS
                 do ii = 2, bil, BS
@@ -630,6 +667,9 @@ contains
                     call initRes(lStart, lEnd)
 
                     ! Compute turbulence residual for RANS equations
+#ifdef TURB_TIMING
+                    t0sec = mpi_wtime()
+#endif
                     if (equations == RANSEquations .and. turbRes) then
 
                         ! Initialize only the Turblent Variables
@@ -651,9 +691,15 @@ contains
                             call saGammaRethetaResScale
                         end select
                     end if
+#ifdef TURB_TIMING
+                    tsTurb = tsTurb + mpi_wtime() - t0sec
+#endif
 
                     call timeStep(updateIntermed)
 
+#ifdef TURB_TIMING
+                    t0sec = mpi_wtime()
+#endif
                     if (flowRes) then
                         call inviscidCentralFlux
 
@@ -689,6 +735,9 @@ contains
 
                         call sumDwAndFw
                     end if
+#ifdef TURB_TIMING
+                    tsFlow = tsFlow + mpi_wtime() - t0sec
+#endif
 
                     ! Now we can just set the part of dw we computed
                     ! (owned cells only) and we're done!
@@ -774,6 +823,11 @@ contains
             end do
         end do
         !$OMP END PARALLEL DO
+#ifdef TURB_TIMING
+        ! Fold the thread-summed turb/flow section times into the module
+        ! accumulators (serial, after the region closes -> race-free).
+        call turbAddTS(tsTurb, tsFlow)
+#endif
     end subroutine blocketteResCore
 
     subroutine blockResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall, nn, sps)
@@ -798,7 +852,8 @@ contains
         use flowUtils, only: allNodalGradients_block => allNodalGradients, &
                              computeSpeedOfSoundSquared_block => computeSpeedOfSoundSquared
 #ifdef TURB_TIMING
-        use turbTiming, only: turbTic, turbToc, T_RESID_FLOW, T_RESID_TURB
+        use turbTiming, only: turbTic, turbToc, turbCount, T_RESID_FLOW, T_RESID_TURB, &
+                              C_RFLOW, C_RTURB
 #endif
 
         implicit none
@@ -836,6 +891,7 @@ contains
             !call computeUtau_block
 
 #ifdef TURB_TIMING
+            call turbCount(C_RTURB)
             call turbTic(T_RESID_TURB)
 #endif
             ! Now call the selected turbulence model
@@ -853,6 +909,7 @@ contains
         if (flowRes) then
 
 #ifdef TURB_TIMING
+            call turbCount(C_RFLOW)
             call turbTic(T_RESID_FLOW)
 #endif
             call inviscidCentralFlux_block

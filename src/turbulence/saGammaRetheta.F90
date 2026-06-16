@@ -72,8 +72,9 @@ contains
         use inputIteration, only: transitionFirstOrderUpwind
         use inputDiscretization, only: orderTurb
 #ifdef TURB_TIMING
-        use turbTiming, only: turbTic, turbToc, &
-                              T_SOURCE, T_VISCOUS, T_ADV, T_UNSTEADY, T_DADI, T_RESSCALE
+        use turbTiming, only: turbTic, turbToc, turbCount, &
+                              T_SOURCE, T_VISCOUS, T_ADV, T_UNSTEADY, T_DADI, T_RESSCALE, &
+                              C_DADI
 #endif
         implicit none
 
@@ -153,6 +154,7 @@ contains
             ! Solve the transport equations for v, gamma, Retheta.
 
 #ifdef TURB_TIMING
+            call turbCount(C_DADI)
             call turbTic(T_DADI)
 #endif
             call saGammaReThetaSolve(resOnly)
