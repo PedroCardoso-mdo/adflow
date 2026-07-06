@@ -164,19 +164,199 @@ Metrics:
 
 ## Figures
 
-| # | Figure | Axes | Shows | From |
+| # | Figure | Status (2026-06-19) | Shows | From |
 |---|--------|------|-------|------|
-| 1 | Strong-scaling speedup | S vs R, log-log, + ideal line; 2 curves (baseline, branch) | **no regression** — curves overlay | Study 1 |
-| 2 | Parallel efficiency | E vs R; baseline vs branch | regression seen as efficiency gap | Study 1 |
-| 3 | DADI OMP speedup | S_DADI vs T (log2 T), + ideal; R=4 curve to T=32 with a vertical marker at T=8 (1 NUMA domain) | **OMP scales in-domain**, knee at 8→16 = NUMA-crossing penalty | Study 2 |
-| 4 | Phase breakdown (stacked bar) | time per phase, T=1 vs T=max, per rank count | *which* phases scale (Source/Visc fast, Adv/halo plateau) | Study 2 |
-| 5 | Total wall vs threads | wall vs T at fixed R | net hybrid gain + Amdahl ceiling (flow serial) | Study 2 |
-| 6 | Blockette time-to-solution | grouped bars: wall + iters, blk F/T × {4,32} ranks | blk cost/benefit on 3D | Study 3 |
-| 7 | Turb-resid per-call | bars: SA-GR turb-resid ms, blk F vs T, T=1 vs max | blockette effect on the turb kernel itself | Study 3 |
-| 8 (opt) | Load imbalance | imb=max/mean vs R (and vs T) | decomposition quality / straggler detection | Studies 1–2 |
+| 1 | Strong-scaling speedup | **kept** — branch only (baseline absent). Axes: y=`Speedup (rel. 4 cores)`, x=`Number of cores` | no regression | Study 1 |
+| 2 | Parallel efficiency | **DROPPED** | — | Study 1 |
+| 3 | DADI OMP speedup | **kept, R=4 only** — R=32 removed (Finding 2); **NUMA annotations removed** (vertical line + star + "1 NUMA domain" text) so the form matches Fig 1. y-label=`Speedup` | OMP scales in-domain | Study 2 |
+| 4 | Turb-solve phase breakdown | **REVISED** — per-iteration [s/iter], log y, grouped per-phase bars **+ Total bar**; flow-residual reference bar removed (Finding 1); y-title 13pt, legend 11pt | which phases dominate/scale (Source + Turb halo) | Study 2 |
+| 5 | Speedup vs threads | **kept, R=4 only** — R=32 removed (Finding 2); **now plots SPEEDUP** (`wall(T=1)/wall(T)`), not wall time. blk=OFF (Finding 4) | net hybrid gain + Amdahl ceiling (~2.3×) | Study 2 |
+| 6 | Blockette time-to-solution | **DROPPED** (Finding 3) | — | Study 3 |
+| 7 | Turb-resid per-call | **DROPPED** — misleading comparison (Finding 3) | — | Study 3 |
+| 8 | Load imbalance | **kept** | decomposition quality / straggler detection | Studies 1–2 |
 
-Plotting convention: always annotate **cells/rank** and **mesh** on each figure;
-report **min (or median) of repeats**, not single shots; ideal lines dashed.
+Current figure set: **1, 3, 4, 5, 8** (5 figures). All are **blk=OFF / Study 1–2**.
+Plotting convention: **mesh name + cell count annotation removed from all figures**
+(was `vmesh_L1.cgns (7,544,832 cells)`); report **min (or median) of repeats**, not
+single shots; ideal lines dashed. Mesh is still `vmesh_L1.cgns`, 7,544,832 cells.
+Figure canvas: line plots (1,3,5,8) = 840×840 `(6,6)`; Fig 4 = 1120×840 `(8,6)`.
+
+---
+
+## Generating values & per-figure interpretation
+
+Mesh `vmesh_L1.cgns`, 7,544,832 cells. All figures are **blk=OFF**.
+
+### Fig 1 — pure-MPI strong scaling (Study 1, T=1) — *"new model doesn't scale worse than plain ADflow"*
+| cores | wall (s) | speedup (rel. 4) | ideal | efficiency |
+|---:|---:|---:|---:|---:|
+| 4 | 7148.6 | 1.00 | 1 | 100 % |
+| 8 | 4233.6 | 1.69 | 2 | 84 % |
+| 16 | 3041.3 | 2.35 | 4 | 59 % |
+| 32 | 2051.6 | 3.48 | 8 | 44 % |
+| 64 | 829.4 | 8.62 | 16 | 54 % |
+| 128 | 404.2 | 17.68 | 32 | 55 % |
+| 256 | 178.3 | 40.09 | 64 | 63 % |
+
+**Comment:** the SA-γ-Reθ branch keeps healthy pure-MPI strong scaling out to 256 cores
+(40× on 64× cores), i.e. the new transition model does **not** introduce an MPI scaling
+regression vs the original ADflow flow solve. *Caveat:* this dataset has **no baseline
+curve**, so "not worse than original ADflow" is inferred from near-ideal behaviour, not
+a direct overlay. (The dip at 16–32 cores then recovery is a cells/rank cache effect.)
+
+### Fig 3 — DADI OpenMP speedup (Study 2, R=4) — *"my DADI OpenMP work scales well"*
+| T | DADI subtotal (s) | speedup | ideal | efficiency |
+|---:|---:|---:|---:|---:|
+| 1 | 2726.8 | 1.00 | 1 | 100 % |
+| 2 | 1534.4 | 1.78 | 2 | 89 % |
+| 4 | 921.2 | 2.96 | 4 | 74 % |
+| 8 | 566.0 | 4.82 | 8 | 60 % |
+| 16 | 243.7 | 11.19 | 16 | 70 % |
+| 32 | 149.7 | 18.22 | 32 | 57 % |
+| 64 | 132.2 | 20.62 | 64 | 32 % |
+
+**Comment:** the DADI turbulence solve (the part I parallelized) scales well — ~5× on
+8 threads, 11× on 16, 20× on 64. Efficiency stays 60–70 % up to T=16 and only collapses
+at T=64, where each rank's threads span 8 NUMA domains → bandwidth/remote-memory limited,
+not an algorithmic limit. **This is the headline "my work scales" result.**
+
+### Fig 4 — turb-solve phase breakdown per iteration (Study 2, log y)
+| config | Source | Adv | Visc | DADI-ls | Turb halo | **Total** (s/iter) |
+|---|---:|---:|---:|---:|---:|---:|
+| R=4, T=1  | 27.5 | 0.36 | 0.68 | 2.3 | 11.6 | **42.6** |
+| R=4, T=8  | 4.53 | 0.11 | 0.12 | 0.31 | 3.73 | **8.80** |
+| R=4, T=64 | ~1.0 | — | — | 0.2 | 0.8 | **2.05** |
+| R=32, T=1 | 1.94 | 0.13 | 0.15 | 0.36 | 1.3 | **3.89** |
+| R=32, T=8 | 0.46 | 0.05 | 0.04 | 0.05 | 0.19 | **0.53** |
+
+(iters: R=4 = 64, R=32 = 59; ×iters → absolute s, matches `dadi_subtotal`.)
+**Comment:** **Source + Turb halo** dominate every config; both shrink with threads.
+Source is the transition-correlation cost (Finding 1); halo is communication-bound.
+
+### Fig 5 — total-wall speedup vs threads (Study 2, R=4) — *"didn't revolutionize wall time, but OMP help is real & free when cores are spare"*
+| T | wall (s) | speedup |
+|---:|---:|---:|
+| 1 | 7065 | 1.00 |
+| 2 | 5788 | 1.22 |
+| 4 | 4748 | 1.49 |
+| 8 | 3832 | 1.84 |
+| 16 | 3212 | 2.20 |
+| 32 | 3076 | 2.30 |
+| 64 | 3017 | 2.34 |
+
+**Comment:** end-to-end wall speedup saturates at **~2.3×** (Amdahl): the DADI solve
+threads well (Fig 3) but the flow residual + linear solver — the bulk of the wall — are
+not threaded, so they cap the total. So OpenMP **did not revolutionize** time-to-solution,
+**but the gain is far from insignificant** (1.8× at 8 threads, 2.3× at 32+) and it is
+essentially **free wall-clock when spare cores are available** on the node.
+
+### Fig 8 — load imbalance (max/mean) vs ranks (Study 1, T=1)
+| R | Source | DADI-ls | Turb halo | Turb resid | Flow resid |
+|---:|---:|---:|---:|---:|---:|
+| 4 | 1.21 | 1.22 | 2.26 | 1.20 | 1.05 |
+| 8 | 1.73 | 1.08 | 1.54 | 1.74 | 1.04 |
+| 16 | 2.28 | 1.27 | 1.35 | 1.91 | 1.05 |
+| 32 | **3.03** | 1.50 | 2.04 | **2.66** | 1.06 |
+| 64 | 1.80 | 1.53 | 1.96 | 1.68 | 1.16 |
+| 128 | 1.42 | 1.48 | **4.55** | 1.39 | 1.13 |
+| 256 | 1.23 | 1.37 | **4.14** | 1.28 | 1.22 |
+
+**Conclusion (self-contained — nothing to compare against):** the **flow residual is
+essentially perfectly balanced** (max/mean ≈ 1.0–1.2 at every rank count) — the mesh
+partitioner balances flow work well. The **turbulence/transition phases are not**: Source
+peaks at 3.0× (R=32) and Turb halo at 4.5× (R=128). So the decomposition — tuned for the
+flow — does **not** balance the transition workload: a minority of ranks (those holding
+boundary-layer/transition regions, and surface-heavy partitions at high R) carry several
+times the mean Source/halo work and become the **stragglers that gate the turbulence
+solve**. Net: turbulence load imbalance — not the flow — is the partitioning bottleneck,
+and weighting transition cells in the decomposition is the obvious future lever.
+
+---
+
+## Findings & interpretation (2026-06-19 analysis session)
+
+### Timing has TWO residual contexts — do not conflate them
+The SA-γ-Reθ residual is computed and timed at **two** call sites (`turbTiming.F90`):
+- **Context A — inside the DADI solve** (`turbSolveDDADI`): phases Source + Viscous +
+  Advection + Unsteady are summed as "Residual + qq assembly". Called **~18–21×/iter**
+  (one per DADI sweep). This is where the heavy turbulence work lives.
+- **Context B — standalone residual eval** (`blocketteRes` → `blockResCore` /
+  `blocketteResCore`): `T_RESID_FLOW`, `T_RESID_TURB`, `T_RESID_BOTH`. Flow residual
+  called **~128–220×/iter** (ANK Krylov matrix-free J·v products); turb **~6–7×/iter**.
+
+`p_resid_turb` is **only Context B**. The bulk of turbulence-residual cost is the
+Context-A assembly (the Source phase). Never equate `p_resid_turb` with "the turbulence
+residual cost" — that under-counts it by the DADI-internal assembly.
+
+### Finding 1 — the transition SOURCE term is the single cost driver (drove the Fig 4 rework)
+Per-call, the turbulence residual is **89–97% Source term** (transition correlations
+Reθt/Reθc/Flength/Fonset/Fturb — `exp`/`tanh`/`pow`/`min`/`max`, which don't vectorize).
+- Per-call R=4: Source 1530 ms vs Advection 19 ms, Viscous 36 ms.
+- Flow vs turb residual per-call: R=4 → 154 vs 1603 ms (turb **10×**); R=32 → 50 vs
+  104 ms (turb **2×**). Fewer equations (3 vs 5) but far costlier per call **because of
+  the algebraic source the flow equations don't have**. Strip the source and turb
+  adv+visc IS cheaper than flow, as equation count predicts.
+- Aggregate (call-count weighted) flips with rank: total turb-residual work (A+B) =
+  **1.97× flow at R=4**, **0.38× flow at R=32** (flow is called ~6× more often).
+
+Old Fig 4 stacked the 5 turb-solve phases against a single flow-residual bar, inviting
+a false "flow < turb residual" reading. **Reworked:** only the turb-solve phases, per
+iteration, log y, grouped + a Total bar. iters: R=4 = 64, R=32 = 59 (multiply per-iter
+by iters to recover absolute seconds; Totals match `dadi_subtotal`).
+
+### Finding 2 — R=32 flow-residual "scaling" is a NUMA-bandwidth confound (→ R=32 dropped from Figs 3 & 5)
+S2 ran **blk=False** → flow residual goes through `blockResCore`, which has **NO
+OpenMP** (the OMP pragmas live only in `blocketteResCore`, lines 406–825). So the flow
+residual is **unthreaded** in S2.
+Yet at R=32 the flow-residual time drops 462→154 s over T=1→8. **This is not threading.**
+SLURM logs: T=1,2,4 keep **32 ranks/node (constant)**, but `--cpus-per-task=T` spreads
+those 32 ranks across more 8-core NUMA domains / memory controllers (≈4→8→16). The
+bandwidth-bound flow residual then gets ~2× the bandwidth (461→242 ms = 1.9× at T1→T2)
+and saturates by T=4. R=4 stays flat (4 ranks never saturate one node).
+=> This inflates the apparent **end-to-end** OMP benefit at R=32 with memory bandwidth,
+not DADI threading. R=32 removed from Figs 3 & 5 to avoid a "too good to be true" curve
+needing this caveat in the report. The **DADI subtotal** (intended OMP signal) is
+unaffected and stays the headline metric.
+
+### Finding 3 — blockette (Study 3) figures dropped as misleading
+Old Fig 7 compared blk OFF `c_rturb_ms` (turb **alone**, 7 calls/iter) vs blk ON
+`c_rboth_ms` (flow+turb **fused**) — **different operations** — making blk ON look 2×
+faster. Real picture (S3, verified):
+- Dominant residual cost is the **FLOW** residual (138–220 calls/iter), not turb (7/iter).
+- blk ON flow-residual per-call: R=32/T=1 **1.5×** faster (48.7→32.2 ms), R=32/T=8
+  **3.6×** (16.5→4.6 ms), but **R=4/T=1 SLOWER 0.63×** (153→242 ms).
+- Fused residual split (`rTurb`): **~95% flow / ~5% turb** (the heavy source is in the
+  DADI solve, not in the residual eval — consistent with Context A vs B above).
+- blk ON needs **more outer iters** (R=32/T=1: 202→254, +26%), DADI is slower, and the
+  residual eval is only **~27% of wall** → Fig 6 total gain is modest (**−12% at R=32**,
+  slight **regression at R=4**: 32174→32423 s).
+
+Net: blockettes help the flow kernel at R=32 (cache + threading) but not at R=4, and the
+wall payoff is small once iteration count and the dominant linear-solver time are
+accounted for. **If Fig 7 is ever revived it must compare flow-residual per-call OFF vs
+ON (apples-to-apples), not BOTH vs turb-alone.**
+
+### Finding 4 — a blk=ON version of Fig 5 is NOT possible with current data (MISSING)
+Fig 5 (speedup vs threads) needs a full thread sweep at one R. For **blk=ON, R=4** the
+dataset only has **two** points, and one diverged:
+
+| study | T | blk | iters | CD | wall | mode |
+|---|---:|---:|---:|---:|---:|---|
+| S3 | 1  | True | 325 | 0.4441 | 32423 s | converge |
+| S3 | 16 | True | **1** | **39.71** | 60 s | converge — **DIVERGED** |
+
+Three blockers:
+1. **No sweep** — Study 3 only ran T=1 and T=max; the T=1,2,4,8,16,32,64 sweep exists
+   only in S2 (blk=OFF). blk=ON has no equivalent.
+2. **The one threaded blk=ON point diverged** (R=4/T=16: CD=39.7, 1 iter) → unusable,
+   leaving a single valid point (T=1).
+3. **Mode mismatch** — S2 (blk=OFF) is fixed-1000-cycles; S3 (blk=ON) is converge. The
+   two cannot be mixed into one speedup curve.
+
+The R=4/T=16 blk=ON divergence is itself a result: **the blk=ON path is unstable with
+threads at R=4.** To build a blk=ON Fig 5 we need NEW runs: a full T sweep at R=4 with
+blk=True, same mode as S2 (fixed cycles), after fixing that instability. All current
+figures are therefore **blk=OFF**.
 
 ---
 
