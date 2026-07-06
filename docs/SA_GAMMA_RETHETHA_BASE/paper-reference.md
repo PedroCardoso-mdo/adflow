@@ -56,7 +56,7 @@ where:
 - ρ = density
 - U = local velocity magnitude
 - Re = freestream Reynolds number
-- **CRITICAL**: The 1/Re factor is explicit. In nondimensional codes where μ_ref = 1/Re, this becomes `t = 500·μ̃/(ρ·U²)` where μ̃ is the nondimensional viscosity. But if the code stores `rlv = μ/μ_∞` (ratio), then `t = 500·rlv/(ρ·U²·Re)`. ADflow uses the latter (p-ρ scaling, `rlv` ratio) — see [`nondimensionalization.md`](nondimensionalization.md) for the full reference-state scheme and why `1/Re` must be reintroduced by hand.
+- **CRITICAL — paper vs ADflow non-dim**: this is the paper's a∞-based form (Re = ρ∞·a∞·l/μ∞), so `1/Re` is explicit. ADflow's p-ρ scheme (L_ref = 1 m, `rlv = μ/μ_∞`) absorbs Re into the non-dim viscosity, so the **code carries no explicit Re factor**: `timeScale = 500·rlv/(ρ·|V|²)` (Re = 1 implicit). See [`../nondimensionalization.md`](../nondimensionalization.md) §5 for the full paper→ADflow shift.
 
 ### 2.3 Switching function F_θt (Eq. 3)
 
@@ -244,20 +244,48 @@ Re_θc = 0.67·Re̅θt + 24·sin(Re̅θt/240 + 0.5) + 14
 
 ---
 
-## 5. Crossflow Source D_scf (Eq. 15-26) — OPTIONAL
+## 5. Crossflow Source D_scf (Eq. 15-26)
 
-For swept wings. Adds a source to the Re̅θt equation:
+Helicity-based stationary-crossflow correlations (Langtry et al., LM2015), added
+as a **sink** on the Re̅θt equation to trigger transition upstream where crossflow
+is significant. **Implemented** on this branch (runtime flag `transitionCrossflow`,
+default on).
 
 ```
-P_θt_total = P_θt + D_scf
+S_Re̅θt = P_θt + D_scf                                             (Eq. 1)
+
+D_scf   = (c_θt/t) · c_crossflow · min(Re_scf − Re̅θt, 0) · F_θt   (Eq. 15)
+c_crossflow = 0.6                                                 (Eq. 16)
+
+Re_scf  = −35.088·ln(h/θt) + 319.51 + f(ΔH⁺) − f(ΔH⁻)            (Eq. 17)
+ΔH      = H_crossflow · (1 + min(R_T, 0.4)),   R_T = μ_t/μ        (Eq. 18)
+ΔH⁺     = max(0.1066 − ΔH, 0)                                    (Eq. 19)
+f(ΔH⁺)  = 6200·ΔH⁺ + 50000·(ΔH⁺)²                                (Eq. 20)
+ΔH⁻     = max(−(0.1066 − ΔH), 0)                                 (Eq. 21)
+f(ΔH⁻)  = 75·tanh(ΔH⁻ / 0.0125)                                  (Eq. 22)
 ```
 
-where D_scf involves:
-- Helicity-based crossflow Reynolds number Re_scf (Eq. 22-26)
-- Roughness height h
-- Streamwise vorticity decomposition
+Helicity / streamwise vorticity:
 
-**Skip for 2D cases.** D_scf ≡ 0 when no crossflow exists.
+```
+Û            = (u, v, w) / |V|                                    (Eq. 23)
+Ω⃗            = (∂w/∂y − ∂v/∂z, ∂u/∂z − ∂w/∂x, ∂v/∂x − ∂u/∂y)      (Eq. 24)  [pure curl]
+Ω_streamwise = |Û · Ω⃗|                                           (Eq. 25)
+H_crossflow  = d · Ω_streamwise / U                              (Eq. 26)  [d = wall distance]
+```
+
+- `h` = surface roughness height (physical length; see non-dim note below).
+- `θt` = BL momentum thickness (Eq. 4); `t` = time scale (Eq. 7); `F_θt` = Eq. 3.
+- In the smooth (sLM2015) model, **every `min`/`max` above uses the φ_p smoothing
+  of §6** (|p| = 300).
+- **2D:** Û·Ω⃗ = 0 ⇒ H_crossflow = 0 ⇒ Re_scf ≫ Re̅θt ⇒ `min(...) = 0` ⇒ D_scf ≡ 0.
+
+**Non-dim (paper → ADflow):** Eq. 17's LHS grouping `ρ(U/0.82)θt/μ · Re` carries an
+explicit `Re` (paper a∞-based scheme), but the code computes Re_scf from the RHS
+correlation directly and carries **no explicit Re** — θt and h are physical
+lengths (metres), so `h/θt` is the true physical ratio and Re_scf, Re̅θt are
+physical Reynolds numbers. See [`../nondimensionalization.md`](../nondimensionalization.md)
+§5–6.
 
 ---
 

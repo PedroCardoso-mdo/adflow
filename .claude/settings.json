@@ -45,7 +45,20 @@
       "Bash(rm:*)",
       "Edit(Makefile)",
       "Edit(config/**)",
-      "Edit(.gitignore)"
+      "Edit(.gitignore)",
+
+      "Edit(src/adjoint/outputForward/**)",
+      "Edit(src/adjoint/outputReverse/**)",
+      "Edit(src/adjoint/outputReverseFast/**)",
+      "Edit(src/adjoint/temp_forward/**)",
+      "Edit(src/adjoint/temp_reverse/**)",
+      "Edit(src/adjoint/temp_reverse_fast/**)",
+      "Write(src/adjoint/outputForward/**)",
+      "Write(src/adjoint/outputReverse/**)",
+      "Write(src/adjoint/outputReverseFast/**)",
+      "Write(src/adjoint/temp_forward/**)",
+      "Write(src/adjoint/temp_reverse/**)",
+      "Write(src/adjoint/temp_reverse_fast/**)"
     ],
     "deny": [
       "Bash(git push --force:*)",
