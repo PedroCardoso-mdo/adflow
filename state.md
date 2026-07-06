@@ -14,7 +14,7 @@ Regras deste ficheiro:
 | id  | estado   | tarefa |
 |-----|----------|--------|
 | A1  | FEITA    | Confirmar (nao re-auditar) SA-GR vs paper c/ nao-adimensionalizacao (ler docs/nondimensionalization.md 1o: scaling p-rho, vel normaliza a M*sqrt(gamma)). So divergencias em findings/A_confirmacao.md. |
-| A2  | PENDENTE | Confirmar estrategia de convergencia (DDADI + solver tipo-ANK) faz sentido vs paper. Duvidas, nao veredictos. |
+| A2  | FEITA    | Confirmar estrategia de convergencia (DDADI + solver tipo-ANK) faz sentido vs paper. Duvidas, nao veredictos. |
 | A3  | PENDENTE | Confirmar coerencia SA-GR vs SA e SST. O que faz sentido, MANTER. Nao mudar por mudar. |
 | B   | PENDENTE | Ler o MD sst_dev. Licoes p/ SA-GR em findings/B_licoes_sst.md: k-correction provavelmente NAO se aplica (SA nao transporta k) -> confirmar no codigo; acoplamento vivo e gamma->fonte-SA sobre kinks (min/max) -> localizar; dot-product prova consistencia, NAO correcao. |
 | C   | PENDENTE | Adjoint/Tapenade (usar docs/adjoint-trace.md). Verificar wiring do adjoint e que _d/_b/_fast_b das fontes SA-GR contem o acoplamento gamma->fonte e a correlacao Re_theta. Tabela em findings/C_tapenade.md. NAO diferenciar residuo do adjoint a mao. |

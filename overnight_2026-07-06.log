@@ -81,3 +81,20 @@ Divergências registadas em `findings/A_confirmacao.md`:
 
 Próxima tarefa na fila: **A2** (estratégia de convergência DDADI + tipo-ANK vs paper), para a próxima sessão.
 [2026-07-06 21:32:47] ===== volta 25 / 40 =====
+**Tarefa A2 concluída** (commit `aff8ee4a`; A2 marcada FEITA em `state.md` depois do commit). Conforme o protocolo, faço só esta tarefa e paro.
+
+**O que fiz:** verifiquei no git log que A1 estava de facto FEITA (`d13d18ef`), escolhi A2, e comparei a estratégia de convergência implementada (DADI 3 modos + Turb-ANK KSP + ANK acoplado + NK terminal) com o §IV do Piotrowski & Zingg, lendo apenas os ficheiros da routing table (paper-reference §7, architecture Parte 1, ADFLOW_01) e trechos dirigidos de `saGammaRetheta.F90` e `NKSolvers.F90`.
+
+**Conclusão geral:** a estratégia faz sentido — arranque decoupled + terminal fully-coupled é exatamente o que o paper recomenda e coincide com a filosofia do próprio ADflow. O fator 0.9 da Eq. 59, os bounds do Algorithm 2, o scaling de γ/Re̅θt e o atalho de autovalores A32=0 (legítimo porque a F_θt simplificada não depende de γ) estão coerentes.
+
+**Dúvidas registadas em `findings/A2_convergencia.md`** (dúvidas, não veredictos — nada foi alterado no código):
+
+1. A restrição de Δt por fonte (Eq. 59) **não existe nos caminhos acoplados** (ANK 8-eq. e NK) — só no DADI e no Turb-ANK. No paper, o solver é fully-coupled e a Eq. 59 é o dispositivo de robustez desse modo.
+2. A forma da restrição difere entre caminhos: **aditiva** no DADI (mais restritiva que o paper) vs **MAX** no turbKSP (fiel ao paper).
+3. O switch de desativação está parcial: o DADI nunca desativa; o turbKSP omite a condição de resíduo R_d > 1e-5 do paper.
+4. `turbResScale` de ν̃ é 1e4 (convenção ADflow/SA) vs 1e3 do paper.
+5. O damping do DADI é por variável (γ e Re̅θt separados, ν̃ só clipado), não um fator único para todo o ΔQ como no Algorithm 2.
+6. Nota: `useBlockettes` é forçado a False para SA-GR — custo por iteração maior nos produtos matrix-free.
+
+Próxima tarefa na fila para uma nova sessão: **A3** (coerência SA-GR vs SA e SST).
+[2026-07-06 21:42:46] ===== volta 26 / 40 =====
