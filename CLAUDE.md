@@ -36,7 +36,7 @@ the end, not task-by-task.
    Do not interpret results. Do not "improve" beyond the task spec.
 8. **Do not load files outside the task block's `Context:` list.** Token
    discipline matters — every task block is self-contained for a reason.
-9. **Paper wins** when paper and code disagree (`01_PAPER_REFERENCE.md`).
+9. **Paper wins** when paper and code disagree (`docs/paper-reference.md`).
 
 ## File Locations (most-edited)
 
@@ -64,5 +64,5 @@ the end, not task-by-task.
 cd build && make -j                  # Claude Code runs this
 # (user reruns Tapenade if STATUS was TAPENADE NEEDED)
 # (user reruns make if Tapenade was rerun)
-# (user runs python smoke script — see 05_TESTING_AND_DEBUG.md §1)
+# (user runs the python smoke script to confirm N iterations without NaN)
 ```
