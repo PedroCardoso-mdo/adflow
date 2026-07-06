@@ -251,10 +251,12 @@ contains
 &   lambdathetalocald
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
-    real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
-    real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
     real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
+    real(kind=realtype) :: f1_val, base_val, inner_val
+    real(kind=realtype) :: dflength_dret, drethetac_dret
+    real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
+    real(kind=realtype) :: pgamma_common, sech2_val
     intrinsic sqrt
     intrinsic exp
     intrinsic min
@@ -1194,10 +1196,12 @@ contains
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
-    real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
-    real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
     real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
+    real(kind=realtype) :: f1_val, base_val, inner_val
+    real(kind=realtype) :: dflength_dret, drethetac_dret
+    real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
+    real(kind=realtype) :: pgamma_common, sech2_val
     intrinsic sqrt
     intrinsic exp
     intrinsic min
