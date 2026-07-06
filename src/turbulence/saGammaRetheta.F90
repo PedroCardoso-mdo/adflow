@@ -4,7 +4,7 @@ module saGammaReTheta
     ! model. It is slightly more modularized than the original which makes
     ! performing reverse mode AD simplier.
 
-    ! transitionDebug slot map (nTransitionDebug = 48; see paramTurb.F90).
+    ! transitionDebug slot map (nTransitionDebug = 51; see paramTurb.F90).
     ! Do NOT renumber existing slots — append new ones at the end.
     !  1  fonset            fOnset
     !  2  fonset1           fOnset1
@@ -54,6 +54,9 @@ module saGammaReTheta
     ! 46  qq11              qq(i,j,k,1,1) [SA diagonal Jacobian]
     ! 47  qq22              qq(i,j,k,2,2) [γ diagonal Jacobian]
     ! 48  qq33              qq(i,j,k,3,3) [Re̅θt diagonal Jacobian]
+    ! 49  dscf              dScf         [crossflow source term]
+    ! 50  rescf             reScf        [crossflow Reynolds number]
+    ! 51  hcf               hcf          [helicity-based crossflow metric]
 
     use constants, only: realType, zero
 
@@ -156,7 +159,8 @@ contains
         use inputDiscretization, only: approxSA
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
-        use inputIteration, only: transitionSrcDtRestrict, transitionUseApproxSA
+        use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
+                      transitionSrcDtRestrict, transitionUseApproxSA
         implicit none
 
         ! Local parameters
@@ -209,6 +213,9 @@ contains
         integer(kind=intType), parameter :: dbgQQ11 = 46_intType
         integer(kind=intType), parameter :: dbgQQ22 = 47_intType
         integer(kind=intType), parameter :: dbgQQ33 = 48_intType
+        integer(kind=intType), parameter :: dbgDScf = 49_intType
+        integer(kind=intType), parameter :: dbgReScf = 50_intType
+        integer(kind=intType), parameter :: dbgHcf = 51_intType
 
         ! Local variables.
         integer(kind=intType) :: i, j, k, nn, ii
@@ -238,7 +245,9 @@ contains
         real(kind=realType) :: velMag, velMag2, timeScale, reThetaT_target
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: gammaEff, gammaTerm
-        real(kind=realType) :: pReTheta, yDist
+        real(kind=realType) :: pReTheta, dScf, reScf, hcf
+        real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
+        real(kind=realType) :: yDist
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
         real(kind=realType) :: dwdx, dwdy, dwdz
@@ -558,7 +567,28 @@ contains
                                    * (reThetaT_target - reThetaTilde) &
                                    * (one - fThetaT)
 
-                        scratch(i, j, k, idvt + 2) = pReTheta
+                        dScf = zero
+                        reScf = zero
+                        hcf = zero
+                        if (transitionCrossflow) then
+                            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
+                            ! Eq.24 helicity uses the raw velocity curl; undo the
+                            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
+                            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
+                                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
+                                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                                / max(velMag, xminn)
+                            reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
+                                + 319.51_realType
+                            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
+                            reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
+                            dScf = (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
+                                * smoothMinMax(reScf - reThetaTilde, zero, rsaGRpmin) * fThetaT
+                        end if
+
+                        scratch(i, j, k, idvt + 2) = pReTheta + dScf
 
                         if (associated(transitionDebug)) then
                             dudx = two * fact * uux
@@ -658,6 +688,28 @@ contains
                             rsaGRcthetat / max(timeScale, xminn) &
                             * (one - fThetaT), zero)
 
+                        if (transitionCrossflow) then
+                            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
+                            ! Eq.24 helicity uses the raw velocity curl; undo the
+                            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
+                            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
+                                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
+                                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                                / max(velMag, xminn)
+                            reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
+                                + 319.51_realType
+                            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
+                            reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
+                            if (reScf < reThetaTilde) then
+                                crossflowPhiPrime = one / (one + exp(rsaGRpmin * (zero - (reScf - reThetaTilde))))
+                                qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + &
+                                    (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
+                                    * fThetaT * crossflowPhiPrime
+                            end if
+                        end if
+
                         ! --- Off-diagonal source Jacobian entries ---
 
                         ! qq(1,2) = -dS_nu/dgamma: SA production depends on gamma
@@ -733,6 +785,9 @@ contains
                             transitionDebug(i, j, k, dbgQQ11) = qq(i, j, k, 1, 1)
                             transitionDebug(i, j, k, dbgQQ22) = qq(i, j, k, 2, 2)
                             transitionDebug(i, j, k, dbgQQ33) = qq(i, j, k, 3, 3)
+                            transitionDebug(i, j, k, dbgDScf) = dScf
+                            transitionDebug(i, j, k, dbgReScf) = reScf
+                            transitionDebug(i, j, k, dbgHcf) = hcf
                         end if
 #endif
 #ifdef TAPENADE_REVERSE
@@ -2091,7 +2146,8 @@ contains
         use section
         use inputPhysics
         use flowVarRefState
-        use turbUtils, only: flengthCorrelation, rethetacCorrelation
+        use turbUtils, only: flengthCorrelation, rethetacCorrelation, smoothMinMax
+        use inputIteration, only: transitionCrossflow, transitionRoughnessHeight
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -2121,10 +2177,11 @@ contains
         real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
         real(kind=realType) :: fOnset, fOnset1
         real(kind=realType) :: vortLim, vortMagLim
-        real(kind=realType) :: pGamma
+        real(kind=realType) :: pGamma, dScf, reScf, hcf
         real(kind=realType) :: velMag, velMag2, timeScale
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: yDist
+        real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
         real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
         real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
@@ -2310,6 +2367,26 @@ contains
         fThetaT = fWake_val * exp(-(yDist/delta)**4)
 
         A(3,3) = -(rsaGRcthetat / max(timeScale, xminn) * (one - fThetaT))
+        if (transitionCrossflow) then
+            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
+            ! Eq.24 helicity uses the raw velocity curl; undo the
+            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
+            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
+                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
+                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                / max(velMag, xminn)
+            reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
+                + 319.51_realType
+            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+            reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
+            reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
+            if (reScf < reThetaTilde) then
+                crossflowPhiPrime = one / (one + exp(rsaGRpmin * (zero - (reScf - reThetaTilde))))
+                A(3,3) = A(3,3) - (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
+                    * fThetaT * crossflowPhiPrime
+            end if
+        end if
         A(3,3) = min(A(3,3), zero)  ! Always <= 0 (relaxation)
 
         ! A(1,3), A(3,1), A(3,2) are zero per P&Z §7.1

@@ -1108,6 +1108,8 @@ python module libadflow
          real(kind=realtype) :: disscontmidpoint
          real(kind=realtype) :: disscontsharpness
          integer(kind=4) :: turbdadicoupled
+         logical :: transitioncrossflow
+         real(kind=realtype) :: transitionroughnessheight
          logical :: transitionuseapproxsa
        end module inputiteration
 

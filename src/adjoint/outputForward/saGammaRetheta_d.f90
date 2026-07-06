@@ -5,7 +5,7 @@ module sagammaretheta_d
 ! this module contains the source code for sa-slm2015 turbulence
 ! model. it is slightly more modularized than the original which makes
 ! performing reverse mode ad simplier.
-! transitiondebug slot map (ntransitiondebug = 48; see paramturb.f90).
+! transitiondebug slot map (ntransitiondebug = 51; see paramturb.f90).
 ! do not renumber existing slots — append new ones at the end.
 !  1  fonset            fonset
 !  2  fonset1           fonset1
@@ -55,6 +55,9 @@ module sagammaretheta_d
 ! 46  qq11              qq(i,j,k,1,1) [sa diagonal jacobian]
 ! 47  qq22              qq(i,j,k,2,2) [γ diagonal jacobian]
 ! 48  qq33              qq(i,j,k,3,3) [re̅θt diagonal jacobian]
+! 49  dscf              dscf         [crossflow source term]
+! 50  rescf             rescf        [crossflow reynolds number]
+! 51  hcf               hcf          [helicity-based crossflow metric]
   use constants, only : realtype, zero
   implicit none
   real(kind=realtype), dimension(:, :, :, :, :), allocatable :: qq
@@ -140,7 +143,8 @@ contains
     use turbutils_d, only : rethetatcorrelation, rethetatcorrelation_d, &
 &   flengthcorrelation, flengthcorrelation_d, rethetaccorrelation, &
 &   rethetaccorrelation_d, smoothminmax, smoothminmax_d
-    use inputiteration, only : transitionsrcdtrestrict, &
+    use inputiteration, only : transitioncrossflow, &
+&   transitionroughnessheight, transitionsrcdtrestrict, &
 &   transitionuseapproxsa
     implicit none
 ! local parameters
@@ -193,6 +197,9 @@ contains
     integer(kind=inttype), parameter :: dbgqq11=46_inttype
     integer(kind=inttype), parameter :: dbgqq22=47_inttype
     integer(kind=inttype), parameter :: dbgqq33=48_inttype
+    integer(kind=inttype), parameter :: dbgdscf=49_inttype
+    integer(kind=inttype), parameter :: dbgrescf=50_inttype
+    integer(kind=inttype), parameter :: dbghcf=51_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -244,8 +251,13 @@ contains
     real(kind=realtype) :: thetabld, deltabld, deltad, fwake_vald, &
 &   fthetatd
     real(kind=realtype) :: gammaeff, gammaterm
-    real(kind=realtype) :: pretheta, ydist
-    real(kind=realtype) :: prethetad, ydistd
+    real(kind=realtype) :: pretheta, dscf, rescf, hcf
+    real(kind=realtype) :: prethetad, dscfd, rescfd, hcfd
+    real(kind=realtype) :: crossflowratio, crossflowphiprime, dhplus, &
+&   dhminus
+    real(kind=realtype) :: crossflowratiod, dhplusd, dhminusd
+    real(kind=realtype) :: ydist
+    real(kind=realtype) :: ydistd
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: uxhatd, uyhatd, uzhatd, dudsd, &
 &   lambdathetalocald
@@ -262,6 +274,8 @@ contains
     intrinsic min
     intrinsic max
     intrinsic tanh
+    intrinsic abs
+    intrinsic log
     intrinsic associated
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
@@ -270,6 +284,10 @@ contains
     real(kind=realtype) :: x2
     real(kind=realtype) :: x2d
     real(kind=realtype) :: x3
+    real(kind=realtype) :: x4
+    real(kind=realtype) :: x4d
+    real(kind=realtype) :: x5
+    real(kind=realtype) :: x5d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -293,7 +311,23 @@ contains
     real(kind=realtype) :: max10d
     real(kind=realtype) :: max11
     real(kind=realtype) :: max11d
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs0d
     real(kind=realtype) :: max12
+    real(kind=realtype) :: max12d
+    real(kind=realtype) :: max13
+    real(kind=realtype) :: max13d
+    real(kind=realtype) :: max14
+    real(kind=realtype) :: max15
+    real(kind=realtype) :: max15d
+    real(kind=realtype) :: max16
+    real(kind=realtype) :: max16d
+    real(kind=realtype) :: max17
+    real(kind=realtype) :: max17d
+    real(kind=realtype) :: max18
+    real(kind=realtype) :: max18d
+    real(kind=realtype) :: max19
+    real(kind=realtype) :: max19d
     real(kind=realtype) :: result1
     real(kind=realtype) :: result1d
     real(kind=realtype) :: arg1
@@ -831,11 +865,11 @@ contains
             end if
             velmag = temp10
             if (muinf .lt. xminn) then
-              max12 = xminn
+              max14 = xminn
             else
-              max12 = muinf
+              max14 = muinf
             end if
-            x3 = uinf/max12
+            x3 = uinf/max14
             if (x3 .lt. xminn) then
               max4 = xminn
             else
@@ -1029,8 +1063,113 @@ contains
             prethetad = rsagrcthetat*((one-fthetat)*(rethetat_targetd-&
 &             rethetatilded-temp10*max11d)/max11-temp10*fthetatd)
             pretheta = rsagrcthetat*(temp10*(one-fthetat))
-            scratchd(i, j, k, idvt+2) = prethetad
-            scratch(i, j, k, idvt+2) = pretheta
+            dscf = zero
+            rescf = zero
+            hcf = zero
+            if (transitioncrossflow) then
+              crossflowratiod = smoothminmax_d(rturb, rturbd, &
+&               0.4_realtype, 0.0_8, rsagrpmin, crossflowratio)
+              if (velmag .lt. xminn) then
+                max15 = xminn
+                max15d = 0.0_8
+              else
+                max15d = velmagd
+                max15 = velmag
+              end if
+              if (velmag .lt. xminn) then
+                max18 = xminn
+                max18d = 0.0_8
+              else
+                max18d = velmagd
+                max18 = velmag
+              end if
+              if (velmag .lt. xminn) then
+                max19 = xminn
+                max19d = 0.0_8
+              else
+                max19d = velmagd
+                max19 = velmag
+              end if
+              temp10 = (vortx+two*omegax)/max15
+              temp9 = w(i, j, k, ivx)
+              temp8 = (vorty+two*omegay)/max18
+              temp7 = w(i, j, k, ivy)
+              temp6 = (vortz+two*omegaz)/max19
+              temp5 = w(i, j, k, ivz)
+              x4d = temp10*wd(i, j, k, ivx) + temp9*(vortxd+two*omegaxd-&
+&               temp10*max15d)/max15 + temp8*wd(i, j, k, ivy) + temp7*(&
+&               vortyd+two*omegayd-temp8*max18d)/max18 + temp6*wd(i, j, &
+&               k, ivz) + temp5*(vortzd+two*omegazd-temp6*max19d)/max19
+              x4 = temp9*temp10 + temp7*temp8 + temp5*temp6
+              if (x4 .ge. 0.) then
+                abs0d = x4d
+                abs0 = x4
+              else
+                abs0d = -x4d
+                abs0 = -x4
+              end if
+              if (velmag .lt. xminn) then
+                max16 = xminn
+                max16d = 0.0_8
+              else
+                max16d = velmagd
+                max16 = velmag
+              end if
+! eq.24 helicity uses the raw velocity curl; undo the
+! rotating-frame -2*omega baked into vortx so h_cf is frame-independent.
+              temp10 = ydist*abs0/max16
+              hcfd = (abs0*ydistd+ydist*abs0d-temp10*max16d)/max16
+              hcf = temp10
+              if (thetabl .lt. xminn) then
+                max17 = xminn
+                max17d = 0.0_8
+              else
+                max17d = thetabld
+                max17 = thetabl
+              end if
+              x5d = -(transitionroughnessheight*max17d/max17**2)
+              x5 = transitionroughnessheight/max17
+              if (x5 .lt. xminn) then
+                max12 = xminn
+                max12d = 0.0_8
+              else
+                max12d = x5d
+                max12 = x5
+              end if
+              rescfd = -(35.088_realtype*max12d/max12)
+              rescf = -(35.088_realtype*log(max12)) + 319.51_realtype
+              dhplusd = smoothminmax_d(0.1066_realtype - hcf*(one+&
+&               crossflowratio), -((one+crossflowratio)*hcfd+hcf*&
+&               crossflowratiod), zero, 0.0_8, rsagrpmax, dhplus)
+              dhminusd = smoothminmax_d(-(0.1066_realtype-hcf*(one+&
+&               crossflowratio)), (one+crossflowratio)*hcfd + hcf*&
+&               crossflowratiod, zero, 0.0_8, rsagrpmax, dhminus)
+              rescfd = rescfd + (50000.0_realtype*2*dhplus+&
+&               6200.0_realtype)*dhplusd
+              rescf = rescf + (6200.0_realtype*dhplus+50000.0_realtype*&
+&               dhplus**2)
+              rescfd = rescfd - 75.0_realtype*(1.0-tanh(dhminus/&
+&               0.0125_realtype)**2)*dhminusd/0.0125_realtype
+              rescf = rescf - 75.0_realtype*tanh(dhminus/0.0125_realtype&
+&               )
+              if (timescale .lt. xminn) then
+                max13 = xminn
+                max13d = 0.0_8
+              else
+                max13d = timescaled
+                max13 = timescale
+              end if
+              result1d = smoothminmax_d(rescf - rethetatilde, rescfd - &
+&               rethetatilded, zero, 0.0_8, rsagrpmin, result1)
+              temp10 = result1*fthetat/max13
+              dscfd = rsagrcthetat*rsagrccrossflow*(fthetat*result1d+&
+&               result1*fthetatd-temp10*max13d)/max13
+              dscf = rsagrcthetat*rsagrccrossflow*temp10
+            else
+              dscfd = 0.0_8
+            end if
+            scratchd(i, j, k, idvt+2) = prethetad + dscfd
+            scratch(i, j, k, idvt+2) = pretheta + dscf
             if (associated(transitiondebug)) then
               dudx = two*fact*uux
               dudy = two*fact*uuy
@@ -1112,7 +1251,8 @@ contains
     use flowvarrefstate
     use turbutils_d, only : rethetatcorrelation, flengthcorrelation, &
 &   rethetaccorrelation, smoothminmax
-    use inputiteration, only : transitionsrcdtrestrict, &
+    use inputiteration, only : transitioncrossflow, &
+&   transitionroughnessheight, transitionsrcdtrestrict, &
 &   transitionuseapproxsa
     implicit none
 ! local parameters
@@ -1165,6 +1305,9 @@ contains
     integer(kind=inttype), parameter :: dbgqq11=46_inttype
     integer(kind=inttype), parameter :: dbgqq22=47_inttype
     integer(kind=inttype), parameter :: dbgqq33=48_inttype
+    integer(kind=inttype), parameter :: dbgdscf=49_inttype
+    integer(kind=inttype), parameter :: dbgrescf=50_inttype
+    integer(kind=inttype), parameter :: dbghcf=51_inttype
 ! local variables.
     integer(kind=inttype) :: i, j, k, nn, ii
     real(kind=realtype) :: fv1, fv2, ft2
@@ -1192,7 +1335,10 @@ contains
     real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: gammaeff, gammaterm
-    real(kind=realtype) :: pretheta, ydist
+    real(kind=realtype) :: pretheta, dscf, rescf, hcf
+    real(kind=realtype) :: crossflowratio, crossflowphiprime, dhplus, &
+&   dhminus
+    real(kind=realtype) :: ydist
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
@@ -1207,11 +1353,15 @@ contains
     intrinsic min
     intrinsic max
     intrinsic tanh
+    intrinsic abs
+    intrinsic log
     intrinsic associated
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
+    real(kind=realtype) :: x4
+    real(kind=realtype) :: x5
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1224,7 +1374,15 @@ contains
     real(kind=realtype) :: max9
     real(kind=realtype) :: max10
     real(kind=realtype) :: max11
+    real(kind=realtype) :: abs0
     real(kind=realtype) :: max12
+    real(kind=realtype) :: max13
+    real(kind=realtype) :: max14
+    real(kind=realtype) :: max15
+    real(kind=realtype) :: max16
+    real(kind=realtype) :: max17
+    real(kind=realtype) :: max18
+    real(kind=realtype) :: max19
     real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
 ! set model constants
@@ -1451,11 +1609,11 @@ contains
             end if
             velmag = sqrt(max3)
             if (muinf .lt. xminn) then
-              max12 = xminn
+              max14 = xminn
             else
-              max12 = muinf
+              max14 = muinf
             end if
-            x3 = uinf/max12
+            x3 = uinf/max14
             if (x3 .lt. xminn) then
               max4 = xminn
             else
@@ -1559,7 +1717,73 @@ contains
             end if
             pretheta = rsagrcthetat/max11*(rethetat_target-rethetatilde)&
 &             *(one-fthetat)
-            scratch(i, j, k, idvt+2) = pretheta
+            dscf = zero
+            rescf = zero
+            hcf = zero
+            if (transitioncrossflow) then
+              crossflowratio = smoothminmax(rturb, 0.4_realtype, &
+&               rsagrpmin)
+              if (velmag .lt. xminn) then
+                max15 = xminn
+              else
+                max15 = velmag
+              end if
+              if (velmag .lt. xminn) then
+                max18 = xminn
+              else
+                max18 = velmag
+              end if
+              if (velmag .lt. xminn) then
+                max19 = xminn
+              else
+                max19 = velmag
+              end if
+              x4 = w(i, j, k, ivx)/max15*(vortx+two*omegax) + w(i, j, k&
+&               , ivy)/max18*(vorty+two*omegay) + w(i, j, k, ivz)/max19*&
+&               (vortz+two*omegaz)
+              if (x4 .ge. 0.) then
+                abs0 = x4
+              else
+                abs0 = -x4
+              end if
+              if (velmag .lt. xminn) then
+                max16 = xminn
+              else
+                max16 = velmag
+              end if
+! eq.24 helicity uses the raw velocity curl; undo the
+! rotating-frame -2*omega baked into vortx so h_cf is frame-independent.
+              hcf = ydist*abs0/max16
+              if (thetabl .lt. xminn) then
+                max17 = xminn
+              else
+                max17 = thetabl
+              end if
+              x5 = transitionroughnessheight/max17
+              if (x5 .lt. xminn) then
+                max12 = xminn
+              else
+                max12 = x5
+              end if
+              rescf = -(35.088_realtype*log(max12)) + 319.51_realtype
+              dhplus = smoothminmax(0.1066_realtype - hcf*(one+&
+&               crossflowratio), zero, rsagrpmax)
+              dhminus = smoothminmax(-(0.1066_realtype-hcf*(one+&
+&               crossflowratio)), zero, rsagrpmax)
+              rescf = rescf + (6200.0_realtype*dhplus+50000.0_realtype*&
+&               dhplus**2)
+              rescf = rescf - 75.0_realtype*tanh(dhminus/0.0125_realtype&
+&               )
+              if (timescale .lt. xminn) then
+                max13 = xminn
+              else
+                max13 = timescale
+              end if
+              result1 = smoothminmax(rescf - rethetatilde, zero, &
+&               rsagrpmin)
+              dscf = rsagrcthetat/max13*rsagrccrossflow*result1*fthetat
+            end if
+            scratch(i, j, k, idvt+2) = pretheta + dscf
             if (associated(transitiondebug)) then
               dudx = two*fact*uux
               dudy = two*fact*uuy
@@ -3474,7 +3698,10 @@ contains
     use section
     use inputphysics
     use flowvarrefstate
-    use turbutils_d, only : flengthcorrelation, rethetaccorrelation
+    use turbutils_d, only : flengthcorrelation, rethetaccorrelation, &
+&   smoothminmax
+    use inputiteration, only : transitioncrossflow, &
+&   transitionroughnessheight
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(3, 3)
@@ -3500,10 +3727,12 @@ contains
     real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
     real(kind=realtype) :: fonset, fonset1
     real(kind=realtype) :: vortlim, vortmaglim
-    real(kind=realtype) :: pgamma
+    real(kind=realtype) :: pgamma, dscf, rescf, hcf
     real(kind=realtype) :: velmag, velmag2, timescale
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: ydist
+    real(kind=realtype) :: crossflowratio, crossflowphiprime, dhplus, &
+&   dhminus
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
     real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
@@ -3513,9 +3742,13 @@ contains
     intrinsic exp
     intrinsic min
     intrinsic tanh
+    intrinsic abs
+    intrinsic log
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
+    real(kind=realtype) :: x4
+    real(kind=realtype) :: x5
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
     real(kind=realtype) :: max3
@@ -3530,7 +3763,15 @@ contains
     real(kind=realtype) :: max12
     real(kind=realtype) :: max13
     real(kind=realtype) :: max14
+    real(kind=realtype) :: abs0
     real(kind=realtype) :: max15
+    real(kind=realtype) :: max16
+    real(kind=realtype) :: max17
+    real(kind=realtype) :: max18
+    real(kind=realtype) :: max19
+    real(kind=realtype) :: max20
+    real(kind=realtype) :: max21
+    real(kind=realtype) :: max22
     real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
 ! set model constants
@@ -3691,11 +3932,11 @@ contains
     end if
     velmag = sqrt(max4)
     if (muinf .lt. xminn) then
-      max15 = xminn
+      max17 = xminn
     else
-      max15 = muinf
+      max17 = muinf
     end if
-    x3 = uinf/max15
+    x3 = uinf/max17
     if (x3 .lt. xminn) then
       max5 = xminn
     else
@@ -3815,6 +4056,70 @@ contains
       max14 = timescale
     end if
     a(3, 3) = -(rsagrcthetat/max14*(one-fthetat))
+    if (transitioncrossflow) then
+      crossflowratio = smoothminmax(rturb, 0.4_realtype, rsagrpmin)
+      if (velmag .lt. xminn) then
+        max18 = xminn
+      else
+        max18 = velmag
+      end if
+      if (velmag .lt. xminn) then
+        max21 = xminn
+      else
+        max21 = velmag
+      end if
+      if (velmag .lt. xminn) then
+        max22 = xminn
+      else
+        max22 = velmag
+      end if
+      x4 = w(i, j, k, ivx)/max18*(vortx+two*omegax) + w(i, j, k, ivy)/&
+&       max21*(vorty+two*omegay) + w(i, j, k, ivz)/max22*(vortz+two*&
+&       omegaz)
+      if (x4 .ge. 0.) then
+        abs0 = x4
+      else
+        abs0 = -x4
+      end if
+      if (velmag .lt. xminn) then
+        max19 = xminn
+      else
+        max19 = velmag
+      end if
+! eq.24 helicity uses the raw velocity curl; undo the
+! rotating-frame -2*omega baked into vortx so h_cf is frame-independent.
+      hcf = ydist*abs0/max19
+      if (thetabl .lt. xminn) then
+        max20 = xminn
+      else
+        max20 = thetabl
+      end if
+      x5 = transitionroughnessheight/max20
+      if (x5 .lt. xminn) then
+        max15 = xminn
+      else
+        max15 = x5
+      end if
+      rescf = -(35.088_realtype*log(max15)) + 319.51_realtype
+      dhplus = smoothminmax(0.1066_realtype - hcf*(one+crossflowratio), &
+&       zero, rsagrpmax)
+      dhminus = smoothminmax(-(0.1066_realtype-hcf*(one+crossflowratio))&
+&       , zero, rsagrpmax)
+      rescf = rescf + (6200.0_realtype*dhplus+50000.0_realtype*dhplus**2&
+&       )
+      rescf = rescf - 75.0_realtype*tanh(dhminus/0.0125_realtype)
+      if (rescf .lt. rethetatilde) then
+        arg1 = rsagrpmin*(zero-(rescf-rethetatilde))
+        crossflowphiprime = one/(one+exp(arg1))
+        if (timescale .lt. xminn) then
+          max16 = xminn
+        else
+          max16 = timescale
+        end if
+        a(3, 3) = a(3, 3) - rsagrcthetat/max16*rsagrccrossflow*fthetat*&
+&         crossflowphiprime
+      end if
+    end if
     if (a(3, 3) .gt. zero) then
       a(3, 3) = zero
     else

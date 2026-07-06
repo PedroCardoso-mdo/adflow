@@ -68,27 +68,76 @@ State-vector viscosities are stored as **ratios**:
 - `rlv(i,j,k) = μ/μ_∞`   (laminar viscosity ratio, dimensionless)
 - `rev(i,j,k) = μ_t/μ_∞` (eddy viscosity ratio, dimensionless)
 
-## 5. Why this matters for the SA-γ-Re̅θt transition model
+## 5. The paper → ADflow non-dimensionalization shift
 
-The Piotrowski & Zingg (2020) correlations assume a **velocity-based** nondim
-(U∞ = 1, μ_ref = 1/Re). Because ADflow instead uses p-ρ scaling and stores
-`rlv = μ/μ_∞`, quantities that mix velocity, viscosity, and Reynolds number must
-be rewritten. Concrete example — the transition time scale (see
-[`paper-reference.md`](paper-reference.md) §2, and the note at
-`paper-reference.md:59`):
+**The paper's equations are already non-dimensional — but by a *different*
+scheme than ADflow's**, so terms must be shifted, not copied verbatim.
+
+Piotrowski & Zingg (2020, p. 7) non-dimensionalize by freestream + **sound
+speed** (OVERFLOW-style):
 
 ```
-Paper (velocity-based):   t = 500·μ̃/(ρ·U²)      with μ̃ = 1/Re
-ADflow (p-ρ, rlv ratio):  t = 500·rlv/(ρ·U²·Re)
+Re = ρ∞ · a∞ · l / μ∞          (a∞ = freestream sound speed, l = root chord)
 ```
 
-**Rule of thumb when porting an equation:** velocities are in units of `uRef`
-(so free stream = M·√γ), viscosities are ratios to μ_∞, and any explicit `1/Re`
-in the paper has to be reintroduced by hand — it is *not* absorbed into ADflow's
-viscosity like it is in a velocity-normalized code.
+Because that scheme scales by a∞ and l, the paper's equations carry **explicit
+`Re` / `1/Re` factors** wherever a physical Reynolds number is involved — the
+time scale (Eq. 7), θ_BL (Eq. 4), Re_S (Eq. 5), λ_θ (Eq. 10), Re_scf (Eq. 17).
+
+ADflow's p-ρ scheme (Sections 1–3) instead absorbs the Reynolds number into the
+**non-dimensional viscosity** `muInf = muInfDim/muRef`. Two facts make the
+paper's `Re` factors collapse to 1 in the code:
+
+- **`L_ref = 1 m`** — coordinates are metres, so a non-dim length numerically
+  equals the physical length in metres.
+- **`ρRef·uRef/μRef = 1`** — since `muRef = √(pRef·rhoRef)` and
+  `uRef = √(pRef/rhoRef)`.
+
+So ν-based quantities evaluate **directly to physical values**, and **the paper's
+explicit `Re`/`1/Re` factors are dropped in code** — the "`Re = 1` implicit"
+convention (see the `timeScale` comment in `saGammaRetheta.F90`; `sa.F90` does
+the same).
+
+**Timescale example (Eq. 7):**
+
+```
+Paper (a∞-based):   t = 500·μ/(ρ·U²) · (1/Re)        ← explicit 1/Re
+ADflow code:        timeScale = 500·nu/velMag2        ← NO Re factor
+                              = 500·rlv/(ρ·|V|²)        (Re = 1 implicit)
+```
+
+> **Correction (2026-07-06):** earlier revisions of this file and
+> `paper-reference.md` called the paper "velocity-based (U∞ = 1)" and wrote the
+> ADflow timescale with an extra `·Re`. Both were wrong: the paper is a∞-based,
+> and the code carries **no** explicit Re factor.
+
+**Rule of thumb when porting a paper equation:** keep velocities in `uRef` units
+(freestream = M·√γ) and viscosities as ratios to μ_∞, and **drop** the paper's
+explicit `Re`/`1/Re` — it is already absorbed by ADflow's non-dim viscosity.
+Lengths then come out physical (metres) and Reynolds-number groupings come out as
+physical Reynolds numbers, which is exactly what the empirical correlations expect.
+
+## 6. Crossflow (D_scf) term dimension status
+
+The helicity-based crossflow source (Eq. 15–26) was added using the shift above.
+Where each new quantity lands dimensionally in the code:
+
+| Quantity | Paper form (Eq.) | Code (`saGammaRetheta.F90`) | Status in ADflow |
+|---|---|---|---|
+| θt (`thetaBL`) | Re̅θt·μ/(ρU)·(1/Re) (Eq. 4) | `reThetaTilde*nu/velMag` | physical momentum thickness — non-dim by L_ref=1 m ⇒ **value in metres** |
+| h (`transitionRoughnessHeight`) | `h/θt` (Eq. 17) | input, default `3.3e-6` | physical roughness length — **must be in mesh units (metres)**; 3.3e-6 = 3.3 µm |
+| H_cf (`hcf`) | d·Ω_sw/U (Eq. 26) | `yDist*abs(Û·Ω⃗)/velMag` | **dimensionless** (L_ref cancels; uses pure curl, frame-independent) |
+| Re_scf (`reScf`) | correlation (Eq. 17) | `-35.088·ln(h/θt)+319.51+f(ΔH⁺)−f(ΔH⁻)` | **physical Reynolds number** (calibrated correlation) |
+| D_scf (`dScf`) | (c_θt/t)·c_cf·min(Re_scf−Re̅θt,0)·F_θt (Eq. 15) | `(rsaGRcthetat/timeScale)*…` | **Re/time**, same units as `P_θt`; no explicit Re |
+
+Since `thetaBL` is the physical θ (metres) and `h` is a physical length, `h/θt`
+is the true physical ratio (reference-length-independent) and the correlation
+constants apply directly; `min(Re_scf − Re̅θt, 0)` compares two physical Reynolds
+numbers. No explicit paper `Re` factor appears in any crossflow term — per §5.
 
 ---
 
 **See also:** [`architecture.md`](architecture.md) (state-vector layout,
-`rlv`/`rev`/`timeRef` usage) and [`paper-reference.md`](paper-reference.md)
+`rlv`/`rev`/`timeRef` usage, crossflow options) and
+[`SA_GAMMA_RETHETHA_BASE/paper-reference.md`](SA_GAMMA_RETHETHA_BASE/paper-reference.md)
 (equations that consume these non-dimensional quantities).

@@ -300,6 +300,8 @@ module inputIteration
     real(kind=realType) :: dissContMagnitude, dissContMidpoint, dissContSharpness
     integer(kind=intType) :: TurbDADICoupled = 2
     logical :: transitionFirstOrderUpwind = .true.
+    logical :: transitionCrossflow = .true.
+    real(kind=realType) :: transitionRoughnessHeight = 3.3e-6_realType
     logical :: transitionSrcDtRestrict = .true.
     real(kind=realType) :: transitionSrcDtLimit = 0.9_realType
     ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)

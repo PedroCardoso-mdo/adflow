@@ -34,6 +34,7 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRce1   = 1.0_realType
     real(kind=realType), parameter :: rsaGRce2   = 50.0_realType
     real(kind=realType), parameter :: rsaGRcthetat = 0.03_realType
+    real(kind=realType), parameter :: rsaGRccrossflow = 0.6_realType
 !
 !       SA-noft2-Gamma-Retheta smooth-Fonset constants.
 !
@@ -59,7 +60,7 @@ module paramTurb
 
 !       transitionDebug slot count (must match comment block in saGammaRetheta.F90).
 !       Do NOT renumber existing slots — append new ones at the end.
-    integer(kind=intType), parameter :: nTransitionDebug = 48_intType
+    integer(kind=intType), parameter :: nTransitionDebug = 51_intType
 
 !
 !       K-omega constants.

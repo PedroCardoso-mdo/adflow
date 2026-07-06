@@ -5690,6 +5690,8 @@ class ADFLOW(AeroSolver):
             "turbulenceOrder": [str, ["first order", "second order"]],
             "turbResScale": [(float, list, type(None)), None],
             "transitionFirstOrderUpwind": [bool, True],
+            "transitionCrossflow": [bool, True],
+            "transitionRoughnessHeight": [float, 3.3e-6],
             "transitionSrcDtRestrict": [bool, True],
             "transitionSrcDtLimit": [float, 0.9],
             "transitionSrcDtEigMode": [str, "eigenvalue"],
@@ -6095,6 +6097,8 @@ class ADFLOW(AeroSolver):
             "turbulenceorder": {"first order": 1, "second order": 2, "location": ["discr", "orderturb"]},
             "turbresscale": ["iter", "turbresscale"],
             "transitionfirstorderupwind": ["iter", "transitionfirstorderupwind"],
+            "transitioncrossflow": ["iter", "transitioncrossflow"],
+            "transitionroughnessheight": ["iter", "transitionroughnessheight"],
             "transitionsrcdtrestrict": ["iter", "transitionsrcdtrestrict"],
             "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
             "transitionsrcdteigmode": {

@@ -2,7 +2,8 @@
 
 > What Claude needs to know about ADflow internals, user constraints, confirmed
 > facts, and every runtime option added for the SA-γ-Re̅θt transition model.
-> Physics equations live in [`paper-reference.md`](paper-reference.md); adjoint/AD
+> Physics equations live in [`SA_GAMMA_RETHETHA_BASE/paper-reference.md`](SA_GAMMA_RETHETHA_BASE/paper-reference.md);
+> non-dim conventions in [`nondimensionalization.md`](nondimensionalization.md); adjoint/AD
 > touchpoints in [`adjoint-trace.md`](adjoint-trace.md).
 
 ---
@@ -131,7 +132,7 @@ Source routine at line ~300 computes:
 | LAPACK | Available (linked in build system) |
 | Tu_∞ | `turbIntensityInf` exists in inputParam.F90:591 |
 | Wall BC for γ | γ=0 (Dirichlet), Re̅θt=zero-gradient |
-| Roughness | Not implemented yet, helper exists |
+| Roughness | Implemented via crossflow D_scf — `transitionRoughnessHeight` (default 3.3e-6 m) |
 
 ---
 
@@ -153,6 +154,8 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"turbResScale"` | list/None | `None` (auto) | Residual scaling per equation. Auto-set to `[10000, 10, 10000]` for this model. Override to tune convergence balance. |
 | `"transitionDampTheta"` | float | `0.99` | Back-off factor for iterative γ/Re̅θt update damping in DD-ADI (P&Z §3). |
 | `"transitionDampMaxIter"` | int | `40` | Max back-off iterations for γ/Re̅θt bounds enforcement in DD-ADI. |
+| `"transitionCrossflow"` | bool | `True` | Enable the helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. Harmless in 2D (D_scf≡0); enable for swept/3D. |
+| `"transitionRoughnessHeight"` | float | `3.3e-6` | Surface roughness height h for the crossflow correlation (Eq. 17), as a physical length in mesh units (metres). 3.3e-6 = 3.3 µm (smooth surface). |
 
 ### Turb-ANK KSP physicality options (transition-specific)
 
