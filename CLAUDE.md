@@ -37,6 +37,11 @@ the end, not task-by-task.
 8. **Do not load files outside the task block's `Context:` list.** Token
    discipline matters — every task block is self-contained for a reason.
 9. **Paper wins** when paper and code disagree (`docs/paper-reference.md`).
+10. **Units are p-ρ non-dimensional, not velocity-based.** ADflow scales by
+    pressure/density: velocity normalizes to M·√γ (not 1), viscosities are ratios
+    to μ_∞ (`rlv`, `rev`), and `1/Re` is NOT absorbed into the viscosity. Read
+    `docs/nondimensionalization.md` before touching any equation involving
+    velocity, viscosity, time scales, or Reynolds number.
 
 ## File Locations (most-edited)
 

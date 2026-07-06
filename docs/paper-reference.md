@@ -56,7 +56,7 @@ where:
 - ρ = density
 - U = local velocity magnitude
 - Re = freestream Reynolds number
-- **CRITICAL**: The 1/Re factor is explicit. In nondimensional codes where μ_ref = 1/Re, this becomes `t = 500·μ̃/(ρ·U²)` where μ̃ is the nondimensional viscosity. But if the code stores `rlv = μ/μ_∞` (ratio), then `t = 500·rlv/(ρ·U²·Re)`.
+- **CRITICAL**: The 1/Re factor is explicit. In nondimensional codes where μ_ref = 1/Re, this becomes `t = 500·μ̃/(ρ·U²)` where μ̃ is the nondimensional viscosity. But if the code stores `rlv = μ/μ_∞` (ratio), then `t = 500·rlv/(ρ·U²·Re)`. ADflow uses the latter (p-ρ scaling, `rlv` ratio) — see [`nondimensionalization.md`](nondimensionalization.md) for the full reference-state scheme and why `1/Re` must be reintroduced by hand.
 
 ### 2.3 Switching function F_θt (Eq. 3)
 

@@ -50,6 +50,10 @@ w(i,j,k, itu3) = Re̅θt (transition onset Re) — NEW
 
 All stored as conservative (ρ·φ). Generic nVar extension handles sizing.
 
+> Values are non-dimensional. ADflow uses **pressure–density (p-ρ) scaling**, so
+> velocity normalizes to M·√γ (not 1) and viscosities are stored as ratios to
+> μ_∞. See [`nondimensionalization.md`](nondimensionalization.md).
+
 ---
 
 ## 3. Key Module Locations
