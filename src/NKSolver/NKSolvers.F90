@@ -3502,7 +3502,7 @@ contains
         real(kind=alwaysRealType) :: resHist(ANK_maxIter + 1)
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old
         real(kind=alwaysRealType) :: linResMonitorTurb, totalRTurb
-        logical :: correctForK, LSFailed, srcDtRestrictActive
+        logical :: correctForK, LSFailed, srcDtRestrictActive, backtrackTriggered
 
         ! Derived condition for source dt restriction (ANK turbKSP path)
         ! DD-ADI uses transitionSrcDtRestrict alone; ANK adds deactivation after clean iters.
@@ -3670,12 +3670,14 @@ contains
 
             ! initialize this outside the ls
             LSFailed = .False.
+            backtrackTriggered = .False.
 
             if ((unsteadyNorm > totalRTurb * ANK_unstdyLSTol .or. myisnan(unsteadyNorm))) then
                 ! The unsteady residual is too high or we have a NAN. Do a
                 ! backtracking line search until we get a residual that is lower.
 
                 LSFailed = .True.
+                backtrackTriggered = .True.
 
                 ! Restore the starting (old) w value by adding lamda*deltaW
                 call VecAXPY(wVecTurb, lambdaTurb, deltaWTurb, ierr)
@@ -3774,13 +3776,14 @@ contains
             end if
 
             ! ============== Source-dt deactivation switch (P&Z §IV.B.3) ==============
-            ! Increment counter when line search accepts step without backtracking.
-            ! After srcDtDeactivateIters clean iterations, deactivate source dt restriction.
-            ! Reactivate (reset counter) when backtracking is triggered.
-            ! NOTE: P&Z also reactivate on relative residual increase; not implemented here
-            ! since ANKTurbSolveKSP does not track relative residual — only backtracking.
+            ! Clean iterations count only in the inexact-Newton analog phase, i.e.
+            ! the second-order regime (totalR <= ANK_secondOrdSwitchTol * totalR0).
+            ! After srcDtDeactivateIters clean iterations, deactivate source dt
+            ! restriction. Reset the counter (reactivate) when backtracking is
+            ! triggered — even if the backtrack succeeds — or when the relative
+            ! residual rises back above the phase-switch tolerance.
             if (transitionSrcDtRestrict) then
-                if (LSFailed) then
+                if (backtrackTriggered .or. totalR > ANK_secondOrdSwitchTol * totalR0) then
                     noBacktrackCount = 0
                 else
                     noBacktrackCount = noBacktrackCount + 1

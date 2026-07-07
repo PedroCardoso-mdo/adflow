@@ -150,7 +150,7 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
   (inputParamRoutines.F90:3870-3890) — freestream quase-laminar, coerente
   com um modelo de transição.
 
-### W6 — Docs desatualizados (não corrigidos; mesma política do A1-D3)
+### W6 — Docs desatualizados (não corrigidos; mesma política do A1-D3)- _____________________FEITO_____________________________
 
 | Doc diz | Código diz |
 |---|---|

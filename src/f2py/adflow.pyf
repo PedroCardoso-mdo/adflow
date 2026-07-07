@@ -1111,6 +1111,7 @@ python module libadflow
          logical :: transitioncrossflow
          real(kind=realtype) :: transitionroughnessheight
          logical :: transitionuseapproxsa
+         real(kind=realtype) :: transitionreflength
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

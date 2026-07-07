@@ -2,7 +2,7 @@
 
 > What Claude needs to know about ADflow internals, user constraints, confirmed
 > facts, and every runtime option added for the SA-γ-Re̅θt transition model.
-> Physics equations live in [`SA_GAMMA_RETHETHA_BASE/paper-reference.md`](SA_GAMMA_RETHETHA_BASE/paper-reference.md);
+> Physics equations live in the full paper, [`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md);
 > non-dim conventions in [`nondimensionalization.md`](nondimensionalization.md); adjoint/AD
 > touchpoints in [`adjoint-trace.md`](adjoint-trace.md).
 
@@ -65,8 +65,8 @@ All stored as conservative (ρ·φ). Generic nVar extension handles sizing.
 | Model constants (ca1,ca2,...) | `src/modules/paramTurb.F90:32-52` |
 | Input parameters | `src/modules/inputParam.F90:293,298` |
 | Block data (transitionDebug array) | `src/modules/block.F90:662`, `blockPointers.F90:156` |
-| Main transition model | `src/turbulence/saGammaRetheta.F90` (1862 lines) |
-| Smooth helper functions | `src/turbulence/saGammaRethetaHelpers.F90` (367 lines) |
+| Main transition model | `src/turbulence/saGammaRetheta.F90` (2470 lines) |
+| Smooth helper functions (correlations + `smoothMinMax`) | `src/turbulence/turbUtils.F90:2279-2412` (`reThetaTCorrelation`, `flengthCorrelation`, `rethetacCorrelation`, `smoothMinMax`) |
 | Initialization | `src/initFlow/initializeFlow.F90:140-146, 2229-2241` |
 | Wall/farfield BCs | `src/turbulence/turbBCRoutines.F90:441-470, 921-983` |
 | Dispatch (turbAPI) | `src/turbulence/turbAPI.F90:49,74` |
@@ -81,21 +81,23 @@ All stored as conservative (ρ·φ). Generic nVar extension handles sizing.
 ## 4. Key Code Patterns
 
 ### Source-term assembly
-In `saGammaRetheta.F90`, subroutine `saGammaRetheta_block(calledFromANK)`:
-- `calledFromANK = .true.`: compute residual only, don't update w
-- `calledFromANK = .false.`: compute residual + run DADI solver + update w
+In `saGammaRetheta.F90`, subroutine `saGammaReTheta_block(resOnly)` (line 67):
+- `resOnly = .true.`: compute residual only, don't update w
+- `resOnly = .false.`: compute residual + run DADI solver + update w
 
-Source routine at line ~300 computes:
+Source routine (subroutine `Source`, line 146) computes:
 1. SA terms (ν̃): term1, term2_prod, term2_dest → with γ multiplier on production
 2. γ terms: P_γ, E_γ via F_onset, F_turb, vorticity
 3. Re̅θt terms: P_θt via timeScale, F_θt, Re_θt correlation
 
 ### DADI solver
-`saGammaReThetaSolve` (lines 1251-1861):
+`saGammaReThetaSolve` (lines 1485-2131):
 - 3×3 block DD-ADI in i,j,k directions
 - Uses qq(i,j,k,row,col) matrix from Source routine
-- Solution damping (Algorithm 2) at lines 1830-1856
-- Row/column scaling at lines 1329-1331 (using turbResScale)
+- Solution damping (Algorithm 2, per-variable exponential back-off with
+  warned last-resort clip) in the update section after the tri-diagonal
+  solves (search `transitionDampMaxIter`)
+- Row/column scaling at lines 1582-1584 (using turbResScale)
 
 ### Variable references
 - `rlv(i,j,k)` = μ/μ_∞ (laminar viscosity ratio, dimensionless)
@@ -131,7 +133,7 @@ Source routine at line ~300 computes:
 | Residual storage | `scratch(i,j,k,idvt+n)` → scaled to `dw(i,j,k,itun)` |
 | LAPACK | Available (linked in build system) |
 | Tu_∞ | `turbIntensityInf` exists in inputParam.F90:591 |
-| Wall BC for γ | γ=0 (Dirichlet), Re̅θt=zero-gradient |
+| Wall BC for γ | zero-gradient (Neumann), Re̅θt=zero-gradient — `turbBCRoutines.F90:931` (`bmt=-1`; commit dc1950ef) |
 | Roughness | Implemented via crossflow D_scf — `transitionRoughnessHeight` (default 3.3e-6 m) |
 
 ---
@@ -149,13 +151,28 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"transitionFirstOrderUpwind"` | bool | `True` | First-order upwind for γ and Re̅θt convection. More dissipative but more robust. |
 | `"transitionSrcDtRestrict"` | bool | `True` | Enable source-term dt restriction (P&Z Eq. 59). Caps λ_source × dt ≤ 0.9. |
 | `"transitionSrcDtLimit"` | float | `0.9` | Threshold for source-term dt restriction (λ_source × dt ≤ this value). |
-| `"srcDtDeactivateIters"` | int | `5` | Deactivate source-dt restriction after N consecutive ANK iterations without backtracking (P&Z §IV.B.3). Set to 0 to never deactivate. |
+| `"srcDtDeactivateIters"` | int | `5` | Deactivate source-dt restriction after N consecutive clean (no-backtrack) turbKSP iterations **in the second-order regime** (`totalR ≤ ANKSecondOrdSwitchTol·totalR0`, the inexact-Newton analog of P&Z §IV.B.3). Counter resets when backtracking is triggered (even if it succeeds) or when the residual rises back above the switch tolerance. With the default `ANKSecondOrdSwitchTol = 1e-16` the regime is never entered ⇒ restriction never deactivates; set it to ~`1e-5` (paper's phase-switch value) to enable the acceleration. `0` = restriction inactive in turbKSP from the start (**not** "never deactivate"). DADI ignores this option (restriction always on there). Semantics fixed 2026-07-07 (D-A2-3). |
 | `"TurbDADICoupled"` | str | `"full"` | DADI coupling mode: `"decoupled"` (3 scalar solves), `"transition"` (SA alone + γ-Re̅θt 2×2), `"full"` (3×3 block). |
 | `"turbResScale"` | list/None | `None` (auto) | Residual scaling per equation. Auto-set to `[10000, 10, 10000]` for this model. Override to tune convergence balance. |
-| `"transitionDampTheta"` | float | `0.99` | Back-off factor for iterative γ/Re̅θt update damping in DD-ADI (P&Z §3). |
-| `"transitionDampMaxIter"` | int | `40` | Max back-off iterations for γ/Re̅θt bounds enforcement in DD-ADI. |
+| `"transitionDampTheta"` | float | `0.99` | Back-off factor for per-variable γ/Re̅θt update damping in DD-ADI (P&Z Algorithm 2). |
+| `"transitionDampMaxIter"` | int | `10000` | Safety cap on the back-off loop (unbounded in the paper); 10000 ⇒ effectively unbounded (0.99¹⁰⁰⁰⁰ ≈ 0). A hard clip to the bounds remains as **last-resort fallback only**: it can only fire after the loop exhausts, which requires the previous state to already be out of bounds; when it fires, a warning with cell counts prints advising to raise this option or investigate the upstream bound violation. Changed from 40 on 2026-07-07 (D-A2-5). |
 | `"transitionCrossflow"` | bool | `True` | Enable the helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. Harmless in 2D (D_scf≡0); enable for swept/3D. |
 | `"transitionRoughnessHeight"` | float | `3.3e-6` | Surface roughness height h for the crossflow correlation (Eq. 17), as a physical length in mesh units (metres). 3.3e-6 = 3.3 µm (smooth surface). |
+| `"transitionRefLength"` | float | `-1.0` (auto) | Reference length l [mesh units] in the vorticity limiter (P&Z Eqs. 52-53; paper uses root chord — the physical cap scales as 1/√l, a calibration scale, NOT a unit conversion, so the "drop Re" rule of `nondimensionalization.md` does not apply). Negative = auto: uses the AeroProblem `chordRef` (via `inputPhysics%lengthRef`, refreshed at every `setAeroProblem`). Set explicitly to decouple from chordRef; `1.0` recovers the pre-option behavior (l = 1 m). Added 2026-07-07 to close finding D1. |
+
+**`transitionRefLength` plumbing & guidance.** No new AeroProblem wiring was
+added: `pyADflow.py` already pushes `ap.chordRef` into `inputPhysics%lengthRef`
+inside `setAeroProblemData` (~line 3608), and every compute entry point calls
+`setAeroProblem` *before* any residual evaluation, so the fallback is always
+fresh (pyADflow errors out if `chordRef` is missing; `setDefaultValues` seeds
+`lengthRef = 1.0` at init as a safety net). Fortran reads the option in
+`saGammaRetheta.F90` (`Source` + `evalSrcJacBlock`): `transitionRefLength > 0`
+wins, else `lengthRef`. **Full aircraft:** no single l is "correct" for all
+components (cap ∝ 1/√c_local); the paper's own prescription (one global root
+chord) is already a compromise — use the MAC or root chord, and remember the
+limiter is a numerical safety net whose failure mode (residual oscillation near
+LSBs) is visible, not a silent physics error. Full analysis:
+`findings/D1_transitionRefLength.md`.
 
 ### Turb-ANK KSP physicality options (transition-specific)
 
@@ -183,7 +200,8 @@ solverOptions = {
     # Transition-specific (new)
     "transitionFirstOrderUpwind": True,      # robust convection for γ, Re̅θt
     "transitionSrcDtRestrict": True,         # source limiting ON
-    "srcDtDeactivateIters": 5,               # deactivate after 5 clean ANK iters
+    "srcDtDeactivateIters": 5,               # deactivate after 5 clean 2nd-order iters
+    # (deactivation only engages if ANKSecondOrdSwitchTol is set, e.g. 1e-5)
     "TurbDADICoupled": "full",               # 3×3 coupled DADI
     # turbResScale auto-set to [10000, 10, 10000]
 
@@ -285,7 +303,7 @@ A_source =  ⎢ ∂S_γ/∂ν̃      ∂S_γ/∂γ      ∂S_γ/∂Re̅θt   ⎥
 
 2. **Independent of `TurbDADICoupled` mode** — coupling mode only affects how DADI solves the system, not eigenvalue computation.
 
-3. **Auto-deactivation**: After `srcDtDeactivateIters` consecutive ANK iterations without backtracking, the restriction turns off. Reactivates on backtracking.
+3. **Auto-deactivation** (turbKSP only; P&Z §IV.B.3): after `srcDtDeactivateIters` consecutive clean iterations in the second-order regime (`totalR ≤ ANKSecondOrdSwitchTol·totalR0` — the inexact-Newton analog), the restriction turns off. The counter resets (restriction reactivates) when backtracking is triggered — even if the backtrack succeeds — or when the residual rises back above the switch tolerance. With the default `ANKSecondOrdSwitchTol = 1e-16`, deactivation never engages. DADI has no deactivation: the restriction stays on, matching the paper's approximate-Newton (globalization) phase where it is never deactivated.
 
 ### Examples
 
@@ -304,7 +322,9 @@ solverOptions = {
 ```python
 solverOptions = {
     "transitionSrcDtRestrict": True,
-    "srcDtDeactivateIters": 0,               # NEVER deactivate — always restrict
+    # leave ANKSecondOrdSwitchTol at its default (1e-16): the restriction
+    # then never deactivates. (Do NOT use srcDtDeactivateIters = 0 for this —
+    # 0 means the restriction is inactive in turbKSP from the start.)
     "ANKTurbKSPDebug": True,                 # print iteration info
 }
 ```
@@ -333,5 +353,5 @@ This differs from ν̃ and Re̅θt which use relative tolerances (`ANKPhysicalLS
 
 These are managed automatically by the solver when `transitionSrcDtRestrict = True`:
 
-- `srcDtRestrictActive`: starts `True`, flips to `False` after `srcDtDeactivateIters` consecutive no-backtrack ANK iterations. Resets to `True` on backtrack.
-- `noBacktrackCount`: counter driving the above.
+- `srcDtRestrictActive`: starts `True`, flips to `False` after `srcDtDeactivateIters` consecutive clean turbKSP iterations in the second-order regime. Returns to `True` when backtracking is triggered or when `totalR` rises back above `ANKSecondOrdSwitchTol·totalR0`.
+- `noBacktrackCount`: counter driving the above (module variable, `inputParam.F90`; persists across solves — self-corrects via the residual condition on the first iteration of each solve).

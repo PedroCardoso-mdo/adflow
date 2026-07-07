@@ -307,11 +307,19 @@ module inputIteration
     ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)
     integer(kind=intType) :: srcDtDeactivateIters = 5
     integer(kind=intType) :: noBacktrackCount = 0
-    ! Damping parameters for γ/Reθt iterative update (P&Z §3)
+    ! Damping parameters for γ/Reθt iterative update (P&Z Algorithm 2).
+    ! MaxIter is a safety cap on the (unbounded in the paper) back-off loop;
+    ! 10000 makes it effectively unbounded (0.99^10000 ~ 0), so the hard
+    ! clip after it is a warned last-resort fallback, not the working
+    ! bounds mechanism.
     real(kind=realType) :: transitionDampTheta = 0.99_realType
-    integer(kind=intType) :: transitionDampMaxIter = 40
+    integer(kind=intType) :: transitionDampMaxIter = 10000
     ! Use approxSA simplification in SA-gamma-rethetha (default true for stability)
     logical :: transitionUseApproxSA = .true.
+    ! Reference length l [grid units] in the vorticity limiter (P&Z Eqs. 52-53);
+    ! the paper uses the root chord. Negative => auto: use lengthRef
+    ! (the AeroProblem chordRef).
+    real(kind=realType) :: transitionRefLength = -1.0_realType
 
 end module inputIteration
 

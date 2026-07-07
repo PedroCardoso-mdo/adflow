@@ -4,6 +4,14 @@
 **Date**: 2026-05-20  
 **Purpose**: Research-only paired inventory of adjoint/AD touchpoints
 
+> **Pending Tapenade regeneration (2026-07-07):** the primal `saGammaRetheta.F90`
+> gained `transitionRefLength` (new `inputIteration` parameter, read in `Source`
+> and `evalSrcJacBlock` for the vorticity limiter; falls back to
+> `inputPhysics%lengthRef`). The generated AD files
+> (`saGammaRetheta_{d,b,fast_b}.f90`) still carry the old `vortLim` formula
+> (l = 1 m, no branch) until Tapenade is rerun. Passive parameter w.r.t. the
+> state — no new independents expected; adjoint linearization remains frozen.
+
 ---
 
 ## Executive Inventory

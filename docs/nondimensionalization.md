@@ -106,16 +106,28 @@ ADflow code:        timeScale = 500·nu/velMag2        ← NO Re factor
                               = 500·rlv/(ρ·|V|²)        (Re = 1 implicit)
 ```
 
-> **Correction (2026-07-06):** earlier revisions of this file and
-> `paper-reference.md` called the paper "velocity-based (U∞ = 1)" and wrote the
-> ADflow timescale with an extra `·Re`. Both were wrong: the paper is a∞-based,
-> and the code carries **no** explicit Re factor.
+> **Correction (2026-07-06):** earlier revisions of this file (and the
+> since-retired distilled reference) called the paper "velocity-based
+> (U∞ = 1)" and wrote the ADflow timescale with an extra `·Re`. Both were
+> wrong: the paper is a∞-based, and the code carries **no** explicit Re factor.
 
 **Rule of thumb when porting a paper equation:** keep velocities in `uRef` units
 (freestream = M·√γ) and viscosities as ratios to μ_∞, and **drop** the paper's
 explicit `Re`/`1/Re` — it is already absorbed by ADflow's non-dim viscosity.
 Lengths then come out physical (metres) and Reynolds-number groupings come out as
 physical Reynolds numbers, which is exactly what the empirical correlations expect.
+
+> **Exception (2026-07-07) — vorticity limiter, Eqs. 52–53.** The "drop Re" rule
+> only holds where the paper's `Re` is a unit-conversion artifact of a
+> scale-invariant equation. In the vorticity limiter `M·√(M·Re)/20` the √Re is a
+> **physical calibration scale** (BL wall vorticity ∝ √(ρU³/(μ·l))) — the paper
+> itself says so (§IV, "a physical scaling that is independent of the
+> nondimensionalization") and ties `l` to the **root chord**. Dropping Re here
+> silently substitutes `l = 1 m`, changing the physical cap by √(chord).
+> Dimensional test: a threshold on Ω (1/s) built from freestream ρ, U, μ alone
+> *needs* a length — nothing else cancels it. Handled by the
+> `transitionRefLength` option (auto = AeroProblem `chordRef`; see
+> `architecture.md` Part 2). Findings log: `findings/D1_transitionRefLength.md`.
 
 ## 6. Crossflow (D_scf) term dimension status
 
@@ -138,6 +150,6 @@ numbers. No explicit paper `Re` factor appears in any crossflow term — per §5
 ---
 
 **See also:** [`architecture.md`](architecture.md) (state-vector layout,
-`rlv`/`rev`/`timeRef` usage, crossflow options) and
-[`SA_GAMMA_RETHETHA_BASE/paper-reference.md`](SA_GAMMA_RETHETHA_BASE/paper-reference.md)
+`rlv`/`rev`/`timeRef` usage, crossflow options) and the full paper,
+[`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md)
 (equations that consume these non-dimensional quantities).

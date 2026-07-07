@@ -26,10 +26,9 @@ answer. `→` means "if the first isn't enough, go to the next."
 
 | Your task / question | Read (in order) |
 |---|---|
-| Implement/extend a transition equation, constant, or algorithm | `SA_GAMMA_RETHETHA_BASE/paper-reference.md` → `architecture.md` |
-| Any equation touching velocity, viscosity, Reynolds number, or time scales | `nondimensionalization.md` (**first**) → `SA_GAMMA_RETHETHA_BASE/paper-reference.md` |
-| Verify a distilled physics claim against the full paper | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` |
-| Paper symbol ↔ code flag (transition model) | `SA_GAMMA_RETHETHA_BASE/paper-reference.md` |
+| Implement/extend a transition equation, constant, or algorithm | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` → `architecture.md` |
+| Any equation touching velocity, viscosity, Reynolds number, or time scales | `nondimensionalization.md` (**first**) → `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` |
+| Paper symbol ↔ code flag (transition model) | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` + `architecture.md` (Part 2) |
 | Exact **transition** runtime option name / default / enum | `architecture.md` (Part 2) |
 | Solver architecture, state-vector layout, code/module locations | `architecture.md` (Part 1) |
 | Flow / ANK / NK theory, equations, defaults | `ADFLOW_BASE/ADFLOW_01_flow_solver_theory.md` |
@@ -55,13 +54,13 @@ answer. `→` means "if the first isn't enough, go to the next."
 | [architecture.md](architecture.md) | Solver architecture, state-vector layout, key code/module locations, user constraints, and the complete reference for every runtime option added for the transition model. |
 | [nondimensionalization.md](nondimensionalization.md) | How ADflow makes the governing equations dimensionless — the **pressure–density (p-ρ) scaling** (velocity normalizes to M·√γ, *not* 1). Read before touching any equation with velocity, viscosity, time scales, or Reynolds number. |
 | [adjoint-trace.md](adjoint-trace.md) | Paired inventory of adjoint/AD touchpoints (SA vs SA-GR) on this branch: preprocessor guards, Tapenade directives, generated AD files, wiring. |
+| [TODO.md](TODO.md) | Deferred tuning/improvement items (decided, not defects): `turbResScale` calibration, Eq. 59 relaxation options, damping-clip fallback, open dúvida D-A2-3, blockettes. Each item links back to its `findings/` analysis. |
 
 ### Physics reference (`docs/SA_GAMMA_RETHETHA_BASE/`)
 
 | File | What's in it |
 |------|--------------|
-| [paper-reference.md](SA_GAMMA_RETHETHA_BASE/paper-reference.md) | Distilled equations, constants, algorithms, and conventions from the paper. **Source of truth for physics** — when code and paper disagree, paper wins. |
-| Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md | Full paper text. Consult only to verify a distilled claim. |
+| Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md | Full paper text. **Source of truth for physics** — when code and paper disagree, paper wins. Sole physics reference (distilled summaries were retired after repeated distillation errors; see `findings/A_confirmacao.md` §D3). |
 
 ### ADflow reference KB (`docs/ADFLOW_BASE/`)
 

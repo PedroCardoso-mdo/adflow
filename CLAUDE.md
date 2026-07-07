@@ -44,8 +44,10 @@ the end, not task-by-task.
    Do not interpret results. Do not "improve" beyond the task spec.
 8. **Do not load files outside the task block's `Context:` list.** Token
    discipline matters — every task block is self-contained for a reason.
-9. **Paper wins** when paper and code disagree
-   (`docs/SA_GAMMA_RETHETHA_BASE/paper-reference.md`).
+9. **Paper wins** when paper and code disagree. Source of truth:
+   `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`
+   (full paper text — the only physics reference; do not create or rely on
+   distilled physics summaries).
 10. **Units are p-ρ non-dimensional, not velocity-based.** ADflow scales by
     pressure/density: velocity normalizes to M·√γ (not 1), viscosities are ratios
     to μ_∞ (`rlv`, `rev`), and `1/Re` is NOT absorbed into the viscosity. Read
@@ -63,8 +65,8 @@ Quick routing (full table in `docs/README.md`):
 
 | Task | Read (in order) |
 |------|-----------------|
-| Transition equation / constant / algorithm | `SA_GAMMA_RETHETHA_BASE/paper-reference.md` → `architecture.md` |
-| Equation with velocity / viscosity / Re / time scale | `nondimensionalization.md` **first** → `paper-reference.md` |
+| Transition equation / constant / algorithm | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` → `architecture.md` |
+| Equation with velocity / viscosity / Re / time scale | `nondimensionalization.md` **first** → full paper |
 | Transition runtime option (name/default/enum) | `architecture.md` (Part 2) |
 | Solver architecture, state vector, code locations | `architecture.md` (Part 1) |
 | Flow / ANK / NK theory, defaults | `ADFLOW_BASE/ADFLOW_01…` |
@@ -82,8 +84,7 @@ Quick routing (full table in `docs/README.md`):
 | `docs/architecture.md` | Solver architecture, state-vector layout, code/module locations, and every transition runtime option (name/default/enum). |
 | `docs/nondimensionalization.md` | ADflow's p-ρ non-dimensional scaling. Read before any velocity/viscosity/Re/time-scale equation. |
 | `docs/adjoint-trace.md` | Adjoint/AD touchpoints on this branch (guards, Tapenade directives, generated files, wiring). |
-| `docs/SA_GAMMA_RETHETHA_BASE/paper-reference.md` | Distilled equations/constants/algorithms — **physics source of truth**. |
-| `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` | Full paper text; consult only to verify a distilled claim. |
+| `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` | Full paper text — **physics source of truth** (sole physics reference). |
 | `docs/SA_GAMMA_RETHETHA_BASE/README.md` | Sub-index for the transition physics KB. |
 | `docs/ADFLOW_BASE/ADFLOW_00…05` | Flow/ANK/NK theory (01), adjoint/AD theory (02), paper↔code concordance (03), debugging playbook (04), options devguide (05), sub-index (00). |
 
@@ -95,7 +96,7 @@ part of this KB — don't rely on them for transition-model facts.
 | What            | Where                                                  |
 |-----------------|--------------------------------------------------------|
 | Main residual   | `src/turbulence/saGammaRetheta.F90`                    |
-| Helpers         | `src/turbulence/saGammaRethetaHelpers.F90`             |
+| Helpers         | `src/turbulence/turbUtils.F90:2279-2412` (correlações + `smoothMinMax`) |
 | Constants       | `src/modules/paramTurb.F90`                            |
 | Input params    | `src/modules/inputParam.F90`                           |
 | Block array     | `src/modules/block.F90` (`transitionDebug`)            |

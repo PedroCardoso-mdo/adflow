@@ -160,7 +160,7 @@ contains
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
-                      transitionSrcDtRestrict, transitionUseApproxSA
+                      transitionSrcDtRestrict, transitionUseApproxSA, transitionRefLength
         implicit none
 
         ! Local parameters
@@ -240,7 +240,7 @@ contains
         real(kind=realType) :: gammaForSA
         real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
         real(kind=realType) :: fOnset, fOnset1
-        real(kind=realType) :: vortLim, vortMagLim
+        real(kind=realType) :: vortLim, vortMagLim, refLenTrans
         real(kind=realType) :: pGamma, eGamma
         real(kind=realType) :: velMag, velMag2, timeScale, reThetaT_target
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
@@ -498,8 +498,17 @@ contains
                         ! ADflow nondim of paper Eqs. 52–53. Paper writes M·√(M·Re)/20
                         ! using a∞ as velocity scale; ADflow uses √(p/ρ) as velocity
                         ! scale and √(p*ρ) for dynamic viscosity.
+                        ! The paper's Re carries an explicit reference length l (root
+                        ! chord): the physical cap scales as 1/√l. refLenTrans supplies
+                        ! l in grid units; transitionRefLength < 0 => use lengthRef
+                        ! (AeroProblem chordRef).
                         ! Rotating frame not adress here!!!!! uInf has no meaning on it.
-                        vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) &
+                        if (transitionRefLength > zero) then
+                            refLenTrans = transitionRefLength
+                        else
+                            refLenTrans = lengthRef
+                        end if
+                        vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) &
                                 / 20.0_realType
 
                         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
@@ -1543,6 +1552,7 @@ contains
         real(kind=realType) :: rblank, factor
         real(kind=realType) :: gammaNew, gammaDelta, dampFactor
         integer(kind=intType) :: mm
+        integer(kind=intType) :: nDampCapGamma, nDampCapReTheta
 
         ! Source dt restriction (Eq. 59)
         real(kind=realType) :: dt_inv
@@ -2089,6 +2099,9 @@ contains
         factor = one
         if (turbRelax == turbRelaxExplicit) factor = alfaTurb
 
+        nDampCapGamma = 0
+        nDampCapReTheta = 0
+
         do k = 2, kl
             do j = 2, jl
                 do i = 2, il
@@ -2097,9 +2110,13 @@ contains
                                        * scratch(i, j, k, idvt)
                     w(i, j, k, itu1) = max(w(i, j, k, itu1), zero)
 
-                    ! Gamma update with exponential back-off damping (§3).
-                    ! If the raw update overshoots [gammaLo, gammaHi],
-                    ! reduce the step by theta^m until it stays in range.
+                    ! Gamma update with exponential back-off damping
+                    ! (paper Algorithm 2): reduce the step by theta^m until
+                    ! the new value stays in [gammaLo, gammaHi]. The hard
+                    ! clip below is a last-resort fallback only — it can
+                    ! only fire if the back-off exhausted maxIter, which is
+                    ! only possible when the previous value was already out
+                    ! of bounds (theta^m * delta -> 0).
                     gammaDelta = factor * scaleGamma &
                                  * scratch(i, j, k, idvt + 1)
                     gammaNew = w(i, j, k, itu2) + gammaDelta
@@ -2110,10 +2127,17 @@ contains
                         dampFactor = dampFactor * transitionDampTheta
                         gammaNew = w(i, j, k, itu2) + dampFactor * gammaDelta
                     end do
-                    w(i, j, k, itu2) = min(max(gammaNew, rsaGRgammaLo), &
-                                           rsaGRgammaHi)
+                    if (gammaNew < rsaGRgammaLo .or. &
+                        gammaNew > rsaGRgammaHi) then
+                        nDampCapGamma = nDampCapGamma + 1
+                        gammaNew = min(max(gammaNew, rsaGRgammaLo), &
+                                       rsaGRgammaHi)
+                    end if
+                    w(i, j, k, itu2) = gammaNew
 
-                    ! ReTheta update with exponential back-off damping (§3).
+                    ! ReTheta update with exponential back-off damping
+                    ! (paper Algorithm 2, lower bound only). Same
+                    ! last-resort clip as gamma.
                     gammaDelta = factor * scaleReTheta &
                                  * scratch(i, j, k, idvt + 2)
                     gammaNew = w(i, j, k, itu3) + gammaDelta
@@ -2123,10 +2147,23 @@ contains
                         dampFactor = dampFactor * transitionDampTheta
                         gammaNew = w(i, j, k, itu3) + dampFactor * gammaDelta
                     end do
-                    w(i, j, k, itu3) = max(gammaNew, rsaGRreThetaLo)
+                    if (gammaNew < rsaGRreThetaLo) then
+                        nDampCapReTheta = nDampCapReTheta + 1
+                        gammaNew = rsaGRreThetaLo
+                    end if
+                    w(i, j, k, itu3) = gammaNew
                 end do
             end do
         end do
+
+        if (nDampCapGamma + nDampCapReTheta > 0) then
+            print *, 'Warning: transition update damping exhausted ', &
+                'transitionDampMaxIter (', transitionDampMaxIter, ') in ', &
+                nDampCapGamma, ' gamma / ', nDampCapReTheta, &
+                ' reTheta cells; values clipped to Algorithm 2 bounds. ', &
+                'Increase transitionDampMaxIter or investigate why the ', &
+                'previous state was already out of bounds.'
+        end if
 
     end subroutine saGammaReThetaSolve
 
@@ -2147,7 +2184,8 @@ contains
         use inputPhysics
         use flowVarRefState
         use turbUtils, only: flengthCorrelation, rethetacCorrelation, smoothMinMax
-        use inputIteration, only: transitionCrossflow, transitionRoughnessHeight
+        use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
+                      transitionRefLength
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -2176,7 +2214,7 @@ contains
         real(kind=realType) :: gammaForSA
         real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
         real(kind=realType) :: fOnset, fOnset1
-        real(kind=realType) :: vortLim, vortMagLim
+        real(kind=realType) :: vortLim, vortMagLim, refLenTrans
         real(kind=realType) :: pGamma, dScf, reScf, hcf
         real(kind=realType) :: velMag, velMag2, timeScale
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
@@ -2306,7 +2344,12 @@ contains
         velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
         velMag = sqrt(max(velMag2, xminn))
 
-        vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) / 20.0_realType
+        if (transitionRefLength > zero) then
+            refLenTrans = transitionRefLength
+        else
+            refLenTrans = lengthRef
+        end if
+        vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) / 20.0_realType
         vortMagLim = min(vortMag, vortLim)
 
         reS_val = w(i, j, k, irho) * yDist**2 * strainMag / rlv(i, j, k)
