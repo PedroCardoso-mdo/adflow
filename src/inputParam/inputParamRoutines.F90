@@ -3783,6 +3783,18 @@ contains
         !
         if (equations /= RANSEquations) wallFunctions = .false.
         if (.not. wallFunctions) wallOffset = zero
+
+        ! Wall functions bypass the near-wall boundary layer that the
+        ! SA-noft2-Gamma-Retheta transition model needs to resolve
+        ! (momentum-thickness Reynolds number, intermittency onset); the
+        ! two are not compatible.
+        if (wallFunctions .and. turbModel == spalartallmarasnoft2gammaretheta) then
+            if (myID == 0) &
+                call terminate("checkInputParam", &
+                               "Wall functions cannot be used with the &
+                               &SA-noft2-Gamma-Retheta transition model")
+            call mpi_barrier(ADflow_comm_world, ierr)
+        end if
         !
         !       Check whether or not the wall distance is needed for the
         !       turbulence model.

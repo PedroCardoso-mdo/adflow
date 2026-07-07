@@ -1209,6 +1209,17 @@ class ADFLOW(AeroSolver):
         startCallTime = time.time()
 
         if self.getOption("turbulenceModel") == "SA-noft2-Gamma-Retheta" and self.comm.rank == 0:
+            # Wall functions bypass the near-wall region the transition
+            # model needs to resolve onset (Retheta_t) and intermittency;
+            # this combination is rejected, not just warned about.
+            if self.getOption("useWallFunctions"):
+                raise Error(
+                    "useWallFunctions is True while the SA-noft2-Gamma-Retheta "
+                    "transition model is active. Wall functions bypass the "
+                    "near-wall boundary layer resolution the transition model "
+                    "requires. Set useWallFunctions to False."
+                )
+
             # The SA-GR transition source terms do not carry the source-term
             # time-step restriction (P&Z Eq. 59) inside the coupled ANK solver;
             # only the decoupled turbulence solvers (DADI / turb-ANK) apply it.
