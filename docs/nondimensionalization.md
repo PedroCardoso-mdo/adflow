@@ -128,6 +128,18 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > *needs* a length — nothing else cancels it. Handled by the
 > `transitionRefLength` option (auto = AeroProblem `chordRef`; see
 > `architecture.md` Part 2). Findings log: `findings/D1_transitionRefLength.md`.
+>
+> **AD corollary (2026-07-07):** because `uInf`/`muInf` are the code's spelling
+> of the paper's freestream M and Re, the cap makes the *residual* depend on
+> freestream reference state. Consistency check of the identity:
+> `uInf/muInf = ρ∞U∞/μ∞` (since `ρRef·uRef/muRef = 1`), so the code line
+> `vortLim = uInf·√(uInf/(muInf·l))/20 = uInf·√Re_U∞/(20·l)` — exactly the
+> paper's cap in ADflow vorticity units. For derivatives this means `uInf`,
+> `muInf` must be declared active independents of `saGammaRetheta%Source` in
+> `Makefile_tapenade`, else Tapenade emits `vortlimd = 0` and `dR/dMach`-type
+> partials lose the limiter path in capped cells (state partials dR/dw are
+> unaffected). Details + frozen-cap alternative: `adjoint-trace.md` header and
+> `audits/adjoint_audit_2026-07-07.md` §3.
 
 ## 6. Crossflow (D_scf) term dimension status
 

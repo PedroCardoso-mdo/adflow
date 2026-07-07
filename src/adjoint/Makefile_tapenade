@@ -184,7 +184,7 @@ sa%saViscous(w, vol, si, sj, sk, rlv, scratch) > \
 sa%saResScale(scratch, dw) > \
              (dw) \
 \
-saGammaRetheta%Source(w, rlv, vol, si, sj, sk, timeRef, d2wall) > \
+saGammaRetheta%Source(w, rlv, vol, si, sj, sk, timeRef, d2wall, uInf, muInf) > \
                      (w, rlv, vol, si, sj, sk, timeRef, scratch) \
 \
 saGammaRetheta%Viscous(w, vol, si, sj, sk, rlv, scratch) > \

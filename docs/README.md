@@ -40,6 +40,8 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Adjoint / AD theory (general) | `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` |
 | Implement or extend the adjoint / AD on **this branch** | `adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `adjoint-trace.md` |
+| Validate partials / plan AD test campaign | `../audits/adjoint_audit_2026-07-07.md` → `../audits/sst_dev_lessons.md` (verification ladder + watch items) |
+| How another multi-equation turb model was differentiated (SST precedent) | `../audits/sst_dev_lessons.md` |
 | Provenance / sources / where a fact came from | this file + `ADFLOW_BASE/ADFLOW_00_context_index.md` |
 
 ---
@@ -55,6 +57,13 @@ answer. `→` means "if the first isn't enough, go to the next."
 | [nondimensionalization.md](nondimensionalization.md) | How ADflow makes the governing equations dimensionless — the **pressure–density (p-ρ) scaling** (velocity normalizes to M·√γ, *not* 1). Read before touching any equation with velocity, viscosity, time scales, or Reynolds number. |
 | [adjoint-trace.md](adjoint-trace.md) | Paired inventory of adjoint/AD touchpoints (SA vs SA-GR) on this branch: preprocessor guards, Tapenade directives, generated AD files, wiring. |
 | [TODO.md](TODO.md) | Deferred tuning/improvement items (decided, not defects): `turbResScale` calibration, Eq. 59 relaxation options, damping-clip fallback, open dúvida D-A2-3, blockettes. Each item links back to its `findings/` analysis. |
+
+### Audits (`audits/`, repo root)
+
+| File | What's in it |
+|------|--------------|
+| [../audits/sst_dev_lessons.md](../audits/sst_dev_lessons.md) | Post-mortem of upstream `sst_dev` (SST, PR #331) — how a 2-equation model was differentiated, what broke, and a comparison table vs this branch's SA-GR. Read before any AD-unfreeze work or partials campaign. |
+| [../audits/adjoint_audit_2026-07-07.md](../audits/adjoint_audit_2026-07-07.md) | Pre-partials-test visual audit of the SA-GR adjoint wiring: verified-pass table, the `vortlimd = 0` finding (uInf/muInf head activity), and watch items (autoEdit fast_b stripping, limiter kinks). |
 
 ### Physics reference (`docs/SA_GAMMA_RETHETHA_BASE/`)
 

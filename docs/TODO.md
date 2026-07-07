@@ -42,3 +42,21 @@ excessivo) ou quando o modelo estiver fisicamente validado.
 
 
 - [ ] **Valor de inicialização de gamma e retheta** para já está a 0.02 diferente da BC, testar o que dá melhor resultado
+
+## Adjoint / partials (de `audits/adjoint_audit_2026-07-07.md`, 2026-07-07)
+
+- [ ] **Rerun Tapenade** para apanhar `uInf, muInf` ativos no head
+  `saGammaRetheta%Source` (`Makefile_tapenade`) → `vortlimd` deixa de ser
+  hard-zero; depois `make` e commit dos ficheiros gerados (os 6 já
+  regenerados + os novos ficam num só estado consistente).
+- [ ] **Decisão em aberto (default = diferenciar):** cap do limitador de
+  vorticidade diferenciado vs congelado ("frozen limiter"). Se preferir
+  congelar: reverter a linha do `Makefile_tapenade` e documentar; dR/dw é
+  idêntico nas duas opções. Análise: `adjoint-trace.md` header.
+- [ ] **Ao testar partials:** (a) se o dot-product BWDFast falhar, suspeitar
+  primeiro do stripping push/pop do `autoEditReverseFast.py` (partiu o
+  fast_b do SST upstream — foi desativado lá, continua ativo neste branch);
+  (b) perto dos pontos de blend do `smoothMinMax`/vortLim esperar ruído de
+  FD, não erro de AD — usar complex-step ou máscara, **nunca** inflar rtol
+  global (post-mortem SST: rtol 2.11/41 = não-verificação);
+  (c) validar cd/cm e todos os DVs com CS, não só cl (lacuna do SST).

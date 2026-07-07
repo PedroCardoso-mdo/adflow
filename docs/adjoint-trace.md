@@ -4,13 +4,34 @@
 **Date**: 2026-05-20  
 **Purpose**: Research-only paired inventory of adjoint/AD touchpoints
 
-> **Pending Tapenade regeneration (2026-07-07):** the primal `saGammaRetheta.F90`
-> gained `transitionRefLength` (new `inputIteration` parameter, read in `Source`
-> and `evalSrcJacBlock` for the vorticity limiter; falls back to
-> `inputPhysics%lengthRef`). The generated AD files
-> (`saGammaRetheta_{d,b,fast_b}.f90`) still carry the old `vortLim` formula
-> (l = 1 m, no branch) until Tapenade is rerun. Passive parameter w.r.t. the
-> state — no new independents expected; adjoint linearization remains frozen.
+> **Regeneration status (2026-07-07, audit):** Tapenade WAS rerun after the
+> `transitionRefLength` (272ff47c) and farfield-BC (701668a6) primal changes —
+> the regenerated `saGammaRetheta_{d,b,fast_b}.f90` and
+> `turbBCRoutines_{d,b,fast_b}.f90` sit **uncommitted in the working tree** and
+> verifiably contain both changes (vortLim `refLenTrans` branch; generic
+> farfield ghost form, old `2*wInf` special case removed). Build compiles and
+> imports with them.
+>
+> **Pending Tapenade regeneration:** `Makefile_tapenade` now declares `uInf,
+> muInf` as active independents of `saGammaRetheta%Source` (fullRoutines head).
+> Reason: the vorticity limiter (P&Z Eqs. 52-53) uses `uInf`/`muInf`, but with
+> them passive Tapenade emits `vortlimd = 0.0_8` — dropping the Mach/Re
+> contribution to residual partials wherever the limiter is active. State
+> partials (dR/dw) are unaffected (`uInf` constant w.r.t. w), so `fast_b` and
+> the stateOnlyRoutines head stay as-is. Rerun Tapenade to pick this up.
+>
+> **Why uInf/muInf are in the residual at all (and the design choice):** the
+> cap `vortLim = uInf·√(uInf/(muInf·l))/20` is ADflow's p-ρ spelling of the
+> paper's `M·√(M·Re)/20` (Eqs. 52-53) — the model itself defines the cap from
+> freestream conditions (laminar-BL wall-vorticity scale `(U∞/l)·√Re`; paper
+> §IV calls it "a physical scaling independent of the nondimensionalization").
+> Derivation in `nondimensionalization.md` §5 (D1 exception). Since the paper
+> also states the limiter is purely numerical (non-predictive), a legitimate
+> alternative is to **freeze the cap** ("frozen limiter" practice): revert the
+> `Makefile_tapenade` line and accept a small `dR/dMach`-type error confined to
+> cells where the cap engages. dR/dw is identical under both options. Current
+> decision: differentiate as written (option 1), so partials verification can
+> compare against the exact discrete residual.
 
 ---
 
