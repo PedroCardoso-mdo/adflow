@@ -68,7 +68,7 @@ All stored as conservative (ρ·φ). Generic nVar extension handles sizing.
 | Main transition model | `src/turbulence/saGammaRetheta.F90` (2470 lines) |
 | Smooth helper functions (correlations + `smoothMinMax`) | `src/turbulence/turbUtils.F90:2279-2412` (`reThetaTCorrelation`, `flengthCorrelation`, `rethetacCorrelation`, `smoothMinMax`) |
 | Initialization | `src/initFlow/initializeFlow.F90:140-146, 2229-2241` |
-| Wall/farfield BCs | `src/turbulence/turbBCRoutines.F90:441-470, 921-983` |
+| Wall/farfield BCs | `src/turbulence/turbBCRoutines.F90:438-465` (farfield: padrão ADflow, sem caso especial), `888-960` (wall, caso SA-GR) |
 | Dispatch (turbAPI) | `src/turbulence/turbAPI.F90:49,74` |
 | ANK/NK variable bounds | `src/NKSolver/NKSolvers.F90:3191,3359` |
 | Preconditioner | `src/NKSolver/blockette.F90:815-816` |

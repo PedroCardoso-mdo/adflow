@@ -382,7 +382,6 @@ contains
         use constants
         use blockPointers
         use flowVarRefState
-        use inputPhysics, only: turbModel
         implicit none
         !
         !      Subroutine arguments.
@@ -437,61 +436,29 @@ contains
                 else
 
                     ! Inflow. Turbulent variables are prescribed.
+                    ! Standard ADflow farfield form for all models, including
+                    ! SA-gamma-Retheta: prescribed freestream value at the
+                    ! ghost (bmt = 0 default). At a genuine farfield the
+                    ! interior equals the freestream, so this enforces
+                    ! gamma = 1 and Retheta = correlation just as the
+                    ! face-value form would, without any special casing.
 
-                    if (turbModel == spalartallmarasnoft2gammaretheta) then
-
-                        ! SA-gamma-Retheta model:
-                        ! nu~ and Retheta use linear extrapolation with
-                        ! prescribed freestream value at the face.
-                        ! gamma is Dirichlet one (gamma_g = 2*1 - gamma_i).
-                        ! Since wInf(itu2) = 1, bvt = 2*1 = 2 and bmt = 1
-                        ! gives ghost = 2 - interior, enforcing gamma = 1 at face.
-
-                        do l = nt1, nt2
-                            select case (BCFaceID(nn))
-                            case (iMin)
-                                bvti1(i, j, l) = two * wInf(l)
-                                bmti1(i, j, l, l) = one
-                            case (iMax)
-                                bvti2(i, j, l) = two * wInf(l)
-                                bmti2(i, j, l, l) = one
-                            case (jMin)
-                                bvtj1(i, j, l) = two * wInf(l)
-                                bmtj1(i, j, l, l) = one
-                            case (jMax)
-                                bvtj2(i, j, l) = two * wInf(l)
-                                bmtj2(i, j, l, l) = one
-                            case (kMin)
-                                bvtk1(i, j, l) = two * wInf(l)
-                                bmtk1(i, j, l, l) = one
-                            case (kMax)
-                                bvtk2(i, j, l) = two * wInf(l)
-                                bmtk2(i, j, l, l) = one
-                            end select
-                        end do
-
-                    else
-
-                        ! All other models: simple prescribed ghost value.
-
-                        do l = nt1, nt2
-                            select case (BCFaceID(nn))
-                            case (iMin)
-                                bvti1(i, j, l) = wInf(l)
-                            case (iMax)
-                                bvti2(i, j, l) = wInf(l)
-                            case (jMin)
-                                bvtj1(i, j, l) = wInf(l)
-                            case (jMax)
-                                bvtj2(i, j, l) = wInf(l)
-                            case (kMin)
-                                bvtk1(i, j, l) = wInf(l)
-                            case (kMax)
-                                bvtk2(i, j, l) = wInf(l)
-                            end select
-                        end do
-
-                    end if
+                    do l = nt1, nt2
+                        select case (BCFaceID(nn))
+                        case (iMin)
+                            bvti1(i, j, l) = wInf(l)
+                        case (iMax)
+                            bvti2(i, j, l) = wInf(l)
+                        case (jMin)
+                            bvtj1(i, j, l) = wInf(l)
+                        case (jMax)
+                            bvtj2(i, j, l) = wInf(l)
+                        case (kMin)
+                            bvtk1(i, j, l) = wInf(l)
+                        case (kMax)
+                            bvtk2(i, j, l) = wInf(l)
+                        end select
+                    end do
 
                 end if
             end do

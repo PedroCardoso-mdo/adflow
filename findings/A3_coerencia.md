@@ -92,7 +92,7 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
 
 ## Divergências / dúvidas (registadas, nada alterado)
 
-### W1 — `useft2SA` default True num modelo chamado "noft2" (dúvida principal)
+### W1 — `useft2SA` default True num modelo chamado "noft2" (dúvida principal) _____________________FEITO_____________________________
 
 - O enum é `spalartallmarasnoft2gammaretheta` ("SA-noft2-Gamma-Retheta") e a
   base do paper é SA-noft2, mas a fonte SA-GR mantém o switch `useft2SA`
@@ -105,8 +105,9 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
   script do utilizador, é julgamento humano (muda física com defaults).
 - Prova: `grep -n useft2 adflow/pyADflow.py src/turbulence/saGammaRetheta.F90`
   e `grep -rn useft2 src/inputParam/`.
+-**resposta** Warning adicionadao
 
-### W2 — Wall functions não suportadas e sem guarda
+### W2 — Wall functions não suportadas e sem guarda _____________________FEITO_____________________________
 
 - `saSolve` tem um bloco inteiro de wall functions (sa.F90:752-833);
   `saGammaReThetaSolve` não tem nenhum (`grep -n wallFunctions
@@ -118,6 +119,7 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
   guarda que aborte `wallFunctions=True` + SA-GR — a combinação corre
   silenciosamente sem o enforcement de parede do lado turbulento. Registado
   como dúvida; adicionar guarda é decisão do utilizador.
+  -**resposta** Erro adicionado se estas opções forem selecionas juntas
 
 ### W3 — `qq(1,1)` sem o clip de positividade do SA (deliberado, manter)
 
@@ -132,13 +134,23 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
   SA pode ficar menos dominante do que no solver SA original. Manter;
   registado para contexto de debugging futuro.
 
-### W4 — Farfield inflow impõe valor na face, não no ghost (deliberado, manter)
+### W4 — Farfield inflow do SA-GR alinhado ao padrão ADflow (RESOLVIDO 2026-07-07)
 
-- Outros modelos: ghost = `wInf` diretamente (turbBCRoutines.F90:475-491).
-  SA-GR: `bvt = 2·wInf`, `bmt = +1` → ghost = 2·wInf − interior, i.e. valor
-  exato `wInf` na **face** (extrapolação linear; turbBCRoutines.F90:441-471,
-  comentário no código explica o porquê para γ=1).
-- Enforcement mais forte/preciso que o padrão; deliberado e inócuo. Manter.
+- **Antes:** SA-GR usava `bvt = 2·wInf`, `bmt = +1` (valor exato `wInf` na
+  **face**), enquanto os outros modelos usam ghost = `wInf` diretamente
+  (`bvt = wInf`, `bmt = 0`). Não é um desvio "mais forte" — era simplesmente
+  o padrão de *inflow* do próprio ADflow (`bcTurbInflow`) aplicado no ramo
+  farfield-inflow. As duas formas convergem para o mesmo resultado num
+  farfield genuíno (interior → freestream).
+- **Nada no paper nem no modelo LM força a forma face-value** (o paper nem
+  especifica BCs discretas — usa SBP-SAT). Por decisão do utilizador, o
+  SA-GR passa a seguir o padrão testado/validado do ADflow.
+- **Agora:** removido o caso especial `if (turbModel == ...gammaretheta)` em
+  `bcTurbFarfield`; SA-GR cai no ramo genérico ghost = `wInf` (`bmt = 0`),
+  **idêntico a SA/SST**. Também removido o import então inútil de `turbModel`.
+  γ_∞ = 1 e Re̅θt,∞ = correlação(Tu∞) continuam a ser impostos corretamente.
+- **AD:** `bcTurbFarfield` está no caminho do Tapenade
+  (`turbBCRoutines_d/_b/_fast_b`) → requer rerun do Tapenade + rebuild.
 
 ### W5 — Inicializações diferentes do padrão (deliberadas, manter)
 
@@ -158,7 +170,3 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
 | `architecture.md` §3 + `CLAUDE.md`: helpers em `src/turbulence/saGammaRethetaHelpers.F90` (367 linhas) | ficheiro não existe; correlações + `smoothMinMax` estão em `turbUtils.F90:2279-2410` |
 | `architecture.md` §3/§4: `saGammaRetheta.F90` 1862 linhas, solve em 1251-1861 | 2470 linhas; solve em 1485-2131 |
 
-### W7 — Cruft menor (não mexido)
-
-- `saGammaReTheta_block` importa `SSTEddyViscosity` que nunca usa
-  (saGammaRetheta.F90:73; usa `saEddyViscosity`). Inócuo.
