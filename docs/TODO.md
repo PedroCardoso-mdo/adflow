@@ -35,3 +35,10 @@ excessivo) ou quando o modelo estiver fisicamente validado.
   `useBlockettes` forçado a False (`pyADflow.py:6656-6657`) — caminho de
   resíduo mais lento em todos os mat-vecs matrix-free do ANK/NK. Implementar
   em `blocketteResCore` quando se avaliar desempenho.
+  
+  
+  
+## Fisica
+
+
+- [ ] **Valor de inicialização de gamma e retheta** para já está a 0.02 diferente da BC, testar o que dá melhor resultado
