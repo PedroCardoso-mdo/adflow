@@ -121,20 +121,36 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
   como dúvida; adicionar guarda é decisão do utilizador.
   -**resposta** Erro adicionado se estas opções forem selecionas juntas
 
-### W3 — `qq(1,1)` sem o clip de positividade do SA (deliberado, manter)
+### W3 — Clip de positividade dos diagonais da fonte (RESOLVIDO 2026-07-07) _____________________FEITO_____________________________
 
-- `saSource` clippa o diagonal: `qq = max(qq, zero)` (sa.F90:333). A fonte
-  SA-GR **não** clippa `qq(1,1)` (saGammaRetheta.F90:670-674; só `qq(3,3)`
-  tem `max(...,zero)` explícito).
-- Mitigação existente: com `transitionSrcDtRestrict=True` (default),
-  `srcLambda/limit` é somado ao diagonal (Eq. 59, saGammaReThetaSolve:
-  1625-1629) — papel estabilizador análogo, alinhado com P&Z (regra 9:
-  paper wins). Além disso o update tem bounds (ν̃≥0; γ/Re̅θt damping Alg. 2).
-- Ponto de atenção apenas para `transitionSrcDtRestrict=False`: o diagonal
-  SA pode ficar menos dominante do que no solver SA original. Manter;
-  registado para contexto de debugging futuro.
+- **Antes:** `saSource` clippa o seu diagonal (`qq = max(qq, zero)`,
+  sa.F90:333) — filosofia ADflow validada: tratar implicitamente só os
+  termos que somam à dominância diagonal; os que desestabilizam vão para o
+  RHS explícito. A fonte SA-GR **não** clippava `qq(1,1)` nem `qq(2,2)`;
+  só `qq(3,3)` tinha `max(...,zero)` (e esse nunca dispara, pois
+  `(1−fThetaT)≥0`).
+- **Diagnóstico:**
+  - `qq(1,1)` (SA/ν̃) pode ficar negativo pelos termos de destruição
+    (`−rsaCw1·dfw`), tal como no SA original.
+  - `qq(2,2)` (γ) fica negativo de forma **rotineira** para γ pequeno (zona
+    pré-transição): os fatores `(1.5·ce1·γ−0.5)` e `(2·ce2·γ−1)` vão a
+    negativo. Este é o caso que **realmente** dispara.
+- **Neutro face ao artigo (regra 9):** o `qq` é o Jacobiano implícito no LHS
+  do DDADI, não o resíduo. Na convergência o resíduo→0 independentemente do
+  LHS, logo a solução estacionária é idêntica — só muda a robustez do
+  caminho implícito. Não é equação do paper; é estabilização numérica
+  interna do ADflow (a Eq. 59 `srcLambda/limit` é complementar e aditiva).
+- **Agora:** `qq(1,1) = max(qq(1,1), zero)` (após o cálculo do diagonal SA)
+  e `qq(2,2) = max(qq(2,2), zero)` (após o cálculo do diagonal γ), espelhando
+  o SA e o `qq(3,3)` já existente. Ordem final do diagonal SA:
+  `max(base,0)` e depois `+ srcLambda/limit` (Eq. 59) quando
+  `transitionSrcDtRestrict=True`. Isto fecha o antigo ponto de atenção com
+  `transitionSrcDtRestrict=False` — o diagonal SA passa a ter a mesma
+  dominância que o solver SA original.
+- **AD:** ambos os clips ficam dentro de `#ifndef USE_TAPENADE`; não tocam o
+  código gerado (sem `TAPENADE NEEDED`).
 
-### W4 — Farfield inflow do SA-GR alinhado ao padrão ADflow (RESOLVIDO 2026-07-07)
+### W4 — Farfield inflow do SA-GR alinhado ao padrão ADflow (RESOLVIDO 2026-07-07) _____________________FEITO_____________________________
 
 - **Antes:** SA-GR usava `bvt = 2·wInf`, `bmt = +1` (valor exato `wInf` na
   **face**), enquanto os outros modelos usam ghost = `wInf` diretamente
@@ -149,10 +165,8 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
   `bcTurbFarfield`; SA-GR cai no ramo genérico ghost = `wInf` (`bmt = 0`),
   **idêntico a SA/SST**. Também removido o import então inútil de `turbModel`.
   γ_∞ = 1 e Re̅θt,∞ = correlação(Tu∞) continuam a ser impostos corretamente.
-- **AD:** `bcTurbFarfield` está no caminho do Tapenade
-  (`turbBCRoutines_d/_b/_fast_b`) → requer rerun do Tapenade + rebuild.
 
-### W5 — Inicializações diferentes do padrão (deliberadas, manter)
+### W5 — Inicializações diferentes do padrão (deliberadas, manter) _____________________FEITO_____________________________
 
 - Campo interior γ = 0.02 enquanto γ_∞ = 1 (initializeFlow.F90:2229-2245,
   comentário: suprimir produção SA até Fonset ativar γ). Os outros modelos
@@ -161,6 +175,8 @@ Nota de âmbito: A1 já confirmou código↔paper; aqui a lente é código↔có
 - `eddyVisInfRatio` default 1e-10 para SA-GR vs 0.009 (SA) / 0.1 (outros)
   (inputParamRoutines.F90:3870-3890) — freestream quase-laminar, coerente
   com um modelo de transição.
+-**resposta** de proposito está no to do para verificar se ira causar problemas
+  
 
 ### W6 — Docs desatualizados (não corrigidos; mesma política do A1-D3)- _____________________FEITO_____________________________
 

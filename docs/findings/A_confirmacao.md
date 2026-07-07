@@ -115,7 +115,10 @@ e correto; nada a alterar.**
   desestabilizadoras em smoothers de relaxação — mesmo espírito do
   `qq = max(qq, zero)` do SA original (`sa.F90:333`). No DADI,
   `qq(m,m) += λ/0.9` (`saGammaRetheta.F90:1634-1638`) *é* a realização
-  natural da Eq. 59, não um desvio.
+  natural da Eq. 59, não um desvio. **(Nota 2026-07-07, ver W3 em
+  A3_coerencia)** o clip `max(qq, zero)` foi também aplicado diretamente a
+  `qq(1,1)` e `qq(2,2)` na fonte SA-GR, antes da soma aditiva — os dois
+  mecanismos coexistem: primeiro `max(base,0)`, depois `+ λ/0.9`.
 - **Restritividade extra limitada e inofensiva:**
   `max(a,b) ≤ a+b ≤ 2·max(a,b)` ⇒ Δt efetivo no pior caso metade da forma
   MAX, apenas nas células com λ grande. O DADI é fase de arranque —

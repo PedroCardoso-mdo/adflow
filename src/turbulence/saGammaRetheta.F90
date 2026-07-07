@@ -70,7 +70,7 @@ contains
         use blockPointers, only: il, jl, kl
         use inputTimeSpectral
         use iteration
-        use turbUtils, only: SSTEddyViscosity, turbAdvection, unsteadyTurbTerm, saEddyViscosity
+        use turbUtils, only: turbAdvection, unsteadyTurbTerm, saEddyViscosity
         use turbBCRoutines, only: bcTurbTreatment, applyAllTurbBCThisBlock
         use inputIteration, only: transitionFirstOrderUpwind
         use inputDiscretization, only: orderTurb
@@ -682,6 +682,16 @@ contains
                                          * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
                                          - rsaCw1 * dfw)
 
+                        ! Mirror the SA solver's diagonal clip (sa.F90): the
+                        ! destruction terms (-rsaCw1*dfw) may drive qq(1,1)
+                        ! negative, reducing the diagonal dominance of the
+                        ! implicit DDADI Jacobian and hurting stability. Clip to
+                        ! zero as in the validated SA path. This affects only the
+                        ! implicit LHS, not the residual, so the converged
+                        ! solution is unchanged (paper-neutral). The Eq. 59
+                        ! srcLambda/limit restriction is added on top later.
+                        qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), zero)
+
                         ! Full gamma source Jacobian: -d(pGamma - eGamma)/dgamma
                         ! Includes both production and destruction linearization.
                         qq(i, j, k, 2, 2) = rsaGRca1 * fLength_val * fOnset &
@@ -690,6 +700,17 @@ contains
                             / sqrt(max(gammaLocal, xminn)) &
                             + rsaGRca2 * fTurb_val * vortMagLim &
                             * (two * rsaGRce2 * gammaLocal - one)
+
+                        ! Same diagonal clip as qq(1,1)/qq(3,3): for small gamma
+                        ! (the pre-transition region) the production-derivative
+                        ! factors (1.5*ce1*g-0.5) and (2*ce2*g-1) go negative,
+                        ! so this diagonal can be negative and erode the implicit
+                        ! DDADI diagonal dominance. Clip to zero per the validated
+                        ! ADflow philosophy (implicit treatment only for terms
+                        ! that add diagonal dominance). LHS-only, so the converged
+                        ! solution is unchanged (paper-neutral). Unlike qq(3,3),
+                        ! this clip actually triggers.
+                        qq(i, j, k, 2, 2) = max(qq(i, j, k, 2, 2), zero)
 
                         ! ReTheta Jacobian diagonal: -dP_theta/dReTheta_tilde
                         ! Always >= 0 (relaxation), so restriction is a no-op.
