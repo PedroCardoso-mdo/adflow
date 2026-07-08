@@ -261,7 +261,6 @@ bocos:do nn=1,nbocos
     use constants
     use blockpointers
     use flowvarrefstate
-    use inputphysics, only : turbmodel
     implicit none
 !
 !      subroutine arguments.
@@ -303,38 +302,14 @@ bocos:do nn=1,nbocos
               bmtk2(i, j, l, l) = -one
             end select
           end do
-        else if (turbmodel .eq. spalartallmarasnoft2gammaretheta) then
-! inflow. turbulent variables are prescribed.
-! sa-gamma-retheta model:
-! nu~ and retheta use linear extrapolation with
-! prescribed freestream value at the face.
-! gamma is dirichlet one (gamma_g = 2*1 - gamma_i).
-! since winf(itu2) = 1, bvt = 2*1 = 2 and bmt = 1
-! gives ghost = 2 - interior, enforcing gamma = 1 at face.
-          do l=nt1,nt2
-            select case  (bcfaceid(nn)) 
-            case (imin) 
-              bvti1(i, j, l) = two*winf(l)
-              bmti1(i, j, l, l) = one
-            case (imax) 
-              bvti2(i, j, l) = two*winf(l)
-              bmti2(i, j, l, l) = one
-            case (jmin) 
-              bvtj1(i, j, l) = two*winf(l)
-              bmtj1(i, j, l, l) = one
-            case (jmax) 
-              bvtj2(i, j, l) = two*winf(l)
-              bmtj2(i, j, l, l) = one
-            case (kmin) 
-              bvtk1(i, j, l) = two*winf(l)
-              bmtk1(i, j, l, l) = one
-            case (kmax) 
-              bvtk2(i, j, l) = two*winf(l)
-              bmtk2(i, j, l, l) = one
-            end select
-          end do
         else
-! all other models: simple prescribed ghost value.
+! inflow. turbulent variables are prescribed.
+! standard adflow farfield form for all models, including
+! sa-gamma-retheta: prescribed freestream value at the
+! ghost (bmt = 0 default). at a genuine farfield the
+! interior equals the freestream, so this enforces
+! gamma = 1 and retheta = correlation just as the
+! face-value form would, without any special casing.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 

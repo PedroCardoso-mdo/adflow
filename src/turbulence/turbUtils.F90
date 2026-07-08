@@ -847,6 +847,8 @@ contains
                                  w, si, sj, sk, addGridVelocities, bmti1, bmti2, bmtj1, bmtj2, &
                                  bmtk1, bmtk2, scratch
         use inputDiscretization, only: orderTurb
+        use inputPhysics, only: turbModel
+        use inputIteration, only: transitionFirstOrderUpwind
         use iteration, only: groundLevel
         use turbMod, only: secondOrd
         implicit none
@@ -872,6 +874,15 @@ contains
         secondOrd = .false.
         if (groundLevel == 1_intType .and. &
             orderTurb == secondOrder) secondOrd = .true.
+
+        ! Transition model: gamma and ReThetaTilde convection is
+        ! first-order upwind (Piotrowski & Zingg 2020, Sec. IV.A).
+        ! Enforced here, in the one routine every path goes through,
+        ! so decoupled DADI, coupled ANK/NK, and the adjoint master
+        ! sweeps discretize the identical residual regardless of
+        ! caller or orderTurb.
+        if (turbModel == spalartAllmarasNoft2GammaRetheta .and. &
+            transitionFirstOrderUpwind) secondOrd = .false.
 
         ! Initialize the grid velocity to zero. This value will be used
         ! if the block is not moving.

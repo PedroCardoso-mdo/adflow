@@ -12,13 +12,20 @@
 > farfield ghost form, old `2*wInf` special case removed). Build compiles and
 > imports with them.
 >
-> **Pending Tapenade regeneration:** `Makefile_tapenade` now declares `uInf,
-> muInf` as active independents of `saGammaRetheta%Source` (fullRoutines head).
-> Reason: the vorticity limiter (P&Z Eqs. 52-53) uses `uInf`/`muInf`, but with
-> them passive Tapenade emits `vortlimd = 0.0_8` — dropping the Mach/Re
-> contribution to residual partials wherever the limiter is active. State
-> partials (dR/dw) are unaffected (`uInf` constant w.r.t. w), so `fast_b` and
-> the stateOnlyRoutines head stay as-is. Rerun Tapenade to pick this up.
+> **Tapenade regeneration DONE (2026-07-07, `./AD_I.sh`):** the `uInf, muInf`
+> active declaration in `saGammaRetheta%Source` (fullRoutines head) is now
+> baked into the generated files — `vortlimd` carries the `uinfd`/`muinfd`
+> contributions (the old `vortlimd = 0.0_8` is gone). The vorticity limiter
+> (P&Z Eqs. 52-53) Mach/Re partials are therefore live. State partials
+> (dR/dw) were never affected, so `fast_b`/stateOnlyRoutines are unchanged by
+> design. Additionally, `turbAdvection` (turbUtils.F90) now forces first-order
+> transition advection for SA-GR when `transitionFirstOrderUpwind`, and this
+> guard is present in all three regenerated `turbutils` AD files — primal and
+> adjoint advection discretizations now agree for any `orderTurb` setting.
+> The redundant `orderTurb` swap in `saGammaReTheta_block` was removed
+> (2026-07-08): it covered only the decoupled path and mutated a global,
+> invisible to the AD sweeps; the in-`turbAdvection` guard is the single
+> point of truth. Full finding/fix record: `docs/audits/06_adjoint_wiring.md`.
 >
 > **Why uInf/muInf are in the residual at all (and the design choice):** the
 > cap `vortLim = uInf·√(uInf/(muInf·l))/20` is ADflow's p-ρ spelling of the

@@ -6909,9 +6909,11 @@ contains
         use constants
         use paramTurb
         use blockPointers, only: sectionID
-        use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, turbIntensityInf
+        use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, turbIntensityInf, &
+                                lengthRef
         use inputDiscretization, only: approxSA
-        use inputIteration, only: transitionUseApproxSA
+        use inputIteration, only: transitionUseApproxSA, transitionCrossflow, &
+                                  transitionRoughnessHeight, transitionRefLength
         use section, only: sections
         use sa, only: cv13, kar2Inv, cw36, cb3Inv
         use flowvarRefState, only: timeRef, muInf, uInf
@@ -6943,6 +6945,9 @@ contains
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds
         real(kind=realType) :: reThetaT_target, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: pReTheta
+        real(kind=realType) :: refLenTrans
+        real(kind=realType) :: dScf, reScf, hcf
+        real(kind=realType) :: crossflowRatio, dHplus, dHminus
 
         ! Set model constants
         cv13 = rsaCv1**3
@@ -7077,8 +7082,16 @@ contains
                     velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
                     velMag = sqrt(max(velMag2, xminn))
 
-                    ! Vorticity limiting
-                    vortLim = uInf * sqrt(max(uInf / max(muInf, xminn), xminn)) / 20.0_realType
+                    ! Vorticity limiting — keep identical to saGammaRetheta.F90
+                    ! Source: the paper's cap (Eqs. 52-53) carries the reference
+                    ! length l; transitionRefLength < 0 => use lengthRef.
+                    if (transitionRefLength > zero) then
+                        refLenTrans = transitionRefLength
+                    else
+                        refLenTrans = lengthRef
+                    end if
+                    vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) &
+                              / 20.0_realType
                     vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
 
                     ! Fonset
@@ -7127,7 +7140,28 @@ contains
                     pReTheta = rsaGRcthetat / max(timeScale, xminn) &
                                * (reThetaT_target - reThetaTilde) * (one - fThetaT)
 
-                    dw(i, j, k, itu3) = dw(i, j, k, itu3) + pReTheta
+                    ! Crossflow source D_scf — keep identical to
+                    ! saGammaRetheta.F90 Source.
+                    dScf = zero
+                    if (transitionCrossflow) then
+                        crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
+                        ! Eq.24 helicity uses the raw velocity curl; undo the
+                        ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
+                        hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
+                            + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
+                            + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                            / max(velMag, xminn)
+                        reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
+                            + 319.51_realType
+                        dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                        dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                        reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
+                        reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
+                        dScf = (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
+                            * smoothMinMax(reScf - reThetaTilde, zero, rsaGRpmin) * fThetaT
+                    end if
+
+                    dw(i, j, k, itu3) = dw(i, j, k, itu3) + pReTheta + dScf
 
                 end do
             end do
@@ -7140,6 +7174,7 @@ contains
         ! -----------------------------------------------------------------
         use constants
         use inputDiscretization, only: orderTurb
+        use inputIteration, only: transitionFirstOrderUpwind
         use iteration, only: groundlevel
         use turbMod, only: secondOrd
         implicit none
@@ -7149,8 +7184,12 @@ contains
         integer(kind=intType), parameter :: nAdv = 3
         integer(kind=intType) :: offset, i, j, k, ii, jj
 
+        ! First-order upwind for the transition variables (P&Z 2020,
+        ! Sec. IV.A) unless the user explicitly disables it — same
+        ! behavior as turbAdvection/saGammaReTheta_block.
         secondOrd = .false.
-        if (groundLevel == 1_intType .and. orderTurb == secondOrder) secondOrd = .true.
+        if (groundLevel == 1_intType .and. orderTurb == secondOrder &
+            .and. .not. transitionFirstOrderUpwind) secondOrd = .true.
 
         offset = itu1 - 1
 

@@ -754,6 +754,8 @@ nadvloopspectral:do ii=1,nadv
 &   , sfacej, sfacek, w, wd, si, sj, sk, addgridvelocities, bmti1, bmti2&
 &   , bmtj1, bmtj2, bmtk1, bmtk2, scratch, scratchd
     use inputdiscretization, only : orderturb
+    use inputphysics, only : turbmodel
+    use inputiteration, only : transitionfirstorderupwind
     use iteration, only : groundlevel
     use turbmod, only : secondord
     implicit none
@@ -804,6 +806,14 @@ nadvloopspectral:do ii=1,nadv
     secondord = .false.
     if (groundlevel .eq. 1_inttype .and. orderturb .eq. secondorder) &
 &     secondord = .true.
+! transition model: gamma and rethetatilde convection is
+! first-order upwind (piotrowski & zingg 2020, sec. iv.a).
+! enforced here, in the one routine every path goes through,
+! so decoupled dadi, coupled ank/nk, and the adjoint master
+! sweeps discretize the identical residual regardless of
+! caller or orderturb.
+    if (turbmodel .eq. spalartallmarasnoft2gammaretheta .and. &
+&       transitionfirstorderupwind) secondord = .false.
     qs = zero
 !$bwd-of ii-loop 
     do iii=0,nx*ny*nz-1
@@ -1509,6 +1519,8 @@ nadvloopspectral:do ii=1,nadv
 &   , sfacej, sfacek, w, si, sj, sk, addgridvelocities, bmti1, bmti2, &
 &   bmtj1, bmtj2, bmtk1, bmtk2, scratch
     use inputdiscretization, only : orderturb
+    use inputphysics, only : turbmodel
+    use inputiteration, only : transitionfirstorderupwind
     use iteration, only : groundlevel
     use turbmod, only : secondord
     implicit none
@@ -1556,6 +1568,14 @@ nadvloopspectral:do ii=1,nadv
     secondord = .false.
     if (groundlevel .eq. 1_inttype .and. orderturb .eq. secondorder) &
 &     secondord = .true.
+! transition model: gamma and rethetatilde convection is
+! first-order upwind (piotrowski & zingg 2020, sec. iv.a).
+! enforced here, in the one routine every path goes through,
+! so decoupled dadi, coupled ank/nk, and the adjoint master
+! sweeps discretize the identical residual regardless of
+! caller or orderturb.
+    if (turbmodel .eq. spalartallmarasnoft2gammaretheta .and. &
+&       transitionfirstorderupwind) secondord = .false.
 !$ad checkpoint-start
 ! initialize the grid velocity to zero. this value will be used
 ! if the block is not moving.

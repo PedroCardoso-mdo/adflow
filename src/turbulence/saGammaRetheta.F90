@@ -72,8 +72,6 @@ contains
         use iteration
         use turbUtils, only: turbAdvection, unsteadyTurbTerm, saEddyViscosity
         use turbBCRoutines, only: bcTurbTreatment, applyAllTurbBCThisBlock
-        use inputIteration, only: transitionFirstOrderUpwind
-        use inputDiscretization, only: orderTurb
         implicit none
 
         !
@@ -84,7 +82,6 @@ contains
         !      Local variables.
         !
         integer(kind=intType) :: nn, sps
-        integer(kind=intType) :: orderTurbSave
 
         ! Set the arrays for the boundary condition treatment.
 
@@ -96,16 +93,11 @@ contains
         ! Source Terms
         call Source
 
-        ! Advection Term
+        ! Advection Term. First-order upwind for the transition
+        ! equations (paper Sec. IV.A) is enforced inside turbAdvection
+        ! itself (single point of truth for all solver/adjoint paths).
         nn = itu1 - 1
-        if (transitionFirstOrderUpwind) then
-            orderTurbSave = orderTurb
-            orderTurb = firstOrder
-        end if
         call turbAdvection(3_intType, 3_intType, nn, qq)
-        if (transitionFirstOrderUpwind) then
-            orderTurb = orderTurbSave
-        end if
 
         call unsteadyTurbTerm(3_intType, 3_intType, nn, qq)
 
@@ -256,6 +248,7 @@ contains
         real(kind=realType) :: F1_val, base_val, inner_val
         real(kind=realType) :: dFlength_dReT, dReThetaC_dReT
         real(kind=realType) :: dfOnset1_dReT, dfOnset_dReT, dPgamma_dReT
+        real(kind=realType) :: dEgamma_dReT
         real(kind=realType) :: pGamma_common, sech2_val
 
 
@@ -742,11 +735,20 @@ contains
 
                         ! --- Off-diagonal source Jacobian entries ---
 
-                        ! qq(1,2) = -dS_nu/dgamma: SA production depends on gamma
-                        qq(i, j, k, 1, 2) = -(rsaCb1 * (one - ft2) * ss &
-                            + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
+                        ! qq(1,2) = -dS_nu/dgamma: SA production depends on gamma.
+                        ! Keep the derivative consistent with the residual: in the
+                        ! approx-SA mode term1 is dropped from the residual, so its
+                        ! gamma-derivative must be dropped here too.
+                        if (approxSA .and. transitionUseApproxSA) then
+                            qq(i, j, k, 1, 2) = -term2_prod &
+                                * w(i, j, k, itu1) * w(i, j, k, itu1)
+                        else
+                            qq(i, j, k, 1, 2) = -(rsaCb1 * (one - ft2) * ss &
+                                + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
+                        end if
 
-                        ! qq(1,3) = -dS_nu/dReThetaTilde: ~0 (paper §7.1)
+                        ! qq(1,3) = -dS_nu/dReThetaTilde: exactly zero — the SA
+                        ! source has no ReThetaTilde dependence.
                         qq(i, j, k, 1, 3) = zero
 
                         ! qq(2,1) = -dS_gamma/dnu_tilde: both pGamma and
@@ -802,9 +804,22 @@ contains
                         dPgamma_dReT = pGamma_common * (fOnset * dFlength_dReT &
                                      + fLength_val * dfOnset_dReT)
 
-                        qq(i, j, k, 2, 3) = -dPgamma_dReT
+                        ! dE_gamma/dReThetaTilde: E_gamma depends on ReThetaTilde
+                        ! through fTurb = (1 - fOnset)*exp(-rTurb), so
+                        ! dfTurb/dReT = -exp(-rTurb)*dfOnset_dReT.
+                        dEgamma_dReT = -rsaGRca2 * exp(-rTurb) * dfOnset_dReT &
+                                     * vortMagLim * gammaLocal &
+                                     * (rsaGRce2 * gammaLocal - one)
 
-                        ! qq(3,1) = -dS_retheta/dnu_tilde: ~0 (paper §7.1)
+                        ! qq(2,3) = -d(pGamma - eGamma)/dReThetaTilde
+                        qq(i, j, k, 2, 3) = -dPgamma_dReT + dEgamma_dReT
+
+                        ! qq(3,1) = -dS_retheta/dnu_tilde: exactly zero without
+                        ! crossflow (S_theta has no nu_tilde dependence). With
+                        ! transitionCrossflow, D_scf depends weakly on nu_tilde
+                        ! via crossflowRatio(rTurb); that coupling is deliberately
+                        ! neglected here (LHS-only) to preserve the triangular
+                        ! source-Jacobian structure used by computeSrcLambda.
                         qq(i, j, k, 3, 1) = zero
 
                         ! qq(3,2) = -dS_retheta/dgamma: fThetaT does not
@@ -2192,8 +2207,13 @@ contains
         !
         ! Compute the source-term Jacobian A_source = ∂S/∂Q for cell (i,j,k).
         ! Returns the 5 non-zero entries: A(1,1), A(1,2), A(2,1), A(2,2), A(3,3).
-        ! Entries A(1,3), A(3,1), A(3,2) are zero per P&Z §7.1.
-        ! A(2,3) is computed via one-sided finite difference.
+        ! A(1,3) is exactly zero (SA source has no ReThetaTilde dependence).
+        ! A(3,2) is exactly zero (this FThetaT has no gamma term).
+        ! A(3,1) is zero without crossflow; with transitionCrossflow the weak
+        ! D_scf dependence on nu_tilde (via crossflowRatio(rTurb)) is
+        ! deliberately neglected to keep the triangular structure used by
+        ! computeSrcLambda.
+        ! A(2,3) is computed via one-sided finite difference of pGamma-eGamma.
         !
         ! This routine is independent of qq — it recomputes everything from w.
         ! Used by computeSrcLambda for the source dt restriction (Eq. 59).
@@ -2236,13 +2256,14 @@ contains
         real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
         real(kind=realType) :: fOnset, fOnset1
         real(kind=realType) :: vortLim, vortMagLim, refLenTrans
-        real(kind=realType) :: pGamma, dScf, reScf, hcf
+        real(kind=realType) :: pGamma, eGamma, dScf, reScf, hcf
         real(kind=realType) :: velMag, velMag2, timeScale
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: yDist
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
         real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
+        real(kind=realType) :: fTurb_p, eGamma_p
         real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
         real(kind=realType) :: dfOnset1_drT, dfOnset_dfOnset1
 
@@ -2371,7 +2392,9 @@ contains
             refLenTrans = lengthRef
         end if
         vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) / 20.0_realType
-        vortMagLim = min(vortMag, vortLim)
+        ! Use the same smooth limiter as the residual (Source) so this
+        ! Jacobian linearizes the source actually being solved.
+        vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
 
         reS_val = w(i, j, k, irho) * yDist**2 * strainMag / rlv(i, j, k)
         reThetaC_val = rethetacCorrelation(reThetaTilde)
@@ -2383,6 +2406,8 @@ contains
 
         pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
                  * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
+        eGamma = rsaGRca2 * fTurb_val * vortMagLim * gammaLocal &
+                 * (rsaGRce2 * gammaLocal - one)
 
         ! A(2,2) = +∂S_gamma/∂gamma
         A(2,2) = -(rsaGRca1 * fLength_val * fOnset * vortMagLim &
@@ -2417,9 +2442,14 @@ contains
         fOnset1_p = sqrt((reS_val / (2.6_realType * reThetaC_p))**2 + rTurb**2)
         fOnset_p = (tanh(6.0_realType * (fOnset1_p - 1.35_realType)) + one) * half
         fLength_p = flengthCorrelation(reThetaTilde_p)
+        ! Perturb the full source S_gamma = pGamma - eGamma: eGamma also
+        ! depends on ReThetaTilde through fOnset -> fTurb.
+        fTurb_p = (one - fOnset_p) * exp(-rTurb)
         pGamma_p = rsaGRca1 * fLength_p * fOnset_p * vortMagLim &
                    * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
-        A(2,3) = (pGamma_p - pGamma) / epsRT
+        eGamma_p = rsaGRca2 * fTurb_p * vortMagLim * gammaLocal &
+                   * (rsaGRce2 * gammaLocal - one)
+        A(2,3) = ((pGamma_p - eGamma_p) - (pGamma - eGamma)) / epsRT
 
         ! A(3,3) = +∂S_retheta/∂ReThetaTilde
         timeScale = 500.0_realType * nu / max(velMag2, xminn)

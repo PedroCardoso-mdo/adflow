@@ -68,12 +68,10 @@ contains
     use blockpointers, only : il, jl, kl
     use inputtimespectral
     use iteration
-    use turbutils_fast_b, only : ssteddyviscosity, turbadvection, &
-&   unsteadyturbterm, saeddyviscosity
+    use turbutils_fast_b, only : turbadvection, unsteadyturbterm, &
+&   saeddyviscosity
     use turbbcroutines_fast_b, only : bcturbtreatment, &
 &   applyallturbbcthisblock
-    use inputiteration, only : transitionfirstorderupwind
-    use inputdiscretization, only : orderturb
     implicit none
 !
 !      subroutine argument.
@@ -83,21 +81,17 @@ contains
 !      local variables.
 !
     integer(kind=inttype) :: nn, sps
-    integer(kind=inttype) :: orderturbsave
 ! set the arrays for the boundary condition treatment.
     call bcturbtreatment()
 ! alloc central jacobian memory
     allocate(qq(2:il, 2:jl, 2:kl, 3, 3))
 ! source terms
     call source()
-! advection term
+! advection term. first-order upwind for the transition
+! equations (paper sec. iv.a) is enforced inside turbadvection
+! itself (single point of truth for all solver/adjoint paths).
     nn = itu1 - 1
-    if (transitionfirstorderupwind) then
-      orderturbsave = orderturb
-      orderturb = firstorder
-    end if
     call turbadvection(3_inttype, 3_inttype, nn, qq)
-    if (transitionfirstorderupwind) orderturb = orderturbsave
     call unsteadyturbterm(3_inttype, 3_inttype, nn, qq)
 ! viscous terms
     call viscous()
@@ -143,7 +137,7 @@ contains
 &   rethetaccorrelation_fast_b, smoothminmax, smoothminmax_fast_b
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
-&   transitionuseapproxsa
+&   transitionuseapproxsa, transitionreflength
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -236,7 +230,7 @@ contains
 &   fturb_vald
     real(kind=realtype) :: fonset, fonset1
     real(kind=realtype) :: fonsetd, fonset1d
-    real(kind=realtype) :: vortlim, vortmaglim
+    real(kind=realtype) :: vortlim, vortmaglim, reflentrans
     real(kind=realtype) :: vortlimd, vortmaglimd
     real(kind=realtype) :: pgamma, egamma
     real(kind=realtype) :: pgammad, egammad
@@ -263,6 +257,7 @@ contains
     real(kind=realtype) :: f1_val, base_val, inner_val
     real(kind=realtype) :: dflength_dret, drethetac_dret
     real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
+    real(kind=realtype) :: degamma_dret
     real(kind=realtype) :: pgamma_common, sech2_val
     intrinsic mod
     intrinsic sqrt
@@ -636,10 +631,24 @@ myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
         velmag = sqrt(max3)
-        if (muinf .lt. xminn) then
+! --- vorticity limiting ---
+! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
+! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
+! scale and √(p*ρ) for dynamic viscosity.
+! the paper's re carries an explicit reference length l (root
+! chord): the physical cap scales as 1/√l. reflentrans supplies
+! l in grid units; transitionreflength < 0 => use lengthref
+! (aeroproblem chordref).
+! rotating frame not adress here!!!!! uinf has no meaning on it.
+        if (transitionreflength .gt. zero) then
+          reflentrans = transitionreflength
+        else
+          reflentrans = lengthref
+        end if
+        if (muinf*reflentrans .lt. xminn) then
           max14 = xminn
         else
-          max14 = muinf
+          max14 = muinf*reflentrans
         end if
         x3 = uinf/max14
         if (x3 .lt. xminn) then
@@ -647,11 +656,6 @@ myIntPtr = myIntPtr + 1
         else
           max4 = x3
         end if
-! --- vorticity limiting ---
-! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
-! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
-! scale and √(p*ρ) for dynamic viscosity.
-! rotating frame not adress here!!!!! uinf has no meaning on it.
         vortlim = uinf*sqrt(max4)/20.0_realtype
         vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
 ! --- fonset (smooth tanh-based transition onset) ---
@@ -1390,7 +1394,7 @@ branch = myIntStack(myIntPtr)
 &   , rethetaccorrelation, smoothminmax
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
-&   transitionuseapproxsa
+&   transitionuseapproxsa, transitionreflength
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1467,7 +1471,7 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: gammaforsa
     real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
     real(kind=realtype) :: fonset, fonset1
-    real(kind=realtype) :: vortlim, vortmaglim
+    real(kind=realtype) :: vortlim, vortmaglim, reflentrans
     real(kind=realtype) :: pgamma, egamma
     real(kind=realtype) :: velmag, velmag2, timescale, rethetat_target
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
@@ -1484,6 +1488,7 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: f1_val, base_val, inner_val
     real(kind=realtype) :: dflength_dret, drethetac_dret
     real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
+    real(kind=realtype) :: degamma_dret
     real(kind=realtype) :: pgamma_common, sech2_val
     intrinsic mod
     intrinsic sqrt
@@ -1749,10 +1754,24 @@ branch = myIntStack(myIntPtr)
           max3 = velmag2
         end if
         velmag = sqrt(max3)
-        if (muinf .lt. xminn) then
+! --- vorticity limiting ---
+! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
+! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
+! scale and √(p*ρ) for dynamic viscosity.
+! the paper's re carries an explicit reference length l (root
+! chord): the physical cap scales as 1/√l. reflentrans supplies
+! l in grid units; transitionreflength < 0 => use lengthref
+! (aeroproblem chordref).
+! rotating frame not adress here!!!!! uinf has no meaning on it.
+        if (transitionreflength .gt. zero) then
+          reflentrans = transitionreflength
+        else
+          reflentrans = lengthref
+        end if
+        if (muinf*reflentrans .lt. xminn) then
           max14 = xminn
         else
-          max14 = muinf
+          max14 = muinf*reflentrans
         end if
         x3 = uinf/max14
         if (x3 .lt. xminn) then
@@ -1760,11 +1779,6 @@ branch = myIntStack(myIntPtr)
         else
           max4 = x3
         end if
-! --- vorticity limiting ---
-! adflow nondim of paper eqs. 52–53. paper writes m·√(m·re)/20
-! using a∞ as velocity scale; adflow uses √(p/ρ) as velocity
-! scale and √(p*ρ) for dynamic viscosity.
-! rotating frame not adress here!!!!! uinf has no meaning on it.
         vortlim = uinf*sqrt(max4)/20.0_realtype
         vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
 ! --- fonset (smooth tanh-based transition onset) ---
@@ -3278,6 +3292,7 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: rblank, factor
     real(kind=realtype) :: gammanew, gammadelta, dampfactor
     integer(kind=inttype) :: mm
+    integer(kind=inttype) :: ndampcapgamma, ndampcapretheta
 ! source dt restriction (eq. 59)
     real(kind=realtype) :: dt_inv
 ! scaling values from existing turbulence residual scaling options
@@ -3850,6 +3865,8 @@ branch = myIntStack(myIntPtr)
 !
       factor = one
       if (turbrelax .eq. turbrelaxexplicit) factor = alfaturb
+      ndampcapgamma = 0
+      ndampcapretheta = 0
       do k=2,kl
         do j=2,jl
           do i=2,il
@@ -3860,9 +3877,13 @@ branch = myIntStack(myIntPtr)
             else
               w(i, j, k, itu1) = w(i, j, k, itu1)
             end if
-! gamma update with exponential back-off damping (§3).
-! if the raw update overshoots [gammalo, gammahi],
-! reduce the step by theta^m until it stays in range.
+! gamma update with exponential back-off damping
+! (paper algorithm 2): reduce the step by theta^m until
+! the new value stays in [gammalo, gammahi]. the hard
+! clip below is a last-resort fallback only — it can
+! only fire if the back-off exhausted maxiter, which is
+! only possible when the previous value was already out
+! of bounds (theta^m * delta -> 0).
             gammadelta = factor*scalegamma*scratch(i, j, k, idvt+1)
             gammanew = w(i, j, k, itu2) + gammadelta
             dampfactor = one
@@ -3875,17 +3896,24 @@ branch = myIntStack(myIntPtr)
                 gammanew = w(i, j, k, itu2) + dampfactor*gammadelta
               end if
             end do
- 100        if (gammanew .lt. rsagrgammalo) then
-              x4 = rsagrgammalo
-            else
-              x4 = gammanew
+ 100        if (gammanew .lt. rsagrgammalo .or. gammanew .gt. &
+&               rsagrgammahi) then
+              ndampcapgamma = ndampcapgamma + 1
+              if (gammanew .lt. rsagrgammalo) then
+                x4 = rsagrgammalo
+              else
+                x4 = gammanew
+              end if
+              if (x4 .gt. rsagrgammahi) then
+                gammanew = rsagrgammahi
+              else
+                gammanew = x4
+              end if
             end if
-            if (x4 .gt. rsagrgammahi) then
-              w(i, j, k, itu2) = rsagrgammahi
-            else
-              w(i, j, k, itu2) = x4
-            end if
-! retheta update with exponential back-off damping (§3).
+            w(i, j, k, itu2) = gammanew
+! retheta update with exponential back-off damping
+! (paper algorithm 2, lower bound only). same
+! last-resort clip as gamma.
             gammadelta = factor*scaleretheta*scratch(i, j, k, idvt+2)
             gammanew = w(i, j, k, itu3) + gammadelta
             dampfactor = one
@@ -3898,13 +3926,28 @@ branch = myIntStack(myIntPtr)
               end if
             end do
  110        if (gammanew .lt. rsagrrethetalo) then
-              w(i, j, k, itu3) = rsagrrethetalo
-            else
-              w(i, j, k, itu3) = gammanew
+              ndampcapretheta = ndampcapretheta + 1
+              gammanew = rsagrrethetalo
             end if
+            w(i, j, k, itu3) = gammanew
           end do
         end do
       end do
+      if (ndampcapgamma + ndampcapretheta .gt. 0) print*, &
+&                        'warning: transition update damping exhausted '&
+&                                                 , &
+&                                              'transitiondampmaxiter ('&
+&                                                 , &
+&                                                 transitiondampmaxiter&
+&                                                 , ') in ', &
+&                                                 ndampcapgamma, &
+&                                                 ' gamma / ', &
+&                                                 ndampcapretheta, &
+&               ' retheta cells; values clipped to algorithm 2 bounds. '&
+&                                                 , &
+&               'increase transitiondampmaxiter or investigate why the '&
+&                                                 , &
+&                            'previous state was already out of bounds.'
     end if
   end subroutine sagammarethetasolve
 
@@ -3912,8 +3955,13 @@ branch = myIntStack(myIntPtr)
 !
 ! compute the source-term jacobian a_source = ∂s/∂q for cell (i,j,k).
 ! returns the 5 non-zero entries: a(1,1), a(1,2), a(2,1), a(2,2), a(3,3).
-! entries a(1,3), a(3,1), a(3,2) are zero per p&z §7.1.
-! a(2,3) is computed via one-sided finite difference.
+! a(1,3) is exactly zero (sa source has no rethetatilde dependence).
+! a(3,2) is exactly zero (this fthetat has no gamma term).
+! a(3,1) is zero without crossflow; with transitioncrossflow the weak
+! d_scf dependence on nu_tilde (via crossflowratio(rturb)) is
+! deliberately neglected to keep the triangular structure used by
+! computesrclambda.
+! a(2,3) is computed via one-sided finite difference of pgamma-egamma.
 !
 ! this routine is independent of qq — it recomputes everything from w.
 ! used by computesrclambda for the source dt restriction (eq. 59).
@@ -3927,7 +3975,7 @@ branch = myIntStack(myIntPtr)
     use turbutils_fast_b, only : flengthcorrelation, rethetaccorrelation&
 &   , smoothminmax
     use inputiteration, only : transitioncrossflow, &
-&   transitionroughnessheight
+&   transitionroughnessheight, transitionreflength
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(3, 3)
@@ -3952,8 +4000,8 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: gammaforsa
     real(kind=realtype) :: res_val, rethetac_val, flength_val, fturb_val
     real(kind=realtype) :: fonset, fonset1
-    real(kind=realtype) :: vortlim, vortmaglim
-    real(kind=realtype) :: pgamma, dscf, rescf, hcf
+    real(kind=realtype) :: vortlim, vortmaglim, reflentrans
+    real(kind=realtype) :: pgamma, egamma, dscf, rescf, hcf
     real(kind=realtype) :: velmag, velmag2, timescale
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: ydist
@@ -3961,6 +4009,7 @@ branch = myIntStack(myIntPtr)
 &   dhminus
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
     real(kind=realtype) :: fonset1_p, fonset_p, flength_p, pgamma_p
+    real(kind=realtype) :: fturb_p, egamma_p
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
     real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
     intrinsic max
@@ -4156,10 +4205,15 @@ branch = myIntStack(myIntPtr)
       max4 = velmag2
     end if
     velmag = sqrt(max4)
-    if (muinf .lt. xminn) then
+    if (transitionreflength .gt. zero) then
+      reflentrans = transitionreflength
+    else
+      reflentrans = lengthref
+    end if
+    if (muinf*reflentrans .lt. xminn) then
       max17 = xminn
     else
-      max17 = muinf
+      max17 = muinf*reflentrans
     end if
     x3 = uinf/max17
     if (x3 .lt. xminn) then
@@ -4168,11 +4222,9 @@ branch = myIntStack(myIntPtr)
       max5 = x3
     end if
     vortlim = uinf*sqrt(max5)/20.0_realtype
-    if (vortmag .gt. vortlim) then
-      vortmaglim = vortlim
-    else
-      vortmaglim = vortmag
-    end if
+! use the same smooth limiter as the residual (source) so this
+! jacobian linearizes the source actually being solved.
+    vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
     res_val = w(i, j, k, irho)*ydist**2*strainmag/rlv(i, j, k)
     rethetac_val = rethetaccorrelation(rethetatilde)
     fonset1 = sqrt((res_val/(2.6_realtype*rethetac_val))**2 + rturb**2)
@@ -4186,6 +4238,8 @@ branch = myIntStack(myIntPtr)
     end if
     pgamma = rsagrca1*flength_val*fonset*vortmaglim*sqrt(max6)*(one-&
 &     rsagrce1*gammalocal)
+    egamma = rsagrca2*fturb_val*vortmaglim*gammalocal*(rsagrce2*&
+&     gammalocal-one)
     if (gammalocal .lt. xminn) then
       max7 = xminn
     else
@@ -4232,6 +4286,9 @@ branch = myIntStack(myIntPtr)
     fonset1_p = sqrt((res_val/(2.6_realtype*rethetac_p))**2 + rturb**2)
     fonset_p = (tanh(6.0_realtype*(fonset1_p-1.35_realtype))+one)*half
     flength_p = flengthcorrelation(rethetatilde_p)
+! perturb the full source s_gamma = pgamma - egamma: egamma also
+! depends on rethetatilde through fonset -> fturb.
+    fturb_p = (one-fonset_p)*exp(-rturb)
     if (gammalocal .lt. xminn) then
       max10 = xminn
     else
@@ -4239,7 +4296,9 @@ branch = myIntStack(myIntPtr)
     end if
     pgamma_p = rsagrca1*flength_p*fonset_p*vortmaglim*sqrt(max10)*(one-&
 &     rsagrce1*gammalocal)
-    a(2, 3) = (pgamma_p-pgamma)/epsrt
+    egamma_p = rsagrca2*fturb_p*vortmaglim*gammalocal*(rsagrce2*&
+&     gammalocal-one)
+    a(2, 3) = (pgamma_p-egamma_p-(pgamma-egamma))/epsrt
     if (velmag2 .lt. xminn) then
       max11 = xminn
     else
