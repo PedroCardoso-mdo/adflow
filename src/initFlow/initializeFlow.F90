@@ -424,6 +424,7 @@ contains
         use inputIteration, only: mgStartLevel, turbTreatment
         use iteration, only: nOldLevels
         use utils, only: terminate
+        use paramTurb, only: nTransitionDebug
         implicit none
         !
         !      Subroutine arguments.
@@ -433,7 +434,6 @@ contains
         !      Local variables.
         !
         integer :: ierr
-        integer(kind=intType), parameter :: nSaGrDebugVars = 48_intType
 
         integer(kind=intType) :: nn
         integer(kind=intType) :: il, jl, kl, ie, je, ke, ib, jb, kb
@@ -518,7 +518,7 @@ contains
             !endif
 
             if (turbModel == spalartallmarasnoft2gammaretheta) then
-                allocate (flowDoms(nn, level, sps)%transitionDebug(2:il, 2:jl, 2:kl, 1:nSaGrDebugVars), &
+                allocate (flowDoms(nn, level, sps)%transitionDebug(2:il, 2:jl, 2:kl, 1:nTransitionDebug), &
                           stat=ierr)
                 if (ierr /= 0) &
                     call terminate("allocMemFlovarPart1", &
