@@ -171,8 +171,7 @@ wins, else `lengthRef`. **Full aircraft:** no single l is "correct" for all
 components (cap ∝ 1/√c_local); the paper's own prescription (one global root
 chord) is already a compromise — use the MAC or root chord, and remember the
 limiter is a numerical safety net whose failure mode (residual oscillation near
-LSBs) is visible, not a silent physics error. Full analysis:
-`findings/D1_transitionRefLength.md`.
+LSBs) is visible, not a silent physics error.
 
 ### Turb-ANK KSP physicality options (transition-specific)
 

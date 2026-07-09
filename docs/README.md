@@ -40,8 +40,11 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Adjoint / AD theory (general) | `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` |
 | Implement or extend the adjoint / AD on **this branch** | `adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `adjoint-trace.md` |
-| Validate partials / plan AD test campaign | `../audits/adjoint_audit_2026-07-07.md` → `../audits/sst_dev_lessons.md` (verification ladder + watch items) |
+| Validate partials / plan AD test campaign | `current-task.md` → `../audits/adjoint_audit_2026-07-07.md` → `../audits/sst_dev_lessons.md` (verification ladder + watch items) |
 | How another multi-equation turb model was differentiated (SST precedent) | `../audits/sst_dev_lessons.md` |
+| Why is X implemented this way / was this already discussed | `../audits/design-decisions.md` (memory of past discussion, not a spec — code/paper win if it disagrees) |
+| What's the task in progress right now | `current-task.md` |
+| What was already finished, and how | `task-log/README.md` (index → per-task case files) |
 | Provenance / sources / where a fact came from | this file + `ADFLOW_BASE/ADFLOW_00_context_index.md` |
 
 ---
@@ -56,20 +59,23 @@ answer. `→` means "if the first isn't enough, go to the next."
 | [architecture.md](architecture.md) | Solver architecture, state-vector layout, key code/module locations, user constraints, and the complete reference for every runtime option added for the transition model. |
 | [nondimensionalization.md](nondimensionalization.md) | How ADflow makes the governing equations dimensionless — the **pressure–density (p-ρ) scaling** (velocity normalizes to M·√γ, *not* 1). Read before touching any equation with velocity, viscosity, time scales, or Reynolds number. |
 | [adjoint-trace.md](adjoint-trace.md) | Paired inventory of adjoint/AD touchpoints (SA vs SA-GR) on this branch: preprocessor guards, Tapenade directives, generated AD files, wiring. |
-| [TODO.md](TODO.md) | Deferred tuning/improvement items (decided, not defects): `turbResScale` calibration, Eq. 59 relaxation options, damping-clip fallback, open dúvida D-A2-3, blockettes. Each item links back to its `findings/` analysis. |
+| [TODO.md](TODO.md) | Deferred tuning/improvement items (decided, not defects): `turbResScale` calibration, Eq. 59 relaxation options, damping-clip fallback, open dúvida D-A2-3, blockettes. Each item links back to its `audits/design-decisions.md` analysis. |
+| [current-task.md](current-task.md) | The single task currently in progress (CLAUDE.md: one task per session) — objective, scoped context, working files, checklist. Overwritten each session. |
+| [task-log/](task-log/README.md) | Finished-task log, one file per task (a "case"), added over time — index + template in `task-log/README.md`. |
 
-### Audits (`audits/`, repo root)
+### Audits (`audits/`)
 
 | File | What's in it |
 |------|--------------|
 | [../audits/sst_dev_lessons.md](../audits/sst_dev_lessons.md) | Post-mortem of upstream `sst_dev` (SST, PR #331) — how a 2-equation model was differentiated, what broke, and a comparison table vs this branch's SA-GR. Read before any AD-unfreeze work or partials campaign. |
 | [../audits/adjoint_audit_2026-07-07.md](../audits/adjoint_audit_2026-07-07.md) | Pre-partials-test visual audit of the SA-GR adjoint wiring: verified-pass table, the `vortlimd = 0` finding (uInf/muInf head activity), and watch items (autoEdit fast_b stripping, limiter kinks). |
+| [../audits/design-decisions.md](../audits/design-decisions.md) | **Not a spec — a memory.** Condensed log of resolved code-audit questions (A1-A3): nondim safeguards, convergence-strategy decisions (Eq. 59 forms, damping, `turbResScale`), and SA/SST code-coherence divergences (ft2 default, wall functions, source-Jacobian clips, farfield BC, init values). Read for "why is X implemented this way" — code/paper win if it ever disagrees with this file. |
 
 ### Physics reference (`docs/SA_GAMMA_RETHETHA_BASE/`)
 
 | File | What's in it |
 |------|--------------|
-| Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md | Full paper text. **Source of truth for physics** — when code and paper disagree, paper wins. Sole physics reference (distilled summaries were retired after repeated distillation errors; see `findings/A_confirmacao.md` §D3). |
+| Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md | Full paper text. **Source of truth for physics** — when code and paper disagree, paper wins. Sole physics reference (distilled summaries were retired after repeated distillation errors; see `../audits/design-decisions.md` §D3). |
 
 ### ADflow reference KB (`docs/ADFLOW_BASE/`)
 

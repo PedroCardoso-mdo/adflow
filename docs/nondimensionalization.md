@@ -127,7 +127,7 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > Dimensional test: a threshold on Ω (1/s) built from freestream ρ, U, μ alone
 > *needs* a length — nothing else cancels it. Handled by the
 > `transitionRefLength` option (auto = AeroProblem `chordRef`; see
-> `architecture.md` Part 2). Findings log: `findings/D1_transitionRefLength.md`.
+> `architecture.md` Part 2).
 >
 > **AD corollary (2026-07-07):** because `uInf`/`muInf` are the code's spelling
 > of the paper's freestream M and Re, the cap makes the *residual* depend on

@@ -1,13 +1,13 @@
 # TODO — SA-gamma-Retheta
 
 Lista de itens de tuning/melhoria futuros, decididos mas adiados. Não são
-defeitos: cada um foi analisado e fechado nos `findings/` (referência em cada
-item). Só atacar quando houver sintoma concreto (run que estagna, custo
-excessivo) ou quando o modelo estiver fisicamente validado.
+defeitos: cada um foi analisado e fechado em `audits/design-decisions.md` (referência
+em cada item). Só atacar quando houver sintoma concreto (run que estagna,
+custo excessivo) ou quando o modelo estiver fisicamente validado.
 
 ## Tuning numérico
 
-- [ ] **Calibrar escalas `turbResScale`** (de D-A2-4, `findings/A_confirmacao.md`).
+- [ ] **Calibrar escalas `turbResScale`** (de D-A2-4, `audits/design-decisions.md`).
   Default atual `[1e4, 10, 1e4]` — mantido por decisão (convenção ADflow para
   ν̃; γ e Re̅θt do paper). Se um arranque acoplado estagnar numa linha de
   turbulência: **medir, não transferir rácios do paper** — imprimir as normas
@@ -17,7 +17,7 @@ excessivo) ou quando o modelo estiver fisicamente validado.
 
 
 - [ ] **Verificar se a cauda do DADI fica lenta demais com a Eq. 59 sempre
-  ativa** (de D-A2-3, `findings/A_confirmacao.md`). No DADI a restrição
+  ativa** (de D-A2-3, `audits/design-decisions.md`). No DADI a restrição
   aditiva de fonte nunca desativa (fiel ao paper — fase de globalização), mas
   os autovalores de fonte podem ficar grandes até ao fim ⇒ cauda assintótica
   potencialmente lenta na frente de transição em runs DADI-only profundos.
@@ -27,11 +27,11 @@ excessivo) ou quando o modelo estiver fisicamente validado.
   (default), (b) `False`, (c) `transitionSrcDtLimit: 2.0–5.0`. Se (a) for
   visivelmente mais lenta: subir `transitionSrcDtLimit` em runtime ou
   desligar a restrição tarde no run; alternativa de 1 linha (soma depois do
-  `factor`) já documentada em `A_confirmacao.md` §D-A2-2.
+  `factor`) já documentada em `audits/design-decisions.md` §D-A2-2.
 
 ## Desempenho
 
-- [ ] **Blockettes para SA-GR** (de N-A2-6, `findings/A2_convergencia.md`).
+- [ ] **Blockettes para SA-GR** (de N-A2-6, `audits/design-decisions.md`).
   `useBlockettes` forçado a False (`pyADflow.py:6656-6657`) — caminho de
   resíduo mais lento em todos os mat-vecs matrix-free do ANK/NK. Implementar
   em `blocketteResCore` quando se avaliar desempenho.
