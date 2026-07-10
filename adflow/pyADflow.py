@@ -1257,17 +1257,6 @@ class ADFLOW(AeroSolver):
                     "to the wind-tunnel/freestream value."
                 )
 
-            # A fully turbulent SA freestream eddy viscosity contaminates the
-            # laminar regions the transition model is trying to preserve.
-            if self.getOption("eddyVisInfRatio") > 1e-10:
-                ADFLOWWarning(
-                    "eddyVisInfRatio is %g while the SA-noft2-Gamma-Retheta "
-                    "transition model is active. The SA default (0.009) is a "
-                    "fully turbulent freestream and contaminates the laminar "
-                    "regions upstream of transition. Set eddyVisInfRatio to "
-                    "1e-10 (Piotrowski and Zingg 2020)." % self.getOption("eddyVisInfRatio")
-                )
-
         # Get option about adjoint memory
         releaseAdjointMemory = kwargs.pop("relaseAdjointMemory", True)
 
