@@ -1045,6 +1045,14 @@ contains
                         !====================================================
                         ! GAMMA EQUATION
                         !====================================================
+                        ! Unlike SA (bmt=+1 at walls), gamma/retheta use
+                        ! zero-gradient wall halos (bmt=-1). The max(bmt,0)
+                        ! guard used for eq 1 would skip the implicit BC and
+                        ! leave the wall-face coefficient anchoring the
+                        ! diagonal, which stalls the DADI on the smooth
+                        ! near-wall layer mode. Use the true bmt: the row
+                        ! stays weakly diagonally dominant (diag = |offdiag|
+                        ! plus source/relaxation terms).
 
                         b2 = -c2m
                         c2 =  c20
@@ -1053,13 +1061,13 @@ contains
                         if (k == 2) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtk1(i,j,itu2,itu1)
                             qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - b2 * max(bmtk1(i,j,itu2,itu2), zero)
+                                            - b2 * bmtk1(i,j,itu2,itu2)
                             qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmtk1(i,j,itu2,itu3)
 
                         else if (k == kl) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmtk2(i,j,itu2,itu1)
                             qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - d2 * max(bmtk2(i,j,itu2,itu2), zero)
+                                            - d2 * bmtk2(i,j,itu2,itu2)
                             qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmtk2(i,j,itu2,itu3)
 
                         else
@@ -1079,13 +1087,13 @@ contains
                             qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmtk1(i,j,itu3,itu1)
                             qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmtk1(i,j,itu3,itu2)
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - b3 * max(bmtk1(i,j,itu3,itu3), zero)
+                                            - b3 * bmtk1(i,j,itu3,itu3)
 
                         else if (k == kl) then
                             qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmtk2(i,j,itu3,itu1)
                             qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmtk2(i,j,itu3,itu2)
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - d3 * max(bmtk2(i,j,itu3,itu3), zero)
+                                            - d3 * bmtk2(i,j,itu3,itu3)
 
                         else
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
@@ -1244,13 +1252,13 @@ contains
                         if (j == 2) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtj1(i,k,itu2,itu1)
                             qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - b2 * max(bmtj1(i,k,itu2,itu2), zero)
+                                            - b2 * bmtj1(i,k,itu2,itu2)
                             qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmtj1(i,k,itu2,itu3)
 
                         else if (j == jl) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmtj2(i,k,itu2,itu1)
                             qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - d2 * max(bmtj2(i,k,itu2,itu2), zero)
+                                            - d2 * bmtj2(i,k,itu2,itu2)
                             qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmtj2(i,k,itu2,itu3)
 
                         else
@@ -1270,13 +1278,13 @@ contains
                             qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmtj1(i,k,itu3,itu1)
                             qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmtj1(i,k,itu3,itu2)
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - b3 * max(bmtj1(i,k,itu3,itu3), zero)
+                                            - b3 * bmtj1(i,k,itu3,itu3)
 
                         else if (j == jl) then
                             qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmtj2(i,k,itu3,itu1)
                             qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmtj2(i,k,itu3,itu2)
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - d3 * max(bmtj2(i,k,itu3,itu3), zero)
+                                            - d3 * bmtj2(i,k,itu3,itu3)
 
                         else
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
@@ -1434,13 +1442,13 @@ contains
                         if (i == 2) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmti1(j,k,itu2,itu1)
                             qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - b2 * max(bmti1(j,k,itu2,itu2), zero)
+                                            - b2 * bmti1(j,k,itu2,itu2)
                             qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmti1(j,k,itu2,itu3)
 
                         else if (i == il) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmti2(j,k,itu2,itu1)
                             qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
-                                            - d2 * max(bmti2(j,k,itu2,itu2), zero)
+                                            - d2 * bmti2(j,k,itu2,itu2)
                             qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmti2(j,k,itu2,itu3)
 
                         else
@@ -1460,13 +1468,13 @@ contains
                             qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmti1(j,k,itu3,itu1)
                             qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmti1(j,k,itu3,itu2)
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - b3 * max(bmti1(j,k,itu3,itu3), zero)
+                                            - b3 * bmti1(j,k,itu3,itu3)
 
                         else if (i == il) then
                             qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmti2(j,k,itu3,itu1)
                             qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmti2(j,k,itu3,itu2)
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
-                                            - d3 * max(bmti2(j,k,itu3,itu3), zero)
+                                            - d3 * bmti2(j,k,itu3,itu3)
 
                         else
                             qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
@@ -1624,10 +1632,12 @@ contains
         cb3Inv = one / rsaCb3
         cv13 = rsaCv1**3
 
-        ! Use existing per-equation scaling controls. Protect against zero.
-        scaleNu = max(abs(turbResScale(1)), one)
-        scaleGamma = max(abs(turbResScale(2)), one)
-        scaleReTheta = max(abs(turbResScale(3)), one)
+        ! Use existing per-equation scaling controls. Guard against zero
+        ! only: sub-unity (deflating) scales are legitimate — turbResScale
+        ! is ~1/state-magnitude, and ReThetaTilde ~ O(1e3-1e4) needs ~1e-4.
+        scaleNu = max(abs(turbResScale(1)), 1.0e-12_realType)
+        scaleGamma = max(abs(turbResScale(2)), 1.0e-12_realType)
+        scaleReTheta = max(abs(turbResScale(3)), 1.0e-12_realType)
 
         ! Precompute scaling ratios: s_col / s_row for off-diagonal entries
         s12 = scaleGamma   / scaleNu       ! eq1, var2

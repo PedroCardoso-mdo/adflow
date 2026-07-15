@@ -1644,6 +1644,25 @@ contains
                         end do
                     end do
                 end do
+            else if (turbModel == spalartAllmarasNoft2GammaRetheta) then
+                ! Physical intermittency is the gamma transport variable.
+                do k = kBeg, kEnd
+                    do j = jBeg, jEnd
+                        do i = iBeg, iEnd
+                            wIO(i, j, k, 1) = w(i, j, k, itu2)
+                        end do
+                    end do
+                end do
+            else
+                ! No intermittency for this model; zero the buffer so the
+                ! previous variable's data is not written out stale.
+                do k = kBeg, kEnd
+                    do j = jBeg, jEnd
+                        do i = iBeg, iEnd
+                            wIO(i, j, k, 1) = zero
+                        end do
+                    end do
+                end do
             end if
 
         case (cgnsFonset, cgnsFlength, cgnsRturb, cgnsReThetaTarget, &

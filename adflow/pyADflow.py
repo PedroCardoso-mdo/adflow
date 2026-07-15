@@ -6660,8 +6660,11 @@ class ADFLOW(AeroSolver):
             if turbModel == "SA":
                 self.setOption("turbresscale", 10000.0)
             elif turbModel == "SA-noft2-Gamma-Retheta":
-                # nuTilde scale ~1e4, gamma scale ~10, ReThetaTilde scale ~1e4
-                self.setOption("turbresscale", [10000.0, 10.0, 10000.0])
+                # turbResScale is ~1/state-magnitude per equation (cf. SA 1e4
+                # for nuTilde~1e-4, SST 1e-6 for omega~1e6): gamma ~ O(1-10)
+                # -> 0.1, ReThetaTilde ~ O(1e3-1e4) -> 1e-4 (paper Sec. IV.1
+                # scaling with gamma_max=10, Retheta_max=1e4 as divisors).
+                self.setOption("turbresscale", [10000.0, 0.1, 1.0e-4])
             elif turbModel == "Menter SST":
                 self.setOption("turbresscale", [1e3, 1e-6])
             else:

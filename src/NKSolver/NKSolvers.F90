@@ -373,6 +373,8 @@ contains
 
         use constants
         use inputADjoint, only: viscPC
+        use inputPhysics, only: turbModel
+        use communication, only: myID
         use utils, only: EChk
         use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP, setupStandardMultigrid
         implicit none
@@ -408,6 +410,18 @@ contains
                                       useObjective, .False., 1_intType, useCoarseMats=useCoarseMats)
         ! Reset saved value
         viscPC = tmp
+
+        ! For SA-Gamma-Retheta the NK system is solved in column-scaled
+        ! variables (see getNKColScale); make the assembled PC consistent
+        ! with the scaled MFFD operator. The MG coarse levels are NOT
+        ! scaled — use the (default) ASM preconditioner with this model.
+        if (turbModel == spalartallmarasnoft2gammaretheta) then
+            call applyNKColumnScaling(dRdwPre)
+            if (NK_precondType == 'mg' .and. myID == 0) then
+                print *, 'Warning: NK MG coarse levels are not column-scaled for ', &
+                    'SA-Gamma-Retheta; use NKGlobalPreconditioner=additive Schwarz'
+            end if
+        end if
 
         ! Set up KSP Options
         preConSide = 'right'
@@ -1219,9 +1233,72 @@ contains
 
     end subroutine applyAdjointPC
 
+    subroutine getNKColScale(cs)
+        ! Column scale for the NK state vector: one for the mean-flow
+        ! entries, turbResScale for the turbulence entries. For models other
+        ! than SA-Gamma-Retheta every factor is one, so wVec is the raw state
+        ! and all NK behavior is unchanged. For SA-Gamma-Retheta the state
+        ! components span ~13 orders of magnitude and the single MFFD
+        ! differencing step makes the nuTilde/gamma Jacobian columns FD noise
+        ! unless the vector is scaled to O(1) per component.
+        use constants
+        use inputPhysics, only: turbModel
+        use inputIteration, only: turbResScale
+        use flowVarRefState, only: nw, nt1, nt2
+        implicit none
+        real(kind=realType), intent(out) :: cs(1:nw)
+        integer(kind=intType) :: l
+
+        cs = one
+        if (turbModel == spalartallmarasnoft2gammaretheta) then
+            do l = nt1, nt2
+                cs(l) = turbResScale(l - nt1 + 1)
+            end do
+        end if
+    end subroutine getNKColScale
+
+    subroutine applyNKColumnScaling(matrix)
+        ! Right-multiply the assembled NK preconditioner by diag(1/cs) so it
+        ! is consistent with the column-scaled state vector. Only called for
+        ! SA-Gamma-Retheta.
+        use constants
+        use flowVarRefState, only: nw
+        use utils, only: EChk
+        implicit none
+
+        Mat matrix
+        Vec colVec
+        integer(kind=intType) :: ierr, jj, lState
+        real(kind=realType), pointer :: cvec_pointer(:)
+        real(kind=realType) :: cs(1:nw)
+
+        call getNKColScale(cs)
+
+        call VecDuplicate(wVec, colVec, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call VecGetArrayF90(colVec, cvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        do jj = 0, size(cvec_pointer) / nw - 1
+            do lState = 1, nw
+                cvec_pointer(jj * nw + lState) = one / cs(lState)
+            end do
+        end do
+        call VecRestoreArrayF90(colVec, cvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call MatDiagonalScale(matrix, PETSC_NULL_VEC, colVec, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call VecDestroy(colVec, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+    end subroutine applyNKColumnScaling
+
     subroutine setWVec(wVec)
 
-        ! Set the current residual in dw into the PETSc Vector
+        ! Set the current state in w into the PETSc Vector, column-scaled
+        ! (see getNKColScale; scale is one except for SA-Gamma-Retheta)
 
         use constants
         use blockPointers, only: nDom, il, jl, kl, w
@@ -1233,6 +1310,9 @@ contains
         Vec wVec
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii
         real(kind=realType), pointer :: wvec_pointer(:)
+        real(kind=realType) :: cs(1:nw)
+
+        call getNKColScale(cs)
 
         call VecGetArrayF90(wVec, wvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
@@ -1245,7 +1325,7 @@ contains
                     do j = 2, jl
                         do i = 2, il
                             do l = 1, nw
-                                wvec_pointer(ii) = w(i, j, k, l)
+                                wvec_pointer(ii) = w(i, j, k, l) * cs(l)
                                 ii = ii + 1
                             end do
                         end do
@@ -1333,7 +1413,7 @@ contains
         use constants
         use blockPointers, only: nDom, il, jl, kl, w
         use inputTimeSpectral, only: nTimeIntervalsSpectral
-        use flowVarRefState, only: nwf, nt1, nt2, winf
+        use flowVarRefState, only: nw, nwf, nt1, nt2, winf
         use utils, only: setPointers, EChk
 
         implicit none
@@ -1341,6 +1421,9 @@ contains
         Vec wVec
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii
         real(kind=realType), pointer :: wvec_pointer(:)
+        real(kind=realType) :: cs(1:nw)
+
+        call getNKColScale(cs)
 
         call VecGetArrayReadF90(wVec, wvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
@@ -1361,7 +1444,7 @@ contains
                             ! values. This is similar to the pressure
                             ! clip. Need to check this for other Turb models.
                             do l = nt1, nt2
-                                w(i, j, k, l) = max(1e-6 * winf(l), wvec_pointer(ii))
+                                w(i, j, k, l) = max(1e-6 * winf(l), wvec_pointer(ii) / cs(l))
                                 ii = ii + 1
                             end do
                         end do
@@ -1943,6 +2026,7 @@ contains
         use inputIteration, only: turbResScale
         use inputADjoint, only: viscPC
         use inputDiscretization, only: approxSA
+        use inputPhysics, only: turbModel
         use iteration, only: totalR0, totalR
         use utils, only: EChk, setPointers
         use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP, setupStandardMultigrid
@@ -1994,6 +2078,18 @@ contains
         ! Complete the matrix assembly
         call MatAssemblyEnd(dRdwPre, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! Column-scale the coupled PC to match the column-scaled state
+        ! vector (timeStepMat is scaled at its own assembly, so it is added
+        ! afterwards already consistent). Skipped for non-transition models.
+        if (turbModel == spalartallmarasnoft2gammaretheta .and. ANK_coupled) then
+            call applyANKColumnScaling(dRdwPre)
+            if (ANK_precondType == 'mg' .and. myid == 0) then
+                print *, 'Warning: ANK multigrid coarse levels are not ', &
+                    'column-scaled for SA-Gamma-Retheta; use ', &
+                    'ANKGlobalPreconditioner=additive Schwarz.'
+            end if
+        end if
 
         ! Add the contribution from the time step matrix
         call MatAXPY(dRdwPre, one, timeStepMat, SUBSET_NONZERO_PATTERN, ierr)
@@ -2048,6 +2144,7 @@ contains
         use blockPointers, only: nDom, il, jl, kl, globalCell
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputIteration, only: turbResScale
+        use inputPhysics, only: turbModel
         use utils, only: EChk, setPointers
         use amg, only: coarseIndices, A
         implicit none
@@ -2113,16 +2210,25 @@ contains
         call MatAssemblyEnd(timeStepMat, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
+        ! Column-scale to match the column-scaled state vector (both the
+        ! matrix-free MatMultAdd in FormFunction_mf and the PC MatAXPY
+        ! consume this matrix). No-op arithmetic for non-transition models
+        ! (skipped entirely there).
+        if (turbModel == spalartallmarasnoft2gammaretheta .and. ANK_coupled) then
+            call applyANKColumnScaling(timeStepMat)
+        end if
+
     end subroutine computeTimeStepMat
 
     subroutine computeTimeStepBlock(i, j, k, timeStepBlock)
         ! Computes the time step block matrix for a given cell i, j, k.
 
         use constants
-        use inputPhysics, only: machInf => mach
-        use blockPointers, only: volRef, w, dtl, gamma, p, aa
+        use inputPhysics, only: machInf => mach, turbModel
+        use blockPointers, only: volRef, w, dtl, gamma, p, aa, srcLambda
         use flowVarRefState, only: viscous, nt1, nt2
-        use inputIteration, only: turbResScale
+        use inputIteration, only: turbResScale, transitionSrcDtRestrict, &
+                                  transitionSrcDtLimit, noBacktrackCount, srcDtDeactivateIters
         use communication
         implicit none
 
@@ -2133,7 +2239,8 @@ contains
         real(kind=realType), dimension(nState, nState), intent(out) :: timeStepBlock
 
         ! Local variables
-        integer(kind=intType) :: l
+        integer(kind=intType) :: l, l1
+        real(kind=realType) :: dtInvSrc
         real(kind=realType) :: blendFactor, dtInv, rho, velX, velY, velZ
         real(kind=realType) :: speed, speedOfSound, mach, machSqr, machSqrTrunc, alpha, beta, tau, gammaMinusOne
         real(kind=realType) :: speedXY, sinTheta, cosTheta, sinAlpha, cosAlpha
@@ -2333,6 +2440,23 @@ contains
 
         end if
 
+        ! Source-term time-step restriction for the coupled SA-Gamma-Retheta
+        ! solve (P&Z Eq. 59): keep lambda_source * dt <= transitionSrcDtLimit
+        ! on the transition rows. MAX form, same as the turbKSP path in
+        ! FormJacobianANKTurb. srcLambda is frozen at the base state in
+        ! ANKStep before this matrix is formed. The turb rows are purely
+        ! diagonal here (characteristic time stepping is not applied to
+        ! them), so overriding the diagonal after the transforms is exact.
+        if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta) then
+            if (transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
+                do l = nt1, nt2
+                    l1 = l - nt1 + 1
+                    dtInvSrc = srcLambda(i, j, k, l1) / transitionSrcDtLimit
+                    timeStepBlock(l, l) = max(dtInv, dtInvSrc) * turbResScale(l1) / ANK_turbCFLScale
+                end do
+            end if
+        end if
+
     end subroutine computeTimeStepBlock
 
     subroutine FormJacobianANKTurb
@@ -2345,6 +2469,7 @@ contains
                                    noBacktrackCount, srcDtDeactivateIters
         use inputADjoint, only: viscPC
         use inputDiscretization, only: approxSA
+        use inputPhysics, only: turbModel
         use iteration, only: totalR0, totalR
         use utils, only: EChk, setPointers
         use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP
@@ -2443,6 +2568,16 @@ contains
         call MatAssemblyEnd(dRdwPreTurb, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
+        ! Column-scale the PC to match the column-scaled state vector used
+        ! by the matrix-free operator (see getTurbColScale). The assembled
+        ! matrix rows already carry turbResScale; right-multiplying by
+        ! diag(1/cs) makes it a consistent preconditioner for
+        ! S_row * dRdw * diag(1/cs). Skipped entirely for models other
+        ! than SA-Gamma-Retheta (cs = 1 there).
+        if (turbModel == spalartallmarasnoft2gammaretheta) then
+            call applyTurbPCColumnScaling()
+        end if
+
         ! Set up KSP options
         preConSide = 'right'
         localPCType = 'ilu'
@@ -2478,6 +2613,39 @@ contains
             call EChk(ierr, __FILE__, __LINE__)
 
         end subroutine setBlock
+
+        subroutine applyTurbPCColumnScaling()
+            ! Right-multiply the assembled turb PC by diag(1/cs), where cs
+            ! is the column scale of the state vector (getTurbColScale).
+            implicit none
+
+            Vec colVec
+            integer(kind=intType) :: iCell, lState, jj
+            real(kind=realType), pointer :: cvec_pointer(:)
+            real(kind=realType) :: cs(nStateTurb)
+
+            call getTurbColScale(cs, nStateTurb)
+
+            call VecDuplicate(wVecTurb, colVec, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            call VecGetArrayF90(colVec, cvec_pointer, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            do jj = 0, size(cvec_pointer) / nStateTurb - 1
+                do lState = 1, nStateTurb
+                    cvec_pointer(jj * nStateTurb + lState) = one / cs(lState)
+                end do
+            end do
+            call VecRestoreArrayF90(colVec, cvec_pointer, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            call MatDiagonalScale(dRdwPreTurb, PETSC_NULL_VEC, colVec, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            call VecDestroy(colVec, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+        end subroutine applyTurbPCColumnScaling
     end subroutine FormJacobianANKTurb
 
     subroutine FormFunction_mf(ctx, inVec, rVec, ierr)
@@ -2505,8 +2673,8 @@ contains
         real(kind=realType), pointer :: wvec_pointer(:)
         logical :: useViscApprox
 
-        ! get the input vector
-        call setWANK(inVec, 1, nState)
+        ! get the input vector (column-scaled state, see getFullColScale)
+        call setWANKScaled(inVec, 1, nState)
 
         ! determine if we want the approximate viscous fluxes
         useViscApprox = (.not. ANK_useFullVisc) .and. ANK_useDissApprox
@@ -2576,12 +2744,21 @@ contains
         logical :: srcDtRestrictActive
         real(kind=realType), pointer :: rvec_pointer(:)
         real(kind=realType), pointer :: invec_pointer(:)
+        real(kind=realType) :: cs(nt2 - nt1 + 1), rcf(nt2 - nt1 + 1)
 
         ! Derived condition for source dt restriction (ANK turbKSP path)
         srcDtRestrictActive = transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)
 
-        ! get the input vector
-        call setWANK(inVec, nt1, nt2)
+        ! Row scale (turbResScale) combined with the column scale of the
+        ! state vector: the pseudo-time diagonal of the scaled system is
+        ! dtinv * S_row / cs. For SA-Gamma-Retheta cs = turbResScale so the
+        ! factor collapses to one; for all other models cs = 1 and the
+        ! original turbResScale factor is recovered.
+        call getTurbColScale(cs, nt2 - nt1 + 1)
+        rcf = turbResScale(1:nt2 - nt1 + 1) / cs
+
+        ! get the input vector (column-scaled turbulence state)
+        call setWANKTurbScaled(inVec)
 
         call blocketteRes(useFlowRes=.False., useStoreWall=.False.)
         call setRVecANKTurb(rVec)
@@ -2613,10 +2790,10 @@ contains
                                 if (transitionSrcDtRestrict .and. srcDtRestrictActive .and. nwt == 3) then
                                     dtinv_src = srcLambda(i, j, k, l1) / transitionSrcDtLimit
                                     rvec_pointer(ii) = rvec_pointer(ii) + invec_pointer(ii) * &
-                                                       max(dtinv, dtinv_src) * turbResScale(l1) / ANK_turbCFLScale
+                                                       max(dtinv, dtinv_src) * rcf(l1) / ANK_turbCFLScale
                                 else
                                     rvec_pointer(ii) = rvec_pointer(ii) + invec_pointer(ii) * &
-                                                       dtinv * turbResScale(l1) / ANK_turbCFLScale
+                                                       dtinv * rcf(l1) / ANK_turbCFLScale
                                 end if
                                 ii = ii + 1
                             end do
@@ -2686,7 +2863,13 @@ contains
 
         ! Calculate the steady residuals
         call blocketteRes(useTurbRes=ANK_coupled)
-        call setRVecANK(rVec)
+        if (ANK_coupled) then
+            ! coupled rVec needs flow AND (turbResScale-scaled) turb rows;
+            ! setRVecANK packs flow rows only and would misalign the vector
+            call setRvec(rVec)
+        else
+            call setRVecANK(rVec)
+        end if
 
         ! rVec contains the full steady residual vector
         call VecGetArrayF90(rVec, rvec_pointer, ierr)
@@ -2759,9 +2942,15 @@ contains
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii, iiRho
         real(kind=realType), pointer :: rvec_pointer(:)
         real(kind=realType), pointer :: dvec_pointer(:)
+        real(kind=realType) :: cs(nt2 - nt1 + 1), rcf(nt2 - nt1 + 1)
 
         ! TODO AY: check if this routine is fine in complex mode...
         ! dtl and volume can both have complex values in them
+
+        ! deltaWTurb holds the column-scaled update; the pseudo-time term of
+        ! the scaled system carries turbResScale / cs (see FormFunction_mf_turb).
+        call getTurbColScale(cs, nt2 - nt1 + 1)
+        rcf = turbResScale(1:nt2 - nt1 + 1) / cs
 
         ! Calculate the steady residuals
         call blocketteRes(useFlowRes=.False.)
@@ -2791,7 +2980,7 @@ contains
                                 ! turbulence variable needs additional scaling, and it may
                                 ! get a different CFL number
                                 rvec_pointer(ii) = rvec_pointer(ii) - omega * dvec_pointer(ii) * &
-                                                   dtinv * turbResScale(l - nt1 + 1) / ANK_turbCFLScale
+                                                   dtinv * rcf(l - nt1 + 1) / ANK_turbCFLScale
                                 ii = ii + 1
                             end do
                         end do
@@ -3036,12 +3225,264 @@ contains
 
     end subroutine setWANK
 
+    subroutine getTurbColScale(cs, nState)
+        ! Column scale for the turbulence KSP state vector.
+        !
+        ! For SA-Gamma-Retheta the turbulence states span ~13 orders of
+        ! magnitude in one PETSc vector (nuTilde ~1e-10..1e-4, gamma
+        ! ~0.02..1, ReThetaTilde ~1e2..1e4). PETSc's matrix-free product
+        ! computes a single differencing step from whole-vector norms
+        ! (dominated by ReTheta), so without column scaling the
+        ! nuTilde/gamma Jacobian columns are finite-difference noise
+        ! whenever the pseudo-time diagonal does not dominate (high
+        ! CFL / second-order phase). The state is scaled by turbResScale
+        ! (~1/state magnitude): this is the column-scaling measure of
+        ! Piotrowski & Zingg Sec. IV.1 (gamma_max, ReThetaT_max).
+        !
+        ! For every other turbulence model the factor is one, so the
+        ! validated SA (and SST/kw) turbKSP behavior is unchanged.
+        use constants
+        use inputPhysics, only: turbModel
+        use inputIteration, only: turbResScale
+        implicit none
+        integer(kind=intType), intent(in) :: nState
+        real(kind=realType), intent(out) :: cs(nState)
+
+        cs = one
+        if (turbModel == spalartallmarasnoft2gammaretheta) then
+            cs(1:nState) = turbResScale(1:nState)
+        end if
+    end subroutine getTurbColScale
+
+    subroutine setWVecANKTurbScaled(wVec)
+        ! Pack the turbulence state into the PETSc vector in COLUMN-SCALED
+        ! form: wVec = w * cs. Counterpart of setWANKTurbScaled.
+        use constants
+        use blockPointers, only: nDom, il, jl, kl, w
+        use inputtimespectral, only: ntimeIntervalsSpectral
+        use flowVarRefState, only: nt1, nt2
+        use utils, only: setPointers, EChk
+        implicit none
+
+        Vec wVec
+        integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii
+        real(kind=realType), pointer :: wvec_pointer(:)
+        real(kind=realType) :: cs(nt2 - nt1 + 1)
+
+        call getTurbColScale(cs, nt2 - nt1 + 1)
+
+        call VecGetArrayF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        ii = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1_intType, sps)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            do l = nt1, nt2
+                                ii = ii + 1
+                                wvec_pointer(ii) = w(i, j, k, l) * cs(l - nt1 + 1)
+                            end do
+                        end do
+                    end do
+                end do
+            end do
+        end do
+        call VecRestoreArrayF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+    end subroutine setWVecANKTurbScaled
+
+    subroutine setWANKTurbScaled(wVec)
+        ! Unpack the COLUMN-SCALED turbulence state from the PETSc vector:
+        ! w = wVec / cs. Counterpart of setWVecANKTurbScaled.
+        use constants
+        use blockPointers, only: nDom, il, jl, kl, w
+        use inputtimespectral, only: ntimeIntervalsSpectral
+        use flowVarRefState, only: nt1, nt2
+        use utils, only: setPointers, EChk
+        implicit none
+
+        Vec wVec
+        integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii
+        real(kind=realType), pointer :: wvec_pointer(:)
+        real(kind=realType) :: cs(nt2 - nt1 + 1), csInv(nt2 - nt1 + 1)
+
+        call getTurbColScale(cs, nt2 - nt1 + 1)
+        csInv = one / cs
+
+        call VecGetArrayReadF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        ii = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1_intType, sps)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            do l = nt1, nt2
+                                ii = ii + 1
+                                w(i, j, k, l) = wvec_pointer(ii) * csInv(l - nt1 + 1)
+                            end do
+                        end do
+                    end do
+                end do
+            end do
+        end do
+        call VecRestoreArrayReadF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+    end subroutine setWANKTurbScaled
+
+    subroutine getFullColScale(fac, lStart, lEnd)
+        ! Column scale for the (possibly coupled) ANK state vector: one for
+        ! the mean-flow entries, getTurbColScale for the turbulence entries.
+        ! For models other than SA-Gamma-Retheta every factor is one.
+        use constants
+        use inputPhysics, only: turbModel
+        use inputIteration, only: turbResScale
+        use flowVarRefState, only: nt1, nt2
+        implicit none
+        integer(kind=intType), intent(in) :: lStart, lEnd
+        real(kind=realType), intent(out) :: fac(lStart:lEnd)
+        integer(kind=intType) :: l
+
+        fac = one
+        if (turbModel == spalartallmarasnoft2gammaretheta) then
+            do l = max(lStart, nt1), min(lEnd, nt2)
+                fac(l) = turbResScale(l - nt1 + 1)
+            end do
+        end if
+    end subroutine getFullColScale
+
+    subroutine setWVecANKScaled(wVec, lStart, lEnd)
+        ! Pack the state into the PETSc vector in COLUMN-SCALED form:
+        ! wVec = w * fac (fac = 1 for flow entries and for non-transition
+        ! models, so the validated behavior is unchanged there).
+        use constants
+        use blockPointers, only: nDom, il, jl, kl, w
+        use inputtimespectral, only: ntimeIntervalsSpectral
+        use utils, only: setPointers, EChk
+        implicit none
+
+        Vec wVec
+        integer(kind=intType), intent(in) :: lStart, lEnd
+        integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii
+        real(kind=realType), pointer :: wvec_pointer(:)
+        real(kind=realType) :: fac(lStart:lEnd)
+
+        call getFullColScale(fac, lStart, lEnd)
+
+        call VecGetArrayF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        ii = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1_intType, sps)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            do l = lStart, lEnd
+                                ii = ii + 1
+                                wvec_pointer(ii) = w(i, j, k, l) * fac(l)
+                            end do
+                        end do
+                    end do
+                end do
+            end do
+        end do
+        call VecRestoreArrayF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+    end subroutine setWVecANKScaled
+
+    subroutine setWANKScaled(wVec, lStart, lEnd)
+        ! Unpack the COLUMN-SCALED state from the PETSc vector: w = wVec / fac.
+        ! Counterpart of setWVecANKScaled.
+        use constants
+        use blockPointers, only: nDom, il, jl, kl, w
+        use inputtimespectral, only: ntimeIntervalsSpectral
+        use utils, only: setPointers, EChk
+        implicit none
+
+        Vec wVec
+        integer(kind=intType), intent(in) :: lStart, lEnd
+        integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii
+        real(kind=realType), pointer :: wvec_pointer(:)
+        real(kind=realType) :: fac(lStart:lEnd), facInv(lStart:lEnd)
+
+        call getFullColScale(fac, lStart, lEnd)
+        facInv = one / fac
+
+        call VecGetArrayReadF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        ii = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1_intType, sps)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            do l = lStart, lEnd
+                                ii = ii + 1
+                                w(i, j, k, l) = wvec_pointer(ii) * facInv(l)
+                            end do
+                        end do
+                    end do
+                end do
+            end do
+        end do
+        call VecRestoreArrayReadF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+    end subroutine setWANKScaled
+
+    subroutine applyANKColumnScaling(matrix)
+        ! Right-multiply an assembled coupled ANK matrix (dRdwPre or
+        ! timeStepMat) by diag(1/fac) so it is consistent with the
+        ! column-scaled state vector. Only called for SA-Gamma-Retheta.
+        use constants
+        use flowVarRefState, only: nt1, nt2
+        use utils, only: EChk
+        implicit none
+
+        Mat matrix
+        Vec colVec
+        integer(kind=intType) :: ierr, jj, lState
+        real(kind=realType), pointer :: cvec_pointer(:)
+        real(kind=realType) :: fac(1:nState)
+
+        call getFullColScale(fac, 1_intType, nState)
+
+        call VecDuplicate(wVec, colVec, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call VecGetArrayF90(colVec, cvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        do jj = 0, size(cvec_pointer) / nState - 1
+            do lState = 1, nState
+                cvec_pointer(jj * nState + lState) = one / fac(lState)
+            end do
+        end do
+        call VecRestoreArrayF90(colVec, cvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call MatDiagonalScale(matrix, PETSC_NULL_VEC, colVec, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call VecDestroy(colVec, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+    end subroutine applyANKColumnScaling
+
     subroutine physicalityCheckANK(lambdaP)
 
         use constants
         use blockPointers, only: ndom, il, jl, kl
         use flowVarRefState, only: nw, nwf, nt1, nt2
         use inputPhysics, only: turbModel
+        use inputIteration, only: turbResScale
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputtimespectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers, EChk
@@ -3209,6 +3650,16 @@ contains
 
                                     ! For SA-gamma-ReTheta, also enforce variable bounds by
                                     ! limiting the global step with the local admissible step.
+                                    ! wVec/deltaW hold the COLUMN-SCALED state/update, so the
+                                    ! absolute bounds are scaled to match (relative ratios are
+                                    ! scale-invariant).
+                                    ! NOTE (2026-07-14): per-cell Algorithm-2 damping (scale only
+                                    ! the offending cell's update, never limit the global step)
+                                    ! was tried and REVERTED: full global steps with locally
+                                    ! damped front cells made the update inconsistent across the
+                                    ! transition front — gamma residual bounced and wall-time
+                                    ! progress was worse than the global-lambda throttle
+                                    ! (paper_mimic run 2 vs run 1).
                                     if (turbModel == spalartallmarasnoft2gammaretheta) then
                                         ratioBound = one
 
@@ -3216,16 +3667,16 @@ contains
                                             ! gamma lower and upper bounds
                                             if (dval > zero) then
                                                 ratioBound = min(ratioBound, &
-                                                    (wval - rsaGRgammaLo) / (dval + eps))
+                                                    (wval - rsaGRgammaLo * turbResScale(2)) / (dval + eps))
                                             else if (dval < zero) then
                                                 ratioBound = min(ratioBound, &
-                                                    (rsaGRgammaHi - wval) / (-dval + eps))
+                                                    (rsaGRgammaHi * turbResScale(2) - wval) / (-dval + eps))
                                             end if
                                         else if (l == nt1 + 2) then
                                             ! ReTheta lower bound
                                             if (dval > zero) then
                                                 ratioBound = min(ratioBound, &
-                                                    (wval - rsaGRreThetaLo) / (dval + eps))
+                                                    (wval - rsaGRreThetaLo * turbResScale(3)) / (dval + eps))
                                             end if
                                         end if
 
@@ -3301,10 +3752,21 @@ contains
         real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
         real(kind=alwaysRealType) :: ratio
         real(kind=alwaysRealType) :: wval, dval, ratioBound, gammaFull
+        real(kind=realType) :: cs(nt2 - nt1 + 1), gLoS, gHiS, rLoS
 
         ! Determine the maximum step size that would yield
         ! a maximum change of 10% in density, total energy,
         ! and turbulence variable after a KSP solve.
+
+        ! wVecTurb/deltaWTurb hold the COLUMN-SCALED state/update
+        ! (see getTurbColScale). Relative ratios (w/d) are scale-invariant,
+        ! but the absolute gamma/retheta bounds must be scaled to match.
+        if (turbModel == spalartallmarasnoft2gammaretheta) then
+            call getTurbColScale(cs, nt2 - nt1 + 1)
+            gLoS = rsaGRgammaLo * cs(2)
+            gHiS = rsaGRgammaHi * cs(2)
+            rLoS = rsaGRreThetaLo * cs(3)
+        end if
 
         ! Initialize the local step size as ANK_stepFactor
         ! because the initial step is likely to be equal to this.
@@ -3379,10 +3841,10 @@ contains
                                         ratio = one
                                         gammaFull = wval - dval
 
-                                        if (gammaFull > rsaGRgammaHi) then
-                                            ratio = (wval - rsaGRgammaHi) / (dval + eps)
-                                        else if (gammaFull < rsaGRgammaLo) then
-                                            ratio = (wval - rsaGRgammaLo) / (dval + eps)
+                                        if (gammaFull > gHiS) then
+                                            ratio = (wval - gHiS) / (dval + eps)
+                                        else if (gammaFull < gLoS) then
+                                            ratio = (wval - gLoS) / (dval + eps)
                                         end if
 
                                         ratio = max(ratio, zero)
@@ -3390,9 +3852,9 @@ contains
                                         if (ratio < omegaMinGamma) then
                                             ! Clip individual update to stay in bounds
                                             if (dval > zero) then
-                                                dvec_pointer(ii) = wval - rsaGRgammaLo
+                                                dvec_pointer(ii) = wval - gLoS
                                             else if (dval < zero) then
-                                                dvec_pointer(ii) = wval - rsaGRgammaHi
+                                                dvec_pointer(ii) = wval - gHiS
                                             end if
                                             ratio = one
                                         end if
@@ -3406,7 +3868,7 @@ contains
 #endif
                                         ! Lower bound enforcement
                                         if (dval > zero) then
-                                            ratioBound = (wval - rsaGRreThetaLo) / (dval + eps)
+                                            ratioBound = (wval - rLoS) / (dval + eps)
                                             ratioBound = max(ratioBound, zero)
                                             ratio = min(ratio, ratioBound)
                                         end if
@@ -3652,7 +4114,7 @@ contains
             call EChk(ierr, __FILE__, __LINE__)
 
             ! Set the updated state variables
-            call setWANK(wVecTurb, nt1, nt2)
+            call setWANKTurbScaled(wVecTurb)
 
             ! Compute the unsteady residuals. The actual residuals
             ! also get calculated in the process, and are stored in
@@ -3694,7 +4156,7 @@ contains
                     call EChk(ierr, __FILE__, __LINE__)
 
                     ! Set and recompute
-                    call setWANK(wVecTurb, nt1, nt2)
+                    call setWANKTurbScaled(wVecTurb)
 
                     ! Compute the unsteady residuals with the current step
                     call computeUnsteadyResANKTurb(lambdaTurb)
@@ -3734,7 +4196,7 @@ contains
                     end if
 
                     ! Set the state vec and compute the new residual
-                    call setWANK(wVecTurb, nt1, nt2)
+                    call setWANKTurbScaled(wVecTurb)
                     call blocketteRes(useFlowRes=.False., &
                                       useStoreWall=.False.)
                     feval = feval + 1
@@ -3799,8 +4261,10 @@ contains
 
         use constants
         use blockPointers, only: nDom, flowDoms, shockSensor, ib, jb, kb, p, w, gamma
-        use inputPhysics, only: equations
-        use inputIteration, only: L2conv
+        use inputPhysics, only: equations, turbModel
+        use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters
+        use paramTurb, only: srcLambdaModeFull
+        use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: lumpedDiss, approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, stepMonitor, linResMonitor, currentLevel, iterType
@@ -3831,7 +4295,7 @@ contains
         real(kind=alwaysRealType) :: rtol, totalR_dummy, linearRes, norm
         real(kind=alwaysRealType) :: resHist(ANK_maxIter + 1)
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old, rel_pcUpdateTol
-        logical :: correctForK, LSFailed
+        logical :: correctForK, LSFailed, backtrackTriggeredANK
 
         ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
         if (firstCall .or. &
@@ -3861,7 +4325,7 @@ contains
             call setupANKSolver()
 
             ! Copy the adflow 'w' into the petsc wVec
-            call setwVecANK(wVec, 1, nstate)
+            call setWVecANKScaled(wVec, 1, nstate)
 
             ! Evaluate the residual before we start
             call blocketteRes(useUpdateIntermed=.True.)
@@ -3873,7 +4337,7 @@ contains
 
             ! Check if we are using the turb KSP
             if ((.not. ANK_coupled) .and. (.not. ANK_useTurbDADI) .and. equations == RANSEquations) then
-                call setwVecANK(wVecTurb, nt1, nt2)
+                call setWVecANKTurbScaled(wVecTurb)
                 call setRVecANKTurb(rVecTurb)
             end if
 
@@ -3915,6 +4379,15 @@ contains
         ! norm of the unsteady residual vector.
         call VecNorm(rVec, NORM_2, unsteadyNorm_old, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! For the coupled SA-Gamma-Retheta solve, freeze the source-term
+        ! eigenvalues at the base state before the time-step matrix is
+        ! formed (P&Z Eq. 59; both computeTimeStepMat branches below
+        ! consume srcLambda through computeTimeStepBlock).
+        if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. &
+            transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
+            call computeSrcLambda(srcLambdaModeFull)
+        end if
 
         ! Determine if if we need to form the Preconditioner
         if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol) then
@@ -4123,7 +4596,7 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
 
         ! Set the updated state variables
-        call setWANK(wVec, 1, nState)
+        call setWANKScaled(wVec, 1, nState)
 
         ! Compute the unsteady residuals. The actual residuals
         ! also get calculated in the process, and are stored in
@@ -4141,12 +4614,14 @@ contains
 
         ! initialize this outside the ls
         LSFailed = .False.
+        backtrackTriggeredANK = .False.
 
         if ((unsteadyNorm > unsteadyNorm_old * ANK_unstdyLSTol .or. myisnan(unsteadyNorm))) then
             ! The unsteady residual is too high or we have a NAN. Do a
             ! backtracking line search until we get a residual that is lower.
 
             LSFailed = .True.
+            backtrackTriggeredANK = .True.
 
             ! Restore the starting (old) w value by adding lamda*deltaW
             call VecAXPY(wVec, lambda, deltaW, ierr)
@@ -4163,7 +4638,7 @@ contains
                 call EChk(ierr, __FILE__, __LINE__)
 
                 ! Set and recompute
-                call setWANK(wVec, 1, nState)
+                call setWANKScaled(wVec, 1, nState)
 
                 ! Compute the unsteady residuals with the current step
                 call computeUnsteadyResANK(lambda)
@@ -4203,7 +4678,7 @@ contains
                 end if
 
                 ! Set the state vec and compute the new residual
-                call setWANK(wVec, 1, nState)
+                call setWANKScaled(wVec, 1, nState)
                 if (.not. ANK_coupled) then
                     call blocketteRes(useTurbRes=.False., useStoreWall=.False.)
                 else
@@ -4259,6 +4734,23 @@ contains
 
         ! Update step monitor
         stepMonitor = lambda
+
+        ! ============== Source-dt deactivation switch (P&Z §IV.B.3), coupled path ==============
+        ! Mirror of the logic in ANKTurbSolveKSP: count clean iterations in the
+        ! second-order (inexact-Newton analog) regime; reset the counter —
+        ! reactivating the source-dt restriction — when backtracking is
+        ! triggered, the step is rejected, or the relative residual rises back
+        ! above the phase-switch tolerance. In segregated mode the counter is
+        ! owned by ANKTurbSolveKSP, so only update it here when coupled.
+        if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. &
+            transitionSrcDtRestrict) then
+            if (backtrackTriggeredANK .or. lambda == zero .or. &
+                totalR > ANK_secondOrdSwitchTol * totalR0) then
+                noBacktrackCount = 0
+            else
+                noBacktrackCount = noBacktrackCount + 1
+            end if
+        end if
 
         ! Check if the linear solutions are failing.
         ! If the lin res is above .5 or so, the solver

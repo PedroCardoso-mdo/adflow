@@ -111,6 +111,20 @@ part of this KB — don't rely on them for transition-model facts.
 
 ```
 
+## Verification Test Runs
+
+All small verification/smoke tests go in
+`/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/Acelarating convergence/Baseline/3D_Plain_Wing/`
+— **not** the scratchpad. For each test:
+
+1. Create a new subfolder there named for the test (e.g. `nk_colscale_test/`).
+2. Put the runner script, the full run log, and a short `PURPOSE.md`
+   (what is being tested, expected vs. observed outcome) in that folder.
+3. Run with the mach env so the user can reproduce it exactly:
+   `mpirun -np 12 /home/mdo/packages_v2/mach/bin/python <script>.py`
+   (build + `pip install` into `/home/mdo/packages_v2/mach` first if the
+   Fortran code changed).
+
 ## Build Commands
 
 ```bash
