@@ -11,6 +11,7 @@ the next task.
 | Date | Task | File |
 |---|---|---|
 | 2026-07-09 | Doc consolidation (`findings/` redistribution) | [2026-07-09-doc-consolidation.md](2026-07-09-doc-consolidation.md) |
+| 2026-07-16 | Convergence acceleration campaign (validated ANK→CANK→CSANK→NK ladder, ~1h20 vs 10 h) | [2026-07-16-convergence-acceleration.md](2026-07-16-convergence-acceleration.md) |
 
 ## Template
 

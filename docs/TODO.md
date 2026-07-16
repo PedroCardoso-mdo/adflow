@@ -14,6 +14,25 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
   dos resíduos escalados por equação num caso representativo e ajustar via
   opção de runtime `turbresscale` até ficarem comparáveis entre si e com o
   mean-flow. Zero código.
+  **Nota 2026-07-16:** a campanha de convergência usou consistentemente
+  `[1e4, 0.1, 1e-4]` com sucesso (ver `convergence-strategy.md`) — o item
+  passa a ser "reconciliar o default com o valor de campanha", não calibrar
+  do zero.
+
+## Solver profundo (da campanha de convergência 2026-07-14→16)
+
+- [ ] **Parede do NK abaixo de rel ~5e-9** — lin res 0.8-0.99 com GMRES
+  esgotado, independente do ponto de engate/JacLag/subespaço. Itens de
+  código por ordem de impacto em `adflow-vs-paper-solver.md` §5: Alg. 2
+  por nó, reativação Eq. 59 dentro do NK, PC mais forte. Case dir e branch
+  preparados (`.../3D_Plain_Wing/ADFLOW_SA_GAMMA_RETHETHA_SOLVER/`,
+  `sa_gamma_rethetha_paper_solver`). Testbed: `best_strategie/restarts/r3`.
+- [ ] **`ANKNSubiterTurb` é knob morto com `ANKUseTurbDADI=True`**
+  (NKSolvers.F90: o loop de subiterações só existe no ANKTurbSolveKSP; o
+  ramo DADI é uma chamada única) — ligar ou documentar na opção.
+- [ ] **Flip-flop ANK<->SANK** no arranque da variante SANK (switch dispara
+  a rel ~5e-4 e oscila ~3 min) — histerese ou limiar dedicado poupariam
+  esse custo.
 
 
 - [ ] **Verificar se a cauda do DADI fica lenta demais com a Eq. 59 sempre

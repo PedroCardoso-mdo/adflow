@@ -7,8 +7,13 @@
 
 ## Task: Verify SA-GR adjoint derivatives (partials campaign)
 
-**Started:** 2026-07-09
-**Status:** in progress
+**Started:** 2026-07-09 · **Resumed:** 2026-07-16
+**Status:** in progress (paused 07-14→16 for the convergence acceleration
+campaign — closed, see `task-log/2026-07-16-convergence-acceleration.md`.
+Useful spillover: converged double-precision SA-GR restart states for the
+partials base point now exist ready-made in
+`.../3D_Plain_Wing/best_strategie/restarts/`, and the fast solve recipe
+for `generate_sagr_restart.py` is `best_strategie/run_strategy.py`)
 
 ### Objective
 

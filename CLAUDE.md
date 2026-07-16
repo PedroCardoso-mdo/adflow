@@ -73,6 +73,7 @@ Quick routing (full table in `docs/README.md`):
 | ANK/NK option mechanism | `ADFLOW_BASE/ADFLOW_03…` → `ADFLOW_BASE/ADFLOW_01…` |
 | ADflow option name/default/enum | `ADFLOW_BASE/ADFLOW_05…` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04…` → `05…` → `01…` |
+| Converge an SA-GR case (phases, switch tols, LS opts, what's been tested) | `convergence-strategy.md` → `ADFLOW_BASE/adflow_solvers.md` |
 | Adjoint / AD theory | `ADFLOW_BASE/ADFLOW_02…` |
 | Adjoint / AD on this branch | `adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02…` → `03…` |
 | Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04…` → `02…` → `adjoint-trace.md` |
@@ -87,6 +88,9 @@ Quick routing (full table in `docs/README.md`):
 | `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` | Full paper text — **physics source of truth** (sole physics reference). |
 | `docs/SA_GAMMA_RETHETHA_BASE/README.md` | Sub-index for the transition physics KB. |
 | `docs/ADFLOW_BASE/ADFLOW_00…05` | Flow/ANK/NK theory (01), adjoint/AD theory (02), paper↔code concordance (03), debugging playbook (04), options devguide (05), sub-index (00). |
+| `docs/convergence-strategy.md` | Validated SA-GR convergence recipe (ANK→CANK→CSANK→NK, switch tols, LS options, measured limits) + index of every acceleration test (2026-07). Run-side deliverable: `…/3D_Plain_Wing/best_strategie/`. |
+| `docs/ADFLOW_BASE/adflow_solvers.md` | Official ADflow solvers doc (MG/ANK/NK mechanics, troubleshooting). |
+| `docs/adflow-vs-paper-solver.md` | ADflow vs P&Z §IV solver-algorithm gaps + open code items (deep-NK wall). |
 
 Upstream ADflow docs (`/README.md`, `doc/`, `tests/`, `LICENSE.md`) are **not**
 part of this KB — don't rely on them for transition-model facts.
