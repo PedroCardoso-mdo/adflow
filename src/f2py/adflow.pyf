@@ -1112,6 +1112,10 @@ python module libadflow
          real(kind=realtype) :: transitionroughnessheight
          logical :: transitionuseapproxsa
          real(kind=realtype) :: transitionreflength
+         logical :: transitionnk
+         real(kind=realtype) :: transitionnkautodisabletol
+         logical :: transitionrowvolscale
+         logical :: transitionresidualautoscale
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

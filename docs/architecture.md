@@ -159,6 +159,10 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"transitionCrossflow"` | bool | `True` | Enable the helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. Harmless in 2D (D_scf≡0); enable for swept/3D. |
 | `"transitionRoughnessHeight"` | float | `3.3e-6` | Surface roughness height h for the crossflow correlation (Eq. 17), as a physical length in mesh units (metres). 3.3e-6 = 3.3 µm (smooth surface). |
 | `"transitionRefLength"` | float | `-1.0` (auto) | Reference length l [mesh units] in the vorticity limiter (P&Z Eqs. 52-53; paper uses root chord — the physical cap scales as 1/√l, a calibration scale, NOT a unit conversion, so the "drop Re" rule of `nondimensionalization.md` does not apply). Negative = auto: uses the AeroProblem `chordRef` (via `inputPhysics%lengthRef`, refreshed at every `setAeroProblem`). Set explicitly to decouple from chordRef; `1.0` recovers the pre-option behavior (l = 1 m). Added 2026-07-07 to close finding D1. |
+| `"transitionNK"` | bool | `True` | Master switch for the NK/ANK/turbKSP column-scaling + Eq. 59 bundle (incl. NK reactivation-on-backtrack, Algorithm 2 in NK) — 2026-07-16. Default preserves existing behavior; still additionally gated on `turbModel==SA-Gamma-Retheta` everywhere. |
+| `"transitionNKAutoDisableTol"` | float | `0.0` | One-way latch, NK phase only: once the Newton residual norm drops below this fraction of `totalR0` (the **freestream** reference residual from `getFreeStreamResidual`, `solvers.F90:972` — NOT the restart-point residual; e.g. ~8.91e7 on `3D_Plain_Wing`), the `transitionNK` bundle (column scaling, Algorithm 2 damping, Eq. 59 reactivation) is turned off for the rest of the NK phase — i.e. "fall back to native NK." Default `0.0` never trips (unchanged behavior). **Tested 2026-07-18, `nk_switch_crossing_test`, and found unsafe at any point in NK**: tripping it either at NK engagement or ~10 outer iterations later (deep past engagement, residual already down 2+ orders) produces the identical catastrophic blowup (nuturb res → O(1e3), totalRes → O(1e9)) both times. Column scaling is load-bearing for the *entire* NK phase for this model — the 13-orders-of-magnitude state spread (ν̃, γ, Re̅θt) doesn't shrink with the residual, so "native NK" is never safe to fall back to. Kept as a diagnostic knob, not a recommended option. |
+| `"transitionRowVolScale"` | bool | `False` | Eq. 58 (P&Z) geometric row-scaling factor on NK's residual rows (`volRef**(5/3)` flow, `volRef**(2/3)` turb, on top of existing `turbResScale`). **Off by default — genuinely tested 2026-07-16 and found to stall NK's linear solve** (lin res pinned ~1.0) on the 3D_Plain_Wing case; see `adflow-vs-paper-solver.md` §5. Not recommended until the volRef-vs-paper's-J correspondence is revisited. |
+| `"transitionResidualAutoscale"` | bool | `False` | Eq. 58 (P&Z) S_a residual-autoscaling proxy — periodically (every NK Jacobian reform) rescales each turbulence variable's row to match the mean-flow block's current residual norm. The paper gives no formula (cites Osusky & Zingg's thesis, unavailable here); this is a same-intent proxy, not verified identical. Off by default — tested 2026-07-16: no stall, real progress, but noisier/smaller steps than baseline; marginal, not clearly better. |
 
 **`transitionRefLength` plumbing & guidance.** No new AeroProblem wiring was
 added: `pyADflow.py` already pushes `ap.chordRef` into `inputPhysics%lengthRef`
@@ -354,3 +358,34 @@ These are managed automatically by the solver when `transitionSrcDtRestrict = Tr
 
 - `srcDtRestrictActive`: starts `True`, flips to `False` after `srcDtDeactivateIters` consecutive clean turbKSP iterations in the second-order regime. Returns to `True` when backtracking is triggered or when `totalR` rises back above `ANKSecondOrdSwitchTol·totalR0`.
 - `noBacktrackCount`: counter driving the above (module variable, `inputParam.F90`; persists across solves — self-corrects via the residual condition on the first iteration of each solve).
+
+## Monitor variable: `"scaledtotalr"` (2026-07-16)
+
+Add `"scaledtotalr"` to `monitorVariables` to print an additional column
+showing the Eq. 58 S_r/S_a-scaled residual (`sumAllResidualsScaled`,
+`src/utils/utils.F90`) alongside the unchanged `"totalr"` column. Purely
+for visibility — it does **not** feed `totalR`/switch tolerances the way
+`"totalr"` does (see the `'scaledtotalR'` case in `solvers.F90`, which
+computes but never assigns the module-level `totalR`). Reflects whatever
+`transitionRowVolScale`/`transitionResidualAutoscale` are currently set to;
+identical to `"totalr"` when both are off.
+
+## Known infra bug: `.pyf` option wiring (2026-07-16, not yet fixed for all options)
+
+`src/f2py/adflow.pyf` is a **hand-maintained** f2py interface file, not
+auto-regenerated from Fortran source on every build. Any `inputIteration`
+module variable not explicitly listed there is invisible to real
+Python↔Fortran communication — but f2py's `fortran`-type Python objects
+silently accept **arbitrary attribute names** with no backing memory, so
+`setOption`/reading the option back gives no error and no warning. This
+branch's `.pyf` was stale enough to affect `transitionSrcDtRestrict`,
+`transitionSrcDtLimit`, `srcDtDeactivateIters`, `transitionDampTheta`,
+`transitionDampMaxIter` (added before this session — **still not fixed**,
+out of this session's scope) and `transitionNK`/`transitionRowVolScale`/
+`transitionResidualAutoscale` (added this session — **fixed**, entries
+added to `module inputiteration` in `adflow.pyf`). `transitionSrcDtEigMode`
+has no backing Fortran variable at all (separate, also pre-existing bug).
+**Before trusting any Python-side setting of an `inputIteration` option
+that isn't already validated working, grep `adflow.pyf`'s `module
+inputiteration` block for it first** — if it's missing, the option is a
+no-op from Python regardless of what `setOption`/read-back suggest.

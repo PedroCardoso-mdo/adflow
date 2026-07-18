@@ -309,6 +309,9 @@ contains
             case ('totalR')
                 sortNumber(i) = 113
 
+            case ('scaledtotalR')
+                sortNumber(i) = 117
+
             case (cgnsSepSensor)
                 sortNumber(i) = 114
 
@@ -1611,6 +1614,13 @@ contains
                 monTotalR = .True.
                 nMon = nMon + 1; nMonSum = nMonSum + 1
                 tmpNames(nMon) = 'totalR'
+
+            case ("scaledtotalr")
+                ! Eq. 58 (P&Z 2020) monitoring-only variable -- deliberately
+                ! NOT auto-added like totalr (opt-in only); never feeds
+                ! switch tolerances (see sumAllResidualsScaled, utils.F90).
+                nMon = nMon + 1; nMonSum = nMonSum + 1
+                tmpNames(nMon) = 'scaledtotalR'
 
             case ("sepsensor")
                 nMon = nMon + 1; nMonSum = nMonSum + 1

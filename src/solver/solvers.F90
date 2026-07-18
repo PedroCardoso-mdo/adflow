@@ -1262,7 +1262,8 @@ contains
         use killSignals, only: routineFailed, fromPython
         use iteration, only: rhoRes, rhoResStart, totalR, totalRStart, totalR0
         use oversetData, only: oversetPresent
-        use utils, only: setPointers, returnFail, maxHDiffMach, maxEddyv, sumResiduals, sumAllResiduals
+        use utils, only: setPointers, returnFail, maxHDiffMach, maxEddyv, sumResiduals, sumAllResiduals, &
+                        sumAllResidualsScaled
         use genericISNAN, only: myisnan
         use surfaceIntegrations, only: integrateSurfaces
         use zipperIntegrations, only: integrateZippers
@@ -1347,6 +1348,9 @@ contains
 
                     case ('totalR')
                         call sumAllResiduals(mm)
+
+                    case ('scaledtotalR')
+                        call sumAllResidualsScaled(mm)
 
                     case (cgnsL2resRho)
                         call sumResiduals(irho, mm)
@@ -1668,6 +1672,15 @@ contains
                     monGlob(mm) = cmplx(sqrt(real(monGlob(mm))), sqrt(aimag(monGlob(mm))))
 #endif
                     totalR = monGlob(mm)
+
+                case ('scaledtotalR')
+                    ! Monitoring only -- deliberately does NOT set totalR or
+                    ! feed any switch tolerance (see sumAllResidualsScaled).
+#ifndef USE_COMPLEX
+                    monGlob(mm) = sqrt(monGlob(mm))
+#else
+                    monGlob(mm) = cmplx(sqrt(real(monGlob(mm))), sqrt(aimag(monGlob(mm))))
+#endif
                 end select
 
                 if (myIsNAN(monGlob(mm))) nanOccurred = .true.
@@ -1685,7 +1698,7 @@ contains
                           cgnsL2resGamma, cgnsL2resRetheta, &
                           cgnsL2resK, cgnsL2resOmega, &
                           cgnsL2resTau, cgnsL2resEpsilon, &
-                          cgnsL2resV2, cgnsL2resF, 'totalR')
+                          cgnsL2resV2, cgnsL2resF, 'totalR', 'scaledtotalR')
 
                         ! we can do a shorter print for residuals because only the leading few digits
                         ! and the exponents are important anyways
