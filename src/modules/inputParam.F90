@@ -327,6 +327,22 @@ module inputIteration
     ! setupNKSolver.
     real(kind=realType) :: transitionNKAutoDisableTol = 0.0_realType
     logical :: transitionNKActive = .true.
+    ! Stall escape (2026-07-18, nk_switch_crossing_test): once Step
+    ! (stepMonitor) has been below transitionNKStallStepTol for
+    ! transitionNKStallCountTrigger consecutive NK iterations, force the
+    ! Eisenstat-Walker linear-solve rtol down to transitionNKStallRtolCap
+    ! for that iteration. Rationale: getEWTol's rtol = (norm/oldNorm)^1.618
+    ! -- when stalled, norm~oldNorm so the ratio~1 and rtol rises to its
+    ! 0.8 cap, i.e. EW asks for the LOOSEST linear solve exactly when the
+    ! stall needs the tightest one (a poor direction from an under-solved
+    ! linear system is the likely cause of the tiny step in the first
+    ! place). transitionNKStallRtolCap=1.0 (default) disables this (never
+    ! caps below whatever EW already picked); nkStallCount is internal
+    ! (like noBacktrackCount), reset each NK entry in NKStep.
+    real(kind=realType) :: transitionNKStallStepTol = 0.1_realType
+    integer(kind=intType) :: transitionNKStallCountTrigger = 3
+    real(kind=realType) :: transitionNKStallRtolCap = 1.0_realType
+    integer(kind=intType) :: nkStallCount = 0
     ! Eq. 58 (P&Z 2020) geometric row-scaling factor, on top of the existing
     ! turbResScale 1/max row scaling: multiplies NK's residual rows (setRVec)
     ! by volRef**(5/3) for flow rows, volRef**(2/3) for turb rows, bringing

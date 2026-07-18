@@ -1114,6 +1114,9 @@ python module libadflow
          real(kind=realtype) :: transitionreflength
          logical :: transitionnk
          real(kind=realtype) :: transitionnkautodisabletol
+         real(kind=realtype) :: transitionnkstallsteptol
+         integer(kind=inttype) :: transitionnkstallcounttrigger
+         real(kind=realtype) :: transitionnkstallrtolcap
          logical :: transitionrowvolscale
          logical :: transitionresidualautoscale
        end module inputiteration

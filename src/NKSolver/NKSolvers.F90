@@ -579,7 +579,8 @@ contains
         use inputPhysics, only: equations, turbModel
         use flowVarRefState, only: nw, nwf
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, transitionNK, &
-                                  transitionNKAutoDisableTol, transitionNKActive
+                                  transitionNKAutoDisableTol, transitionNKActive, transitionNKStallStepTol, &
+                                  transitionNKStallCountTrigger, transitionNKStallRtolCap, nkStallCount
         use iteration, only: approxTotalIts, totalR0, stepMonitor, LinResMonitor, iterType
         use utils, only: EChk
         use killSignals, only: routineFailed
@@ -603,6 +604,7 @@ contains
             ! latch (see inputParam.F90) so it re-evaluates from scratch even if
             ! a previous NK excursion already tripped it off.
             transitionNKActive = .true.
+            nkStallCount = 0
 
             ! Copy the adflow 'w' into the petsc wVec
             call setwVec(wVec)
@@ -649,6 +651,15 @@ contains
             rtol = NK_rtolInit
         else
             call getEWTol(norm, oldNorm, rtolLast, rtol)
+        end if
+
+        ! Stall escape: EW picks a loose rtol exactly when stalled (norm
+        ! barely changing -> ratio~1 -> rtol->0.8 cap, see getEWTol above).
+        ! Force it tighter once Step has been pinned for several iterations
+        ! in a row (see inputParam.F90 for the rationale).
+        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive .and. &
+            transitionNKStallRtolCap < one .and. nkStallCount >= transitionNKStallCountTrigger) then
+            rtol = min(rtol, transitionNKStallRtolCap)
         end if
 
         ! Save the old rtol and norm for the next iteration
@@ -778,6 +789,16 @@ contains
                 noBacktrackCount = 0
             else
                 noBacktrackCount = noBacktrackCount + 1
+            end if
+        end if
+
+        ! Stall detector feeding the rtol cap above: count consecutive
+        ! pinned-step iterations.
+        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive) then
+            if (stepMonitor < transitionNKStallStepTol) then
+                nkStallCount = nkStallCount + 1
+            else
+                nkStallCount = 0
             end if
         end if
 
