@@ -5,6 +5,16 @@ Test scaffolding for verifying the SA-GR transition model's AD derivatives
 differences and the complex-step (CS) build. Written per
 `docs/audits/08_test_prep.md`; background in `docs/audits/06_adjoint_wiring.md`.
 
+**2026-07-19: case switched from the SA tutorial-wing grid to the AR5
+plain-wing case** (`ar5_plain_wing_vol_L3.cgns`, an NK-converged real 3D
+wing state instead of the small ANK-only tutorial mesh) — see
+`reg_sagr.py`'s and `generate_sagr_restart.py`'s header comments for the
+full rationale. The `_flatplate` names below (class-name suffixes, ref
+JSON filenames) are a legacy label from before the switch and do NOT mean
+the case is a flat plate — `ap_sagr_flatplate` is now just a backward-compat
+alias for `ap_sagr_ar5_wing`. Not renamed here to avoid churning trained
+ref filenames; rename only if retraining anyway.
+
 ## File tree
 
 ```
@@ -81,15 +91,24 @@ They mirror the upstream SA suite one-to-one:
 - `TestCmplxStepSAGR` (complex build): re-converges the complex solver with a
   1e-40j perturbation per DV (`alpha`, `mach`, and a local `shape` geometric
   DV via DVGeo/idwarp) and compares imag(f)/h against the adjoint totals in
-  the ref file.
+  the ref file. **`shape` DV needs a real FFD for the AR5 wing** —
+  `sagrFFDFile` in `reg_sagr.py` still points at the stale tutorial-wing FFD
+  (kept only because it doesn't block the non-shape tests); build/point at
+  an AR5 FFD before running this class's shape-DV case.
 
 ### `generate_sagr_restart.py`
 The upstream SA restarts are downloaded pre-made (`input_files/
 get-input-files.sh`); this script is the SA-GR equivalent. It converges the
-SA tutorial-wing grid with SA-GR at a chosen Mach (P/T fixed at the SA test
-values, so Re scales with Mach) and writes a grid+solution CGNS containing
-all 8 states (the SA-GR restart set includes Intermittency/ReThetat —
-`outputMod.F90`). Refuses to write if the solve failed.
+**AR5 plain-wing grid** (`ar5_plain_wing_vol_L3.cgns`, copied into
+`input_files/`, gitignored like the rest of that directory) with SA-GR
+through the validated ANK->CANK->NK production ladder (STRATEGY.md /
+`.../3D_Plain_Wing/best_strategie/run_strategy.py`) and writes a
+grid+solution CGNS containing all 8 states (the SA-GR restart set includes
+Intermittency/ReThetat — `outputMod.F90`). Still writes the file with a
+WARNING if `L2Convergence` isn't reached within `ncycles` (expected here:
+this case hits a reproducible NK stall, so `ncycles` — not
+`L2Convergence` — controls how deep the restart is; see the script's own
+`--l2`/`--ncycles` help text).
 
 ## How to run (in order)
 
@@ -97,10 +116,13 @@ Prereqs: `testflo` and `parameterized` in the test env
 (`pip install .[testing]`), and `input_files/get-input-files.sh` run once.
 
 ```bash
-# 0. (once, real build) generate the restart the tests linearize about
+# 0. (once, real build) generate the restart the tests linearize about --
+#    defaults already match ap_sagr_ar5_wing (mach=0.2, alpha=0.0, tu=0.0025),
+#    so no flags are needed unless deviating from that case
 cd tests/reg_tests
-python generate_sagr_restart.py --mach 0.25 --tu 0.003
-#    -> then update reg_sagr.py paths/AeroProblem to match (see script output)
+python generate_sagr_restart.py
+#    -> confirm reg_sagr.py's sagrRestartFile/ap_sagr_ar5_wing still match
+#       the script's printed summary (see script output)
 
 # 1. (real build) self-contained FD sanity check — no ref files needed
 testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGRFD -v

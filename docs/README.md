@@ -40,9 +40,9 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Why does the paper converge faster than ADflow / solver-algorithm gaps | `adflow-vs-paper-solver.md` |
 | Adjoint / AD theory (general) | `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` |
 | Implement or extend the adjoint / AD on **this branch** | `adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
-| Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `adjoint-trace.md` |
-| Validate partials / plan AD test campaign | `current-task.md` → `../audits/adjoint_audit_2026-07-07.md` → `../audits/sst_dev_lessons.md` (verification ladder + watch items) |
-| How another multi-equation turb model was differentiated (SST precedent) | `../audits/sst_dev_lessons.md` |
+| Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/debugging_derivatives.md` (FD→dot-product→CS checking ladder) → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `adjoint-trace.md` |
+| Validate partials / plan AD test campaign | `current-task.md` → `ADFLOW_BASE/debugging_derivatives.md` (generic checking ladder) → `../audits/adjoint_audit_2026-07-07.md` → `../audits/07_sst_dev_lessons.md` (verification ladder + watch items) |
+| How another multi-equation turb model was differentiated (SST precedent) | `../audits/07_sst_dev_lessons.md` |
 | Why is X implemented this way / was this already discussed | `../audits/design-decisions.md` (memory of past discussion, not a spec — code/paper win if it disagrees) |
 | What's the task in progress right now | `current-task.md` |
 | What was already finished, and how | `task-log/README.md` (index → per-task case files) |
@@ -69,7 +69,7 @@ answer. `→` means "if the first isn't enough, go to the next."
 
 | File | What's in it |
 |------|--------------|
-| [../audits/sst_dev_lessons.md](../audits/sst_dev_lessons.md) | Post-mortem of upstream `sst_dev` (SST, PR #331) — how a 2-equation model was differentiated, what broke, and a comparison table vs this branch's SA-GR. Read before any AD-unfreeze work or partials campaign. |
+| [../audits/07_sst_dev_lessons.md](../audits/07_sst_dev_lessons.md) | Post-mortem of upstream `sst_dev` (SST, PR #331) — how a 2-equation model was differentiated, what broke, and a comparison table vs this branch's SA-GR. Read before any AD-unfreeze work or partials campaign. |
 | [../audits/adjoint_audit_2026-07-07.md](../audits/adjoint_audit_2026-07-07.md) | Pre-partials-test visual audit of the SA-GR adjoint wiring: verified-pass table, the `vortlimd = 0` finding (uInf/muInf head activity), and watch items (autoEdit fast_b stripping, limiter kinks). |
 | [../audits/design-decisions.md](../audits/design-decisions.md) | **Not a spec — a memory.** Condensed log of resolved code-audit questions (A1-A3): nondim safeguards, convergence-strategy decisions (Eq. 59 forms, damping, `turbResScale`), and SA/SST code-coherence divergences (ft2 default, wall functions, source-Jacobian clips, farfield BC, init values). Read for "why is X implemented this way" — code/paper win if it ever disagrees with this file. |
 
@@ -89,6 +89,8 @@ answer. `→` means "if the first isn't enough, go to the next."
 | [ADFLOW_03_concordance.md](ADFLOW_BASE/ADFLOW_03_concordance.md) | Paper-math ↔ code-flag crosswalk + gotchas. |
 | [ADFLOW_04_debugging_playbook.md](ADFLOW_BASE/ADFLOW_04_debugging_playbook.md) | Symptom → cause → fix ladder → evidence for stalls, divergence, bad gradients. |
 | [ADFLOW_05_options_and_operations_devguide.md](ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md) | ADflow options + operations (official docs). |
+| [adflow_solvers.md](ADFLOW_BASE/adflow_solvers.md) | Raw official-docs source that fed `01`/`04`/`05`; last-resort read for troubleshooting detail not otherwise distilled. |
+| [debugging_derivatives.md](ADFLOW_BASE/debugging_derivatives.md) | Raw source: generic FD → reverse-mode dot-product → complex-step derivative-checking ladder, not covered in `02`/`04`. |
 
 ---
 
