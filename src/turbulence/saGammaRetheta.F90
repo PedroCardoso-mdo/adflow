@@ -550,8 +550,8 @@ contains
                               + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
                               + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
                         lambdaThetaLocal = (thetaBL**2 / nu) * dUds
-                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, -0.1_realType, rsaGRpmax)
-                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, 0.1_realType, rsaGRpmin)
+                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, rsaGRlambdaThetaMin, rsaGRpmax)
+                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, rsaGRlambdaThetaMax, rsaGRpmin)
 
                         reThetaT_target = reThetaTCorrelation( &
                             turbIntensityInf * 100.0_realType, lambdaThetaLocal)
@@ -573,7 +573,7 @@ contains
                         reScf = zero
                         hcf = zero
                         if (transitionCrossflow) then
-                            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
+                            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
                             ! Eq.24 helicity uses the raw velocity curl; undo the
                             ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
                             hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
@@ -582,8 +582,8 @@ contains
                                 / max(velMag, xminn)
                             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                                 + 319.51_realType
-                            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
-                            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
                             reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
                             reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
                             dScf = (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
@@ -712,7 +712,7 @@ contains
                             * (one - fThetaT), zero)
 
                         if (transitionCrossflow) then
-                            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
+                            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
                             ! Eq.24 helicity uses the raw velocity curl; undo the
                             ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
                             hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
@@ -721,8 +721,8 @@ contains
                                 / max(velMag, xminn)
                             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                                 + 319.51_realType
-                            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
-                            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
                             reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
                             reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
                             if (reScf < reThetaTilde) then
@@ -2472,7 +2472,7 @@ contains
 
         A(3,3) = -(rsaGRcthetat / max(timeScale, xminn) * (one - fThetaT))
         if (transitionCrossflow) then
-            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
+            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
             ! Eq.24 helicity uses the raw velocity curl; undo the
             ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
             hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
@@ -2481,8 +2481,8 @@ contains
                 / max(velMag, xminn)
             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                 + 319.51_realType
-            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
-            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
             reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
             reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
             if (reScf < reThetaTilde) then

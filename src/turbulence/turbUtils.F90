@@ -2297,7 +2297,7 @@ contains
         !       lambdaTheta : pressure-gradient parameter (0 for uniform inflow)
         !
         use constants, only: realType, one
-        use paramTurb, only: rsaGRpmax, rsaGRpmin
+        use paramTurb, only: rsaGRpmax, rsaGRpmin, rsaGRtuFloor
         implicit none
 
         real(kind=realType), intent(in) :: Tu, lambdaTheta
@@ -2305,7 +2305,7 @@ contains
 
         real(kind=realType) :: Flambda, F1val, F2val, F3val, Tu_safe
 
-        Tu_safe = smoothMinMax(Tu, 0.027_realType, rsaGRpmax)
+        Tu_safe = smoothMinMax(Tu, rsaGRtuFloor, rsaGRpmax)
 
         ! --- Smooth F(lambda_theta) Eqs. 54-57 ---
         ! Eq. 54: F1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-Tu/0.5)

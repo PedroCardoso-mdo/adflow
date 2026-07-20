@@ -36,6 +36,21 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRcthetat = 0.03_realType
     real(kind=realType), parameter :: rsaGRccrossflow = 0.6_realType
 !
+!       SA-noft2-Gamma-Retheta correlation constants (paper Eqs. 54-57, 15-26).
+!       Named module-level parameters, NOT bare literals, at smoothMinMax()
+!       call sites: a bare `0.4_realType`-style literal argument fails to
+!       complexify (the complex build's smoothMinMax has an explicit
+!       COMPLEX interface, and Fortran does not auto-promote a REAL literal
+!       actual argument to COMPLEX at a checked interface -- it only
+!       auto-promotes on assignment/parameter-initialization, which is why
+!       `one`/`zero`/`rsaGRpmax` work here but a bare literal doesn't).
+!
+    real(kind=realType), parameter :: rsaGRtuFloor = 0.027_realType
+    real(kind=realType), parameter :: rsaGRlambdaThetaMin = -0.1_realType
+    real(kind=realType), parameter :: rsaGRlambdaThetaMax = 0.1_realType
+    real(kind=realType), parameter :: rsaGRcrossflowRatioCap = 0.4_realType
+    real(kind=realType), parameter :: rsaGRhcfRef = 0.1066_realType
+!
 !       SA-noft2-Gamma-Retheta smooth-Fonset constants.
 !
     real(kind=realType), parameter :: rsaGRfonsetC  = 2.6_realType
