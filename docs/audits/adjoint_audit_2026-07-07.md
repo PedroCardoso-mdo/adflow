@@ -20,7 +20,7 @@ imported`). One fix applied (see §3); everything else verified as-is.
 | `wInf` seeding | `referencestate_d`: `winfd = 0` wholesale, then `winfd(itu1)` via `sanuknowneddyratio_d`, `winfd(itu2)=0` (γ∞=1), `winfd(itu3)` correctly stays 0 (correlation of passive Tu∞) |
 | Correlations + smoothMinMax differentiated | `rethetatcorrelation_d`, `flengthcorrelation_d`, `rethetaccorrelation_d`, `smoothminmax_d` all present in `turbUtils_d.f90` (primal 2026-05-17 < AD 2026-05-18, current) |
 | Crossflow (D_scf) in AD | 20 `dscf` hits in `saGammaRetheta_d.f90` (regenerated at e5cd58cd) |
-| `transitionRefLength` in AD | present in all three regenerated files (the `docs/adjoint-trace.md` "pending" note was stale — corrected) |
+| `transitionRefLength` in AD | present in all three regenerated files (the `docs/VERIFICATION/adjoint-trace.md` "pending" note was stale — corrected) |
 | Primal-only routines excluded | `saGammaReThetaSolve`, `evalSrcJacBlock`, `computeSrcLambda` appear as undifferentiated primal copies only — correct (LHS/DADI machinery) |
 | qq Jacobian guards | all `qq` logic (incl. the new dac2c78f diagonal clips) behind `#ifndef USE_TAPENADE` — zero AD footprint, same as SST's 2×2 block |
 | Build fileList | `saGammaRetheta_{d,b,fast_b}` all listed (`src/build/fileList:148,169,182`) |

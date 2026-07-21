@@ -91,10 +91,10 @@ They mirror the upstream SA suite one-to-one:
 - `TestCmplxStepSAGR` (complex build): re-converges the complex solver with a
   1e-40j perturbation per DV (`alpha`, `mach`, and a local `shape` geometric
   DV via DVGeo/idwarp) and compares imag(f)/h against the adjoint totals in
-  the ref file. **`shape` DV needs a real FFD for the AR5 wing** —
-  `sagrFFDFile` in `reg_sagr.py` still points at the stale tutorial-wing FFD
-  (kept only because it doesn't block the non-shape tests); build/point at
-  an AR5 FFD before running this class's shape-DV case.
+  the ref file. **2026-07-20: `sagrFFDFile` now points at a real AR5 FFD**
+  (`ar5_plain_wing_ffd_L3.xyz`, md5-matched to `sagrGridFile`, found in
+  `Desktop/TekAero/Run_Files/plain_wing_mesh_output/ffd/`) instead of the
+  tutorial-wing placeholder, so the shape-DV case is runnable.
 
 ### `generate_sagr_restart.py`
 The upstream SA restarts are downloaded pre-made (`input_files/

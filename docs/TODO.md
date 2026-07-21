@@ -43,6 +43,24 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 
 - [ ] **Valor de inicialização de gamma e retheta** para já está a 0.02 diferente da BC, testar o que dá melhor resultado
 
+## Test infrastructure
+
+- [ ] **Restructure `tests/reg_tests/` to match upstream ADflow's official
+  test conventions/fixtures** (from the 2026-07-21 three-stage
+  verification task, `task-log/2026-07-21-three-stage-adjoint-verification.md`).
+  Current one-off scripts (`sanity_check_*`, `check_3way_fwd*`,
+  `debug_cs_ar5_live.py`, `sweep_h_fd.py`) proved the methodology but are
+  ad-hoc, not testflo-registered, and don't follow upstream's
+  `test_*.py`/`ref/*.json` fixture-generation pattern. Needs: (a) proper
+  testflo-style test classes alongside `test_adjoint_ar5_sa.py`/
+  `test_adjoint_tutwing_mycode.py`; (b) generator scripts (analogous to
+  `generate_sagr_restart.py`) that produce the converged base state
+  needed for partials tests, parameterized over mesh (tutorial-wing, AR5,
+  future new meshes) **and** turb model (plain SA `nw=6` vs. SA-GR
+  `nw=8`), so a new mesh or model variant doesn't require another
+  hand-written script. Blocked on nothing — pure test-infra work, do when
+  picked up.
+
 ## Adjoint / partials (de `audits/adjoint_audit_2026-07-07.md`, 2026-07-07)
 
 - [ ] **Rerun Tapenade** para apanhar `uInf, muInf` ativos no head
@@ -52,7 +70,7 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 - [ ] **Decisão em aberto (default = diferenciar):** cap do limitador de
   vorticidade diferenciado vs congelado ("frozen limiter"). Se preferir
   congelar: reverter a linha do `Makefile_tapenade` e documentar; dR/dw é
-  idêntico nas duas opções. Análise: `adjoint-trace.md` header.
+  idêntico nas duas opções. Análise: `VERIFICATION/adjoint-trace.md` header.
 - [ ] **Ao testar partials:** (a) se o dot-product BWDFast falhar, suspeitar
   primeiro do stripping push/pop do `autoEditReverseFast.py` (partiu o
   fast_b do SST upstream — foi desativado lá, continua ativo neste branch);

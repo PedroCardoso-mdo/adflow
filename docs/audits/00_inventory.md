@@ -39,7 +39,7 @@ Suffix conventions: `_d` = forward (tangent) mode; `_b` = reverse (adjoint) mode
 | `BCData.F90` | `outputForward/BCData_d.f90` | `outputReverse/BCData_b.f90` | (temp only: `temp_reverse_fast/BCData_fast_b.f90`) |
 | `sa.F90` | `outputForward/sa_d.f90` | `outputReverse/sa_b.f90` | `outputReverseFast/sa_fast_b.f90` |
 
-Matching intermediates exist under `src/adjoint/temp_forward/`, `temp_reverse/`, `temp_reverse_fast/` (plus differentiated module shells `block_d.f90`, `blockPointers_d.f90`, etc.). Branch-specific AD wiring is documented in `docs/adjoint-trace.md`.
+Matching intermediates exist under `src/adjoint/temp_forward/`, `temp_reverse/`, `temp_reverse_fast/` (plus differentiated module shells `block_d.f90`, `blockPointers_d.f90`, etc.). Branch-specific AD wiring is documented in `docs/VERIFICATION/adjoint-trace.md`.
 
 ## 3. Nondimensionalization
 

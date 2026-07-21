@@ -132,7 +132,10 @@ def main():
         name="ar5_plain_wing",
         alpha=args.alpha,
         mach=args.mach,
-        altitude=0.0,
+        # explicit P/T (standard atmosphere sea level, numerically identical
+        # to altitude=0.0) -- see reg_sagr.py's ap_sagr_ar5_wing comment
+        P=101325.0,
+        T=288.15,
         areaRef=0.1,
         chordRef=1.0,
         beta=0.0,

@@ -74,8 +74,9 @@ Quick routing (full table in `docs/README.md`):
 | ADflow option name/default/enum | `ADFLOW_BASE/ADFLOW_05…` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04…` → `05…` → `01…` |
 | Adjoint / AD theory | `ADFLOW_BASE/ADFLOW_02…` |
-| Adjoint / AD on this branch | `adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02…` → `03…` |
-| Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04…` → `02…` → `adjoint-trace.md` |
+| Adjoint / AD on this branch | `VERIFICATION/adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02…` → `03…` |
+| Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04…` → `02…` → `VERIFICATION/adjoint-trace.md` |
+| Rerun/reproduce the adjoint verification tests (dot-product, fast_b, 3-way fwd) | `VERIFICATION/three-stage-verification.md` |
 
 **What's in the KB** (full descriptions + provenance in `docs/README.md`):
 
@@ -83,7 +84,8 @@ Quick routing (full table in `docs/README.md`):
 |------|-------|
 | `docs/architecture.md` | Solver architecture, state-vector layout, code/module locations, and every transition runtime option (name/default/enum). |
 | `docs/nondimensionalization.md` | ADflow's p-ρ non-dimensional scaling. Read before any velocity/viscosity/Re/time-scale equation. |
-| `docs/adjoint-trace.md` | Adjoint/AD touchpoints on this branch (guards, Tapenade directives, generated files, wiring). |
+| `docs/VERIFICATION/adjoint-trace.md` | Adjoint/AD touchpoints on this branch (guards, Tapenade directives, generated files, wiring). |
+| `docs/VERIFICATION/three-stage-verification.md` | The 3-stage low-level adjoint verification ladder (dot-product reverse↔forward consistency, reverse vs fast-reverse consistency, 3-way AD/FD/CS forward check) — tests, exact run commands, and results. |
 | `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` | Full paper text — **physics source of truth** (sole physics reference). |
 | `docs/SA_GAMMA_RETHETHA_BASE/README.md` | Sub-index for the transition physics KB. |
 | `docs/ADFLOW_BASE/ADFLOW_00…05` | Flow/ANK/NK theory (01), adjoint/AD theory (02), paper↔code concordance (03), debugging playbook (04), options devguide (05), sub-index (00). |

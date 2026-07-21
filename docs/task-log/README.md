@@ -11,6 +11,7 @@ the next task.
 | Date | Task | File |
 |---|---|---|
 | 2026-07-09 | Doc consolidation (`findings/` redistribution) | [2026-07-09-doc-consolidation.md](2026-07-09-doc-consolidation.md) |
+| 2026-07-21 | Three-stage low-level adjoint verification (plain SA) | [2026-07-21-three-stage-adjoint-verification.md](2026-07-21-three-stage-adjoint-verification.md) |
 
 ## Template
 

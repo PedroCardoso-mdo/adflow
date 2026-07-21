@@ -138,7 +138,7 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > `muInf` must be declared active independents of `saGammaRetheta%Source` in
 > `Makefile_tapenade`, else Tapenade emits `vortlimd = 0` and `dR/dMach`-type
 > partials lose the limiter path in capped cells (state partials dR/dw are
-> unaffected). Details + frozen-cap alternative: `adjoint-trace.md` header and
+> unaffected). Details + frozen-cap alternative: `VERIFICATION/adjoint-trace.md` header and
 > `audits/adjoint_audit_2026-07-07.md` §3.
 
 ## 6. Crossflow (D_scf) term dimension status

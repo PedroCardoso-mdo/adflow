@@ -37,11 +37,12 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Exact **ADflow** (flow/ANK/NK/adjoint) option name / default / enum | `ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md` |
 | Paper symbol ↔ code flag (ADflow solver) | `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md` → `ADFLOW_BASE/ADFLOW_01_flow_solver_theory.md` |
-| Why does the paper converge faster than ADflow / solver-algorithm gaps | `adflow-vs-paper-solver.md` |
+| Why does the paper converge faster than ADflow / solver-algorithm gaps | `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` |
 | Adjoint / AD theory (general) | `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` |
-| Implement or extend the adjoint / AD on **this branch** | `adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
-| Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/debugging_derivatives.md` (FD→dot-product→CS checking ladder) → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `adjoint-trace.md` |
-| Validate partials / plan AD test campaign | `current-task.md` → `ADFLOW_BASE/debugging_derivatives.md` (generic checking ladder) → `../audits/adjoint_audit_2026-07-07.md` → `../audits/07_sst_dev_lessons.md` (verification ladder + watch items) |
+| Implement or extend the adjoint / AD on **this branch** | `VERIFICATION/adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
+| Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `VERIFICATION/debugging_derivatives.md` (FD→dot-product→CS checking ladder) → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `VERIFICATION/adjoint-trace.md` |
+| Validate partials / plan AD test campaign | `current-task.md` → `VERIFICATION/debugging_derivatives.md` (generic checking ladder) → `VERIFICATION/three-stage-verification.md` (tests already run, commands, results) → `../audits/adjoint_audit_2026-07-07.md` → `../audits/07_sst_dev_lessons.md` (verification ladder + watch items) |
+| Rerun/reproduce the low-level adjoint verification tests (dot-product, fast_b, 3-way fwd) | `VERIFICATION/three-stage-verification.md` |
 | How another multi-equation turb model was differentiated (SST precedent) | `../audits/07_sst_dev_lessons.md` |
 | Why is X implemented this way / was this already discussed | `../audits/design-decisions.md` (memory of past discussion, not a spec — code/paper win if it disagrees) |
 | What's the task in progress right now | `current-task.md` |
@@ -59,11 +60,17 @@ answer. `→` means "if the first isn't enough, go to the next."
 | [README.md](README.md) | This master index + routing table. |
 | [architecture.md](architecture.md) | Solver architecture, state-vector layout, key code/module locations, user constraints, and the complete reference for every runtime option added for the transition model. |
 | [nondimensionalization.md](nondimensionalization.md) | How ADflow makes the governing equations dimensionless — the **pressure–density (p-ρ) scaling** (velocity normalizes to M·√γ, *not* 1). Read before touching any equation with velocity, viscosity, time scales, or Reynolds number. |
-| [adflow-vs-paper-solver.md](adflow-vs-paper-solver.md) | How ADflow's solver hierarchy (ANK/CANK/CSANK/NK, global-λ step control) differs from the paper's Newton–Krylov–Schur algorithm (Eq. 58 scaling, Alg. 2 per-node damping, Eq. 59 source-Δt + reactivation), why the paper converges in fewer iterations, what's ported, and the open code items. Grounded in the 2026-07-14/15 test campaign. |
-| [adjoint-trace.md](adjoint-trace.md) | Paired inventory of adjoint/AD touchpoints (SA vs SA-GR) on this branch: preprocessor guards, Tapenade directives, generated AD files, wiring. |
-| [TODO.md](TODO.md) | Deferred tuning/improvement items (decided, not defects): `turbResScale` calibration, Eq. 59 relaxation options, damping-clip fallback, open dúvida D-A2-3, blockettes. Each item links back to its `audits/design-decisions.md` analysis. |
+| [TODO.md](TODO.md) | Deferred tuning/improvement items (decided, not defects): `turbResScale` calibration, Eq. 59 relaxation options, damping-clip fallback, open dúvida D-A2-3, blockettes, test-infra restructure. Each item links back to its `audits/design-decisions.md` analysis. |
 | [current-task.md](current-task.md) | The single task currently in progress (CLAUDE.md: one task per session) — objective, scoped context, working files, checklist. Overwritten each session. |
 | [task-log/](task-log/README.md) | Finished-task log, one file per task (a "case"), added over time — index + template in `task-log/README.md`. |
+
+### Verification (`docs/VERIFICATION/`)
+
+| File | What's in it |
+|------|--------------|
+| [VERIFICATION/three-stage-verification.md](VERIFICATION/three-stage-verification.md) | The 3-stage low-level adjoint verification ladder: (1) reverse↔forward dot-product consistency, (2) reverse vs fast-reverse (`_b` vs `_b_fast`) consistency, (3) 3-way AD/FD/CS forward-mode check. Test files, exact run commands, and results obtained. |
+| [VERIFICATION/adjoint-trace.md](VERIFICATION/adjoint-trace.md) | Paired inventory of adjoint/AD touchpoints (SA vs SA-GR) on this branch: preprocessor guards, Tapenade directives, generated AD files, wiring. |
+| [VERIFICATION/debugging_derivatives.md](VERIFICATION/debugging_derivatives.md) | Raw source: generic FD → reverse-mode dot-product → complex-step derivative-checking ladder, not covered in `ADFLOW_BASE/02`/`04`. |
 
 ### Audits (`audits/`)
 
@@ -78,6 +85,7 @@ answer. `→` means "if the first isn't enough, go to the next."
 | File | What's in it |
 |------|--------------|
 | Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md | Full paper text. **Source of truth for physics** — when code and paper disagree, paper wins. Sole physics reference (distilled summaries were retired after repeated distillation errors; see `../audits/design-decisions.md` §D3). |
+| [adflow-vs-paper-solver.md](SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md) | How ADflow's solver hierarchy (ANK/CANK/CSANK/NK, global-λ step control) differs from the paper's Newton–Krylov–Schur algorithm (Eq. 58 scaling, Alg. 2 per-node damping, Eq. 59 source-Δt + reactivation), why the paper converges in fewer iterations, what's ported, and the open code items. Grounded in the 2026-07-14/15 test campaign. |
 
 ### ADflow reference KB (`docs/ADFLOW_BASE/`)
 
@@ -90,7 +98,6 @@ answer. `→` means "if the first isn't enough, go to the next."
 | [ADFLOW_04_debugging_playbook.md](ADFLOW_BASE/ADFLOW_04_debugging_playbook.md) | Symptom → cause → fix ladder → evidence for stalls, divergence, bad gradients. |
 | [ADFLOW_05_options_and_operations_devguide.md](ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md) | ADflow options + operations (official docs). |
 | [adflow_solvers.md](ADFLOW_BASE/adflow_solvers.md) | Raw official-docs source that fed `01`/`04`/`05`; last-resort read for troubleshooting detail not otherwise distilled. |
-| [debugging_derivatives.md](ADFLOW_BASE/debugging_derivatives.md) | Raw source: generic FD → reverse-mode dot-product → complex-step derivative-checking ladder, not covered in `02`/`04`. |
 
 ---
 

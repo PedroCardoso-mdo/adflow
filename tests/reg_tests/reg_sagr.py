@@ -39,10 +39,12 @@ baseDir = os.path.dirname(os.path.abspath(__file__))
 # --------------------------------------------------------------------------
 sagrGridFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_vol_L3.cgns")
 sagrRestartFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_dp.cgns")
-# NOTE: stale (tutorial-wing FFD) -- AR5 has no FFD yet. Fine for the
-# residual/jacVecProd/adjoint-vs-CS tests (they use alpha/mach/P/T DVs, not
-# shape); needed before running TestCmplxStepSAGR's geometric "shape" DV.
-sagrFFDFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_ffd.fmt")
+# 2026-07-20: real AR5 FFD, matched to this exact L3 grid (md5-verified
+# against TekAero's own copy) -- found in
+# /home/mdo/Desktop/TekAero/Run_Files/plain_wing_mesh_output/ffd/
+# ar5_plain_wing_ffd_L3.xyz, copied into input_files/ (gitignored like the
+# grid). No longer the stale tutorial-wing placeholder.
+sagrFFDFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_ffd_L3.xyz")
 
 # AR5 plain-wing AeroProblem — MUST match the conditions
 # generate_sagr_restart.py converged (same numbers as the validated
@@ -52,7 +54,12 @@ ap_sagr_ar5_wing = AeroProblem(
     alpha=0.0,
     beta=0.0,
     mach=0.2,
-    altitude=0.0,
+    # explicit P/T (not altitude=0.0, which the AR5 production run used) --
+    # numerically identical (standard atmosphere sea level) but baseclasses
+    # only allows a DV for an input actually passed to the constructor, and
+    # sagrAeroDVs below needs P/T as DVs (audit-06 F1: uInf/muInf path)
+    P=101325.0,
+    T=288.15,
     areaRef=0.1,
     chordRef=1.0,
     xRef=0.0,
@@ -285,23 +292,33 @@ def getStateBlocks(CFDSolver):
     to the list of 0-based variable offsets inside each cell's nw-slot chunk.
 
     Reads nw/nt1/nt2 from the compiled module so it works identically on the
-    real and complex builds.
+    real and complex builds. Accepts two layouts:
+      - nw=8, nt2-nt1=2: SA-noft2-Gamma-Retheta (meanflow/nuTilde/gamma/reThetat)
+      - nw=6, nt2-nt1=0: plain SA (meanflow/nuTilde only, no transition vars)
+    The nw=6 case exists so the same block-splitting helpers used by the
+    SA-GR tests can also run, unmodified, against a plain-SA build/mesh --
+    see docs/current-task.md's script/mesh isolation ladder.
     """
     nw = int(CFDSolver.adflow.flowvarrefstate.nw)
     nt1 = int(CFDSolver.adflow.flowvarrefstate.nt1)  # Fortran 1-based
     nt2 = int(CFDSolver.adflow.flowvarrefstate.nt2)
 
-    if nw != 8 or (nt2 - nt1) != 2:
+    if nw == 8 and (nt2 - nt1) == 2:
+        blocks = OrderedDict()
+        blocks["meanflow"] = list(range(0, nt1 - 1))  # rho, rho*u, rho*v, rho*w, rho*E
+        blocks["nuTilde"] = [nt1 - 1]  # itu1
+        blocks["gamma"] = [nt1]  # itu2
+        blocks["reThetat"] = [nt1 + 1]  # itu3
+    elif nw == 6 and (nt2 - nt1) == 0:
+        blocks = OrderedDict()
+        blocks["meanflow"] = list(range(0, nt1 - 1))  # rho, rho*u, rho*v, rho*w, rho*E
+        blocks["nuTilde"] = [nt1 - 1]  # itu1, no gamma/reThetat in plain SA
+    else:
         raise ValueError(
-            "SA-GR tests expect the 8-state SA-noft2-Gamma-Retheta layout "
-            "(nw=8, three turbulence variables); got nw=%d, nt1=%d, nt2=%d" % (nw, nt1, nt2)
+            "expected either the 8-state SA-noft2-Gamma-Retheta layout "
+            "(nw=8, three turbulence variables) or the 6-state plain-SA "
+            "layout (nw=6, one turbulence variable); got nw=%d, nt1=%d, nt2=%d" % (nw, nt1, nt2)
         )
-
-    blocks = OrderedDict()
-    blocks["meanflow"] = list(range(0, nt1 - 1))  # rho, rho*u, rho*v, rho*w, rho*E
-    blocks["nuTilde"] = [nt1 - 1]  # itu1
-    blocks["gamma"] = [nt1]  # itu2
-    blocks["reThetat"] = [nt1 + 1]  # itu3
     return nw, blocks
 
 
