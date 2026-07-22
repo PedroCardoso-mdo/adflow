@@ -3,12 +3,13 @@
 **Status (plain SA): all three stages PASS**, for plain SA on both the
 tutorial-wing and AR5 meshes, as of 2026-07-21.
 
-**Status (SA-GR, `nw=8`, AR5): all three stages PASS**, as of 2026-07-22.
-Stage 2 initially FAILED on the reThetat rows (`_b` vs `_fast_b` diverged,
-max abs diff ≈ 7.5e+2); this was root-caused to an in-place `smoothMinMax`
-double-clamp of `lambdaThetaLocal` in the primal and **fixed** (see the
-"SA-GR (`nw=8`) results" section below). After the fix + Tapenade regen,
-Stage 2's reThetat block matches to 2.3e-10.
+**Status (SA-GR, `nw=8`, AR5): all three stages PASS**, with crossflow
+**off and on**, as of 2026-07-22. Stage 2 initially FAILED on the reThetat
+rows (`_b` vs `_fast_b` diverged, max abs diff ≈ 7.5e+2); this was
+root-caused to an in-place `smoothMinMax` double-clamp of `lambdaThetaLocal`
+in the primal and **fixed** (see the "SA-GR (`nw=8`) results" section
+below). After the fix + Tapenade regen, Stage 2's reThetat block matches to
+2.3e-10 (crossflow off) / 1.4e-9 (crossflow on).
 
 This is the low-level, raw-API verification campaign — separate from (and
 a prerequisite trusted-input for) the higher-level `evalFunctionsSens`-based
@@ -276,12 +277,48 @@ FD step-size sweep confirms first-order convergence to the AD/CS value as
 SA-GR/AR5 state — same as the plain-SA runs, where only the one-sided
 column was reported; the one-sided ladder above is the meaningful result.)
 
+### SA-GR with crossflow ON — all three stages PASS (2026-07-22)
+
+The results above are with `transitionCrossflow=False` (the validated AR5
+production config). The ladder was **also** run with the helicity crossflow
+term ON, linearizing about a crossflow-on converged double-precision state
+(`input_files/ar5_plain_wing_sagr_crossflow_dp.cgns`, from the
+`best_strategie/output_full` run, same AR5 plain-wing case). A `--crossflow`
+flag on `sanity_check_partials_sa.py` / `check_3way_fwd.py` flips
+`transitionCrossflow=True` and points grid+restart at that state; no Fortran
+change.
+
+```bash
+mpirun -n 2 <mach python> sanity_check_partials_sa.py --turbmodel sagr --crossflow
+mpirun -n 2 <mach python> check_3way_fwd.py --turbmodel sagr --crossflow --build real
+mpirun -n 2 <mach python> check_3way_fwd.py --turbmodel sagr --crossflow --build complex
+```
+
+| Stage | Result (crossflow ON) |
+|---|---|
+| 1 — dot products | fwd == rev to displayed precision (w→R 5.546100e+13, Xv→R 9.446451e+09, …) — PASS |
+| 2 — `_b` vs `_fast_b` | meanflow 3.30e-06 · nuTilde 9.16e-05 · gamma 1.68e-08 · reThetat **1.40e-09** — all pass |
+| 3 — AD vs CS | AD = CS = **3.3255762835e+13** (exact) — PASS |
+
+This is not a no-op: the crossflow term genuinely affects the residual
+(Xv→R 9.446e9 vs 9.427e9 crossflow-off; AD 3.32558e13 vs 3.32564e13), so
+the crossflow-only code (`crossflowRatio`, `dHplus`, `dHminus`, and the
+`dR[reThetat]/d(nuTilde)` coupling through `D_scf`) is exercised — and its
+`_fast_b` matches `_b` and its forward linearization matches CS. The
+distinct-target `smoothMinMax` calls in the crossflow path (unlike the old
+in-place `lambdaThetaLocal`) are confirmed safe by test, and the previously
+untested `D_scf` adjoint block is now covered for this converged state.
+
 ## What's not yet covered
 
-- All three stages now PASS for both plain SA and SA-GR (`nw=8`) on AR5.
+- All three stages now PASS for plain SA and SA-GR (`nw=8`) on AR5, with
+  crossflow **both off and on** (see the SA-GR crossflow-ON subsection).
   The Stage-2 reThetat `_fast_b` divergence found on the first SA-GR run
   was root-caused and fixed (lambdaTheta in-place clamp; see the SA-GR
-  results section) and re-verified against forward/CS ground truth.
+  results section) and re-verified against forward/CS ground truth. The
+  crossflow `D_scf` adjoint path — previously an untested gap noted in
+  `reg_sagr.py`/`architecture.md` — is now covered for the crossflow-on
+  converged state.
 - Stage-3 CS was re-confirmed against a **freshly rebuilt**
   `libadflow_cs.so` (2026-07-22): `src_cs` fully cleaned
   (`git clean -fdx src_cs/`) and rebuilt from the fixed primal with

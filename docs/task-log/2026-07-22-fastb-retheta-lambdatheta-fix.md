@@ -66,6 +66,15 @@ convention everywhere else in the file (mathematically identical):
   `PETSC_ARCH=complex-debug make -f Makefile_CS`), so nothing is stale.
 - Plain-SA Stage 2 (regression): still `SANITY CHECK PASSED`.
 - Build: real `make` + `pip install` clean; Tapenade regen exit 0.
+- **Crossflow ON** (added a `--crossflow` flag; linearized about
+  `ar5_plain_wing_sagr_crossflow_dp.cgns` from `best_strategie/output_full`):
+  all three stages PASS — Stage 1 fwd==rev; Stage 2 reThetat block
+  `max|_b − _fast_b| = 1.40e-9` (`SANITY CHECK PASSED`); Stage 3
+  AD = CS = 3.3255762835e+13. The crossflow term genuinely affects the
+  residual (values differ from crossflow-off), so the `D_scf` path
+  (`crossflowRatio`/`dHplus`/`dHminus`, `dR[reThetat]/d(nuTilde)`) is
+  exercised and its adjoint confirmed — closing the previously-untested
+  crossflow adjoint gap for this state.
 
 **Follow-ups:**
 - Complex-build recipe (verified this session): `git clean -fdx src_cs/`

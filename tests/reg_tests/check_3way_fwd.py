@@ -38,6 +38,12 @@ parser.add_argument(
     help="sa = plain SA (nw=6); sagr = SA-noft2-Gamma-Retheta (nw=8, AR5 SA-GR "
     "restart). sagr forces the AR5 SA-GR case regardless of --mesh.",
 )
+parser.add_argument(
+    "--crossflow",
+    action="store_true",
+    help="(sagr only) turn on transitionCrossflow and linearize about the "
+    "crossflow-on converged restart (ar5_plain_wing_sagr_crossflow_dp.cgns).",
+)
 args = parser.parse_args()
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
@@ -54,6 +60,11 @@ if args.turbmodel == "sagr":
     ap = copy.deepcopy(reg_sagr.ap_sagr_ar5_wing)
     for dv in reg_sagr.sagrAeroDVs:
         ap.addDV(dv)
+    if args.crossflow:
+        cfFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_crossflow_dp.cgns")
+        options["transitioncrossflow"] = True
+        options["gridfile"] = cfFile
+        options["restartfile"] = cfFile
 elif args.mesh == "ar5":
     from test_adjoint_ar5_sa import ar5SAOptions, ap_ar5_sa
 
