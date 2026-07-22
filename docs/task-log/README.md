@@ -12,6 +12,8 @@ the next task.
 |---|---|---|
 | 2026-07-09 | Doc consolidation (`findings/` redistribution) | [2026-07-09-doc-consolidation.md](2026-07-09-doc-consolidation.md) |
 | 2026-07-21 | Three-stage low-level adjoint verification (plain SA) | [2026-07-21-three-stage-adjoint-verification.md](2026-07-21-three-stage-adjoint-verification.md) |
+| 2026-07-21 | Three-stage low-level adjoint verification (SA-GR, nw=8) — Stages 1&3 PASS, Stage 2 FAILS on reThetat | [2026-07-21-three-stage-adjoint-verification-sagr.md](2026-07-21-three-stage-adjoint-verification-sagr.md) |
+| 2026-07-22 | Fix reverse-fast `dR[reThetat]/dw[meanflow]` (lambdaTheta in-place clamp) — Stage 2 SA-GR now PASSES | [2026-07-22-fastb-retheta-lambdatheta-fix.md](2026-07-22-fastb-retheta-lambdatheta-fix.md) |
 
 ## Template
 

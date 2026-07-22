@@ -241,6 +241,7 @@ contains
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: yDist
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
+        real(kind=realType) :: lambdaThetaRaw, lambdaThetaClamped
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
         real(kind=realType) :: dwdx, dwdy, dwdz
         real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
@@ -549,9 +550,17 @@ contains
                              * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
                               + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
                               + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
-                        lambdaThetaLocal = (thetaBL**2 / nu) * dUds
-                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, rsaGRlambdaThetaMin, rsaGRpmax)
-                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, rsaGRlambdaThetaMax, rsaGRpmin)
+                        ! Use distinct targets for each clamp (NOT in-place
+                        ! overwrite) so the reverse-fast AD recomputes each
+                        ! intermediate instead of relying on a push/pop stack
+                        ! that autoEditReverseFast.py strips -- matching the
+                        ! convention used by every other smoothMinMax here
+                        ! (vortMagLim, crossflowRatio, dHplus, ...). The
+                        ! in-place form broke dR[reThetat]/dw[meanflow] in
+                        ! _fast_b only; see docs/VERIFICATION.
+                        lambdaThetaRaw = (thetaBL**2 / nu) * dUds
+                        lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
+                        lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
 
                         reThetaT_target = reThetaTCorrelation( &
                             turbIntensityInf * 100.0_realType, lambdaThetaLocal)

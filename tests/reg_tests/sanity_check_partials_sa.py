@@ -35,6 +35,13 @@ from reg_default_options import adflowDefOpts
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--mesh", choices=["tutorial", "ar5"], default="ar5")
+parser.add_argument(
+    "--turbmodel",
+    choices=["sa", "sagr"],
+    default="sa",
+    help="sa = plain SA (nw=6); sagr = SA-noft2-Gamma-Retheta (nw=8, AR5 SA-GR "
+    "restart). sagr forces the AR5 SA-GR case regardless of --mesh.",
+)
 args = parser.parse_args()
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
@@ -43,7 +50,14 @@ rank = MPI.COMM_WORLD.rank
 options = copy.copy(adflowDefOpts)
 options["outputdirectory"] = os.path.join(baseDir, options["outputdirectory"])
 
-if args.mesh == "ar5":
+if args.turbmodel == "sagr":
+    # SA-GR (nw=8): reuse reg_sagr's validated AR5 SA-GR option set + restart
+    # (block helpers below already handle the nw=8 gamma/reThetat layout).
+    options.update(copy.deepcopy(reg_sagr.sagrBaseOptions))
+    ap = copy.deepcopy(reg_sagr.ap_sagr_ar5_wing)
+    for dv in reg_sagr.sagrAeroDVs:
+        ap.addDV(dv)
+elif args.mesh == "ar5":
     from test_adjoint_ar5_sa import ar5SAOptions, ap_ar5_sa
 
     options.update(copy.deepcopy(ar5SAOptions))
@@ -83,8 +97,9 @@ else:
     for dv in defaultAeroDVs:
         ap.addDV(dv)
 
+caseLabel = "sagr/ar5" if args.turbmodel == "sagr" else args.mesh
 if rank == 0:
-    print("\n=== mesh: %s ===\n" % args.mesh, flush=True)
+    print("\n=== case: %s ===\n" % caseLabel, flush=True)
 
 CFDSolver = ADFLOW(options=options, debug=True)
 
@@ -140,7 +155,23 @@ utils.assert_dot_products_allclose(handler, CFDSolver, tol=2e-10)
 
 if rank == 0:
     print("\n=== reverse-fast (_fast_b) vs full-reverse (_b), block-seeded ===\n", flush=True)
+# Per-block report (max|_b - _fast_b| across ranks) BEFORE the hard assert, so
+# SA-GR's real gamma/reThetat rows produce a visible table rather than a bare
+# PASS/FAIL. Mirrors reg_sagr.assert_bwdfast_blocks_allclose's seeding.
+import numpy as _np
+
+_nw, _blocks = reg_sagr.getStateBlocks(CFDSolver)
+_dwBarFull = CFDSolver.getStatePerturbation(314)
+for _rowName, _rowOffsets in _blocks.items():
+    _dwBar = reg_sagr.maskStateVector(_dwBarFull, _nw, _rowOffsets)
+    _wBar = CFDSolver.computeJacobianVectorProductBwd(resBar=_dwBar, wDeriv=True)
+    _wBarFast = CFDSolver.computeJacobianVectorProductBwdFast(resBar=_dwBar)
+    _localMax = _np.max(_np.abs(_wBar - _wBarFast)) if _wBar.size else 0.0
+    _globalMax = MPI.COMM_WORLD.reduce(_localMax, op=MPI.MAX)
+    if rank == 0:
+        print("  resBar seeded on %-9s rows: max|_b - _fast_b| = %.3e" % (_rowName, _globalMax), flush=True)
+
 reg_sagr.assert_bwdfast_blocks_allclose(CFDSolver, seed=314, atol=1e-16)
 
 if rank == 0:
-    print("\n=== SANITY CHECK PASSED (mesh=%s) ===\n" % args.mesh, flush=True)
+    print("\n=== SANITY CHECK PASSED (case=%s) ===\n" % caseLabel, flush=True)

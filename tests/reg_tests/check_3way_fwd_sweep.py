@@ -27,6 +27,13 @@ from reg_default_options import adflowDefOpts, defaultAeroDVs
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--mesh", choices=["tutorial", "ar5"], default="tutorial")
+parser.add_argument(
+    "--turbmodel",
+    choices=["sa", "sagr"],
+    default="sa",
+    help="sa = plain SA (nw=6); sagr = SA-noft2-Gamma-Retheta (nw=8, AR5 SA-GR "
+    "restart). sagr forces the AR5 SA-GR case regardless of --mesh.",
+)
 args = parser.parse_args()
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
@@ -36,7 +43,14 @@ rank = comm.rank
 options = copy.copy(adflowDefOpts)
 options["outputdirectory"] = os.path.join(baseDir, options["outputdirectory"])
 
-if args.mesh == "ar5":
+if args.turbmodel == "sagr":
+    import reg_sagr
+
+    options.update(copy.deepcopy(reg_sagr.sagrBaseOptions))
+    ap = copy.deepcopy(reg_sagr.ap_sagr_ar5_wing)
+    for dv in reg_sagr.sagrAeroDVs:
+        ap.addDV(dv)
+elif args.mesh == "ar5":
     from test_adjoint_ar5_sa import ar5SAOptions, ap_ar5_sa
 
     options.update(copy.deepcopy(ar5SAOptions))
@@ -68,8 +82,9 @@ else:
     )
     ap = copy.deepcopy(ap_tutorial_wing)
 
-for dv in defaultAeroDVs:
-    ap.addDV(dv)
+if args.turbmodel != "sagr":  # sagr already added its own DVs above
+    for dv in defaultAeroDVs:
+        ap.addDV(dv)
 
 CFDSolver = ADFLOW(options=options, debug=True)
 CFDSolver.getResidual(ap)
@@ -93,7 +108,7 @@ w0 = CFDSolver.getStates()
 hVals = [1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, 1e-9, 1e-10, 1e-11, 1e-12]
 
 if rank == 0:
-    print("\n=== FD step-size sweep, mesh=%s ===" % args.mesh, flush=True)
+    print("\n=== FD step-size sweep, mesh=%s, turbmodel=%s ===" % (args.mesh, args.turbmodel), flush=True)
     print("AD reference (== CS, confirmed in check_3way_fwd.py) = %.10e\n" % scalarAD, flush=True)
     print("%-10s %-18s %-12s %-18s %-12s" % ("h", "one-sided FD", "rel_err", "centered FD", "rel_err"), flush=True)
 

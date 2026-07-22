@@ -1,10 +1,18 @@
 # Three-Stage Low-Level Adjoint Verification Ladder
 
-**Status: all three stages PASS**, for plain SA on both the tutorial-wing
-and AR5 meshes, as of 2026-07-21. This is the low-level, raw-API
-verification campaign — separate from (and a prerequisite trusted-input
-for) the higher-level `evalFunctionsSens`-based campaign tracked in
-`../current-task.md`.
+**Status (plain SA): all three stages PASS**, for plain SA on both the
+tutorial-wing and AR5 meshes, as of 2026-07-21.
+
+**Status (SA-GR, `nw=8`, AR5): all three stages PASS**, as of 2026-07-22.
+Stage 2 initially FAILED on the reThetat rows (`_b` vs `_fast_b` diverged,
+max abs diff ≈ 7.5e+2); this was root-caused to an in-place `smoothMinMax`
+double-clamp of `lambdaThetaLocal` in the primal and **fixed** (see the
+"SA-GR (`nw=8`) results" section below). After the fix + Tapenade regen,
+Stage 2's reThetat block matches to 2.3e-10.
+
+This is the low-level, raw-API verification campaign — separate from (and
+a prerequisite trusted-input for) the higher-level `evalFunctionsSens`-based
+campaign tracked in `../current-task.md`.
 
 This ladder answers one question at three levels of the AD stack: **does
 the differentiated code actually compute the derivative of the primal
@@ -161,13 +169,128 @@ absolute-convergence-precision floor on that specific stalling mesh/case
 (see `../current-task.md`'s h-sweep table via `sweep_h_fd.py`), not a bug
 in the linearization tested here.
 
+## SA-GR (`nw=8`) results
+
+Run 2026-07-21, AR5 mesh only, linearizing about the converged SA-GR
+restart `input_files/ar5_plain_wing_sagr_dp.cgns` (built 2026-07-19 by
+`generate_sagr_restart.py`, AR5 grid, mach=0.2, alpha=0.0, Tu=0.0025 —
+matches `ap_sagr_ar5_wing`). The plain-SA scripts were extended with a
+`--turbmodel {sa,sagr}` flag; `sagr` pulls `reg_sagr.sagrBaseOptions` +
+`ap_sagr_ar5_wing` + `sagrAeroDVs`, and the `nw=8` block layout is already
+handled by `reg_sagr.getStateBlocks`. No Fortran changed (verification
+scripts only).
+
+**How to run:**
+```bash
+# Stage 1 + Stage 2 (dot products + block-seeded _b vs _fast_b)
+OMP_NUM_THREADS=1 mpirun -n 2 /home/mdo/packages_v2/mach/bin/python tests/reg_tests/sanity_check_partials_sa.py --turbmodel sagr
+
+# Stage 3 (3-way AD/FD/CS) — both builds live in the same mach env
+OMP_NUM_THREADS=1 mpirun -n 2 /home/mdo/packages_v2/mach/bin/python tests/reg_tests/check_3way_fwd.py --turbmodel sagr --build real
+OMP_NUM_THREADS=1 mpirun -n 2 /home/mdo/packages_v2/mach/bin/python tests/reg_tests/check_3way_fwd.py --turbmodel sagr --build complex
+
+# Stage 3b (FD step-size sweep)
+OMP_NUM_THREADS=1 mpirun -n 2 /home/mdo/packages_v2/mach/bin/python tests/reg_tests/check_3way_fwd_sweep.py --turbmodel sagr
+```
+(On this branch the complex `libadflow_cs.so` is installed in the same
+`mach` env as the real build — `check_3way_fwd.py --build complex` imports
+`ADFLOW_C`, so a separate `mach_cs` Python is not needed.)
+
+### Stage 1 — dot-product consistency: **PASS**
+
+fwd and rev reduce to the same value to all displayed digits (`tol=2e-10`):
+
+| Dot-product test | fwd | rev |
+|---|---|---|
+| w → R | 5.546143e+13 | 5.546143e+13 |
+| Xv → R | 9.426969e+09 | 9.426969e+09 |
+| w → F | 1.428035e+08 | 1.428035e+08 |
+| xV → F | 1.696683e+08 | 1.696683e+08 |
+| (w, xV) → (dw, F) | 5.547117e+13 | 5.547117e+13 |
+
+### Stage 2 — `_b` vs `_fast_b`, block-seeded: **PASS (after the lambdaTheta fix)**
+
+`resBar` seeded one residual-row block at a time; reported is
+`max|_b − _fast_b|` reduced across ranks.
+
+| resBar seeded on | max\|_b − _fast_b\| (before fix) | max\|_b − _fast_b\| (after fix) |
+|---|---|---|
+| meanflow | 3.295e-06 | 3.295e-06 (passes rtol) |
+| nuTilde | 7.629e-05 | 7.629e-05 (passes rtol) |
+| gamma | 1.490e-08 | 1.490e-08 |
+| reThetat | **7.546e+02 (FAIL)** | **2.328e-10 (PASS)** |
+
+**Root cause and fix (2026-07-22).** The failure was isolated to the
+reThetat-seeded block. A ground-truth check (`diag_which_wrong.py`:
+forward `_d`/CS vs. `_b` vs. `_fast_b` for the `dR[reThetat]/dw[meanflow]`
+block) proved `_b` and `_d`/CS agreed to ~1e-14 while `_fast_b` was wrong
+by rel_err 1.94 (**wrong sign**: +3.949e4 vs. the correct −4.199e4) — so
+`_fast_b` alone was broken. Root cause: the primal computed the
+pressure-gradient parameter `lambdaThetaLocal` with two **in-place**
+`smoothMinMax` clamps
+
+```fortran
+lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, ...)   ! overwrites in place
+lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, ...)   ! overwrites again
+```
+
+Tapenade guarded the two overwritten intermediates with `pushreal8`/
+`popreal8`, which `autoEditReverseFast.py` strips wholesale (it assumes
+every stored primal is recomputed inline). Every other `smoothMinMax` in
+the SA-GR source writes to a **distinct** target (`vortMagLim`,
+`crossflowRatio`, `dHplus`, …) — so the recompute-to-survive convention
+kept them safe; `lambdaThetaLocal` was the sole in-place deviation, and
+it sits on the reThetat→meanflow chain (`lambdaThetaLocal =
+thetaBL²/nu · dUds`), which is exactly why only the reThetat row / meanflow
+column broke. **Fix:** rewrite the primal (`saGammaRetheta.F90`) with
+distinct targets (`lambdaThetaRaw` → `lambdaThetaClamped` →
+`lambdaThetaLocal`) — mathematically identical, and now matching the
+convention everywhere else — then rerun Tapenade (`make -f Makefile_tapenade`)
+and rebuild. After regen, `_fast_b` reads the correct distinct primals in
+its two `smoothminmax_fast_b` reverse calls with no push/pop needed, and
+the ground-truth check matches to 1.27e-13.
+
+### Stage 3 — 3-way AD vs. CS vs. FD: **PASS**
+
+| Quantity | Value | rel_err vs AD |
+|---|---|---|
+| AD | 3.3256409775e+13 | — |
+| CS (h=1e-40) | 3.3256409775e+13 | exact match to AD (11 sig figs) |
+| FD (h=1e-8, one-sided) | 6.0512532732e+13 | 8.196e-01 (expected FD noise) |
+
+AD and CS agree to full displayed precision — the pass criterion. One-sided
+FD step-size sweep confirms first-order convergence to the AD/CS value as
+`h→0`:
+
+| h | one-sided FD | rel_err vs AD |
+|---|---|---|
+| 1e-6 | 3.8365923470e+15 | 1.144e+02 |
+| 1e-7 | 3.9729119395e+14 | 1.095e+01 |
+| 1e-8 | 6.0512532732e+13 | 8.196e-01 |
+| 1e-9 | 3.4952438464e+13 | 5.100e-02 |
+| 1e-10 | 3.3418921994e+13 | 4.887e-03 |
+| 1e-11 | 3.3272592605e+13 | 4.866e-04 |
+| 1e-12 | 3.3258027319e+13 | 4.864e-05 |
+
+(The sweep's centered-FD column returns nonsensical/`nan` values on this
+SA-GR/AR5 state — same as the plain-SA runs, where only the one-sided
+column was reported; the one-sided ladder above is the meaningful result.)
+
 ## What's not yet covered
 
-- **SA-GR (`nw=8`, gamma/reThetat rows) has not been run through this
-  same 3-stage ladder** — all results above are plain SA (`nw=6`) only.
-  Stage 2's `_b`-vs-`_fast_b` block check in particular has no
-  gamma/reThetat content to exercise until this is done. This is the
-  natural next step (see `../current-task.md`).
+- All three stages now PASS for both plain SA and SA-GR (`nw=8`) on AR5.
+  The Stage-2 reThetat `_fast_b` divergence found on the first SA-GR run
+  was root-caused and fixed (lambdaTheta in-place clamp; see the SA-GR
+  results section) and re-verified against forward/CS ground truth.
+- Note on the Stage-3 complex build: the CS run above uses the
+  pre-existing `libadflow_cs.so`. A fresh complex rebuild after the fix
+  was not required because the fix is mathematically neutral (the primal
+  residual, and hence the forward AD value `3.3256409775e+13`, is
+  byte-identical before and after — only the reverse-fast checkpointing
+  changed), so CS is unchanged. (A from-scratch complex rebuild in this
+  environment needs `PETSC_ARCH=complex-debug`; building against the
+  default `real-debug` PETSc produces spurious COMPLEX→REAL interface
+  errors unrelated to any source change.)
 - `debug_cs_ar5_live.py` and `sweep_h_fd.py` are diagnostic/debugging
   scripts for the separate open AR5-CS issue above, not part of this
   pass/fail ladder — see `../current-task.md` for their role.

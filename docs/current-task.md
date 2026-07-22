@@ -105,13 +105,29 @@ trusted on the tutorial-wing case. 3-step process, each via the adjoint
   This does not touch the AR5 `dcd/dmach` CS mismatch below, which is a
   separate, converged-state-dependent issue (see that doc's "Relationship
   to the still-open AR5 CS mismatch" section).
-- **Next step:** run the same 3-stage ladder for SA-GR (`nw=8`,
-  gamma/reThetat rows) — it has only been run for plain SA (`nw=6`) so
-  far. Stage 2 (`_b` vs `_b_fast`) in particular has no gamma/reThetat
-  content to exercise until this is done.
-  `sanity_check_partials_sa.py`/`generate_sagr_restart.py`/`reg_sagr.py`
-  already accept `nw=8` (generalized this session) — extend the
-  `check_3way_fwd*.py` scripts similarly and rerun.
+- **DONE (2026-07-21):** ran the 3-stage ladder for SA-GR (`nw=8`,
+  gamma/reThetat rows), AR5 mesh, via a new `--turbmodel sagr` flag on
+  `sanity_check_partials_sa.py`/`check_3way_fwd.py`/`check_3way_fwd_sweep.py`.
+  **Stage 1 (dot products) PASS; Stage 3 (AD/FD/CS) PASS** (AD = CS =
+  3.3256409775e+13 exact); **Stage 2 (`_b` vs `_fast_b`) FAILS on the
+  reThetat rows** (max\|_b − _fast_b\| ≈ 7.5e+2, ~44% elements mismatched;
+  meanflow/nuTilde/gamma pass). Full writeup:
+  `VERIFICATION/three-stage-verification.md` ("SA-GR (`nw=8`) results");
+  case file: `task-log/2026-07-21-three-stage-adjoint-verification-sagr.md`.
+- **DONE (2026-07-22): Stage-2 `_b`-vs-`_fast_b` reThetat divergence
+  root-caused and FIXED.** Ground-truth check proved `_fast_b` (not `_b`)
+  was wrong for `dR[reThetat]/dw[meanflow]` (rel_err 1.94, wrong sign).
+  Cause: the primal computed `lambdaThetaLocal` with two **in-place**
+  `smoothMinMax` clamps; Tapenade's `push/popreal8` for the overwritten
+  intermediates is stripped by `autoEditReverseFast.py`, leaving `_fast_b`
+  reading a stale primal — the sole in-place `smoothMinMax` in the source
+  (all others use distinct targets). Fix: rewrote the primal with distinct
+  targets (`lambdaThetaRaw`→`lambdaThetaClamped`→`lambdaThetaLocal`,
+  `saGammaRetheta.F90`), reran Tapenade (regenerated `_d`/`_b`/`_fast_b`)
+  and rebuilt. Now all three stages PASS for SA-GR (reThetat block
+  `_b`-vs-`_fast_b` 7.5e+2 → 2.3e-10; `_fast_b` matches forward/CS ground
+  truth to 1.27e-13; Stage 3 AD=CS=3.3256409775e+13 unchanged). Case file:
+  `task-log/2026-07-22-fastb-retheta-lambdatheta-fix.md`.
 - SA-GR's own adjoint/CS validation on the AR5 mesh (the higher-level
   `evalFunctionsSens`-based route, distinct from the raw-API ladder above)
   hasn't started — `test_adjoint_sagr.py`/`reg_sagr.py` were repointed at

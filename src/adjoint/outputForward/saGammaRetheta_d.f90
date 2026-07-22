@@ -256,6 +256,8 @@ contains
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: uxhatd, uyhatd, uzhatd, dudsd, &
 &   lambdathetalocald
+    real(kind=realtype) :: lambdathetaraw, lambdathetaclamped
+    real(kind=realtype) :: lambdathetarawd, lambdathetaclampedd
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
@@ -344,8 +346,6 @@ contains
     real(kind=realtype) :: temp9
     real(kind=realtype) :: temp10
     real(kind=8) :: temp11
-    real(kind=realtype) :: tmpresult
-    real(kind=realtype) :: tmpresult0
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -1027,18 +1027,24 @@ contains
 &             wwx*uxhatd+uxhat*wwxd+wwy*uyhatd+uyhat*wwyd+wwz*uzhatd+&
 &             uzhat*wwzd)))
             duds = two*(fact*temp7)
+! use distinct targets for each clamp (not in-place
+! overwrite) so the reverse-fast ad recomputes each
+! intermediate instead of relying on a push/pop stack
+! that autoeditreversefast.py strips -- matching the
+! convention used by every other smoothminmax here
+! (vortmaglim, crossflowratio, dhplus, ...). the
+! in-place form broke dr[rethetat]/dw[meanflow] in
+! _fast_b only; see docs/verification.
             temp10 = duds/nu
-            lambdathetalocald = temp10*2*thetabl*thetabld + thetabl**2*(&
+            lambdathetarawd = temp10*2*thetabl*thetabld + thetabl**2*(&
 &             dudsd-temp10*nud)/nu
-            lambdathetalocal = thetabl*thetabl*temp10
-            lambdathetalocald = smoothminmax_d(lambdathetalocal, &
-&             lambdathetalocald, -0.1_realtype, 0.0_8, rsagrpmax, &
-&             tmpresult)
-            lambdathetalocal = tmpresult
-            lambdathetalocald = smoothminmax_d(lambdathetalocal, &
-&             lambdathetalocald, 0.1_realtype, 0.0_8, rsagrpmin, &
-&             tmpresult0)
-            lambdathetalocal = tmpresult0
+            lambdathetaraw = thetabl*thetabl*temp10
+            lambdathetaclampedd = smoothminmax_d(lambdathetaraw, &
+&             lambdathetarawd, rsagrlambdathetamin, 0.0_8, rsagrpmax, &
+&             lambdathetaclamped)
+            lambdathetalocald = smoothminmax_d(lambdathetaclamped, &
+&             lambdathetaclampedd, rsagrlambdathetamax, 0.0_8, rsagrpmin&
+&             , lambdathetalocal)
             rethetat_targetd = rethetatcorrelation_d(turbintensityinf*&
 &             100.0_realtype, lambdathetalocal, lambdathetalocald, &
 &             rethetat_target)
@@ -1088,7 +1094,8 @@ contains
             hcf = zero
             if (transitioncrossflow) then
               crossflowratiod = smoothminmax_d(rturb, rturbd, &
-&               0.4_realtype, 0.0_8, rsagrpmin, crossflowratio)
+&               rsagrcrossflowratiocap, 0.0_8, rsagrpmin, crossflowratio&
+&               )
               if (velmag .lt. xminn) then
                 max15 = xminn
                 max15d = 0.0_8
@@ -1158,10 +1165,10 @@ contains
               end if
               rescfd = -(35.088_realtype*max12d/max12)
               rescf = -(35.088_realtype*log(max12)) + 319.51_realtype
-              dhplusd = smoothminmax_d(0.1066_realtype - hcf*(one+&
+              dhplusd = smoothminmax_d(rsagrhcfref - hcf*(one+&
 &               crossflowratio), -((one+crossflowratio)*hcfd+hcf*&
 &               crossflowratiod), zero, 0.0_8, rsagrpmax, dhplus)
-              dhminusd = smoothminmax_d(-(0.1066_realtype-hcf*(one+&
+              dhminusd = smoothminmax_d(-(rsagrhcfref-hcf*(one+&
 &               crossflowratio)), (one+crossflowratio)*hcfd + hcf*&
 &               crossflowratiod, zero, 0.0_8, rsagrpmax, dhminus)
               rescfd = rescfd + (50000.0_realtype*2*dhplus+&
@@ -1360,6 +1367,7 @@ contains
 &   dhminus
     real(kind=realtype) :: ydist
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
+    real(kind=realtype) :: lambdathetaraw, lambdathetaclamped
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
     real(kind=realtype) :: dwdx, dwdy, dwdz
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
@@ -1716,11 +1724,19 @@ contains
             duds = two*fact*(uxhat*(uxhat*uux+uyhat*uuy+uzhat*uuz)+uyhat&
 &             *(uxhat*vvx+uyhat*vvy+uzhat*vvz)+uzhat*(uxhat*wwx+uyhat*&
 &             wwy+uzhat*wwz))
-            lambdathetalocal = thetabl**2/nu*duds
-            lambdathetalocal = smoothminmax(lambdathetalocal, -&
-&             0.1_realtype, rsagrpmax)
-            lambdathetalocal = smoothminmax(lambdathetalocal, &
-&             0.1_realtype, rsagrpmin)
+! use distinct targets for each clamp (not in-place
+! overwrite) so the reverse-fast ad recomputes each
+! intermediate instead of relying on a push/pop stack
+! that autoeditreversefast.py strips -- matching the
+! convention used by every other smoothminmax here
+! (vortmaglim, crossflowratio, dhplus, ...). the
+! in-place form broke dr[rethetat]/dw[meanflow] in
+! _fast_b only; see docs/verification.
+            lambdathetaraw = thetabl**2/nu*duds
+            lambdathetaclamped = smoothminmax(lambdathetaraw, &
+&             rsagrlambdathetamin, rsagrpmax)
+            lambdathetalocal = smoothminmax(lambdathetaclamped, &
+&             rsagrlambdathetamax, rsagrpmin)
             rethetat_target = rethetatcorrelation(turbintensityinf*&
 &             100.0_realtype, lambdathetalocal)
 ! ftheta_t shielding: shields bl interior, allows
@@ -1751,8 +1767,8 @@ contains
             rescf = zero
             hcf = zero
             if (transitioncrossflow) then
-              crossflowratio = smoothminmax(rturb, 0.4_realtype, &
-&               rsagrpmin)
+              crossflowratio = smoothminmax(rturb, &
+&               rsagrcrossflowratiocap, rsagrpmin)
               if (velmag .lt. xminn) then
                 max15 = xminn
               else
@@ -1796,9 +1812,9 @@ contains
                 max12 = x5
               end if
               rescf = -(35.088_realtype*log(max12)) + 319.51_realtype
-              dhplus = smoothminmax(0.1066_realtype - hcf*(one+&
+              dhplus = smoothminmax(rsagrhcfref - hcf*(one+&
 &               crossflowratio), zero, rsagrpmax)
-              dhminus = smoothminmax(-(0.1066_realtype-hcf*(one+&
+              dhminus = smoothminmax(-(rsagrhcfref-hcf*(one+&
 &               crossflowratio)), zero, rsagrpmax)
               rescf = rescf + (6200.0_realtype*dhplus+50000.0_realtype*&
 &               dhplus**2)
@@ -3128,8 +3144,8 @@ contains
       else
         x1 = -turbresscale(1)
       end if
-      if (x1 .lt. one) then
-        scalenu = one
+      if (x1 .lt. 1.0e-12_realtype) then
+        scalenu = 1.0e-12_realtype
       else
         scalenu = x1
       end if
@@ -3138,8 +3154,8 @@ contains
       else
         x2 = -turbresscale(2)
       end if
-      if (x2 .lt. one) then
-        scalegamma = one
+      if (x2 .lt. 1.0e-12_realtype) then
+        scalegamma = 1.0e-12_realtype
       else
         scalegamma = x2
       end if
@@ -3148,8 +3164,8 @@ contains
       else
         x3 = -turbresscale(3)
       end if
-      if (x3 .lt. one) then
-        scaleretheta = one
+      if (x3 .lt. 1.0e-12_realtype) then
+        scaleretheta = 1.0e-12_realtype
       else
         scaleretheta = x3
       end if
@@ -4132,7 +4148,8 @@ contains
     end if
     a(3, 3) = -(rsagrcthetat/max14*(one-fthetat))
     if (transitioncrossflow) then
-      crossflowratio = smoothminmax(rturb, 0.4_realtype, rsagrpmin)
+      crossflowratio = smoothminmax(rturb, rsagrcrossflowratiocap, &
+&       rsagrpmin)
       if (velmag .lt. xminn) then
         max18 = xminn
       else
@@ -4176,10 +4193,10 @@ contains
         max15 = x5
       end if
       rescf = -(35.088_realtype*log(max15)) + 319.51_realtype
-      dhplus = smoothminmax(0.1066_realtype - hcf*(one+crossflowratio), &
+      dhplus = smoothminmax(rsagrhcfref - hcf*(one+crossflowratio), zero&
+&       , rsagrpmax)
+      dhminus = smoothminmax(-(rsagrhcfref-hcf*(one+crossflowratio)), &
 &       zero, rsagrpmax)
-      dhminus = smoothminmax(-(0.1066_realtype-hcf*(one+crossflowratio))&
-&       , zero, rsagrpmax)
       rescf = rescf + (6200.0_realtype*dhplus+50000.0_realtype*dhplus**2&
 &       )
       rescf = rescf - 75.0_realtype*tanh(dhminus/0.0125_realtype)
