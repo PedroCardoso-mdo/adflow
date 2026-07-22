@@ -362,6 +362,14 @@ def assert_coupling_blocks_allclose(handler, CFDSolver, seed=314, mode=None, h=N
 
     for colName, colOffsets in blocks.items():
         wDot = maskStateVector(wDotFull, nw, colOffsets)
+        if mode == "CS":
+            # Sequential CS Jacobian-vector calls share a complex work buffer;
+            # a prior large-norm column (e.g. meanflow, O(1e8)) leaves an
+            # imaginary machine-eps residue (~1e-8 absolute) that surfaces in
+            # the structurally-zero mean-flow rows of the next column. Re-seating
+            # the real state zeroes that imaginary contamination while preserving
+            # the converged linearization point -- exact 0 recovered.
+            CFDSolver.setStates(numpy.real(CFDSolver.getStates()))
         resDot = CFDSolver.computeJacobianVectorProductFwd(wDot=wDot, residualDeriv=True, **extraArgs)
 
         for rowName, rowOffsets in blocks.items():
