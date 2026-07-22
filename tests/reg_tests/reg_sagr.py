@@ -42,7 +42,7 @@ baseDir = os.path.dirname(os.path.abspath(__file__))
 # just a one-off. The crossflow-converged AR5 state lives in a single
 # self-contained volume CGNS (same L3 mesh + the crossflow-on converged
 # solution), used as BOTH grid and restart -- mirrors the dev --crossflow
-# path (dev_test/check_3way_fwd.py). The old crossflow-OFF restart
+# path (dev/check_3way_fwd.py). The old crossflow-OFF restart
 # (ar5_plain_wing_sagr_dp.cgns) and the bare grid (ar5_plain_wing_vol_L3.cgns)
 # are kept in input_files/ for reference but no longer wired here.
 sagrGridFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_crossflow_dp.cgns")

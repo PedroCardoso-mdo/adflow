@@ -29,6 +29,10 @@ import copy
 from mpi4py import MPI
 from adflow import ADFLOW
 
+# dev/ is one level below reg_tests/; make the shared reg_* fixtures
+# and sibling campaign modules importable when run directly (mpirun python).
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 import reg_test_utils as utils
 import reg_sagr
 from reg_default_options import adflowDefOpts

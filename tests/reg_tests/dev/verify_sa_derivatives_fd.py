@@ -24,6 +24,10 @@ from mpi4py import MPI
 from adflow import ADFLOW
 from idwarp import USMesh
 
+# dev/ is one level below reg_tests/; make the shared reg_* fixtures
+# and sibling campaign modules importable when run directly (mpirun python).
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from reg_default_options import adflowDefOpts, defaultAeroDVs, IDWarpDefOpts
 from reg_aeroproblems import ap_tutorial_wing
 from test_adjoint import getDVGeo, test_params as adjoint_test_params
