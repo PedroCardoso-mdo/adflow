@@ -44,6 +44,10 @@ class TestJacVecBWDFastSAGR(reg_test_classes.RegTest):
     gamma/reThetat row seeds is the signature of that stripping bug.
     """
 
+    # self-contained (_b vs _fast_b, no handler value writes) -> never train;
+    # training would only write empty metadata over the shared jacvecbwd ref.
+    no_train = True
+
     N_PROCS = 2
 
     def setUp(self):

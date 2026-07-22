@@ -37,8 +37,16 @@ baseDir = os.path.dirname(os.path.abspath(__file__))
 # Restart written by generate_sagr_restart.py (same convention as the SA
 # suite: tests linearize about the restart state via getResidual()).
 # --------------------------------------------------------------------------
-sagrGridFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_vol_L3.cgns")
-sagrRestartFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_dp.cgns")
+# 2026-07-22: the suite now ALWAYS runs with crossflow (D_scf) ON so the
+# helicity-based dR[reThetat]/d(nuTilde) block is guarded by every run, not
+# just a one-off. The crossflow-converged AR5 state lives in a single
+# self-contained volume CGNS (same L3 mesh + the crossflow-on converged
+# solution), used as BOTH grid and restart -- mirrors the dev --crossflow
+# path (dev_test/check_3way_fwd.py). The old crossflow-OFF restart
+# (ar5_plain_wing_sagr_dp.cgns) and the bare grid (ar5_plain_wing_vol_L3.cgns)
+# are kept in input_files/ for reference but no longer wired here.
+sagrGridFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_crossflow_dp.cgns")
+sagrRestartFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_crossflow_dp.cgns")
 # 2026-07-20: real AR5 FFD, matched to this exact L3 grid (md5-verified
 # against TekAero's own copy) -- found in
 # /home/mdo/Desktop/TekAero/Run_Files/plain_wing_mesh_output/ffd/
@@ -129,15 +137,14 @@ sagrBaseOptions = {
     # rule 5). False = second order (sharper front, adjoint hole: audit-06 F8)
     "transitionfirstorderupwind": True,
     # helicity-based crossflow source D_scf on the Re_thetat equation
-    # (P&Z Eqs. 15-26). OFF here (matches the validated AR5 production run):
-    # on a real 3D wing the helicity term divides by max(velMag,1e-10) TWICE
-    # and blows up in near-wall/near-stagnation cells where velMag is
-    # genuinely tiny -- unvalidated per CLAUDE.md rule 3. The tutorial-wing
-    # case kept this True only because D_scf is identically zero on its
-    # ~2D mesh anyway (free adjoint-block coverage); that reasoning does NOT
-    # extend to AR5, a real 3D wing, so dR[reThetat]/d(nuTilde) via D_scf is
-    # untested here -- known gap, not a regression.
-    "transitioncrossflow": False,
+    # (P&Z Eqs. 15-26). 2026-07-22: turned ON as the permanent suite default
+    # (linearized about the crossflow-converged AR5 state above) so the
+    # dR[reThetat]/d(nuTilde) block through D_scf is guarded by every run
+    # rather than only a one-off. The helicity term divides by
+    # max(velMag,1e-10) twice, so this block is only exercised on a real 3D
+    # wing like AR5 (it is identically zero on the ~2D tutorial wing); the
+    # crossflow-converged restart keeps the linearization point physical.
+    "transitioncrossflow": True,
     # surface roughness height h [m] in the crossflow correlation (Eq. 17);
     # 3.3e-6 = smooth surface (default)
     "transitionroughnessheight": 3.3e-6,

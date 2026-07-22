@@ -101,6 +101,11 @@ class TestJacVecFwdSAGRFD(reg_test_classes.RegTest):
     use the CS class below for a decisive check.
     """
 
+    # self-contained (FD-vs-AD, no handler value writes) and the residual
+    # methods are @expectedFailure -> never train: it would run the raising
+    # methods and clobber the shared jacvecfwd ref.
+    no_train = True
+
     N_PROCS = 2
 
     def setUp(self):
