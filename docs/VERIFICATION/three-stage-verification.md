@@ -4,12 +4,95 @@
 tutorial-wing and AR5 meshes, as of 2026-07-21.
 
 **Status (SA-GR, `nw=8`, AR5): all three stages PASS**, with crossflow
-**off and on**, as of 2026-07-22. Stage 2 initially FAILED on the reThetat
-rows (`_b` vs `_fast_b` diverged, max abs diff ≈ 7.5e+2); this was
-root-caused to an in-place `smoothMinMax` double-clamp of `lambdaThetaLocal`
-in the primal and **fixed** (see the "SA-GR (`nw=8`) results" section
-below). After the fix + Tapenade regen, Stage 2's reThetat block matches to
-2.3e-10 (crossflow off) / 1.4e-9 (crossflow on).
+**always ON** in the standing suite, as of 2026-07-22. Stage 2 initially
+FAILED on the reThetat rows (`_b` vs `_fast_b` diverged, max abs diff ≈
+7.5e+2); this was root-caused to an in-place `smoothMinMax` double-clamp of
+`lambdaThetaLocal` in the primal and **fixed** (see the "SA-GR (`nw=8`)
+results" section below). After the fix + Tapenade regen, Stage 2's reThetat
+block matches to 1.4e-9.
+
+**As of 2026-07-22 the ladder is a registered testflo suite**, not the
+ad-hoc `dev/` scripts. See "Canonical way to run" immediately below; the
+per-script commands further down are retained as historical reproduction
+(those scripts now live in `tests/reg_tests/dev/`).
+
+---
+
+## Canonical way to run (start here)
+
+Everything runs from `tests/reg_tests/` through one script,
+`run_sagr_tests.sh`. The whole case (mesh, restart state `w`, AeroProblem,
+solver options, **crossflow ON**) is centralized in `reg_sagr.py`.
+
+```bash
+cd tests/reg_tests/
+./run_sagr_tests.sh          # whole ladder: real (Stage 1/2/3-AD-FD) + complex (Stage 3 CS)
+./run_sagr_tests.sh real     # Stage 1 (dot products) + Stage 2 (_b vs _fast_b) + Stage 3 AD/FD
+./run_sagr_tests.sh cs       # Stage 3 complex-step ground truth (the decisive check)
+./run_sagr_tests.sh train    # rebuild the JSON reference files (after changing derivative code)
+./run_sagr_tests.sh genw     # regenerate the converged restart state w (rarely needed)
+```
+
+**You do NOT need `genw` or `train` to just run the tests** — they read the
+existing restart CGNS and JSON refs. `genw` is only for a missing/changed
+`w` (the CGNS is gitignored, so a fresh clone lacks it); `train` is only
+after the derivative code changes.
+
+**The registered tests (standard testflo, ADflow-conventional):**
+
+| File | Stage(s) | Classes |
+|---|---|---|
+| `test_jacVecProdBWDFast_sagr.py` | 1 (dot products), 2 (`_b` vs `_fast_b`) | `TestDotProductsSAGR`, `TestJacVecBWDFastSAGR` |
+| `test_jacVecProdFWD_sagr.py` | 3 (AD vs ref, FD, CS) | `TestJacVecFwdSAGR` (AD), `TestJacVecFwdSAGRFD` (FD), `TestJacVecFwdSAGRCS` (CS) |
+| `reg_sagr.py` | shared config + block helpers | — |
+| `refs/jacvec{fwd,bwd}_sagr_flatplate.json` | trained AD/dot-product references | — |
+
+**Real vs complex build.** Stages 1, 2, and the AD/FD half of Stage 3 use
+the real build (`test_*` methods). The decisive CS half of Stage 3 uses the
+complex build (`ADFLOW_C`, `cmplx_test_*` methods); the runner selects those
+with `-m "cmplx_test_*"`. Both libraries are installed in the same `mach`
+env on this branch, so no separate `mach_cs` python is needed. If the
+Fortran changed, rebuild + `pip install` first (and rerun Tapenade + rebuild
+the complex lib if the change touches differentiated code).
+
+**Two things future-Claude must not "fix":**
+- **FD residual tests are `@expectedFailure`.** The SA-GR residual spans
+  ~13 orders; the element-wise `assert_allclose` metric cannot be met by FD
+  at any step (subtractive cancellation on the near-zero cells), so
+  `assert_fd_allclose_hsweep` sweeps `h`, reports the best step, and the
+  three FD residual methods are marked expected-fail. This is **by design** —
+  CS (no cancellation) is the enforced ground truth. Do **not** loosen the
+  tolerance to force a pass (post-mortem SST lesson). An "unexpected success"
+  means a better-converged mesh now lets FD pass — then drop the decorator.
+- **CS coupling-blocks re-seats the state each column.** Sequential CS
+  Jacobian-vector calls share a complex work buffer; a prior large-norm
+  column leaves a ~1e-8 imaginary residue that surfaces in the
+  structurally-zero mean-flow rows of the next column.
+  `assert_coupling_blocks_allclose` calls
+  `setStates(real(getStates()))` before each CS column to clear it — this
+  is required, not optional; removing it reintroduces a spurious ~2.15e-8
+  failure on `dR[meanflow]/dw[gamma]` and `dR[meanflow]/dw[reThetat]`.
+
+**Changing the mesh** (for a future, better-converged case): edit
+`sagrGridFile` / `sagrRestartFile` (and the `ap_sagr_ar5_wing` conditions if
+they differ) in `reg_sagr.py`, then `./run_sagr_tests.sh genw` (if you need
+a fresh converged `w`) → `train` (rebuild JSON) → run. Everything routes
+through that one config module.
+
+**Generating `w` (the restart state)** is non-standard (no download server),
+so its generator lives in `dev/generate_sagr_restart.py` and is documented
+in `dev/README.md`. It reads `reg_sagr.sagrBaseOptions`, so it always
+matches the test case.
+
+**What this ladder does and does not prove.** It proves the differentiated
+code computes the derivative of the primal (partials: `dR/dw`, `dR/dXv`,
+`dR/d{aeroDV}`, plus output partials) — validated in all three AD modes
+against complex-step, with crossflow active. It does **not** validate the
+*total* sensitivity `dF/dX` through the assembled adjoint solve — that is
+the "complete-mode" `test_adjoint` (currently disabled: this mesh does not
+converge deeply enough), tracked in `../current-task.md`.
+
+---
 
 This is the low-level, raw-API verification campaign — separate from (and
 a prerequisite trusted-input for) the higher-level `evalFunctionsSens`-based
@@ -45,6 +128,13 @@ way it is.
    authoritative ground truth here; single-step real FD is included only
    for context (expected to disagree at ~1e-1 to ~1e-2 relative error due
    to truncation/kinks, not a failure).
+
+> **Historical reproduction below.** The sections from here down document the
+> original one-off `dev/` scripts (`sanity_check_*.py`, `check_3way_fwd*.py`)
+> and the results they produced — kept for provenance and because they carry
+> mesh/`--turbmodel`/`--crossflow` flags the registered suite doesn't expose.
+> Every path written as `tests/reg_tests/<script>.py` below now lives under
+> `tests/reg_tests/dev/`. For day-to-day runs use `run_sagr_tests.sh` above.
 
 ## Stage 1 — Reverse ↔ forward dot-product consistency
 

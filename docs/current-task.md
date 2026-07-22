@@ -11,9 +11,22 @@
 **Started:** 2026-07-20
 **Status:** in progress — validated through Step 2 (aero DVs); Step 3 (AR5)
 blocked on a convergence-robustness issue, not a derivative bug.
-Separately, the raw-API 3-stage verification ladder (dot-product,
-fast-reverse, 3-way fwd) now passes for plain SA on both meshes
-(2026-07-21) — see "Next step" below.
+
+**PARTIALS DONE (2026-07-22).** The raw-API 3-stage verification ladder
+(dot-product, fast-reverse, 3-way AD/FD/CS) is now a **registered testflo
+suite** driven by `tests/reg_tests/run_sagr_tests.sh`, passing for plain SA
+and SA-GR (`nw=8`) on AR5 with **crossflow always ON** (real 13/13, CS 10/10).
+So the *partials* — `dR/dw` (all SA↔transition coupling blocks incl. the
+D_scf crossflow block), `dR/dXv`, `dR/d{aeroDV}`, output partials — are
+validated against complex-step in all three AD modes. See
+`VERIFICATION/three-stage-verification.md` §"Canonical way to run" and
+`task-log/2026-07-22-sagr-test-suite-standardization.md`.
+
+**What remains (this task): the TOTAL sensitivity `dF/dX`** through the
+assembled adjoint solve — the "complete-mode" `test_adjoint`. That is a
+*different* thing from the validated partials and is still blocked below,
+because this AR5 state does not converge deeply enough (absolute
+precision floor). Validated partials ≠ validated gradient.
 
 ### Objective
 

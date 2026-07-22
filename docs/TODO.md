@@ -45,21 +45,23 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 
 ## Test infrastructure
 
-- [ ] **Restructure `tests/reg_tests/` to match upstream ADflow's official
-  test conventions/fixtures** (from the 2026-07-21 three-stage
-  verification task, `task-log/2026-07-21-three-stage-adjoint-verification.md`).
-  Current one-off scripts (`sanity_check_*`, `check_3way_fwd*`,
-  `debug_cs_ar5_live.py`, `sweep_h_fd.py`) proved the methodology but are
-  ad-hoc, not testflo-registered, and don't follow upstream's
-  `test_*.py`/`ref/*.json` fixture-generation pattern. Needs: (a) proper
-  testflo-style test classes alongside `test_adjoint_ar5_sa.py`/
-  `test_adjoint_tutwing_mycode.py`; (b) generator scripts (analogous to
-  `generate_sagr_restart.py`) that produce the converged base state
-  needed for partials tests, parameterized over mesh (tutorial-wing, AR5,
-  future new meshes) **and** turb model (plain SA `nw=6` vs. SA-GR
-  `nw=8`), so a new mesh or model variant doesn't require another
-  hand-written script. Blocked on nothing — pure test-infra work, do when
-  picked up.
+- [x] **Restructure `tests/reg_tests/` to match upstream ADflow's official
+  test conventions/fixtures** — DONE 2026-07-22
+  (`task-log/2026-07-22-sagr-test-suite-standardization.md`). The ladder is
+  now registered testflo tests (`test_jacVecProdFWD_sagr.py`,
+  `test_jacVecProdBWDFast_sagr.py` + `reg_sagr.py` + `refs/*.json`), driven by
+  `run_sagr_tests.sh` (`all|real|cs|train|genw`). The old one-off scripts moved
+  to `tests/reg_tests/dev/` (documented in `dev/README.md`); `w` is produced by
+  `dev/generate_sagr_restart.py` (reads `reg_sagr` config), JSON by
+  `run_sagr_tests.sh train`. Mesh swap = edit `reg_sagr.py` → `genw` → `train`
+  → run. Remaining sub-items below.
+- [ ] **Wire the complete-mode `test_adjoint` (total `dF/dX`) in, `@skip`ped**
+  with a per-mesh reason: this AR5 state doesn't converge deeply enough for
+  total-sensitivity validation. Re-enable on a better-converged mesh. This is
+  the one gap between "partials validated" and "gradient validated".
+- [ ] **(cosmetic)** delete the now-superseded `dev/sanity_check_*` /
+  `dev/check_3way_fwd.py` once their mesh/`--crossflow` flags are no longer
+  wanted; rename `_flatplate` refs → `_sagr` (the case is a wing).
 
 ## Adjoint / partials (de `audits/adjoint_audit_2026-07-07.md`, 2026-07-07)
 

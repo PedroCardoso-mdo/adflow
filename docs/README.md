@@ -42,7 +42,8 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Implement or extend the adjoint / AD on **this branch** | `VERIFICATION/adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `VERIFICATION/debugging_derivatives.md` (FD→dot-product→CS checking ladder) → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `VERIFICATION/adjoint-trace.md` |
 | Validate partials / plan AD test campaign | `current-task.md` → `VERIFICATION/debugging_derivatives.md` (generic checking ladder) → `VERIFICATION/three-stage-verification.md` (tests already run, commands, results) → `../audits/adjoint_audit_2026-07-07.md` → `../audits/07_sst_dev_lessons.md` (verification ladder + watch items) |
-| Rerun/reproduce the low-level adjoint verification tests (dot-product, fast_b, 3-way fwd) | `VERIFICATION/three-stage-verification.md` |
+| Rerun/reproduce the low-level adjoint verification tests (dot-product, fast_b, 3-way fwd) | `VERIFICATION/three-stage-verification.md` (§"Canonical way to run" → `tests/reg_tests/run_sagr_tests.sh`) |
+| Run / retrain / regen-`w` for the SA-GR partials tests (how-to) | `VERIFICATION/three-stage-verification.md` §"Canonical way to run" → `tests/reg_tests/dev/README.md` (non-standard `w` generation) |
 | How another multi-equation turb model was differentiated (SST precedent) | `../audits/07_sst_dev_lessons.md` |
 | Why is X implemented this way / was this already discussed | `../audits/design-decisions.md` (memory of past discussion, not a spec — code/paper win if it disagrees) |
 | What's the task in progress right now | `current-task.md` |
@@ -68,7 +69,7 @@ answer. `→` means "if the first isn't enough, go to the next."
 
 | File | What's in it |
 |------|--------------|
-| [VERIFICATION/three-stage-verification.md](VERIFICATION/three-stage-verification.md) | The 3-stage low-level adjoint verification ladder: (1) reverse↔forward dot-product consistency, (2) reverse vs fast-reverse (`_b` vs `_b_fast`) consistency, (3) 3-way AD/FD/CS forward-mode check. Test files, exact run commands, and results obtained. |
+| [VERIFICATION/three-stage-verification.md](VERIFICATION/three-stage-verification.md) | The 3-stage low-level adjoint verification ladder: (1) reverse↔forward dot-product consistency, (2) reverse vs fast-reverse (`_b` vs `_b_fast`) consistency, (3) 3-way AD/FD/CS forward-mode check. **Start at §"Canonical way to run"**: the ladder is now a registered testflo suite (`tests/reg_tests/test_jacVecProd{FWD,BWDFast}_sagr.py` + `reg_sagr.py` + `refs/*.json`) driven by `run_sagr_tests.sh` (`all\|real\|cs\|train\|genw`), crossflow always ON. Covers the two invariants not to "fix" (FD `@expectedFailure`; CS state re-seat), the mesh-swap recipe, and results. Old per-script commands are retained as historical (scripts now in `dev/`). |
 | [VERIFICATION/adjoint-trace.md](VERIFICATION/adjoint-trace.md) | Paired inventory of adjoint/AD touchpoints (SA vs SA-GR) on this branch: preprocessor guards, Tapenade directives, generated AD files, wiring. |
 | [VERIFICATION/debugging_derivatives.md](VERIFICATION/debugging_derivatives.md) | Raw source: generic FD → reverse-mode dot-product → complex-step derivative-checking ladder, not covered in `ADFLOW_BASE/02`/`04`. |
 
