@@ -282,15 +282,18 @@ column was reported; the one-sided ladder above is the meaningful result.)
   The Stage-2 reThetat `_fast_b` divergence found on the first SA-GR run
   was root-caused and fixed (lambdaTheta in-place clamp; see the SA-GR
   results section) and re-verified against forward/CS ground truth.
-- Note on the Stage-3 complex build: the CS run above uses the
-  pre-existing `libadflow_cs.so`. A fresh complex rebuild after the fix
-  was not required because the fix is mathematically neutral (the primal
-  residual, and hence the forward AD value `3.3256409775e+13`, is
-  byte-identical before and after — only the reverse-fast checkpointing
-  changed), so CS is unchanged. (A from-scratch complex rebuild in this
-  environment needs `PETSC_ARCH=complex-debug`; building against the
-  default `real-debug` PETSc produces spurious COMPLEX→REAL interface
-  errors unrelated to any source change.)
+- Stage-3 CS was re-confirmed against a **freshly rebuilt**
+  `libadflow_cs.so` (2026-07-22): `src_cs` fully cleaned
+  (`git clean -fdx src_cs/`) and rebuilt from the fixed primal with
+  `PETSC_ARCH=complex-debug` — AD = CS = `3.3256409775e+13` exactly, so
+  nothing is stale. **Build note:** the complex build *must* have
+  `PETSC_ARCH=complex-debug` exported; building against the default
+  `real-debug` PETSc (or reusing `.mod` files from a prior real-arch
+  attempt) produces spurious `COMPLEX(8)→REAL(8)` interface errors in
+  `fortranPC.F90`/`adjointAPI.F90`/`surfaceUtils.F90`/etc. that are
+  toolchain artifacts, not source problems. Full recipe:
+  `git clean -fdx src_cs/` then
+  `PETSC_ARCH=complex-debug make -f Makefile_CS`.
 - `debug_cs_ar5_live.py` and `sweep_h_fd.py` are diagnostic/debugging
   scripts for the separate open AR5-CS issue above, not part of this
   pass/fail ladder — see `../current-task.md` for their role.

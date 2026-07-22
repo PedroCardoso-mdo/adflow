@@ -59,19 +59,21 @@ convention everywhere else in the file (mathematically identical):
   1.94 (wrong sign) → **1.27e-13**.
 - Stage 2 SA-GR reThetat block `max|_b − _fast_b|`: 7.546e+02 → **2.328e-10**;
   `sanity_check_partials_sa.py --turbmodel sagr` prints `SANITY CHECK PASSED`.
-- Stage 3 SA-GR: AD = CS = **3.3256409775e+13** (unchanged — the forward AD
-  value is byte-identical before/after, confirming the primal change is
-  mathematically neutral; CS run uses the pre-existing `libadflow_cs.so`,
-  valid by that neutrality).
+- Stage 3 SA-GR: AD = CS = **3.3256409775e+13** (the forward AD value is
+  byte-identical before/after, confirming the primal change is
+  mathematically neutral). CS re-confirmed against a **freshly rebuilt**
+  `libadflow_cs.so` (`git clean -fdx src_cs/` +
+  `PETSC_ARCH=complex-debug make -f Makefile_CS`), so nothing is stale.
 - Plain-SA Stage 2 (regression): still `SANITY CHECK PASSED`.
 - Build: real `make` + `pip install` clean; Tapenade regen exit 0.
 
 **Follow-ups:**
-- A from-scratch **complex** rebuild in this environment requires
-  `PETSC_ARCH=complex-debug`; building against the default `real-debug`
-  PETSc yields spurious COMPLEX→REAL interface errors in
-  `fortranPC.F90`/`adjointAPI.F90`/etc. (unrelated to any source change).
-  Not needed for this fix (neutral), but worth a note for future complex
-  builds.
+- Complex-build recipe (verified this session): `git clean -fdx src_cs/`
+  then `PETSC_ARCH=complex-debug make -f Makefile_CS`, then
+  `pip install . --no-build-isolation`. The `PETSC_ARCH=complex-debug`
+  export is mandatory — the default `real-debug` (or stale `.mod` from a
+  prior real-arch attempt) yields spurious COMPLEX→REAL interface errors
+  in `fortranPC.F90`/`adjointAPI.F90`/`surfaceUtils.F90`/etc. that are
+  toolchain artifacts, not source problems.
 - SA-GR's higher-level `evalFunctionsSens`-based adjoint/CS validation on
   AR5 still not started — tracked in `../current-task.md`.
