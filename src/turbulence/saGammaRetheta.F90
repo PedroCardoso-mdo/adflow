@@ -515,7 +515,22 @@ contains
                         ! linearization. The source term is stored in scratch.
 
                         ! Clamp gamma to the physical range for SA production coupling.
-                        gammaForSA = min(max(w(i, j, k, itu2), zero), one)
+                        ! This is a pure failure/divergence safeguard, not part of
+                        ! normal physics -- gamma stays in [0,1] on its own in any
+                        ! healthy solve. A bare min(max(gamma,0),1) ties exactly at
+                        ! gamma==0/1, which gamma legitimately reaches over large,
+                        ! ordinary flow regions (fully laminar/turbulent), and
+                        ! Tapenade's forward-mode tangent picks the wrong branch
+                        ! there vs. complex-step ground truth (confirmed
+                        ! 2026-07-23 by cell-by-cell AD-vs-CS diffing: every
+                        ! mismatched cell in dR[nuTilde]/dw[gamma] had gamma==1.0
+                        ! bit-exact, CS=0 correctly, AD nonzero incorrectly). Padding
+                        ! the clamp bounds by rsaGRgammaForSAMargin keeps gamma's
+                        ! natural 0/1 values strictly inside the unclamped
+                        ! pass-through region -- no derivative ambiguity there, no
+                        ! smoothing/distortion of normal-operation values, and the
+                        ! clamp still catches genuinely divergent gamma.
+                        gammaForSA = min(max(w(i, j, k, itu2), -rsaGRgammaForSAMargin), one + rsaGRgammaForSAMargin)
 
                         if (approxSA .and. transitionUseApproxSA) then
                             term1 = zero
@@ -561,6 +576,14 @@ contains
                         nutSA = w(i, j, k, itu1) * fv1
                         !rTurb= ν_t/ν
                         rTurb = nutSA / nu
+                        ! Unlike gammaForSA below, these bounds (1e-10, 2.0,
+                        ! and reThetaTilde's floor 20.0) are arbitrary numerical
+                        ! safety margins, not values gamma/reThetat naturally
+                        ! saturate to -- confirmed empirically (2026-07-23): 0
+                        ! cells sit at/near the reThetaTilde floor on the
+                        ! tutorial-wing/M=0.15 state. No AD-vs-CS tie risk, so
+                        ! left as plain hard clamps (a genuine safeguard for
+                        ! divergent/failing states, not touched).
                         gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
                         reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
                         yDist = d2Wall(i, j, k)
@@ -2503,7 +2526,11 @@ contains
         termFw = ((one + cw36) / (gg6 + cw36))**sixth
         fwSa = gg * termFw
 
-        gammaForSA = min(max(w(i, j, k, itu2), zero), one)
+        ! Padded clamp -- kept in lockstep with Source's gammaForSA (this is
+        ! the hand-coded PC/DADI Jacobian, not Tapenade-differentiated, but
+        ! must clamp gamma the same way as the residual for the linearization
+        ! point to stay physically consistent).
+        gammaForSA = min(max(w(i, j, k, itu2), -rsaGRgammaForSAMargin), one + rsaGRgammaForSAMargin)
 
         term2_prod = dist2Inv * kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2)
         term2_dest = -dist2Inv * rsaCw1 * fwSa

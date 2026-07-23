@@ -6,7 +6,90 @@
 > template and index) and replace this file's body with the next task, or
 > with "No task in progress" if idle.
 
-## Active Task: SA / SA-GR derivative verification on the AR5 mesh
+## Active Task: gammaForSA clamp AD-vs-CS mismatch (tutorial-wing/M=0.15 case)
+
+**Started:** 2026-07-23. **Status: RESOLVED 2026-07-23.** The full SA-GR
+partial suite now passes: `./run_sagr_tests.sh all` → real (Stage 1
+dot-products, Stage 2 `_b`↔`_fast_b`, Stage 3 AD/FD) **PASS** and complex
+(Stage 3 CS ground truth) **PASS**.
+
+**Root cause was a build/install gotcha, NOT a physics/AD bug.** The
+`rsaGRgammaForSAMargin=1e-3` clamp fix (both `Source` ~L533 and
+`evalSrcJacBlock` ~L2533 in `saGammaRetheta.F90`) plus the regenerated
+Tapenade files were correct and *were* compiled into the freshly-built libs
+in the repo tree (`./adflow/libadflow{,_cs}.so`). But those libs were never
+`pip install`ed into the mach env, and **the tests import `adflow` from
+site-packages** (their CWD is `tests/reg_tests/`, not the repo root, so
+`./adflow` is not on `sys.path`). Site-packages still held the pre-fix
+15:30 build with the *bare* clamp `min(max(gamma,0),1)`. So every test run
+— across sessions — executed the stale bare-clamp binary and produced the
+*identical* CS=0-at-`gamma==1` failure, which read as "the fix didn't take."
+Confirmed decisively: a runtime probe bumping `gamma==1` cells to 1.0005
+(strictly between bare bound 1.0 and margin bound 1.001) gave `dR/dgamma==0`
+under the site-packages lib (bare) and `dR/dgamma!=0` under the repo lib via
+`PYTHONPATH` (margin).
+
+**Fix applied:** `pip install . --no-deps` into `/home/mdo/packages_v2/mach`
+(refreshes site-packages `.so`s to the margin build), then
+`./run_sagr_tests.sh train` to regenerate the JSON refs against the fixed
+libs (the old refs were trained on the stale build; the dot-product test
+passing after retrain confirms the forward `_d` = reverse `_b` identity
+holds — no `_d`/`_b` inconsistency). Refs updated:
+`refs/jacvec{fwd,bwd}_sagr_flatplate.json`.
+
+**Standing lesson (see memory):** after any Fortran rebuild, `pip install`
+into the mach env before running `tests/reg_tests/` — building `./adflow`
+alone does not reach the tests. See [[tests-load-site-packages-not-repo]].
+
+<details><summary>Original investigation notes (pre-resolution)</summary>
+
+Condensed summary:
+
+- **Case switch (2026-07-23):** SA-GR test suite (`reg_sagr.py`,
+  `dev/generate_sagr_restart.py`) moved from the AR5 mesh (chronic
+  quasi-stall, see the superseded task below) to the standard ADflow
+  tutorial-wing mesh at Mach=0.15 (mid-transition, not full-laminar/
+  full-turbulent), which converges cleanly to `L2Convergence` with no
+  stall. New restart: `input_files/mdo_tutorial_sagr_dp.cgns`.
+- **Bug found (confirmed via per-cell AD-vs-CS diffing):**
+  `dR[nuTilde]/dw[gamma]` mismatches CS by ~2e-8 relative, concentrated
+  100% at cells where `gamma==1.0` bit-exact.
+  `saGammaRetheta.F90`'s `gammaForSA = min(max(gamma,0),1)` (2 occurrences:
+  `Source` ~line 533, PC-only `evalSrcJacBlock` ~line 2529) ties exactly at
+  gamma's own natural saturation values (0/1), which real converged states
+  hit routinely — unlike the file's other clamps (`rsaGRgammaLo/Hi`,
+  `rsaGRreThetaLo`), which are arbitrary safety floors never hit exactly
+  (verified). Tapenade's tangent picks the wrong branch at the tie.
+- **Fix (per user's explicit instruction, NOT smoothed):** padded the clamp
+  bounds via a new `rsaGRgammaForSAMargin=1e-3` constant
+  (`paramTurb.F90`) so gamma=0/1 sit strictly inside the unclamped
+  pass-through region — a pure divergence safeguard, not a physics change.
+  Applied to both occurrences.
+- **Tapenade rerun + rebuild:** done, with the user's explicit one-time
+  go-ahead. Regenerated exactly `outputForward/Reverse/ReverseFast
+  saGammaRetheta_{d,b,fast_b}.f90`. **First incremental `make -j` rebuild
+  was a red herring** — looked successful but per-cell diffing showed zero
+  behavior change; a **full clean rebuild** (`make clean && make -j` real,
+  `Makefile_CS clean` + rebuild complex) was required to actually pick up
+  the change. No `git clean` needed for either.
+- **Still unresolved:** after the clean rebuild + retrained JSON refs, the
+  CS test still fails with numbers that print identically to before. Some
+  evidence suggests AD's tangent output changed at gamma==1 cells, but this
+  was not rigorously confirmed cell-for-cell. The specific worst cell
+  (rank 1, cell index 2420 in the `wDot=getStatePerturbation(314)` masked-
+  to-gamma-column setup) still shows AD nonzero, CS exactly 0.0 even after
+  the clean rebuild — unexplained. Leading hypothesis (unverified): something
+  in how the complex build's `min`/`max` (via the `complexify` library) or
+  its primal evaluation of the padded clamp handles this construct
+  differently from the real build. Next step: isolate with `gamma=1.0005`
+  vs `gamma=1.05` synthetic states to directly test clamp branch selection
+  in both builds independent of the full solve.
+
+</details>
+
+---
+
+## Previous task (superseded 2026-07-23 by the mesh switch above): SA / SA-GR derivative verification on the AR5 mesh
 
 **Started:** 2026-07-20
 **Status:** in progress — validated through Step 2 (aero DVs); Step 3 (AR5)

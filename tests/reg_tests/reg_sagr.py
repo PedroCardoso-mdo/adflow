@@ -25,60 +25,62 @@ from baseclasses.testing import getTol
 baseDir = os.path.dirname(os.path.abspath(__file__))
 
 # --------------------------------------------------------------------------
-# Case inputs — 2026-07-19: switched from the SA tutorial-wing grid to the
-# AR5 plain-wing case (`ar5_plain_wing_vol_L3.cgns`) used for the full
-# ANK->CANK->NK convergence-strategy investigation
-# (`/home/mdo/Desktop/Run/.../3D_Plain_Wing/full_ladder_1e-5_production/`,
-# STRATEGY.md ladder). The tutorial-wing case never exercised the NK path at
-# all (ANK-only test plan); this case validates derivatives about a real,
-# NK-converged (albeit stall-limited, see l2convergence note below) state.
-# Grid copied to input_files/ (gitignored, same convention as the downloaded
-# SA input files) rather than referencing the external Desktop/Run path.
-# Restart written by generate_sagr_restart.py (same convention as the SA
-# suite: tests linearize about the restart state via getResidual()).
+# Case inputs — history:
+#   2026-07-19: switched from the SA tutorial-wing grid to the AR5
+#   plain-wing case for the full ANK->CANK->NK convergence-strategy
+#   investigation, to validate derivatives about a real NK-converged state
+#   on a real 3D wing rather than the small ANK-only tutorial-wing case.
+#   2026-07-23: switched BACK to the tutorial-wing grid. The AR5 case never
+#   got past a chronic quasi-stall (`Step` pinned ~0.01) no matter the
+#   iteration budget -- see docs/current-task.md, "Step 3 (AR5) CS check
+#   fails hard". The SAME tutorial-wing mesh, SA-GR model, Mach=0.15 (down
+#   from the mesh's stock 0.8 -- Re_chord ~4.2e6 puts natural transition
+#   onset around mid-chord instead of full-laminar/full-turbulent; see
+#   `.../3D_Plain_Wing/pedro_test/run_sagr.py`'s Reynolds-number note and
+#   PURPOSE.md), converges cleanly with no stall. This is now the primary
+#   case; the AR5 files are kept in input_files/ for reference but no
+#   longer wired here.
+# Restart written by dev/generate_sagr_restart.py (same convention as the SA
+# suite: tests linearize about the restart state via getResidual()). The
+# tutorial-wing grid itself is the standard ADflow test asset already in
+# input_files/ (no separate copy/download needed, unlike the AR5 files).
 # --------------------------------------------------------------------------
-# 2026-07-22: the suite now ALWAYS runs with crossflow (D_scf) ON so the
-# helicity-based dR[reThetat]/d(nuTilde) block is guarded by every run, not
-# just a one-off. The crossflow-converged AR5 state lives in a single
-# self-contained volume CGNS (same L3 mesh + the crossflow-on converged
-# solution), used as BOTH grid and restart -- mirrors the dev --crossflow
-# path (dev/check_3way_fwd.py). The old crossflow-OFF restart
-# (ar5_plain_wing_sagr_dp.cgns) and the bare grid (ar5_plain_wing_vol_L3.cgns)
-# are kept in input_files/ for reference but no longer wired here.
-sagrGridFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_crossflow_dp.cgns")
-sagrRestartFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_crossflow_dp.cgns")
-# 2026-07-20: real AR5 FFD, matched to this exact L3 grid (md5-verified
-# against TekAero's own copy) -- found in
-# /home/mdo/Desktop/TekAero/Run_Files/plain_wing_mesh_output/ffd/
-# ar5_plain_wing_ffd_L3.xyz, copied into input_files/ (gitignored like the
-# grid). No longer the stale tutorial-wing placeholder.
+# Self-contained volume CGNS (grid + the SA-GR-converged solution), used as
+# BOTH grid and restart -- same convention the AR5 crossflow case used.
+sagrGridFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_sagr_dp.cgns")
+sagrRestartFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_sagr_dp.cgns")
+# NOTE (2026-07-23): this FFD is matched to the AR5 L3 grid, NOT the
+# tutorial-wing mesh above -- it is stale for this case. Only
+# test_adjoint_sagr.py (the complete-mode/DVGeo adjoint test) uses it; the
+# raw-API partials tests (test_jacVecProdFWD_sagr.py /
+# test_jacVecProdBWDFast_sagr.py, sagrBaseOptions/ap_sagr_tut_wing below)
+# never touch DVGeo/FFD at all, so they are unaffected. Fix before running
+# test_adjoint_sagr.py on this mesh.
 sagrFFDFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_ffd_L3.xyz")
 
-# AR5 plain-wing AeroProblem — MUST match the conditions
-# generate_sagr_restart.py converged (same numbers as the validated
-# production ladder run, run_strategy.py / full_ladder_1e-5_production).
-ap_sagr_ar5_wing = AeroProblem(
-    name="ar5_plain_wing",
-    alpha=0.0,
+# Tutorial-wing AeroProblem — MUST match the conditions
+# dev/generate_sagr_restart.py converged (mach=0.15, alpha=1.8; see its
+# module docstring for the Reynolds-number rationale).
+ap_sagr_tut_wing = AeroProblem(
+    name="mdo_tutorial_sagr",
+    alpha=1.8,
     beta=0.0,
-    mach=0.2,
-    # explicit P/T (not altitude=0.0, which the AR5 production run used) --
-    # numerically identical (standard atmosphere sea level) but baseclasses
-    # only allows a DV for an input actually passed to the constructor, and
-    # sagrAeroDVs below needs P/T as DVs (audit-06 F1: uInf/muInf path)
-    P=101325.0,
-    T=288.15,
-    areaRef=0.1,
-    chordRef=1.0,
+    mach=0.15,
+    P=20000.0,
+    T=220.0,
+    R=287.87,
+    areaRef=45.5,
+    chordRef=3.25,
     xRef=0.0,
     yRef=0.0,
     zRef=0.0,
     evalFuncs=["cl", "cd", "cmz", "drag"],
 )
 
-# backward-compat aliases used by the test files
-ap_sagr_tut_wing = ap_sagr_ar5_wing
-ap_sagr_flatplate = ap_sagr_ar5_wing
+# backward-compat aliases used by dev/ diagnostic scripts and the test files
+# (which import ap_sagr_ar5_wing / ap_sagr_flatplate by name)
+ap_sagr_ar5_wing = ap_sagr_tut_wing
+ap_sagr_flatplate = ap_sagr_tut_wing
 
 # Aero DVs: mach/P/T drive uInf/muInf and wInf(itu2/itu3) — this is the axis
 # that exercises audit-06 finding F1 (vorticity-limiter uInf/muInf path) and
@@ -87,11 +89,17 @@ sagrAeroDVs = ["alpha", "mach", "P", "T"]
 
 # Solver options for the SA-GR derivative tests. 2026-07-19: replaced the
 # ANK-only tutorial-wing option set with the validated AR5 production ladder
-# (ANK -> CANK -> NK, STRATEGY.md / run_strategy.py) so derivatives are
-# checked about a real NK-converged state, not just an ANK one. Every
-# pre-existing SA-GR-model-specific option (transition* etc.) is kept
-# explicit with its rationale; the solver-path options below now mirror
-# run_strategy.py exactly. Option semantics: docs/architecture.md Part 2.
+# (ANK -> CANK -> NK) so derivatives are checked about a real NK-converged
+# state, not just an ANK one. 2026-07-23: case switched back to the
+# tutorial-wing mesh (AR5 stalled chronically, this doesn't -- see the case
+# inputs comment above), but the ANK->CANK->NK solver-path options below are
+# KEPT (still the right recipe, still mirrors
+# best_strategie/run_strategy.py) -- only the case-specific values called
+# out below (acousticscalefactor, transitioncrossflow, liftindex, ncycles)
+# changed to match the tutorial-wing/M=0.15 run
+# (`.../3D_Plain_Wing/pedro_test/run_sagr.py`). Every SA-GR-model-specific
+# option (transition* etc.) is kept explicit with its rationale. Option
+# semantics: docs/architecture.md Part 2.
 sagrBaseOptions = {
     # ---- case ----
     "gridfile": sagrGridFile,
@@ -125,26 +133,29 @@ sagrBaseOptions = {
     # not set by the validated AR5 run_strategy.py -- leave at the
     # ADflow/SA default rather than the tutorial-wing-tuned 0.009.
     # "eddyvisinfratio": <default>,
-    # run_strategy.py DOES set this explicitly (0.2, not the pyADflow
-    # default of 1.0 -- confirmed by diffing printed option dumps 2026-07-19,
-    # first pass here missed it). PC/solver-side only -- forced to 1.0 inside
-    # adjointUtils.F90 before the PC/adjoint is assembled, so this never
-    # touches AD/CS derivatives, but it does affect the primal solve.
-    "acousticscalefactor": 0.2,
+    # PC/solver-side only -- forced to 1.0 inside adjointUtils.F90 before the
+    # PC/adjoint is assembled, so this never touches AD/CS derivatives, but
+    # it does affect the primal solve. 0.15 matches the converged
+    # tutorial-wing/M=0.15 restart state (pedro_test/run_sagr.py, as of
+    # 2026-07-23; was 0.2 for the AR5 case before that).
+    "acousticscalefactor": 0.15,
 
     # ---- transition model options added on this branch ----
     # first-order upwind for gamma/reThetat convection (paper §IV.A, CLAUDE.md
     # rule 5). False = second order (sharper front, adjoint hole: audit-06 F8)
     "transitionfirstorderupwind": True,
     # helicity-based crossflow source D_scf on the Re_thetat equation
-    # (P&Z Eqs. 15-26). 2026-07-22: turned ON as the permanent suite default
-    # (linearized about the crossflow-converged AR5 state above) so the
-    # dR[reThetat]/d(nuTilde) block through D_scf is guarded by every run
-    # rather than only a one-off. The helicity term divides by
-    # max(velMag,1e-10) twice, so this block is only exercised on a real 3D
-    # wing like AR5 (it is identically zero on the ~2D tutorial wing); the
-    # crossflow-converged restart keeps the linearization point physical.
-    "transitioncrossflow": True,
+    # (P&Z Eqs. 15-26). 2026-07-22: turned ON as the AR5-case suite default
+    # so the dR[reThetat]/d(nuTilde) block through D_scf was guarded by
+    # every run. 2026-07-23: back to OFF -- matches the converged
+    # tutorial-wing/M=0.15 restart state (pedro_test/run_sagr.py), and the
+    # helicity term is identically zero on this ~2D wing regardless of the
+    # flag, so leaving it on would add no real coverage here (only risk:
+    # mismatching the state this restart was actually converged with).
+    # dR[reThetat]/d(nuTilde)-via-D_scf coverage is currently NOT exercised
+    # by this suite as a result -- would need a real swept/3D restart (AR5
+    # or similar) to restore it; flagging so this isn't silently lost.
+    "transitioncrossflow": False,
     # surface roughness height h [m] in the crossflow correlation (Eq. 17);
     # 3.3e-6 = smooth surface (default)
     "transitionroughnessheight": 3.3e-6,
@@ -169,7 +180,7 @@ sagrBaseOptions = {
     # PC/LHS-only — never touches the adjoint Jacobian (audit-06 F2 caveat)
     "transitionuseapproxsa": True,
     # reference length l [mesh units] in the vorticity limiter (P&Z
-    # Eqs. 52-53). Negative = auto (uses ap.chordRef=1.0 here); this is the
+    # Eqs. 52-53). Negative = auto (uses ap.chordRef=3.25 here); this is the
     # uInf/muInf path of audit-06 finding F1
     "transitionreflength": -1.0,
     # DADI coupling mode for the 3 turbulence equations: "full" (3x3 block),
@@ -189,23 +200,24 @@ sagrBaseOptions = {
     "cfl": 1.7,
     "cflcoarse": 1.0,
     "resaveraging": "alternate",
-    "liftindex": 3,  # AR5 wing convention (run_strategy.py) -- was 2 for the tutorial wing
-    # NOT set by run_strategy.py -- true pyADflow default (1), not the
-    # tutorial-wing-tuned 3 (confirmed by diffing printed option dumps
-    # 2026-07-19; leftover from the old tutorial-wing config, missed on
-    # first pass here)
-    "nsubiter": 1,
+    # liftIndex left at the pyADflow default (2) -- correct for the
+    # tutorial wing; was explicitly 3 for the AR5-wing convention before
+    # 2026-07-23
     # DADI turbulence sub-iterations per flow iteration
     "nsubiterturb": 3,
-    # capped to exactly reproduce full_ladder_1e-5_production/run_full.log
-    # at outer iter 282 / Iter Tot 3594 (totalRes=9.9223314015988036E-04),
-    # the specific point requested for this restart
-    "ncycles": 3594,
+    # generous cap, not a stall workaround -- this tutorial-wing/M=0.15 case
+    # converges cleanly (no AR5-style quasi-stall). Confirmed 2026-07-23:
+    # dev/generate_sagr_restart.py naturally hit L2Convergence (didn't need
+    # the cap) at outer iter 83 / Iter Tot 3676, scaledTotalRes=1.09e-9,
+    # fail=False -- the state mdo_tutorial_sagr_dp.cgns was written at.
+    "ncycles": 10000,
     "monitorvariables": ["cpu", "resrho", "resturb", "cl", "cd", "totalr", "scaledtotalr"],
 
     # ---- solver path: full ladder, ANK -> CANK -> NK (STRATEGY.md /
     # run_strategy.py) -- 2026-07-19: replaces the tutorial-wing test plan's
-    # ANK-only path so derivatives are validated about a real NK state.
+    # original ANK-only path so derivatives are validated about a real NK
+    # state. Kept as-is on 2026-07-23's switch back to the tutorial-wing
+    # mesh -- this recipe is mesh-independent and this mesh reaches NK too.
     "usenksolver": True,
     "useanksolver": True,
     # NOT set by run_strategy.py -- true pyADflow default (1000), not the
@@ -259,17 +271,14 @@ sagrBaseOptions = {
     "solutionprecision": "double",
 
     # ---- convergence / adjoint ----
-    # Back to a tight/effectively-disabled value -- attempted 1e-3 first
-    # (2026-07-19) as an auto-stop, but L2Convergence (totalR < L2Conv *
+    # Tight/effectively-disabled on purpose: L2Convergence (totalR < L2Conv *
     # totalR0, solvers.F90:1755) is checked every iteration regardless of
-    # solver phase, and 1e-3 is LOOSER than ANKCoupledSwitchTol/nkswitchtol
-    # (1e-5): the run satisfied it during plain ANK descent and stopped
-    # after only 20 iterations, never reaching CANK/NK at all. There is no
-    # single L2Convergence value that both survives past the 1e-5 switch
-    # and auto-stops before the indefinite post-NK stall (see
-    # full_ladder_1e-5_production/PURPOSE.md) -- so convergence depth is
-    # controlled by `ncycles` above instead (capped just past the point
-    # that run was already flat and sub-1e-3).
+    # solver phase, so a loose value can stop the run during plain ANK
+    # descent, before CANK/NK ever engage (this bit the AR5 case at 1e-3,
+    # 2026-07-19). Convergence depth is controlled by `ncycles` above
+    # instead. Unlike AR5, this tutorial-wing/M=0.15 case does NOT stall --
+    # it reaches the double-precision floor cleanly (no ncycles-vs-L2Conv
+    # tension to work around here).
     "l2convergence": 1e-14,
     "l2convergencecoarse": 1e-4,
     "adjointl2convergence": 1e-14,

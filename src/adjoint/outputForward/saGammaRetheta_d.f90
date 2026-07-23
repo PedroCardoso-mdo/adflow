@@ -727,15 +727,15 @@ contains
             termfw = temp10**sixth
             fwsad = termfw*ggd + gg*termfwd
             fwsa = gg*termfw
-            if (w(i, j, k, itu2) .lt. zero) then
-              x1 = zero
+            if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
+              x1 = -rsagrgammaforsamargin
               x1d = 0.0_8
             else
               x1d = wd(i, j, k, itu2)
               x1 = w(i, j, k, itu2)
             end if
-            if (x1 .gt. one) then
-              gammaforsa = one
+            if (x1 .gt. one + rsagrgammaforsamargin) then
+              gammaforsa = one + rsagrgammaforsamargin
               gammaforsad = 0.0_8
             else
               gammaforsad = x1d
@@ -1633,13 +1633,13 @@ contains
             gg6 = gg**6
             termfw = ((one+cw36)/(gg6+cw36))**sixth
             fwsa = gg*termfw
-            if (w(i, j, k, itu2) .lt. zero) then
-              x1 = zero
+            if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
+              x1 = -rsagrgammaforsamargin
             else
               x1 = w(i, j, k, itu2)
             end if
-            if (x1 .gt. one) then
-              gammaforsa = one
+            if (x1 .gt. one + rsagrgammaforsamargin) then
+              gammaforsa = one + rsagrgammaforsamargin
             else
               gammaforsa = x1
             end if
@@ -4074,13 +4074,13 @@ contains
     gg6 = gg**6
     termfw = ((one+cw36)/(gg6+cw36))**sixth
     fwsa = gg*termfw
-    if (w(i, j, k, itu2) .lt. zero) then
-      x1 = zero
+    if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
+      x1 = -rsagrgammaforsamargin
     else
       x1 = w(i, j, k, itu2)
     end if
-    if (x1 .gt. one) then
-      gammaforsa = one
+    if (x1 .gt. one + rsagrgammaforsamargin) then
+      gammaforsa = one + rsagrgammaforsamargin
     else
       gammaforsa = x1
     end if

@@ -60,7 +60,7 @@ do_train() {
 do_genw() {
     head "Regenerating converged restart state (w) via dev/generate_sagr_restart.py"
     echo "NOTE: non-standard step (no download server) -- see dev/README.md"
-    mpirun -np "$NP" "$PY" dev/generate_sagr_restart.py "${@:2}"
+    mpirun -np "$NP" --bind-to core "$PY" dev/generate_sagr_restart.py "${@:2}"
 }
 
 case "${1:-all}" in

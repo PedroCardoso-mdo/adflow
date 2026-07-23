@@ -534,15 +534,15 @@ contains
         gg6 = gg**6
         termfw = ((one+cw36)/(gg6+cw36))**sixth
         fwsa = gg*termfw
-        if (w(i, j, k, itu2) .lt. zero) then
+        if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
           call pushcontrol1b(0)
-          x1 = zero
+          x1 = -rsagrgammaforsamargin
         else
           x1 = w(i, j, k, itu2)
           call pushcontrol1b(1)
         end if
-        if (x1 .gt. one) then
-          gammaforsa = one
+        if (x1 .gt. one + rsagrgammaforsamargin) then
+          gammaforsa = one + rsagrgammaforsamargin
           call pushcontrol1b(0)
         else
           gammaforsa = x1
@@ -1821,13 +1821,13 @@ contains
         gg6 = gg**6
         termfw = ((one+cw36)/(gg6+cw36))**sixth
         fwsa = gg*termfw
-        if (w(i, j, k, itu2) .lt. zero) then
-          x1 = zero
+        if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
+          x1 = -rsagrgammaforsamargin
         else
           x1 = w(i, j, k, itu2)
         end if
-        if (x1 .gt. one) then
-          gammaforsa = one
+        if (x1 .gt. one + rsagrgammaforsamargin) then
+          gammaforsa = one + rsagrgammaforsamargin
         else
           gammaforsa = x1
         end if
@@ -4436,13 +4436,13 @@ contains
     gg6 = gg**6
     termfw = ((one+cw36)/(gg6+cw36))**sixth
     fwsa = gg*termfw
-    if (w(i, j, k, itu2) .lt. zero) then
-      x1 = zero
+    if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
+      x1 = -rsagrgammaforsamargin
     else
       x1 = w(i, j, k, itu2)
     end if
-    if (x1 .gt. one) then
-      gammaforsa = one
+    if (x1 .gt. one + rsagrgammaforsamargin) then
+      gammaforsa = one + rsagrgammaforsamargin
     else
       gammaforsa = x1
     end if

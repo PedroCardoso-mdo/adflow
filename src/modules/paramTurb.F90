@@ -62,6 +62,18 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRgammaLo  = 1.e-10_realType
     real(kind=realType), parameter :: rsaGRgammaHi  = 2.0_realType
     real(kind=realType), parameter :: rsaGRreThetaLo = 20.0_realType
+    ! Safety margin for the gammaForSA clamp (saGammaRetheta.F90) that keeps
+    ! gamma's own natural saturation values (0 = fully laminar, 1 = fully
+    ! turbulent) strictly INSIDE the unclamped pass-through zone, not sitting
+    ! bit-exact on the clamp boundary. A raw min(max(gamma,0),1) ties exactly
+    ! at those physically-routine values, and Tapenade's forward-mode tangent
+    ! picks the wrong branch there vs. complex-step ground truth (confirmed
+    ! 2026-07-23: every AD-vs-CS mismatch cell in dR[nuTilde]/dw[gamma] had
+    ! gamma==1.0 bit-exact, CS=0 correctly, AD nonzero incorrectly). Padding
+    ! is >> the observed NK overshoot (~2e-16, i.e. 1 ULP) but still tiny
+    ! relative to gamma's O(1) physical range, so this is purely a
+    ! failure/divergence safeguard, not a change to normal-operation physics.
+    real(kind=realType), parameter :: rsaGRgammaForSAMargin = 1.e-3_realType
 !
 !       SA-Gamma-Retheta stabilization: source dt restriction and scaling.
 !

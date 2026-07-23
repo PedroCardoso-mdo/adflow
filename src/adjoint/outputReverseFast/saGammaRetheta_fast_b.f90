@@ -526,17 +526,17 @@ myIntPtr = myIntPtr + 1
         gg6 = gg**6
         termfw = ((one+cw36)/(gg6+cw36))**sixth
         fwsa = gg*termfw
-        if (w(i, j, k, itu2) .lt. zero) then
+        if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-          x1 = zero
+          x1 = -rsagrgammaforsamargin
         else
           x1 = w(i, j, k, itu2)
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
         end if
-        if (x1 .gt. one) then
-          gammaforsa = one
+        if (x1 .gt. one + rsagrgammaforsamargin) then
+          gammaforsa = one + rsagrgammaforsamargin
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
         else
@@ -1754,13 +1754,13 @@ branch = myIntStack(myIntPtr)
         gg6 = gg**6
         termfw = ((one+cw36)/(gg6+cw36))**sixth
         fwsa = gg*termfw
-        if (w(i, j, k, itu2) .lt. zero) then
-          x1 = zero
+        if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
+          x1 = -rsagrgammaforsamargin
         else
           x1 = w(i, j, k, itu2)
         end if
-        if (x1 .gt. one) then
-          gammaforsa = one
+        if (x1 .gt. one + rsagrgammaforsamargin) then
+          gammaforsa = one + rsagrgammaforsamargin
         else
           gammaforsa = x1
         end if
@@ -4279,13 +4279,13 @@ branch = myIntStack(myIntPtr)
     gg6 = gg**6
     termfw = ((one+cw36)/(gg6+cw36))**sixth
     fwsa = gg*termfw
-    if (w(i, j, k, itu2) .lt. zero) then
-      x1 = zero
+    if (w(i, j, k, itu2) .lt. -rsagrgammaforsamargin) then
+      x1 = -rsagrgammaforsamargin
     else
       x1 = w(i, j, k, itu2)
     end if
-    if (x1 .gt. one) then
-      gammaforsa = one
+    if (x1 .gt. one + rsagrgammaforsamargin) then
+      gammaforsa = one + rsagrgammaforsamargin
     else
       gammaforsa = x1
     end if

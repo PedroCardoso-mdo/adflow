@@ -122,8 +122,9 @@ All small verification/smoke tests go in
 1. Create a new subfolder there named for the test (e.g. `nk_colscale_test/`).
 2. Put the runner script, the full run log, and a short `PURPOSE.md`
    (what is being tested, expected vs. observed outcome) in that folder.
-3. Run with the mach env so the user can reproduce it exactly:
-   `mpirun -np 12 /home/mdo/packages_v2/mach/bin/python <script>.py`
+3. Run with the mach env so the user can reproduce it exactly, **always with
+   `--bind-to core`**:
+   `mpirun -np 12 --bind-to core /home/mdo/packages_v2/mach/bin/python <script>.py`
    (build + `pip install` into `/home/mdo/packages_v2/mach` first if the
    Fortran code changed).
 

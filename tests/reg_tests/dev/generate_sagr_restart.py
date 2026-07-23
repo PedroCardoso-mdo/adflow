@@ -3,12 +3,20 @@
 regression tests (test_*_sagr.py).
 
 2026-07-19: switched from the SA RANS tutorial-wing grid to the AR5
-plain-wing case (`ar5_plain_wing_vol_L3.cgns`, copied into input_files/,
-gitignored like the rest of that directory) and the validated
-ANK->CANK->NK production ladder (STRATEGY.md /
-`.../3D_Plain_Wing/best_strategie/run_strategy.py`), so derivatives are
-validated about a real NK-converged state on a real 3D wing rather than the
-small ANK-only tutorial-wing case.
+plain-wing case, so derivatives were validated about a real NK-converged
+state on a real 3D wing rather than the small ANK-only tutorial-wing case.
+
+2026-07-23: switched BACK to the tutorial-wing grid
+(`mdo_tutorial_rans_scalar_jst.cgns`, the standard ADflow test asset already
+in `input_files/` -- no separate copy needed, unlike the AR5 files). Reason:
+the AR5 case never got past a chronic quasi-stall (`Step` pinned ~0.01,
+`docs/current-task.md`'s "Step 3 (AR5) CS check fails hard") no matter the
+iteration budget. The SAME tutorial-wing mesh, run with the SA-GR model at
+Mach=0.15 (down from the mesh's stock 0.8 -- see run_sagr.py's Reynolds-
+number note in
+`.../3D_Plain_Wing/pedro_test/run_sagr.py`) instead of AR5's Mach=0.2,
+converges cleanly with no stall. `--mach`/`--alpha`/the AeroProblem geometry
+below now match that tutorial-wing case, not AR5's.
 
 The written file contains all 8 states: the SA-GR restart variable set
 includes Intermittency and ReThetat (outputMod.F90 solNames(itu2/itu3)),
@@ -21,7 +29,7 @@ Run on the REAL (not complex) build, e.g. from tests/reg_tests:
 then report the Mach/Tu used so reg_sagr.py can be pointed at the output
 (the test AeroProblem must match the conditions converged here exactly) --
 already done for the --mach/--tu/--alpha defaults below, which match
-ap_sagr_ar5_wing in reg_sagr.py.
+ap_sagr_tut_wing in reg_sagr.py.
 """
 
 # built-ins
@@ -47,16 +55,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--gridFile",
-        default=os.path.join(baseDir, "../../input_files/ar5_plain_wing_vol_L3.cgns"),
-        help="grid to converge (default: the AR5 plain-wing case)",
+        default=os.path.join(baseDir, "../../../input_files/mdo_tutorial_rans_scalar_jst.cgns"),
+        help="grid to converge (default: the standard ADflow tutorial-wing case)",
     )
     parser.add_argument(
         "--output",
-        default=os.path.join(baseDir, "../../input_files/ar5_plain_wing_sagr_dp.cgns"),
+        default=os.path.join(baseDir, "../../../input_files/mdo_tutorial_sagr_dp.cgns"),
         help="grid+solution CGNS to write (becomes the tests' restartfile)",
     )
-    parser.add_argument("--mach", type=float, default=0.2, help="Mach number (matches ap_sagr_ar5_wing)")
-    parser.add_argument("--alpha", type=float, default=0.0, help="angle of attack [deg] (AR5 test value: 0.0)")
+    parser.add_argument("--mach", type=float, default=0.15, help="Mach number (matches ap_sagr_tut_wing)")
+    parser.add_argument("--alpha", type=float, default=1.8, help="angle of attack [deg] (tutorial-wing test value)")
     parser.add_argument("--tu", type=float, default=0.0025, help="freestream turbulence intensity (fraction)")
     parser.add_argument(
         "--l2",
@@ -71,16 +79,17 @@ def main():
     parser.add_argument(
         "--ncycles",
         type=int,
-        default=3594,
-        help="max iterations -- caps the run to exactly reproduce "
-        "full_ladder_1e-5_production/run_full.log at outer iter 282 / Iter Tot 3594 "
-        "(totalRes=9.9223314015988036E-04), the specific point requested for this restart",
+        default=10000,
+        help="max iterations -- this tutorial-wing/M=0.15 case converges cleanly "
+        "(no AR5-style stall), so this is a generous cap, not a stall workaround. "
+        "Confirmed 2026-07-23: naturally hit L2Convergence (didn't need the cap) "
+        "at outer iter 83 / Iter Tot 3676, scaledTotalRes=1.09e-9, fail=False.",
     )
     parser.add_argument(
         "--restartfile",
         default=None,
         help="restart from this CGNS instead of a cold start on --gridFile "
-        "(e.g. the existing ar5_plain_wing_sagr_dp.cgns, to continue "
+        "(e.g. the existing mdo_tutorial_sagr_dp.cgns, to continue "
         "converging it further). --gridFile is still used as the grid.",
     )
     parser.add_argument(
@@ -94,13 +103,12 @@ def main():
     parser.add_argument(
         "--crossflow",
         action="store_true",
-        help="enable transitionCrossflow (D_scf). Off by default here: the "
-        "helicity term divides by max(velMag, 1e-10) TWICE (paper Eqs. 23-26, "
-        "faithfully implemented), which blows up in near-wall/near-stagnation "
-        "3D cells where velMag is genuinely tiny -- unvalidated per CLAUDE.md "
-        "rule 3 and e5cd58cd's own 'validation pending' note. sagrBaseOptions "
-        "keeps it True only for adjoint-block test coverage on the ~2D "
-        "tutorial mesh, where D_scf is identically zero anyway.",
+        help="enable transitionCrossflow (D_scf). Off by default here (matches "
+        "sagrBaseOptions as of 2026-07-23): D_scf is identically zero on this "
+        "~2D tutorial wing regardless, so this flag is mostly moot on this "
+        "mesh -- kept for parity with the AR5-mesh workflow, where it mattered "
+        "(the helicity term divides by max(velMag, 1e-10) TWICE, Eqs. 23-26, "
+        "and is unvalidated on a real 3D wing per CLAUDE.md rule 3).",
     )
     args = parser.parse_args()
 
@@ -111,11 +119,13 @@ def main():
     options["gridfile"] = args.gridFile
     if args.restartfile is not None:
         # continue converging an existing solution (e.g. more iterations on
-        # the current ar5_plain_wing_sagr_dp.cgns)
+        # the current mdo_tutorial_sagr_dp.cgns)
         options["restartfile"] = args.restartfile
     else:
-        # cold start on the AR5 grid (freestream); matches the validated
-        # production run (full_ladder_1e-5_production) -- no restart
+        # cold start on the tutorial-wing grid (freestream); M=0.15 is far
+        # less transonic than the mesh's stock M=0.8 restart, so this
+        # survives a cold start through the ANK->CANK->NK ladder (unlike a
+        # cold M=0.8 start, which NaNs -- see pedro_test/run_fresh.log)
         options.pop("restartfile", None)
 
     options["turbintensityinf"] = args.tu
@@ -130,19 +140,18 @@ def main():
         options["useanksolver"] = False
         options["usenksolver"] = True
 
-    # AR5 plain-wing AeroProblem, matching ap_sagr_ar5_wing in reg_sagr.py —
+    # tutorial-wing AeroProblem, matching ap_sagr_tut_wing in reg_sagr.py —
     # these numbers must stay mirrored there
     ap = AeroProblem(
-        name="ar5_plain_wing",
+        name="mdo_tutorial_sagr",
         alpha=args.alpha,
         mach=args.mach,
-        # explicit P/T (standard atmosphere sea level, numerically identical
-        # to altitude=0.0) -- see reg_sagr.py's ap_sagr_ar5_wing comment
-        P=101325.0,
-        T=288.15,
-        areaRef=0.1,
-        chordRef=1.0,
+        P=20000.0,
+        T=220.0,
+        areaRef=45.5,
+        chordRef=3.25,
         beta=0.0,
+        R=287.87,
         xRef=0.0,
         yRef=0.0,
         zRef=0.0,
@@ -177,8 +186,8 @@ def main():
         if not funcs["fail"]:
             print(
                 "Now confirm in tests/reg_tests/reg_sagr.py: sagrRestartFile points at "
-                "this file, and ap_sagr_ar5_wing matches mach=%g, alpha=%g, altitude=0, "
-                "chordRef=1.0, areaRef=0.1 with turbintensityinf=%g."
+                "this file, and ap_sagr_tut_wing matches mach=%g, alpha=%g, P=20000, T=220, "
+                "chordRef=3.25, areaRef=45.5 with turbintensityinf=%g."
                 % (args.mach, args.alpha, args.tu)
             )
 
