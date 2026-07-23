@@ -37,6 +37,7 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Exact **ADflow** (flow/ANK/NK/adjoint) option name / default / enum | `ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md` |
 | Paper symbol ↔ code flag (ADflow solver) | `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md` → `ADFLOW_BASE/ADFLOW_01_flow_solver_theory.md` |
+| Rotating mesh / rotating frame of reference (rotor, propeller, turbine) | `VERIFICATION/rotating-frame-audit.md` → `nondimensionalization.md` (§5 vortLim, §6 crossflow) |
 | Why does the paper converge faster than ADflow / solver-algorithm gaps | `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` |
 | Adjoint / AD theory (general) | `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` |
 | Implement or extend the adjoint / AD on **this branch** | `VERIFICATION/adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
@@ -71,6 +72,7 @@ answer. `→` means "if the first isn't enough, go to the next."
 |------|--------------|
 | [VERIFICATION/three-stage-verification.md](VERIFICATION/three-stage-verification.md) | The 3-stage low-level adjoint verification ladder: (1) reverse↔forward dot-product consistency, (2) reverse vs fast-reverse (`_b` vs `_b_fast`) consistency, (3) 3-way AD/FD/CS forward-mode check. **Start at §"Canonical way to run"**: the ladder is now a registered testflo suite (`tests/reg_tests/test_jacVecProd{FWD,BWDFast}_sagr.py` + `reg_sagr.py` + `refs/*.json`) driven by `run_sagr_tests.sh` (`all\|real\|cs\|train\|genw`), crossflow always ON. Covers the two invariants not to "fix" (FD `@expectedFailure`; CS state re-seat), the mesh-swap recipe, and results. Old per-script commands are retained as historical (scripts now in `dev/`). |
 | [VERIFICATION/adjoint-trace.md](VERIFICATION/adjoint-trace.md) | Paired inventory of adjoint/AD touchpoints (SA vs SA-GR) on this branch: preprocessor guards, Tapenade directives, generated AD files, wiring. |
+| [VERIFICATION/rotating-frame-audit.md](VERIFICATION/rotating-frame-audit.md) | Rotating-frame consistency fix (2026-07-23): makes the transition model use the **relative** frame — vortLim reference velocity `√(uInf²+\|Ω×r\|²)`, BL velocity scales and helicity on `V_rel`. Verified bit-identical no-op when Ω=0 (residual + full derivative suite). Flags TAPENADE-NEEDED for rotating-case adjoints. |
 | [VERIFICATION/debugging_derivatives.md](VERIFICATION/debugging_derivatives.md) | Raw source: generic FD → reverse-mode dot-product → complex-step derivative-checking ladder, not covered in `ADFLOW_BASE/02`/`04`. |
 
 ### Audits (`audits/`)

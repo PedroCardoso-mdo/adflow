@@ -129,6 +129,13 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > `transitionRefLength` option (auto = AeroProblem `chordRef`; see
 > `architecture.md` Part 2).
 >
+> **Rotating-frame update (2026-07-23).** `uInf` is meaningless on a rotor
+> (hover ⇒ `uInf→0` ⇒ the cap collapses and kills γ). The velocity in the cap is
+> now the blade-element section speed `U_ref = √(uInf² + |Ω×r|²)` (`|Ω×r| = |sc|`,
+> the local rotational grid velocity). It reduces to `uInf` **exactly** when Ω=0
+> (bit-identical no-op for every inertial case) and to the local blade speed in
+> hover. See `VERIFICATION/rotating-frame-audit.md`.
+>
 > **AD corollary (2026-07-07):** because `uInf`/`muInf` are the code's spelling
 > of the paper's freestream M and Re, the cap makes the *residual* depend on
 > freestream reference state. Consistency check of the identity:
@@ -148,9 +155,9 @@ Where each new quantity lands dimensionally in the code:
 
 | Quantity | Paper form (Eq.) | Code (`saGammaRetheta.F90`) | Status in ADflow |
 |---|---|---|---|
-| θt (`thetaBL`) | Re̅θt·μ/(ρU)·(1/Re) (Eq. 4) | `reThetaTilde*nu/velMag` | physical momentum thickness — non-dim by L_ref=1 m ⇒ **value in metres** |
+| θt (`thetaBL`) | Re̅θt·μ/(ρU)·(1/Re) (Eq. 4) | `reThetaTilde*nu/velMag` | physical momentum thickness — non-dim by L_ref=1 m ⇒ **value in metres**. `velMag` is now the **relative** velocity `|V_rel|` (rotating-frame; = `|V_abs|` when Ω=0). |
 | h (`transitionRoughnessHeight`) | `h/θt` (Eq. 17) | input, default `3.3e-6` | physical roughness length — **must be in mesh units (metres)**; 3.3e-6 = 3.3 µm |
-| H_cf (`hcf`) | d·Ω_sw/U (Eq. 26) | `yDist*abs(Û·Ω⃗)/velMag` | **dimensionless** (L_ref cancels; uses pure curl, frame-independent) |
+| H_cf (`hcf`) | d·Ω_sw/U (Eq. 26) | `yDist*abs(Û_rel·ω_rel)/velMag_rel` | **dimensionless**. Uses **relative** velocity and **relative** vorticity (`vortx = curl − 2Ω`) — helicity `U·ω` is not frame-invariant. = old absolute form when Ω=0. See `VERIFICATION/rotating-frame-audit.md`. |
 | Re_scf (`reScf`) | correlation (Eq. 17) | `-35.088·ln(h/θt)+319.51+f(ΔH⁺)−f(ΔH⁻)` | **physical Reynolds number** (calibrated correlation) |
 | D_scf (`dScf`) | (c_θt/t)·c_cf·min(Re_scf−Re̅θt,0)·F_θt (Eq. 15) | `(rsaGRcthetat/timeScale)*…` | **Re/time**, same units as `P_θt`; no explicit Re |
 

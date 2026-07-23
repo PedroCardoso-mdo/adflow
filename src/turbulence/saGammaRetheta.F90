@@ -240,6 +240,11 @@ contains
         real(kind=realType) :: pReTheta, dScf, reScf, hcf
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: yDist
+        ! Rotating-frame (relative-velocity) helpers. See the block near
+        ! velMag below: V_rel = V_abs - Omega x r. All are exact no-ops when
+        ! the section rotation rate is zero (sc = 0).
+        real(kind=realType) :: xc(3), xxc(3), sc(3)
+        real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
         real(kind=realType) :: lambdaThetaRaw, lambdaThetaClamped
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
@@ -484,8 +489,41 @@ contains
                         gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
                         reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
                         yDist = d2Wall(i, j, k)
-                        velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
-                                  + w(i, j, k, ivz)**2
+
+                        ! --- Relative (rotating-frame) velocity ---
+                        ! ADflow stores the ABSOLUTE velocity in w(:,ivx:ivz)
+                        ! (a rotating no-slip wall carries u = Omega x r, not
+                        ! zero; see solverUtils.F90 wall BC). The boundary-layer
+                        ! correlations below (theta_BL Eq.4, time scale Eq.7,
+                        ! lambda_theta Eq.10, delta Eq.4, helicity Eq.26) are
+                        ! defined in the frame where the BL is steady = the
+                        ! relative (rotating) frame, so they must use
+                        ! V_rel = V_abs - Omega x r.
+                        ! Cell center from the 8 surrounding nodes and
+                        ! sc = Omega x (xc - rotCenter) follow the pattern in
+                        ! solverUtils.F90:gridVelocitiesFineLevel_block; omegax/y/z
+                        ! are already timeRef-scaled (see above). For a
+                        ! non-rotating section rotRate = 0 => sc = 0 exactly, so
+                        ! V_rel = V_abs and every term below is bit-identical.
+                        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+                              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+                              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+                        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+                              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+                              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+                        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+                              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+                              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+                        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+                        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+                        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+                        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+                        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+                        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+                        velRelx = w(i, j, k, ivx) - sc(1)
+                        velRely = w(i, j, k, ivy) - sc(2)
+                        velRelz = w(i, j, k, ivz) - sc(3)
+                        velMag2 = velRelx**2 + velRely**2 + velRelz**2
                         velMag = sqrt(max(velMag2, xminn))
 
                         ! --- Vorticity limiting ---
@@ -496,13 +534,23 @@ contains
                         ! chord): the physical cap scales as 1/√l. refLenTrans supplies
                         ! l in grid units; transitionRefLength < 0 => use lengthRef
                         ! (AeroProblem chordRef).
-                        ! Rotating frame not adress here!!!!! uInf has no meaning on it.
+                        ! Rotating frame: the cap is 1/20 of the characteristic BL
+                        ! edge wall-vorticity ~ sqrt(U_e^3/(nu*l)); on a rotating
+                        ! blade the relevant edge velocity U_e is the local section
+                        ! speed, not the inertial freestream (uInf -> 0 in hover
+                        ! would kill both P_gamma and E_gamma). Use the blade-element
+                        ! section velocity uRefTrans = sqrt(uInf^2 + |Omega x r|^2)
+                        ! (|Omega x r| = |sc|): exact for axial inflow (Omega x r ⊥
+                        ! V_inf: hover/climb/props/turbines) and a sound characteristic
+                        ! for edgewise flow. Reduces to uInf exactly when sc = 0
+                        ! (non-rotating), so this is a no-op for every inertial case.
                         if (transitionRefLength > zero) then
                             refLenTrans = transitionRefLength
                         else
                             refLenTrans = lengthRef
                         end if
-                        vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) &
+                        uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
+                        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) &
                                 / 20.0_realType
 
                         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
@@ -542,10 +590,16 @@ contains
                         thetaBL = reThetaTilde * nu &
                                   / max(velMag, xminn)
 
-                        ! Compute local lambdaTheta = (thetaBL^2 / nu) * dU/ds
-                        uxhat = w(i, j, k, ivx) / max(velMag, xminn)
-                        uyhat = w(i, j, k, ivy) / max(velMag, xminn)
-                        uzhat = w(i, j, k, ivz) / max(velMag, xminn)
+                        ! Compute local lambdaTheta = (thetaBL^2 / nu) * dU/ds.
+                        ! Streamwise unit vector is along the RELATIVE velocity
+                        ! (rotating-frame streamline). The velocity-gradient
+                        ! stencils (uux..wwz) stay absolute: dU/ds contracts them
+                        ! with the symmetric u_hat_i u_hat_j, and the antisymmetric
+                        ! rotation part of d(V_rel)/dx - d(V_abs)/dx cancels there,
+                        ! so only u_hat needs the relative velocity.
+                        uxhat = velRelx / max(velMag, xminn)
+                        uyhat = velRely / max(velMag, xminn)
+                        uzhat = velRelz / max(velMag, xminn)
                         dUds = two * fact &
                              * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
                               + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
@@ -583,11 +637,15 @@ contains
                         hcf = zero
                         if (transitionCrossflow) then
                             crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
-                            ! Eq.24 helicity uses the raw velocity curl; undo the
-                            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
-                            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
-                                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
-                                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                            ! Helicity H_cf = d*|U_hat . Omega|/U (Eqs.24-26) in the
+                            ! RELATIVE frame: relative velocity (velRel) dotted with
+                            ! relative vorticity (vortx = curl - 2*Omega). Helicity
+                            ! U.Omega is NOT frame-invariant; the old "+2*omega" undo
+                            ! gave absolute-frame helicity, wrong on a rotor. Omega=0
+                            ! => bit-identical to the old form.
+                            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                                + (velRely / max(velMag, xminn)) * vorty &
+                                + (velRelz / max(velMag, xminn)) * vortz) &
                                 / max(velMag, xminn)
                             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                                 + 319.51_realType
@@ -722,11 +780,15 @@ contains
 
                         if (transitionCrossflow) then
                             crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
-                            ! Eq.24 helicity uses the raw velocity curl; undo the
-                            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
-                            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
-                                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
-                                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                            ! Helicity H_cf = d*|U_hat . Omega|/U (Eqs.24-26) in the
+                            ! RELATIVE frame: relative velocity (velRel) dotted with
+                            ! relative vorticity (vortx = curl - 2*Omega). Helicity
+                            ! U.Omega is NOT frame-invariant; the old "+2*omega" undo
+                            ! gave absolute-frame helicity, wrong on a rotor. Omega=0
+                            ! => bit-identical to the old form.
+                            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                                + (velRely / max(velMag, xminn)) * vorty &
+                                + (velRelz / max(velMag, xminn)) * vortz) &
                                 / max(velMag, xminn)
                             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                                 + 319.51_realType
@@ -2279,6 +2341,9 @@ contains
         real(kind=realType) :: velMag, velMag2, timeScale
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: yDist
+        ! Rotating-frame helpers (see Source; no-op when sc = 0)
+        real(kind=realType) :: xc(3), xxc(3), sc(3)
+        real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
         real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
@@ -2402,7 +2467,30 @@ contains
         gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
         reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
         yDist = d2Wall(i, j, k)
-        velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
+
+        ! Relative (rotating-frame) velocity V_rel = V_abs - Omega x r; must
+        ! match the residual in Source (see the detailed comment there). Cell
+        ! center from the 8 nodes, sc = Omega x (xc - rotCenter). Omega=0 =>
+        ! sc = 0 exactly => identical to the old absolute form.
+        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+        velRelx = w(i, j, k, ivx) - sc(1)
+        velRely = w(i, j, k, ivy) - sc(2)
+        velRelz = w(i, j, k, ivz) - sc(3)
+        velMag2 = velRelx**2 + velRely**2 + velRelz**2
         velMag = sqrt(max(velMag2, xminn))
 
         if (transitionRefLength > zero) then
@@ -2410,7 +2498,9 @@ contains
         else
             refLenTrans = lengthRef
         end if
-        vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) / 20.0_realType
+        ! Blade-element section-speed reference (see Source): sqrt(uInf^2+|Omega x r|^2)
+        uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
+        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) / 20.0_realType
         ! Use the same smooth limiter as the residual (Source) so this
         ! Jacobian linearizes the source actually being solved.
         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
@@ -2482,11 +2572,12 @@ contains
         A(3,3) = -(rsaGRcthetat / max(timeScale, xminn) * (one - fThetaT))
         if (transitionCrossflow) then
             crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
-            ! Eq.24 helicity uses the raw velocity curl; undo the
-            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
-            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
-                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
-                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+            ! Helicity in the RELATIVE frame (matches Source): relative velocity
+            ! dotted with relative vorticity (vortx = curl - 2*Omega). Omega=0 =>
+            ! bit-identical to the old absolute-frame form.
+            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                + (velRely / max(velMag, xminn)) * vorty &
+                + (velRelz / max(velMag, xminn)) * vortz) &
                 / max(velMag, xminn)
             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                 + 319.51_realType
