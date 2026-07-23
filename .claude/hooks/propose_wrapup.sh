@@ -15,7 +15,11 @@ REPO="${CLAUDE_PROJECT_DIR:-/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper
 cd "$REPO" 2>/dev/null || exit 0
 git rev-parse --git-dir >/dev/null 2>&1 || exit 0
 
-changes=$(git status --porcelain -- src docs tests CLAUDE.md 2>/dev/null)
+# NB: exclude this hook's OWN activity log. It lives under docs/ (a watched
+# path), so if it counted, every fire would write a log line -> new change-set
+# hash -> the hook re-arms and fires again on the next stop, forever. Excluding
+# it breaks that self-retrigger loop.
+changes=$(git status --porcelain -- src docs tests CLAUDE.md ':(exclude)docs/HOOK_ACTIVITY_LOG.md' 2>/dev/null)
 [ -z "$changes" ] && exit 0   # clean on task-relevant paths -> allow stop
 
 hash=$(printf '%s' "$changes" | sha1sum | cut -d' ' -f1)
