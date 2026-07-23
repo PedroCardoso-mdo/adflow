@@ -61,6 +61,8 @@ module sagammaretheta_fast_b
   use constants, only : realtype, zero
   implicit none
   real(kind=realtype), dimension(:, :, :, :, :), allocatable :: qq
+! one-shot flag so the rotating-frame warning prints only once per run.
+  logical, save :: rotwarndone=.false.
 
 contains
   subroutine sagammaretheta_block(resonly)
@@ -81,6 +83,8 @@ contains
 !      local variables.
 !
     integer(kind=inttype) :: nn, sps
+! one-time heads-up about the rotating-frame status of the model.
+! hidden from tapenade (diagnostic only, pulls in communication/cgnsgrid).
 ! set the arrays for the boundary condition treatment.
     call bcturbtreatment()
 ! alloc central jacobian memory
@@ -248,13 +252,12 @@ contains
     real(kind=realtype) :: crossflowratiod, dhplusd, dhminusd
     real(kind=realtype) :: ydist
 ! rotating-frame (relative-velocity) helpers. see the block near
-! velmag below: v_rel = v_abs - omega x r. gated by isrotating so a
-! non-rotating section runs the original absolute-velocity path
-! unchanged (sc = 0).
+! velmag below: v_rel = v_abs - omega x r. omega (rotrate) is a fixed
+! input, so sc is computed unconditionally; a non-rotating section has
+! rotrate = 0 => sc = 0 exactly, a bit-identical no-op.
     real(kind=realtype) :: xc(3), xxc(3), sc(3)
     real(kind=realtype) :: velrelx, velrely, velrelz, ureftrans
     real(kind=realtype) :: velrelxd, velrelyd, velrelzd
-    logical :: isrotating
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: uxhatd, uyhatd, uzhatd, dudsd, &
 &   lambdathetalocald
@@ -362,10 +365,6 @@ contains
     omegax = timeref*sections(sectionid)%rotrate(1)
     omegay = timeref*sections(sectionid)%rotrate(2)
     omegaz = timeref*sections(sectionid)%rotrate(3)
-! rotating-frame switch: only when this section actually rotates do
-! the transition bl quantities need the relative velocity. when false
-! the code below reduces to the original absolute-velocity path.
-    isrotating = omegax**2 + omegay**2 + omegaz**2 .gt. zero
 ! create switches to production term depending on the variable that
 ! should be used
     if (turbprod .eq. katolaunder) then
@@ -642,30 +641,24 @@ myIntPtr = myIntPtr + 1
 ! cell center from the 8 surrounding nodes and
 ! sc = omega x (xc - rotcenter) follow the pattern in
 ! solverutils.f90:gridvelocitiesfinelevel_block; omegax/y/z
-! are already timeref-scaled (see above). non-rotating
-! section => skip entirely (sc = 0), so v_rel = v_abs and
-! every term below is bit-identical to the original code.
-        if (isrotating) then
-          xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-1, j&
-&           , k-1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1, k, 1)+&
-&           x(i-1, j, k, 1)+x(i, j, k, 1))
-          xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-1, j&
-&           , k-1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1, k, 2)+&
-&           x(i-1, j, k, 2)+x(i, j, k, 2))
-          xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-1, j&
-&           , k-1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1, k, 3)+&
-&           x(i-1, j, k, 3)+x(i, j, k, 3))
-          xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
-          xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
-          xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
-          sc(1) = omegay*xxc(3) - omegaz*xxc(2)
-          sc(2) = omegaz*xxc(1) - omegax*xxc(3)
-          sc(3) = omegax*xxc(2) - omegay*xxc(1)
-        else
-          sc(1) = zero
-          sc(2) = zero
-          sc(3) = zero
-        end if
+! are already timeref-scaled (see above). for a
+! non-rotating section rotrate = 0 => sc = 0 exactly, so
+! v_rel = v_abs and every term below is bit-identical.
+        xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-1, j, &
+&         k-1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1, k, 1)+x(i-&
+&         1, j, k, 1)+x(i, j, k, 1))
+        xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-1, j, &
+&         k-1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1, k, 2)+x(i-&
+&         1, j, k, 2)+x(i, j, k, 2))
+        xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-1, j, &
+&         k-1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1, k, 3)+x(i-&
+&         1, j, k, 3)+x(i, j, k, 3))
+        xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
+        xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
+        xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
+        sc(1) = omegay*xxc(3) - omegaz*xxc(2)
+        sc(2) = omegaz*xxc(1) - omegax*xxc(3)
+        sc(3) = omegax*xxc(2) - omegay*xxc(1)
         velrelx = w(i, j, k, ivx) - sc(1)
         velrely = w(i, j, k, ivy) - sc(2)
         velrelz = w(i, j, k, ivz) - sc(3)
@@ -1563,12 +1556,11 @@ branch = myIntStack(myIntPtr)
 &   dhminus
     real(kind=realtype) :: ydist
 ! rotating-frame (relative-velocity) helpers. see the block near
-! velmag below: v_rel = v_abs - omega x r. gated by isrotating so a
-! non-rotating section runs the original absolute-velocity path
-! unchanged (sc = 0).
+! velmag below: v_rel = v_abs - omega x r. omega (rotrate) is a fixed
+! input, so sc is computed unconditionally; a non-rotating section has
+! rotrate = 0 => sc = 0 exactly, a bit-identical no-op.
     real(kind=realtype) :: xc(3), xxc(3), sc(3)
     real(kind=realtype) :: velrelx, velrely, velrelz, ureftrans
-    logical :: isrotating
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: lambdathetaraw, lambdathetaclamped
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
@@ -1627,10 +1619,6 @@ branch = myIntStack(myIntPtr)
     omegax = timeref*sections(sectionid)%rotrate(1)
     omegay = timeref*sections(sectionid)%rotrate(2)
     omegaz = timeref*sections(sectionid)%rotrate(3)
-! rotating-frame switch: only when this section actually rotates do
-! the transition bl quantities need the relative velocity. when false
-! the code below reduces to the original absolute-velocity path.
-    isrotating = omegax**2 + omegay**2 + omegaz**2 .gt. zero
 ! create switches to production term depending on the variable that
 ! should be used
     if (turbprod .eq. katolaunder) then
@@ -1851,30 +1839,24 @@ branch = myIntStack(myIntPtr)
 ! cell center from the 8 surrounding nodes and
 ! sc = omega x (xc - rotcenter) follow the pattern in
 ! solverutils.f90:gridvelocitiesfinelevel_block; omegax/y/z
-! are already timeref-scaled (see above). non-rotating
-! section => skip entirely (sc = 0), so v_rel = v_abs and
-! every term below is bit-identical to the original code.
-        if (isrotating) then
-          xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-1, j&
-&           , k-1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1, k, 1)+&
-&           x(i-1, j, k, 1)+x(i, j, k, 1))
-          xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-1, j&
-&           , k-1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1, k, 2)+&
-&           x(i-1, j, k, 2)+x(i, j, k, 2))
-          xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-1, j&
-&           , k-1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1, k, 3)+&
-&           x(i-1, j, k, 3)+x(i, j, k, 3))
-          xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
-          xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
-          xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
-          sc(1) = omegay*xxc(3) - omegaz*xxc(2)
-          sc(2) = omegaz*xxc(1) - omegax*xxc(3)
-          sc(3) = omegax*xxc(2) - omegay*xxc(1)
-        else
-          sc(1) = zero
-          sc(2) = zero
-          sc(3) = zero
-        end if
+! are already timeref-scaled (see above). for a
+! non-rotating section rotrate = 0 => sc = 0 exactly, so
+! v_rel = v_abs and every term below is bit-identical.
+        xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-1, j, &
+&         k-1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1, k, 1)+x(i-&
+&         1, j, k, 1)+x(i, j, k, 1))
+        xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-1, j, &
+&         k-1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1, k, 2)+x(i-&
+&         1, j, k, 2)+x(i, j, k, 2))
+        xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-1, j, &
+&         k-1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1, k, 3)+x(i-&
+&         1, j, k, 3)+x(i, j, k, 3))
+        xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
+        xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
+        xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
+        sc(1) = omegay*xxc(3) - omegaz*xxc(2)
+        sc(2) = omegaz*xxc(1) - omegax*xxc(3)
+        sc(3) = omegax*xxc(2) - omegay*xxc(1)
         velrelx = w(i, j, k, ivx) - sc(1)
         velrely = w(i, j, k, ivy) - sc(2)
         velrelz = w(i, j, k, ivz) - sc(3)
@@ -4164,10 +4146,9 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: velmag, velmag2, timescale
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: ydist
-! rotating-frame helpers (see source; gated by isrotating, no-op when off)
+! rotating-frame helpers (see source; no-op when rotrate = 0 => sc = 0)
     real(kind=realtype) :: xc(3), xxc(3), sc(3)
     real(kind=realtype) :: velrelx, velrely, velrelz, ureftrans
-    logical :: isrotating
     real(kind=realtype) :: crossflowratio, crossflowphiprime, dhplus, &
 &   dhminus
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
@@ -4219,7 +4200,6 @@ branch = myIntStack(myIntPtr)
     omegax = timeref*sections(sectionid)%rotrate(1)
     omegay = timeref*sections(sectionid)%rotrate(2)
     omegaz = timeref*sections(sectionid)%rotrate(3)
-    isrotating = omegax**2 + omegay**2 + omegaz**2 .gt. zero
 ! initialize output
     a = zero
 ! compute velocity gradients (scaled by 2*vol)
@@ -4364,28 +4344,22 @@ branch = myIntStack(myIntPtr)
 ! relative (rotating-frame) velocity v_rel = v_abs - omega x r; must
 ! match the residual in source (see the detailed comment there). cell
 ! center from the 8 nodes, sc = omega x (xc - rotcenter). non-rotating
-! section => skip (sc = 0) => identical to the old absolute form.
-    if (isrotating) then
-      xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-1, j, k-&
-&       1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1, k, 1)+x(i-1, j&
-&       , k, 1)+x(i, j, k, 1))
-      xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-1, j, k-&
-&       1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1, k, 2)+x(i-1, j&
-&       , k, 2)+x(i, j, k, 2))
-      xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-1, j, k-&
-&       1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1, k, 3)+x(i-1, j&
-&       , k, 3)+x(i, j, k, 3))
-      xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
-      xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
-      xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
-      sc(1) = omegay*xxc(3) - omegaz*xxc(2)
-      sc(2) = omegaz*xxc(1) - omegax*xxc(3)
-      sc(3) = omegax*xxc(2) - omegay*xxc(1)
-    else
-      sc(1) = zero
-      sc(2) = zero
-      sc(3) = zero
-    end if
+! section => rotrate = 0 => sc = 0 => identical to the old absolute form.
+    xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-1, j, k-1&
+&     , 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1, k, 1)+x(i-1, j, k&
+&     , 1)+x(i, j, k, 1))
+    xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-1, j, k-1&
+&     , 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1, k, 2)+x(i-1, j, k&
+&     , 2)+x(i, j, k, 2))
+    xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-1, j, k-1&
+&     , 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1, k, 3)+x(i-1, j, k&
+&     , 3)+x(i, j, k, 3))
+    xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
+    xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
+    xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
+    sc(1) = omegay*xxc(3) - omegaz*xxc(2)
+    sc(2) = omegaz*xxc(1) - omegax*xxc(3)
+    sc(3) = omegax*xxc(2) - omegay*xxc(1)
     velrelx = w(i, j, k, ivx) - sc(1)
     velrely = w(i, j, k, ivy) - sc(2)
     velrelz = w(i, j, k, ivz) - sc(3)

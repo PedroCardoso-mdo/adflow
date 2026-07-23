@@ -73,12 +73,21 @@ the transition logic in `saGammaRetheta.F90`:
 For a non-rotating section `rotRate = 0 ⇒ sc = 0` exactly ⇒ `V_rel = V_abs`,
 `uRefTrans = uInf`, helicity `+2Ω → 0` — every term is bit-identical.
 
-**`isRotating` guard.** The `Ω×r` computation (8-node cell center + cross product)
-is wrapped in `if (isRotating) … else sc = 0`, where
-`isRotating = (omegax²+omegay²+omegaz²) > 0` is evaluated once per block (per cell
-in `evalSrcJacBlock`). So a non-rotating section runs the original absolute-velocity
-path with zero added cost, and the relative-frame branch is isolated to rotating
-sections. Auto-detected from the section rotation rate — no user option to set wrong.
+**No runtime guard.** `Ω` (`rotRate`) is a fixed input constant, not a
+flow-generated field, so `sc = Ω×r` is computed unconditionally; a non-rotating
+section has `rotRate = 0 ⇒ sc = 0` exactly (bit-identical no-op). An earlier
+`if (isRotating)` guard was removed as redundant.
+
+**One-time warning.** `warnRotatingTransition` (rank 0, called from the non-AD
+driver `saGammaReTheta_block`, hidden from Tapenade via `#ifndef USE_TAPENADE`)
+prints once which rotation form is active, using the globally-replicated
+`cgnsDoms`/`sections`:
+- `sections%rotRate ≠ 0` (rotating frame defined in the grid) → the transition
+  model's relative-frame correction **is** applied.
+- rotation on `cgnsDoms%rotRate` only (e.g. Python `setRotationRate`, which does
+  **not** propagate to `sections%rotRate`) → correction **not** applied; BL
+  quantities use the absolute velocity. Same limitation as `sa.F90`'s own `−2Ω`
+  (also `sections`-based), so the model stays self-consistent.
 
 ## 5. Verification
 
