@@ -108,12 +108,15 @@ They mirror the upstream SA suite one-to-one:
 
 ### `dev/diag_full_derivatives.py`
 Dev diagnostic (NOT a testflo test) for the full df/dx check with ADflow's
-flow-solver / adjoint-KSP output VISIBLE, over ALL aero + geom DVs incl.
-multiple individual `shape` components. `--mode adjoint` (real build: dump all
-adjoint totals) writes a json that `--mode cs` (complex build: per-DV complex
-re-converge, tabulated vs the adjoint) reads. Each CS re-converge is a full
-nonlinear solve (~8 min), so the DV/shape set is configurable (`--shape`,
-`--twist`, `--skip-aero/geom`).
+flow-solver / adjoint-KSP output VISIBLE, over ALL aero + geom DVs incl. every
+individual `shape` component. `--mode adjoint` (real build: dump all adjoint
+totals) writes a json that `--mode cs` (complex build: per-DV complex
+re-converge, then a final abs/rel/% error TABLE vs the adjoint) reads.
+Defaults sweep `--shape all` (every FFD point) and `--twist all`, and force the
+complex primal to grind all iterations (`--ncycles 5000`, `--l2 1e-20` disables
+the L2 early-exit) to push the FD-PC solve past its ~1e-8 stall. `resetFlow`
+runs before every DV (no cross-DV contamination). All-shape × deep budget is
+expensive — narrow with `--shape a,b,c` / lower `--ncycles`, or `--skip-aero/geom`.
 
 ### `generate_sagr_restart.py`
 The upstream SA restarts are downloaded pre-made (`input_files/

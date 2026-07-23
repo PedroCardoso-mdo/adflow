@@ -20,25 +20,33 @@ Two modes, matched to the installed build:
                    ref, so by default `cs` mode compares against the same
                    values the regression test does).
 
-  --mode cs        COMPLEX build (ADFLOW_C). For each selected DV -- aero, span,
-                   selected twist components, and selected shape components --
-                   perturb by 1e-40j, re-converge (flow-solver output visible),
-                   print imag(f)/h, and tabulate adjoint-vs-CS abs/rel diff
-                   against --ref (default: the trained adjoint ref json, which
-                   already stores every shape/twist component).
+  --mode cs        COMPLEX build (ADFLOW_C). For each selected DV -- aero
+                   (alpha, mach, P, T), span, twist, and shape (ALL FFD points
+                   by default) -- reset the flow to a clean restart, perturb by
+                   1e-40j, re-converge (flow-solver output visible), print
+                   imag(f)/h, and at the end print a TABLE tabulating
+                   adjoint-vs-CS absolute / relative / % error against --ref
+                   (default: the trained adjoint ref json).
 
-Each complex re-converge is a full nonlinear solve (~5-10 min), so the DV set
-is configurable; mind the cost when sweeping many shape components.
+Each complex re-converge is a full nonlinear solve, and the primal is forced to
+grind all `--ncycles` iters (default 5000, `--l2 1e-20` disables early exit) to
+push the FD-PC complex solve past its ~1e-8 stall. `resetFlow` runs before every
+DV so there is no cross-DV contamination. Sweeping ALL shape points is the
+default and is expensive -- narrow it with `--shape a,b,c` when iterating.
 
 examples:
   # real build: dump the adjoint totals for all DVs (writes json for `cs` to read)
   mpirun -np 2 --bind-to core /home/mdo/packages_v2/mach/bin/python \
       dev/diag_full_derivatives.py --mode adjoint --out /tmp/adj_all.json
 
-  # complex build: CS-vs-adjoint for aero + span + twist 0,3 + shape 0,24,48,71
+  # complex build: CS-vs-adjoint over aero + span + ALL twist + ALL shape,
+  #                deep 5000-iter re-converge, final abs/rel/% error table
   mpirun -np 2 --bind-to core /home/mdo/packages_v2/mach/bin/python \
-      dev/diag_full_derivatives.py --mode cs --ref /tmp/adj_all.json \
-      --twist 0,3 --shape 0,24,48,71
+      dev/diag_full_derivatives.py --mode cs --ref /tmp/adj_all.json
+
+  # cheaper: just a few shape points, shallower budget
+  mpirun -np 2 --bind-to core /home/mdo/packages_v2/mach/bin/python \
+      dev/diag_full_derivatives.py --mode cs --shape 0,24,48,71 --ncycles 2000
 """
 import os
 import sys
@@ -99,8 +107,15 @@ def getDVGeo(ffdFile, isComplex):
     return DVGeo
 
 
-def buildSolver(complex_build):
-    """Mirror test_adjoint_sagr.py setUp. Returns (solver, ap, nShape)."""
+def buildSolver(complex_build, ncycles=None, l2=None):
+    """Mirror test_adjoint_sagr.py setUp. Returns (solver, ap, nShape).
+
+    ncycles / l2 (when given) override the primal iteration budget and the
+    L2Convergence target. For the complex re-converge we set l2 absurdly tight
+    (1e-20) so the run NEVER early-exits on L2Convergence and instead grinds all
+    `ncycles` iterations -- the point being to push the FD-PC complex solve as
+    deep as it can go past its ~1e-8 stall (see complex-build-no-ad-pc caveat).
+    """
     if complex_build:
         from adflow import ADFLOW_C as ADF
         from idwarp import USMesh_C as MESH
@@ -113,6 +128,14 @@ def buildSolver(complex_build):
     options.update(copy.deepcopy(sagrBaseOptions))
     # make ADflow talk
     options["printiterations"] = True
+
+    # deeper primal: run all iters (no early L2 exit) to push the solve past
+    # the FD-PC stall -- applied to both modes so adjoint linearizes about the
+    # same deep state the CS solve reaches.
+    if ncycles is not None:
+        options["ncycles"] = int(ncycles)
+    if l2 is not None:
+        options["l2convergence"] = float(l2)
 
     if complex_build:
         # complex build has no AD routines -> AD preconditioner unavailable;
@@ -173,10 +196,50 @@ def cmpRow(label, cs, ref):
     return "%-34s  adj=% .10e  CS=% .10e  |Δ|=%.2e  rel=%.2e" % (label, ref, cs, ad, rd)
 
 
+def resolve_indices(spec, n):
+    """Parse a --shape/--twist spec into a list of 0-based indices.
+    "all" -> every index [0, n); otherwise comma-separated ints (clamped to n)."""
+    spec = str(spec).strip().lower()
+    if spec in ("", "all"):
+        return list(range(n))
+    return [int(x) for x in spec.split(",") if x != "" and 0 <= int(x) < n]
+
+
+def print_table(rows):
+    """rows: list of (label, cs, ref). Prints an aligned adjoint-vs-CS table
+    with absolute, relative, and % error, then worst-case summary lines."""
+    hdr = "%-24s %18s %18s %11s %11s %11s" % (
+        "d(func)/d(dv)", "adjoint", "complex-step", "|abs err|", "rel err", "% err",
+    )
+    rprint("\n" + "=" * len(hdr))
+    rprint("  SUMMARY TABLE: adjoint vs complex-step")
+    rprint("=" * len(hdr))
+    rprint(hdr)
+    rprint("-" * len(hdr))
+    worst_rel = (-1.0, "")
+    n_noref = 0
+    for label, cs, ref in rows:
+        if ref is None:
+            rprint("%-24s %18.10e %18s %11s %11s %11s" % (label, cs, "(no ref)", "-", "-", "-"))
+            n_noref += 1
+            continue
+        ad = abs(cs - ref)
+        rd = ad / max(abs(ref), 1e-30)
+        rprint("%-24s %18.10e %18.10e %11.2e %11.2e %10.4f%%" % (label, ref, cs, ad, rd, rd * 100.0))
+        if rd > worst_rel[0]:
+            worst_rel = (rd, label)
+    rprint("-" * len(hdr))
+    if worst_rel[0] >= 0:
+        rprint("worst relative error: %.3e (%.4f%%) at %s" % (worst_rel[0], worst_rel[0] * 100.0, worst_rel[1]))
+    if n_noref:
+        rprint("(%d row(s) had no reference value)" % n_noref)
+
+
 # --------------------------------------------------------------------- modes
 def run_adjoint(args):
-    solver, ap, nShape = buildSolver(complex_build=False)
-    rprint("\n==== ADJOINT MODE (real build) — nShape(local)=%d ====" % nShape)
+    solver, ap, nShape = buildSolver(complex_build=False, ncycles=args.ncycles, l2=args.l2)
+    shape_idx = resolve_indices(args.shape, nShape)
+    rprint("\n==== ADJOINT MODE (real build) — nShape(local)=%d, printing %d shape comp ====" % (nShape, len(shape_idx)))
     funcsSens = {}
     solver.evalFunctionsSens(ap, funcsSens)  # adjoint KSP trace prints here
     fail = {}
@@ -195,7 +258,7 @@ def run_adjoint(args):
             for i in range(len(tw)):
                 rprint("  twist[%d]                     % .10e" % (i, tw[i]))
             sh = numpy.real(numpy.atleast_1d(d["shape"]).flatten())
-            for j in args.shape:
+            for j in shape_idx:
                 if j < len(sh):
                     rprint("  shape[%d]%s% .10e" % (j, " " * (21 - len(str(j))), sh[j]))
         # dump for cs mode to read
@@ -214,16 +277,20 @@ def run_adjoint(args):
 
 def run_cs(args):
     h = 1e-40
-    solver, ap, nShape = buildSolver(complex_build=True)
+    solver, ap, nShape = buildSolver(complex_build=True, ncycles=args.ncycles, l2=args.l2)
     ref = loadRef(args.ref, ap.name)
+    shape_idx = resolve_indices(args.shape, nShape)
+    twist_idx = resolve_indices(args.twist, NTWIST)
     rprint("\n==== CS MODE (complex build) — ref=%s  nShape(local)=%d ====" % (args.ref, nShape))
+    rprint("     primal budget: ncycles=%s  l2convergence=%s (force all iters)" % (args.ncycles, args.l2))
+    rprint("     sweeping %d shape + %d twist components" % (len(shape_idx), len(twist_idx)))
 
-    results = []  # (label, func, cs, ref)
+    rows = []  # (label, cs, ref) for the final table
 
     def do_aero(dv):
         rprint("\n#### re-converging complex solver: aero DV %s ####" % dv)
         setattr(ap, dv, getattr(ap, dv) + h * 1j)
-        solver.resetFlow(ap)
+        solver.resetFlow(ap)  # clean restart each DV -> no cross-DV contamination
         solver(ap, writeSolution=False)
         funcs = {}
         solver.evalFunctions(ap, funcs)
@@ -231,14 +298,16 @@ def run_cs(args):
         for f in EVAL_FUNCS:
             cs = numpy.imag(funcs[ap.name + "_" + f]) / h
             r = refLookup(ref, ap.name, f, dv + "_" + ap.name)
-            results.append(("d%s/d%s" % (f, dv), cmpRow("d%s/d%s" % (f, dv), cs, r)))
+            lbl = "d%s/d%s" % (f, dv)
+            rprint("  " + cmpRow(lbl, cs, r))
+            rows.append((lbl, cs, r))
 
     def do_geom(dvname, idx, arrlen):
         rprint("\n#### re-converging complex solver: geom DV %s[%d] ####" % (dvname, idx))
         xRef = {"twist": numpy.zeros(NTWIST, dtype="D"), "span": numpy.zeros(1, dtype="D"),
                 "shape": numpy.zeros(nShape, dtype="D")}
         xRef[dvname][idx] += h * 1j
-        solver.resetFlow(ap)
+        solver.resetFlow(ap)  # clean restart each DV -> no cross-DV contamination
         solver.DVGeo.setDesignVars(xRef)
         solver(ap, writeSolution=False)
         funcs = {}
@@ -247,21 +316,20 @@ def run_cs(args):
             cs = numpy.imag(funcs[ap.name + "_" + f]) / h
             r = refLookup(ref, ap.name, f, dvname, idx=idx)
             lbl = "d%s/d%s[%d]" % (f, dvname, idx)
-            results.append((lbl, cmpRow(lbl, cs, r)))
+            rprint("  " + cmpRow(lbl, cs, r))
+            rows.append((lbl, cs, r))
 
     if not args.skip_aero:
         for dv in ["alpha", "mach", "P", "T"]:
             do_aero(dv)
     if not args.skip_geom:
         do_geom("span", 0, 1)
-        for i in args.twist:
+        for i in twist_idx:
             do_geom("twist", i, NTWIST)
-        for j in args.shape:
+        for j in shape_idx:
             do_geom("shape", j, nShape)
 
-    rprint("\n================= SUMMARY: adjoint vs complex-step =================")
-    for _, row in results:
-        rprint(row)
+    print_table(rows)
 
 
 def main():
@@ -271,14 +339,17 @@ def main():
                    help="adjoint totals json to compare CS against (cs mode)")
     p.add_argument("--out", default=os.path.join(RT, "refs", "adjoint_sagr_tut_wing.json"),
                    help="where adjoint mode writes the totals")
-    p.add_argument("--shape", default="0,24,48,71",
-                   help="comma-separated local shape component indices to sweep")
-    p.add_argument("--twist", default="0,3", help="comma-separated twist component indices")
+    p.add_argument("--shape", default="all",
+                   help="'all' (every FFD shape point, default) or comma-separated indices")
+    p.add_argument("--twist", default="all",
+                   help="'all' (default) or comma-separated twist component indices")
+    p.add_argument("--ncycles", type=int, default=5000,
+                   help="primal iteration budget for the (complex) re-converge (default 5000)")
+    p.add_argument("--l2", type=float, default=1e-20,
+                   help="L2Convergence target; 1e-20 forces all ncycles iters (default 1e-20)")
     p.add_argument("--skip-aero", action="store_true")
     p.add_argument("--skip-geom", action="store_true")
     args = p.parse_args()
-    args.shape = [int(x) for x in args.shape.split(",") if x != ""]
-    args.twist = [int(x) for x in args.twist.split(",") if x != ""]
 
     if args.mode == "adjoint":
         run_adjoint(args)

@@ -54,6 +54,10 @@ the end, not task-by-task.
     `docs/nondimensionalization.md` before touching any equation involving
     velocity, viscosity, time scales, or Reynolds number.
 
+## Communication
+
+**Be concise in all responses.** No preamble, no recap, minimal narration.
+
 ## Documentation & Knowledge Base
 
 All docs are indexed in **[`docs/README.md`](docs/README.md)** — the master
