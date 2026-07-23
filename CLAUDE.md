@@ -130,9 +130,13 @@ All small verification/smoke tests go in
 
 ## Build Commands
 
-```bash
-cd build && make -j                  # Claude Code runs this
-# (user reruns Tapenade if STATUS was TAPENADE NEEDED)
-# (user reruns make if Tapenade was rerun)
-# (user runs the python smoke script to confirm N iterations without NaN)
-```
+Use the **`/build`** skill — it activates the mach venv (needed for the build's
+Python deps), selects the PETSc arch (`real-debug` / `complex-debug`), builds,
+installs into mach, and cleans+retries once on error:
+
+- `/build real` — real build (`make` → `adflow/libadflow.so`)
+- `/build complex` — complex-step build (`make -f Makefile_CS PETSC_ARCH=complex-debug` → `adflow/libadflow_cs.so`)
+- `/build both` — both (independent `src/build` vs `src_cs` trees; no clean between)
+
+Then: user reruns Tapenade if STATUS was `TAPENADE NEEDED` (and `/build` again),
+and runs the python smoke script to confirm N iterations without NaN.
