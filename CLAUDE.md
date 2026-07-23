@@ -73,6 +73,7 @@ Quick routing (full table in `docs/README.md`):
 | ANK/NK option mechanism | `ADFLOW_BASE/ADFLOW_03…` → `ADFLOW_BASE/ADFLOW_01…` |
 | ADflow option name/default/enum | `ADFLOW_BASE/ADFLOW_05…` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04…` → `05…` → `01…` |
+| Rotating mesh / rotating frame of reference (rotor, prop, turbine) | `VERIFICATION/rotating-frame-audit.md` → `nondimensionalization.md` (§5–6) |
 | Adjoint / AD theory | `ADFLOW_BASE/ADFLOW_02…` |
 | Adjoint / AD on this branch | `VERIFICATION/adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02…` → `03…` |
 | Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04…` → `02…` → `VERIFICATION/adjoint-trace.md` |
@@ -85,6 +86,7 @@ Quick routing (full table in `docs/README.md`):
 | `docs/architecture.md` | Solver architecture, state-vector layout, code/module locations, and every transition runtime option (name/default/enum). |
 | `docs/nondimensionalization.md` | ADflow's p-ρ non-dimensional scaling. Read before any velocity/viscosity/Re/time-scale equation. |
 | `docs/VERIFICATION/adjoint-trace.md` | Adjoint/AD touchpoints on this branch (guards, Tapenade directives, generated files, wiring). |
+| `docs/VERIFICATION/rotating-frame-audit.md` | Rotating-frame consistency fix: transition model uses the relative frame (vortLim ref velocity `√(uInf²+\|Ω×r\|²)`, BL scales & helicity on `V_rel`); where rotation comes from (grid vs `setRotationRate`) and the once-per-run warning; verified bit-identical no-op when Ω=0 (residual + real 13/13 + CS 10/10). |
 | `docs/VERIFICATION/three-stage-verification.md` | The 3-stage low-level adjoint verification ladder (dot-product reverse↔forward consistency, reverse vs fast-reverse consistency, 3-way AD/FD/CS forward check) — tests, exact run commands, and results. |
 | `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` | Full paper text — **physics source of truth** (sole physics reference). |
 | `docs/SA_GAMMA_RETHETHA_BASE/README.md` | Sub-index for the transition physics KB. |
