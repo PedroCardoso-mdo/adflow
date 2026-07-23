@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """Compute CS for ALL 16 dR[row]/dw[col] blocks and compare each to the AD
-ref (jacvecfwd_sagr_flatplate.json). Reports every block's pass/fail under the
+ref (jacvecfwd_sagr_tut_wing.json). Reports every block's pass/fail under the
 official tol (rtol=atol=5e-9), so we know exactly which per-block checks pass."""
 import os, sys, copy, json
 
@@ -14,7 +14,7 @@ from reg_default_options import adflowDefOpts
 comm = MPI.COMM_WORLD
 rank = comm.rank
 baseDir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ref = json.load(open(os.path.join(baseDir, "refs", "jacvecfwd_sagr_flatplate.json")))
+ref = json.load(open(os.path.join(baseDir, "refs", "jacvecfwd_sagr_tut_wing.json")))
 options = copy.copy(adflowDefOpts)
 options["outputdirectory"] = os.path.join(baseDir, options["outputdirectory"])
 options.update(copy.deepcopy(reg_sagr.sagrBaseOptions))

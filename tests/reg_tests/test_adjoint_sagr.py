@@ -9,6 +9,7 @@ from mpi4py import MPI
 
 # MACH classes
 from pygeo import DVGeometry
+from pyspline import Curve
 from idwarp import USMesh
 
 # MACH testing class
@@ -23,27 +24,55 @@ import reg_test_utils as utils
 from reg_default_options import adflowDefOpts, IDWarpDefOpts
 
 import reg_test_classes
-from reg_sagr import ap_sagr_flatplate, sagrBaseOptions, sagrAeroDVs, sagrFFDFile
+from reg_sagr import ap_sagr_tut_wing, sagrBaseOptions, sagrAeroDVs, sagrFFDFile
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
 
 
 def getDVGeo(ffdFile, isComplex=False):
-    # Setup geometry. Unlike the tutorial wing (twist/span ref axis), the
-    # transition flat-plate/airfoil case uses local shape variables only —
-    # these still exercise the full dR/dXv path through the transition
-    # residuals (wall distance, metrics, vorticity limiter).
+    # Identical to test_adjoint.py's tutorial-wing DVGeo: the SA-GR case now
+    # runs on the SAME tutorial-wing mesh + FFD as the SA adjoint test (see
+    # reg_sagr.py case-inputs note), so we exercise the exact same twist/span
+    # (global, ref-axis) and shape (local) design variables. These drive the
+    # full dR/dXv path through the transition residuals (wall distance,
+    # metrics, vorticity limiter) just as they do for plain SA.
     DVGeo = DVGeometry(ffdFile, isComplex=isComplex)
-    DVGeo.addLocalDV("shape", lower=-0.05, upper=0.05, axis="y", scale=10.0)
+
+    nTwist = 6
+    DVGeo.addRefAxis(
+        "wing",
+        Curve(
+            x=numpy.linspace(5.0 / 4.0, 1.5 / 4.0 + 7.5, nTwist),
+            y=numpy.zeros(nTwist),
+            z=numpy.linspace(0, 14, nTwist),
+            k=2,
+        ),
+    )
+
+    def twist(val, geo):
+        for i in range(nTwist):
+            geo.rot_z["wing"].coef[i] = val[i]
+
+    def span(val, geo):
+        C = geo.extractCoef("wing")
+        s = geo.extractS("wing")
+        for i in range(len(C)):
+            C[i, 2] += s[i] * val[0]
+        geo.restoreCoef(C, "wing")
+
+    DVGeo.addGlobalDV("twist", [0] * nTwist, twist, lower=-10, upper=10, scale=1.0)
+    DVGeo.addGlobalDV("span", [0], span, lower=-10, upper=10, scale=1.0)
+    DVGeo.addLocalDV("shape", lower=-0.5, upper=0.5, axis="y", scale=10.0)
+
     return DVGeo
 
 
 test_params = [
     {
-        "name": "sagr_flatplate",
+        "name": "sagr_tut_wing",
         "options": copy.deepcopy(sagrBaseOptions),
-        "ref_file": "adjoint_sagr_flatplate.json",
-        "aero_prob": copy.deepcopy(ap_sagr_flatplate),
+        "ref_file": "adjoint_sagr_tut_wing.json",
+        "aero_prob": copy.deepcopy(ap_sagr_tut_wing),
         # cd is the transition-sensitive functional; do NOT reduce this to
         # cl only (sst_dev post-mortem: adjoint regression covered only cl
         # and the verification hole was never closed)
@@ -58,7 +87,7 @@ class TestAdjointSAGR(reg_test_classes.RegTest):
     """
     Tests that total sensitivities calculated by solving the SA-GR adjoint
     (reverse mode, Tapenade _b routines, 8-state adjoint system) are correct.
-    Mirrors TestAdjoint (test_adjoint.py).
+    Mirrors TestAdjoint (test_adjoint.py), tutorial-wing RANS case.
     """
 
     N_PROCS = 2
@@ -109,6 +138,10 @@ class TestAdjointSAGR(reg_test_classes.RegTest):
         utils.assert_adjoint_sens_allclose(self.handler, self.CFDSolver, self.ap, tol=1e-10)
         self.assert_adjoint_failure()
 
+    def test_adjoint2(self):
+        utils.assert_adjoint2_sens_allclose(self.handler, self.CFDSolver, self.ap, tol=1e-10)
+        self.assert_adjoint_failure()
+
     def test_adjoint_states(self):
         utils.assert_adjoint_states_allclose(self.handler, self.CFDSolver, self.ap, tol=1e-10)
         self.assert_adjoint_failure()
@@ -152,6 +185,22 @@ class TestCmplxStepSAGR(reg_test_classes.CmplxRegTest):
         # add the SA-GR aero dvs to the problem
         for dv in sagrAeroDVs:
             self.ap.addDV(dv)
+
+        # Complex-build solver overrides. The complexify build deliberately
+        # excludes the Tapenade AD routines (audit 08: complexify runs over all
+        # files MINUS adjoint/output{Forward,Reverse,ReverseFast}), so the
+        # AD-based preconditioner used by the real solve (ANK/NKADPC=True in
+        # sagrBaseOptions) is unavailable in the complex build -- attempting it
+        # aborts with "Forward AD routines are not complexified". The coupled
+        # ANK path also warns it may diverge on the stiff transition sources.
+        # So re-converge the complex primal with FD-colored PC on the decoupled
+        # (DADI-turb) ANK->NK path instead. Verified (2026-07-23) to reach the
+        # same steady state the real AD-PC ladder converges to. This only
+        # affects HOW the complex solver iterates to R(w)=0; the converged
+        # state (hence the CS-vs-adjoint comparison) is unchanged.
+        options["ankadpc"] = False
+        options["nkadpc"] = False
+        options["ankcoupledswitchtol"] = 1e-16  # never couple -> stay decoupled
 
         self.CFDSolver = ADFLOW_C(options=options, debug=True)
 
@@ -209,13 +258,12 @@ class TestCmplxStepSAGR(reg_test_classes.CmplxRegTest):
         # redo the setup for a cmplx test
         funcsSens = defaultdict(lambda: {})
 
-        nShape = self.CFDSolver.DVGeo.getNDV()
-        xRef = {"shape": numpy.zeros(nShape, dtype="D")}
+        xRef = {"twist": [0.0] * 6, "span": [0.0], "shape": numpy.zeros(72, dtype="D")}
 
         rtol = 5e-9
         atol = 5e-9
 
-        for dv in ["shape"]:
+        for dv in ["span", "twist", "shape"]:
             xRef[dv][0] += self.h * 1j
 
             self.CFDSolver.resetFlow(self.ap)

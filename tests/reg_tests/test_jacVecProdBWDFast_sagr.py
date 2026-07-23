@@ -13,17 +13,17 @@ import reg_test_utils as utils
 
 import reg_test_classes
 import reg_sagr
-from reg_sagr import ap_sagr_flatplate, sagrBaseOptions, sagrAeroDVs
+from reg_sagr import ap_sagr_tut_wing, sagrBaseOptions, sagrAeroDVs
 
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
 
 test_params = [
     {
-        "name": "sagr_flatplate",
+        "name": "sagr_tut_wing",
         "options": copy.deepcopy(sagrBaseOptions),
-        "ref_file": "jacvecbwd_sagr_flatplate.json",
-        "aero_prob": copy.deepcopy(ap_sagr_flatplate),
+        "ref_file": "jacvecbwd_sagr_tut_wing.json",
+        "aero_prob": copy.deepcopy(ap_sagr_tut_wing),
         "N_PROCS": 1,
     },
 ]

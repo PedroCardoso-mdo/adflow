@@ -49,14 +49,16 @@ baseDir = os.path.dirname(os.path.abspath(__file__))
 # BOTH grid and restart -- same convention the AR5 crossflow case used.
 sagrGridFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_sagr_dp.cgns")
 sagrRestartFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_sagr_dp.cgns")
-# NOTE (2026-07-23): this FFD is matched to the AR5 L3 grid, NOT the
-# tutorial-wing mesh above -- it is stale for this case. Only
-# test_adjoint_sagr.py (the complete-mode/DVGeo adjoint test) uses it; the
-# raw-API partials tests (test_jacVecProdFWD_sagr.py /
-# test_jacVecProdBWDFast_sagr.py, sagrBaseOptions/ap_sagr_tut_wing below)
-# never touch DVGeo/FFD at all, so they are unaffected. Fix before running
-# test_adjoint_sagr.py on this mesh.
-sagrFFDFile = os.path.join(baseDir, "../../input_files/ar5_plain_wing_ffd_L3.xyz")
+# FFD for the complete-mode/DVGeo adjoint test (test_adjoint_sagr.py). Now
+# that the case is back on the tutorial-wing mesh (see the case-inputs note
+# above), this is the SAME standard ADflow tutorial-wing FFD the SA adjoint
+# test uses (test_adjoint.py) -- it wraps this mesh, so the twist/span/shape
+# ref-axis DVGeo in test_adjoint_sagr.py exercises the full dR/dXv path
+# identically to the SA case. (Was ar5_plain_wing_ffd_L3.xyz for the AR5
+# case before 2026-07-23; that FFD is stale for this mesh.) The raw-API
+# partials tests (test_jacVecProdFWD_sagr.py / test_jacVecProdBWDFast_sagr.py)
+# never touch DVGeo/FFD, so they are unaffected by this either way.
+sagrFFDFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_ffd.fmt")
 
 # Tutorial-wing AeroProblem — MUST match the conditions
 # dev/generate_sagr_restart.py converged (mach=0.15, alpha=1.8; see its
@@ -77,10 +79,11 @@ ap_sagr_tut_wing = AeroProblem(
     evalFuncs=["cl", "cd", "cmz", "drag"],
 )
 
-# backward-compat aliases used by dev/ diagnostic scripts and the test files
-# (which import ap_sagr_ar5_wing / ap_sagr_flatplate by name)
+# backward-compat alias still used by dev/ diagnostic scripts that import
+# ap_sagr_ar5_wing by name. (The old ap_sagr_flatplate alias was dropped
+# 2026-07-23 -- the case is the tutorial wing, never a flat plate, and all
+# tests now use ap_sagr_tut_wing directly.)
 ap_sagr_ar5_wing = ap_sagr_tut_wing
-ap_sagr_flatplate = ap_sagr_tut_wing
 
 # Aero DVs: mach/P/T drive uInf/muInf and wInf(itu2/itu3) — this is the axis
 # that exercises audit-06 finding F1 (vorticity-limiter uInf/muInf path) and
@@ -282,6 +285,15 @@ sagrBaseOptions = {
     "l2convergence": 1e-14,
     "l2convergencecoarse": 1e-4,
     "adjointl2convergence": 1e-14,
+    # The SA-GR 8-state transpose Jacobian is stiff: at the default 500-iter
+    # cap the adjoint KSP only reaches ~3e-12 (confirmed 2026-07-23 diagnostic
+    # on the deeply-converged restart, r/r0~1e-12) and gets flagged failed
+    # before hitting adjointl2convergence=1e-14, even though it is converging
+    # monotonically. Raise the iteration budget a lot and enlarge the GMRES
+    # subspace (matches nksubspacesize=300) so the slow tail reaches 1e-14
+    # without restart stalls.
+    "adjointmaxiter": 3000,
+    "adjointsubspacesize": 300,
     # the adjoint must include the transition equations — never freeze
     "frozenturbulence": False,
 

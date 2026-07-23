@@ -8,6 +8,17 @@
 
 ## Active Task: gammaForSA clamp AD-vs-CS mismatch (tutorial-wing/M=0.15 case)
 
+> **Follow-on (2026-07-23):** full total-derivative **adjoint** test added for
+> SA-GR (`test_adjoint_sagr.py`, mirrors `test_adjoint.py`); `gammaForSA` clamp
+> retuned to `[xminn, one+xminn]` (Tapenade rerun, real+complex rebuilt);
+> `adjointMaxIter=3000` (8-state adjoint needs ~583 iters); complex-build AD-PC
+> overrides for the CS re-converge; `_flatplate`→`_tut_wing` rename;
+> `dev/diag_full_derivatives.py` added. **Status:** partials real 13/0 + CS
+> 10/0, adjoint real 4/0 PASS; **adjoint-CS agrees to ~1e-8 but OPEN** — the
+> complex build can't use the AD preconditioner so the CS re-converge stalls
+> ~1e-8, tripping the 5e-9 tol (tolerance/depth decision pending). See
+> [`task-log/2026-07-23-sagr-full-adjoint-test.md`](task-log/2026-07-23-sagr-full-adjoint-test.md).
+
 **Started:** 2026-07-23. **Status: RESOLVED 2026-07-23.** The full SA-GR
 partial suite now passes: `./run_sagr_tests.sh all` → real (Stage 1
 dot-products, Stage 2 `_b`↔`_fast_b`, Stage 3 AD/FD) **PASS** and complex

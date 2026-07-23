@@ -514,23 +514,31 @@ contains
                         ! Compute the source term; some terms are saved for the
                         ! linearization. The source term is stored in scratch.
 
-                        ! Clamp gamma to the physical range for SA production coupling.
-                        ! This is a pure failure/divergence safeguard, not part of
-                        ! normal physics -- gamma stays in [0,1] on its own in any
-                        ! healthy solve. A bare min(max(gamma,0),1) ties exactly at
-                        ! gamma==0/1, which gamma legitimately reaches over large,
-                        ! ordinary flow regions (fully laminar/turbulent), and
-                        ! Tapenade's forward-mode tangent picks the wrong branch
-                        ! there vs. complex-step ground truth (confirmed
-                        ! 2026-07-23 by cell-by-cell AD-vs-CS diffing: every
-                        ! mismatched cell in dR[nuTilde]/dw[gamma] had gamma==1.0
-                        ! bit-exact, CS=0 correctly, AD nonzero incorrectly). Padding
-                        ! the clamp bounds by rsaGRgammaForSAMargin keeps gamma's
-                        ! natural 0/1 values strictly inside the unclamped
-                        ! pass-through region -- no derivative ambiguity there, no
-                        ! smoothing/distortion of normal-operation values, and the
-                        ! clamp still catches genuinely divergent gamma.
-                        gammaForSA = min(max(w(i, j, k, itu2), -rsaGRgammaForSAMargin), one + rsaGRgammaForSAMargin)
+                        ! Clamp the intermittency multiplying SA production
+                        ! (Eq. 41: P~_nu = gamma*P_nu). gamma is the RAW
+                        ! intermittency in [0,1] here: unlike standard
+                        ! Langtry-Menter, P&Z drop the separation-induced
+                        ! gamma_sep term (Sec. II), so the SA-production
+                        ! multiplier never exceeds 1 -- hence the upper cap is
+                        ! ~1 (one + xminn), NOT rsaGRgammaHi=2.0 (that 2.0 is
+                        ! gammaLocal's raw solver-state bound from Algorithm 2, a
+                        ! different role). This is a failure/divergence safeguard,
+                        ! not normal physics -- gamma stays in [0,1] on its own in
+                        ! any healthy solve. A bare min(max(gamma,0),1) ties
+                        ! exactly at gamma==1, which gamma legitimately reaches
+                        ! over large fully-turbulent regions, and Tapenade's
+                        ! forward tangent picks the wrong branch there vs.
+                        ! complex-step (confirmed 2026-07-23 by cell-by-cell
+                        ! AD-vs-CS diffing: every mismatched cell in
+                        ! dR[nuTilde]/dw[gamma] had gamma==1.0 bit-exact, CS=0
+                        ! correctly, AD nonzero incorrectly). Padding the upper
+                        ! bound to one + xminn keeps gamma==1.0 strictly inside
+                        ! the pass-through region (xminn=1e-10 >> the observed
+                        ! ~1-ULP overshoot), removing the tie. The lower bound
+                        ! xminn is only met asymptotically (steady-state gamma
+                        ! respects the implicit 0.02 floor), so it carries no tie
+                        ! risk and just guards divergent/negative gamma.
+                        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
 
                         if (approxSA .and. transitionUseApproxSA) then
                             term1 = zero
@@ -576,14 +584,21 @@ contains
                         nutSA = w(i, j, k, itu1) * fv1
                         !rTurb= ν_t/ν
                         rTurb = nutSA / nu
-                        ! Unlike gammaForSA below, these bounds (1e-10, 2.0,
-                        ! and reThetaTilde's floor 20.0) are arbitrary numerical
-                        ! safety margins, not values gamma/reThetat naturally
-                        ! saturate to -- confirmed empirically (2026-07-23): 0
-                        ! cells sit at/near the reThetaTilde floor on the
-                        ! tutorial-wing/M=0.15 state. No AD-vs-CS tie risk, so
-                        ! left as plain hard clamps (a genuine safeguard for
-                        ! divergent/failing states, not touched).
+                        ! gammaLocal clamps intermittency to [rsaGRgammaLo,
+                        ! rsaGRgammaHi] = [1e-10, 2.0] -- these are the model's
+                        ! own bounds from Algorithm 2 (P&Z Eq. context, line 630:
+                        ! "while gamma > 2 or gamma < 1e-10 ... limit
+                        ! intermittency"), NOT arbitrary numbers, so they stay as
+                        ! defined. Unlike gammaForSA above (whose min(.,1) ties at
+                        ! gamma's natural saturation value 1.0 -> AD-vs-CS branch
+                        ! mismatch, fixed there with a margin), gammaLocal's upper
+                        ! bound is 2.0, so gamma==1.0 sits STRICTLY INTERIOR: no
+                        ! tie point at any value gamma naturally reaches, hence no
+                        ! margin needed here. The 1e-10 lower bound is only met
+                        ! asymptotically (gamma->0 in fully laminar regions is not
+                        ! bit-exact), so it too carries no tie risk. reThetaTilde's
+                        ! floor (Algorithm 2: reThetat clamped >= 20) is likewise a
+                        ! plain hard clamp.
                         gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
                         reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
                         yDist = d2Wall(i, j, k)
@@ -2526,11 +2541,12 @@ contains
         termFw = ((one + cw36) / (gg6 + cw36))**sixth
         fwSa = gg * termFw
 
-        ! Padded clamp -- kept in lockstep with Source's gammaForSA (this is
-        ! the hand-coded PC/DADI Jacobian, not Tapenade-differentiated, but
-        ! must clamp gamma the same way as the residual for the linearization
-        ! point to stay physically consistent).
-        gammaForSA = min(max(w(i, j, k, itu2), -rsaGRgammaForSAMargin), one + rsaGRgammaForSAMargin)
+        ! Clamp -- kept in lockstep with Source's gammaForSA (this is the
+        ! hand-coded PC/DADI Jacobian, not Tapenade-differentiated, but must
+        ! clamp gamma the same way as the residual for the linearization point
+        ! to stay physically consistent): [xminn, one + xminn], upper cap ~1
+        ! since Eq. 41's SA-production multiplier is the raw gamma in [0,1].
+        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
 
         term2_prod = dist2Inv * kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2)
         term2_dest = -dist2Inv * rsaCw1 * fwSa

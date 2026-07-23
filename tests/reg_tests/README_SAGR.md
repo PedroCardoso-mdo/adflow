@@ -5,15 +5,15 @@ Test scaffolding for verifying the SA-GR transition model's AD derivatives
 differences and the complex-step (CS) build. Written per
 `docs/audits/08_test_prep.md`; background in `docs/audits/06_adjoint_wiring.md`.
 
-**2026-07-19: case switched from the SA tutorial-wing grid to the AR5
-plain-wing case** (`ar5_plain_wing_vol_L3.cgns`, an NK-converged real 3D
-wing state instead of the small ANK-only tutorial mesh) — see
-`reg_sagr.py`'s and `generate_sagr_restart.py`'s header comments for the
-full rationale. The `_flatplate` names below (class-name suffixes, ref
-JSON filenames) are a legacy label from before the switch and do NOT mean
-the case is a flat plate — `ap_sagr_flatplate` is now just a backward-compat
-alias for `ap_sagr_ar5_wing`. Not renamed here to avoid churning trained
-ref filenames; rename only if retraining anyway.
+**2026-07-23: case is the SA tutorial-wing grid** (`mdo_tutorial_sagr_dp.cgns`,
+an NK-converged state on the standard ADflow tutorial-wing mesh at Mach=0.15).
+It was briefly on the AR5 plain-wing case (2026-07-19) but that stalled
+chronically — see `reg_sagr.py`'s header comments for the full rationale.
+The old `_flatplate` labels (class-name suffixes, ref JSON filenames) were a
+legacy misnomer from before either switch and have now been **renamed to
+`_tut_wing`** (refs, test `name`s, `ap_sagr_tut_wing`) to stop misleading —
+the case has never been a flat plate. `ap_sagr_ar5_wing` remains as a
+backward-compat alias for the dev/ diagnostic scripts.
 
 ## File tree
 
@@ -25,9 +25,9 @@ tests/reg_tests/
 ├── test_jacVecProdBWDFast_sagr.py   # reverse-fast vs reverse consistency + dot products
 ├── test_adjoint_sagr.py             # adjoint totals vs ref + complex-step totals
 └── refs/                            # trained JSON reference files land here
-    ├── jacvecfwd_sagr_flatplate.json    (created by training)
-    ├── jacvecbwd_sagr_flatplate.json    (created by training)
-    └── adjoint_sagr_flatplate.json      (created by training)
+    ├── jacvecfwd_sagr_tut_wing.json    (created by training)
+    ├── jacvecbwd_sagr_tut_wing.json    (created by training)
+    └── adjoint_sagr_tut_wing.json      (created by training)
 ```
 
 They mirror the upstream SA suite one-to-one:
@@ -87,14 +87,33 @@ They mirror the upstream SA suite one-to-one:
 ### `test_adjoint_sagr.py`
 - `TestAdjointSAGR` (real build): residuals + `evalFunctionsSens` totals vs
   ref, for `cl, cd, cmz, drag` (cd/cmz deliberately included — sst_dev
-  post-mortem: never verify `cl` only).
+  post-mortem: never verify `cl` only). Uses `mdo_tutorial_ffd.fmt` + the
+  twist/span/shape ref-axis DVGeo the SA `test_adjoint.py` uses. Needs
+  `adjointMaxIter=3000` (set in `reg_sagr.py`): the SA-GR 8-state adjoint KSP
+  takes ~583–597 iters to reach `adjointL2Convergence=1e-14`; the default 500
+  cap clips it just short and mis-flags a converging adjoint as failed.
 - `TestCmplxStepSAGR` (complex build): re-converges the complex solver with a
-  1e-40j perturbation per DV (`alpha`, `mach`, and a local `shape` geometric
-  DV via DVGeo/idwarp) and compares imag(f)/h against the adjoint totals in
-  the ref file. **2026-07-20: `sagrFFDFile` now points at a real AR5 FFD**
-  (`ar5_plain_wing_ffd_L3.xyz`, md5-matched to `sagrGridFile`, found in
-  `Desktop/TekAero/Run_Files/plain_wing_mesh_output/ffd/`) instead of the
-  tutorial-wing placeholder, so the shape-DV case is runnable.
+  1e-40j perturbation per DV (`alpha`, `mach`, and `twist`/`span`/`shape` via
+  DVGeo/idwarp) and compares imag(f)/h against the adjoint totals in the ref.
+  **Complex-build caveat:** the complexify build excludes the Tapenade AD
+  routines, so the AD preconditioner the real solve relies on is unavailable —
+  `setUp` overrides `ankadpc/nkadpc=False` + `ankcoupledswitchtol=1e-16` so the
+  complex primal re-converges with FD-colored PC on the decoupled ANK→NK path
+  (otherwise it aborts with "Forward AD routines are not complexified"). That
+  FD-PC path stalls ~1e-8 (STRATEGY.md: FD-PC weak on SA-GR), so the complex
+  functions — and hence CS-vs-adjoint agreement — cap at ~1e-8 absolute. The
+  adjoint totals are correct to that level; whether to loosen the inherited
+  `5e-9` tol or push the complex solve deeper is an **open item** (see
+  `docs/task-log/2026-07-23-sagr-full-adjoint-test.md`).
+
+### `dev/diag_full_derivatives.py`
+Dev diagnostic (NOT a testflo test) for the full df/dx check with ADflow's
+flow-solver / adjoint-KSP output VISIBLE, over ALL aero + geom DVs incl.
+multiple individual `shape` components. `--mode adjoint` (real build: dump all
+adjoint totals) writes a json that `--mode cs` (complex build: per-DV complex
+re-converge, tabulated vs the adjoint) reads. Each CS re-converge is a full
+nonlinear solve (~8 min), so the DV/shape set is configurable (`--shape`,
+`--twist`, `--skip-aero/geom`).
 
 ### `generate_sagr_restart.py`
 The upstream SA restarts are downloaded pre-made (`input_files/
@@ -142,8 +161,16 @@ testflo test_jacVecProdFWD_sagr.py test_adjoint_sagr.py test_jacVecProdBWDFast_s
 testflo test_jacVecProdFWD_sagr.py test_adjoint_sagr.py -m "cmplx_test*"
 ```
 
+**Building the complex lib:** use the `/build` skill, or
+`PETSC_ARCH=complex-debug make -f Makefile_CS` (the complex build MUST point at
+the complex PETSc arch; the default `real-debug` arch gives COMPLEX→REAL PETSc
+type-mismatch errors in fortranPC/adjointAPI). After any Fortran rebuild,
+`pip install .` into the mach env (site-packages, not `./adflow`, is what the
+tests import — see [[tests-load-site-packages-not-repo]]). The whole suite is
+also driven by `./run_sagr_tests.sh {all,real,cs,adjoint,train,genw}`.
+
 Single test example:
-`testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGR_0_sagr_flatplate.test_coupling_blocks`
+`testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGR_0_sagr_tut_wing.test_coupling_blocks`
 (use `testflo --dryrun` to list exact signatures).
 
 ## Verification ladder / how to read failures

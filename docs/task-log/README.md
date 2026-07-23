@@ -16,6 +16,7 @@ the next task.
 | 2026-07-22 | Fix reverse-fast `dR[reThetat]/dw[meanflow]` (lambdaTheta in-place clamp) — Stage 2 SA-GR now PASSES | [2026-07-22-fastb-retheta-lambdatheta-fix.md](2026-07-22-fastb-retheta-lambdatheta-fix.md) |
 | 2026-07-22 | Standardize SA-GR test suite: testflo tests + `run_sagr_tests.sh`, CS cross-call fix, FD h-sweep/expected-fail, crossflow always ON, `dev/` folder | [2026-07-22-sagr-test-suite-standardization.md](2026-07-22-sagr-test-suite-standardization.md) |
 | 2026-07-23 | Rotating-frame consistency: transition model uses the relative frame (vortLim ref velocity, BL scales, helicity), rotation-form warning; bit-identical no-op when Ω=0, real 13/13 + CS 10/10 | [2026-07-23-rotating-frame-consistency.md](2026-07-23-rotating-frame-consistency.md) |
+| 2026-07-23 | SA-GR full total-derivative adjoint test (mirrors `test_adjoint.py`) + `gammaForSA`→[xminn,1+xminn] clamp (Tapenade rerun) + `adjointMaxIter=3000` + complex-build AD-PC overrides + `flatplate`→`tut_wing` rename + `dev/diag_full_derivatives.py`. Partials real 13/0 CS 10/0, adjoint real 4/0; adjoint-CS agrees ~1e-8 (OPEN: complex re-converge depth vs 5e-9 tol) | [2026-07-23-sagr-full-adjoint-test.md](2026-07-23-sagr-full-adjoint-test.md) |
 
 ## Template
 
