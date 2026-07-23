@@ -56,7 +56,9 @@ the end, not task-by-task.
 
 ## Communication
 
-**Be concise in all responses.** No preamble, no recap, minimal narration.
+**Be concise in all responses** — but concise in wording, not in effort. Do
+the full, thorough work; just report it briefly (no preamble, no recap,
+minimal narration).
 
 ## Documentation & Knowledge Base
 
