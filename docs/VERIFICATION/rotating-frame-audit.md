@@ -1,9 +1,9 @@
 # Rotating-frame consistency audit — SA-sLM2015 transition model
 
-**Date:** 2026-07-23 · **Scope:** `src/turbulence/saGammaRetheta.F90` only
-(SA model untouched). **Status:** primal edits landed and verified bit-identical
-in normal (Ω=0) mode; **Tapenade rerun still required** for rotating-case adjoints
-(see §5).
+**Date:** 2026-07-23 · **Scope:** `src/turbulence/saGammaRetheta.F90` (+ its 3
+regenerated AD files; SA model untouched). **Status:** edits landed behind an
+`isRotating` guard, Tapenade regenerated, and verified — bit-identical residual in
+normal (Ω=0) mode, real derivative suite 13/13, complex-step ground truth 10/10.
 
 ## 1. Motivation
 
@@ -73,6 +73,13 @@ the transition logic in `saGammaRetheta.F90`:
 For a non-rotating section `rotRate = 0 ⇒ sc = 0` exactly ⇒ `V_rel = V_abs`,
 `uRefTrans = uInf`, helicity `+2Ω → 0` — every term is bit-identical.
 
+**`isRotating` guard.** The `Ω×r` computation (8-node cell center + cross product)
+is wrapped in `if (isRotating) … else sc = 0`, where
+`isRotating = (omegax²+omegay²+omegaz²) > 0` is evaluated once per block (per cell
+in `evalSrcJacBlock`). So a non-rotating section runs the original absolute-velocity
+path with zero added cost, and the relative-frame branch is isolated to rotating
+sections. Auto-detected from the section rotation rate — no user option to set wrong.
+
 ## 5. Verification
 
 - **Primal residual no-op (bit-exact):** `getResidual` on the converged
@@ -80,23 +87,21 @@ For a non-rotating section `rotRate = 0 ⇒ sc = 0` exactly ⇒ `V_rel = V_abs`,
   Mach 0.2, α=0, Tu=0.25%, crossflow ON) before vs. after the edits:
   **max|Δres| = 0.0 across all 1,397,872 states** on both procs (global L2 =
   0.11614292259100134 identical). This case exercises the helicity/crossflow path.
-- **Derivative suite:** `./run_sagr_tests.sh real` — **13/13 pass** (Stages 1/2/3
-  AD/FD). Since `sc` depends only on `x` and `Ω` (not `w`) and is 0 here, dR/dw,
-  dR/dXv and dR/dMach are unchanged for Ω=0, so the (still-stale) generated
-  Tapenade files remain consistent for this case.
+- **Real derivative suite:** `./run_sagr_tests.sh real` — **13/13 pass**
+  (Stages 1/2/3 AD/FD).
+- **Complex-step ground truth:** `./run_sagr_tests.sh cs` — **10/10 pass**
+  (Stage 3 CS), i.e. the regenerated forward AD matches complex step.
 - **Rotating-frame correctness is NOT yet exercised.** The AR5 case has Ω=0, so
-  `sc=0` masks the `sc = Ω×r` formula; the no-op proves the substitutions reduce
-  correctly but not that the rotating path is numerically right. A case with
-  `rotRate≠0` is needed — this is the user's physics-validation step.
+  `isRotating=.false.` / `sc=0` masks the `sc = Ω×r` formula; the no-op proves the
+  substitutions reduce correctly but not that the rotating path is numerically
+  right. A case with `rotRate≠0` is needed — this is the user's physics-validation
+  step.
 
 ## 6. Adjoint / Tapenade status (frozen-adjoint rule 6)
 
-The hand-written `Source`/`evalSrcJacBlock` changed; the Tapenade-generated files in
-`src/adjoint/output{Forward,Reverse,ReverseFast}/` were **not** touched. They are
-**stale for Ω≠0** (they still linearize the absolute-frame formulas). For
-rotating-case adjoints/optimization the user must **rerun Tapenade** on
-`saGammaRetheta.F90` and rebuild. For Ω=0 they are still consistent (verified §5),
-so nothing regresses on the existing inertial test suite.
-
-**TAPENADE NEEDED** — regenerate `saGammaRetheta%Source` (and `evalSrcJacBlock` if
-in the AD scope) before trusting rotating-case gradients.
+**Tapenade was regenerated** (`make -f Makefile_tapenade`, then real + complex
+rebuild). Only the three SA-GR AD files changed —
+`src/adjoint/output{Forward,Reverse,ReverseFast}/saGammaRetheta_{d,b,fast_b}.f90` —
+and now linearize the guarded relative-frame formulas. They were **not** hand-edited
+(rule 6). The forward AD vs complex-step check (§5, 10/10) confirms consistency.
+Rotating-case gradients now use the correct relative-frame linearization.

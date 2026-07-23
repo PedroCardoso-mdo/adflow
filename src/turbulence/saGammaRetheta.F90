@@ -241,10 +241,12 @@ contains
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: yDist
         ! Rotating-frame (relative-velocity) helpers. See the block near
-        ! velMag below: V_rel = V_abs - Omega x r. All are exact no-ops when
-        ! the section rotation rate is zero (sc = 0).
+        ! velMag below: V_rel = V_abs - Omega x r. Gated by isRotating so a
+        ! non-rotating section runs the original absolute-velocity path
+        ! unchanged (sc = 0).
         real(kind=realType) :: xc(3), xxc(3), sc(3)
         real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
+        logical :: isRotating
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
         real(kind=realType) :: lambdaThetaRaw, lambdaThetaClamped
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
@@ -276,6 +278,11 @@ contains
         omegax = timeRef * sections(sectionID)%rotRate(1)
         omegay = timeRef * sections(sectionID)%rotRate(2)
         omegaz = timeRef * sections(sectionID)%rotRate(3)
+
+        ! Rotating-frame switch: only when this section actually rotates do
+        ! the transition BL quantities need the relative velocity. When false
+        ! the code below reduces to the original absolute-velocity path.
+        isRotating = (omegax**2 + omegay**2 + omegaz**2) > zero
 
         ! Create switches to production term depending on the variable that
         ! should be used
@@ -502,24 +509,30 @@ contains
                         ! Cell center from the 8 surrounding nodes and
                         ! sc = Omega x (xc - rotCenter) follow the pattern in
                         ! solverUtils.F90:gridVelocitiesFineLevel_block; omegax/y/z
-                        ! are already timeRef-scaled (see above). For a
-                        ! non-rotating section rotRate = 0 => sc = 0 exactly, so
-                        ! V_rel = V_abs and every term below is bit-identical.
-                        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
-                              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
-                              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
-                        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
-                              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
-                              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
-                        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
-                              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
-                              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
-                        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
-                        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
-                        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
-                        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
-                        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
-                        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+                        ! are already timeRef-scaled (see above). Non-rotating
+                        ! section => skip entirely (sc = 0), so V_rel = V_abs and
+                        ! every term below is bit-identical to the original code.
+                        if (isRotating) then
+                            xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+                                  + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+                                  + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+                            xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+                                  + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+                                  + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+                            xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+                                  + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+                                  + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+                            xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+                            xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+                            xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+                            sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+                            sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+                            sc(3) = omegax * xxc(2) - omegay * xxc(1)
+                        else
+                            sc(1) = zero
+                            sc(2) = zero
+                            sc(3) = zero
+                        end if
                         velRelx = w(i, j, k, ivx) - sc(1)
                         velRely = w(i, j, k, ivy) - sc(2)
                         velRelz = w(i, j, k, ivz) - sc(3)
@@ -2341,9 +2354,10 @@ contains
         real(kind=realType) :: velMag, velMag2, timeScale
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: yDist
-        ! Rotating-frame helpers (see Source; no-op when sc = 0)
+        ! Rotating-frame helpers (see Source; gated by isRotating, no-op when off)
         real(kind=realType) :: xc(3), xxc(3), sc(3)
         real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
+        logical :: isRotating
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
         real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
@@ -2360,6 +2374,7 @@ contains
         omegax = timeRef * sections(sectionID)%rotRate(1)
         omegay = timeRef * sections(sectionID)%rotRate(2)
         omegaz = timeRef * sections(sectionID)%rotRate(3)
+        isRotating = (omegax**2 + omegay**2 + omegaz**2) > zero
 
         ! Initialize output
         A = zero
@@ -2470,23 +2485,29 @@ contains
 
         ! Relative (rotating-frame) velocity V_rel = V_abs - Omega x r; must
         ! match the residual in Source (see the detailed comment there). Cell
-        ! center from the 8 nodes, sc = Omega x (xc - rotCenter). Omega=0 =>
-        ! sc = 0 exactly => identical to the old absolute form.
-        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
-              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
-              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
-        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
-              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
-              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
-        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
-              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
-              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
-        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
-        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
-        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
-        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
-        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
-        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+        ! center from the 8 nodes, sc = Omega x (xc - rotCenter). Non-rotating
+        ! section => skip (sc = 0) => identical to the old absolute form.
+        if (isRotating) then
+            xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+                  + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+                  + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+            xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+                  + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+                  + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+            xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+                  + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+                  + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+            xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+            xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+            xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+            sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+            sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+            sc(3) = omegax * xxc(2) - omegay * xxc(1)
+        else
+            sc(1) = zero
+            sc(2) = zero
+            sc(3) = zero
+        end if
         velRelx = w(i, j, k, ivx) - sc(1)
         velRely = w(i, j, k, ivy) - sc(2)
         velRelz = w(i, j, k, ivz) - sc(3)

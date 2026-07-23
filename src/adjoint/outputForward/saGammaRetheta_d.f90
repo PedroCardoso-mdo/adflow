@@ -253,6 +253,15 @@ contains
     real(kind=realtype) :: crossflowratiod, dhplusd, dhminusd
     real(kind=realtype) :: ydist
     real(kind=realtype) :: ydistd
+! rotating-frame (relative-velocity) helpers. see the block near
+! velmag below: v_rel = v_abs - omega x r. gated by isrotating so a
+! non-rotating section runs the original absolute-velocity path
+! unchanged (sc = 0).
+    real(kind=realtype) :: xc(3), xxc(3), sc(3)
+    real(kind=realtype) :: scd(3)
+    real(kind=realtype) :: velrelx, velrely, velrelz, ureftrans
+    real(kind=realtype) :: velrelxd, velrelyd, velrelzd, ureftransd
+    logical :: isrotating
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: uxhatd, uyhatd, uzhatd, dudsd, &
 &   lambdathetalocald
@@ -329,10 +338,10 @@ contains
     real(kind=realtype) :: max18d
     real(kind=realtype) :: max19
     real(kind=realtype) :: max19d
-    real(kind=realtype) :: result1
-    real(kind=realtype) :: result1d
     real(kind=realtype) :: arg1
     real(kind=realtype) :: arg1d
+    real(kind=realtype) :: result1
+    real(kind=realtype) :: result1d
     real(kind=realtype) :: temp
     real(kind=realtype) :: temp0
     real(kind=realtype) :: temp1
@@ -358,6 +367,10 @@ contains
     omegay = timeref*sections(sectionid)%rotrate(2)
     omegazd = sections(sectionid)%rotrate(3)*timerefd
     omegaz = timeref*sections(sectionid)%rotrate(3)
+! rotating-frame switch: only when this section actually rotates do
+! the transition bl quantities need the relative velocity. when false
+! the code below reduces to the original absolute-velocity path.
+    isrotating = omegax**2 + omegay**2 + omegaz**2 .gt. zero
 ! create switches to production term depending on the variable that
 ! should be used
     if (turbprod .eq. katolaunder) then
@@ -366,6 +379,7 @@ contains
     else
       if (associated(scratchd)) scratchd = 0.0_8
       strainmag2d = 0.0_8
+      scd = 0.0_8
       ssd = 0.0_8
       do k=2,kl
         do j=2,jl
@@ -843,12 +857,57 @@ contains
             end if
             ydistd = d2walld(i, j, k)
             ydist = d2wall(i, j, k)
-            temp10 = w(i, j, k, ivx)
-            temp9 = w(i, j, k, ivy)
-            temp8 = w(i, j, k, ivz)
-            velmag2d = 2*temp10*wd(i, j, k, ivx) + 2*temp9*wd(i, j, k, &
-&             ivy) + 2*temp8*wd(i, j, k, ivz)
-            velmag2 = temp10*temp10 + temp9*temp9 + temp8*temp8
+! --- relative (rotating-frame) velocity ---
+! adflow stores the absolute velocity in w(:,ivx:ivz)
+! (a rotating no-slip wall carries u = omega x r, not
+! zero; see solverutils.f90 wall bc). the boundary-layer
+! correlations below (theta_bl eq.4, time scale eq.7,
+! lambda_theta eq.10, delta eq.4, helicity eq.26) are
+! defined in the frame where the bl is steady = the
+! relative (rotating) frame, so they must use
+! v_rel = v_abs - omega x r.
+! cell center from the 8 surrounding nodes and
+! sc = omega x (xc - rotcenter) follow the pattern in
+! solverutils.f90:gridvelocitiesfinelevel_block; omegax/y/z
+! are already timeref-scaled (see above). non-rotating
+! section => skip entirely (sc = 0), so v_rel = v_abs and
+! every term below is bit-identical to the original code.
+            if (isrotating) then
+              xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-&
+&               1, j, k-1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1&
+&               , k, 1)+x(i-1, j, k, 1)+x(i, j, k, 1))
+              xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-&
+&               1, j, k-1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1&
+&               , k, 2)+x(i-1, j, k, 2)+x(i, j, k, 2))
+              xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-&
+&               1, j, k-1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1&
+&               , k, 3)+x(i-1, j, k, 3)+x(i, j, k, 3))
+              xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
+              xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
+              xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
+              scd(1) = xxc(3)*omegayd - xxc(2)*omegazd
+              sc(1) = omegay*xxc(3) - omegaz*xxc(2)
+              scd(2) = xxc(1)*omegazd - xxc(3)*omegaxd
+              sc(2) = omegaz*xxc(1) - omegax*xxc(3)
+              scd(3) = xxc(2)*omegaxd - xxc(1)*omegayd
+              sc(3) = omegax*xxc(2) - omegay*xxc(1)
+            else
+              scd(1) = 0.0_8
+              sc(1) = zero
+              scd(2) = 0.0_8
+              sc(2) = zero
+              scd(3) = 0.0_8
+              sc(3) = zero
+            end if
+            velrelxd = wd(i, j, k, ivx) - scd(1)
+            velrelx = w(i, j, k, ivx) - sc(1)
+            velrelyd = wd(i, j, k, ivy) - scd(2)
+            velrely = w(i, j, k, ivy) - sc(2)
+            velrelzd = wd(i, j, k, ivz) - scd(3)
+            velrelz = w(i, j, k, ivz) - sc(3)
+            velmag2d = 2*velrelx*velrelxd + 2*velrely*velrelyd + 2*&
+&             velrelz*velrelzd
+            velmag2 = velrelx**2 + velrely**2 + velrelz**2
             if (velmag2 .lt. xminn) then
               max3 = xminn
               max3d = 0.0_8
@@ -871,12 +930,31 @@ contains
 ! chord): the physical cap scales as 1/√l. reflentrans supplies
 ! l in grid units; transitionreflength < 0 => use lengthref
 ! (aeroproblem chordref).
-! rotating frame not adress here!!!!! uinf has no meaning on it.
+! rotating frame: the cap is 1/20 of the characteristic bl
+! edge wall-vorticity ~ sqrt(u_e^3/(nu*l)); on a rotating
+! blade the relevant edge velocity u_e is the local section
+! speed, not the inertial freestream (uinf -> 0 in hover
+! would kill both p_gamma and e_gamma). use the blade-element
+! section velocity ureftrans = sqrt(uinf^2 + |omega x r|^2)
+! (|omega x r| = |sc|): exact for axial inflow (omega x r ⊥
+! v_inf: hover/climb/props/turbines) and a sound characteristic
+! for edgewise flow. reduces to uinf exactly when sc = 0
+! (non-rotating), so this is a no-op for every inertial case.
             if (transitionreflength .gt. zero) then
               reflentrans = transitionreflength
             else
               reflentrans = lengthref
             end if
+            arg1d = 2*uinf*uinfd + 2*sc(1)*scd(1) + 2*sc(2)*scd(2) + 2*&
+&             sc(3)*scd(3)
+            arg1 = uinf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2
+            temp10 = sqrt(arg1)
+            if (arg1 .eq. 0.0_8) then
+              ureftransd = 0.0_8
+            else
+              ureftransd = arg1d/(2.0*temp10)
+            end if
+            ureftrans = temp10
             if (muinf*reflentrans .lt. xminn) then
               max14 = xminn
               max14d = 0.0_8
@@ -884,8 +962,8 @@ contains
               max14d = reflentrans*muinfd
               max14 = muinf*reflentrans
             end if
-            x3d = (uinfd-uinf*max14d/max14)/max14
-            x3 = uinf/max14
+            x3d = (ureftransd-ureftrans*max14d/max14)/max14
+            x3 = ureftrans/max14
             if (x3 .lt. xminn) then
               max4 = xminn
               max4d = 0.0_8
@@ -900,9 +978,9 @@ contains
               result1d = max4d/(2.0*temp10)
             end if
             result1 = temp10
-            vortlimd = result1*uinfd/20.0_realtype + uinf*result1d/&
-&             20.0_realtype
-            vortlim = uinf*result1/20.0_realtype
+            vortlimd = result1*ureftransd/20.0_realtype + ureftrans*&
+&             result1d/20.0_realtype
+            vortlim = ureftrans*result1/20.0_realtype
             vortmaglimd = smoothminmax_d(vortmag, vortmagd, vortlim, &
 &             vortlimd, rsagrpmin, vortmaglim)
 ! --- fonset (smooth tanh-based transition onset) ---
@@ -992,10 +1070,15 @@ contains
               max7d = velmagd
               max7 = velmag
             end if
-! compute local lambdatheta = (thetabl^2 / nu) * du/ds
-            temp10 = w(i, j, k, ivx)/max7
-            uxhatd = (wd(i, j, k, ivx)-temp10*max7d)/max7
-            uxhat = temp10
+! compute local lambdatheta = (thetabl^2 / nu) * du/ds.
+! streamwise unit vector is along the relative velocity
+! (rotating-frame streamline). the velocity-gradient
+! stencils (uux..wwz) stay absolute: du/ds contracts them
+! with the symmetric u_hat_i u_hat_j, and the antisymmetric
+! rotation part of d(v_rel)/dx - d(v_abs)/dx cancels there,
+! so only u_hat needs the relative velocity.
+            uxhatd = (velrelxd-velrelx*max7d/max7)/max7
+            uxhat = velrelx/max7
             if (velmag .lt. xminn) then
               max8 = xminn
               max8d = 0.0_8
@@ -1003,9 +1086,8 @@ contains
               max8d = velmagd
               max8 = velmag
             end if
-            temp10 = w(i, j, k, ivy)/max8
-            uyhatd = (wd(i, j, k, ivy)-temp10*max8d)/max8
-            uyhat = temp10
+            uyhatd = (velrelyd-velrely*max8d/max8)/max8
+            uyhat = velrely/max8
             if (velmag .lt. xminn) then
               max9 = xminn
               max9d = 0.0_8
@@ -1013,9 +1095,8 @@ contains
               max9d = velmagd
               max9 = velmag
             end if
-            temp10 = w(i, j, k, ivz)/max9
-            uzhatd = (wd(i, j, k, ivz)-temp10*max9d)/max9
-            uzhat = temp10
+            uzhatd = (velrelzd-velrelz*max9d/max9)/max9
+            uzhat = velrelz/max9
             temp10 = uxhat*wwx + uyhat*wwy + uzhat*wwz
             temp9 = uxhat*vvx + uyhat*vvy + uzhat*vvz
             temp8 = uxhat*uux + uyhat*uuy + uzhat*uuz
@@ -1117,17 +1198,13 @@ contains
                 max19d = velmagd
                 max19 = velmag
               end if
-              temp10 = (vortx+two*omegax)/max15
-              temp9 = w(i, j, k, ivx)
-              temp8 = (vorty+two*omegay)/max18
-              temp7 = w(i, j, k, ivy)
-              temp6 = (vortz+two*omegaz)/max19
-              temp5 = w(i, j, k, ivz)
-              x4d = temp10*wd(i, j, k, ivx) + temp9*(vortxd+two*omegaxd-&
-&               temp10*max15d)/max15 + temp8*wd(i, j, k, ivy) + temp7*(&
-&               vortyd+two*omegayd-temp8*max18d)/max18 + temp6*wd(i, j, &
-&               k, ivz) + temp5*(vortzd+two*omegazd-temp6*max19d)/max19
-              x4 = temp9*temp10 + temp7*temp8 + temp5*temp6
+              temp10 = velrelx*vortx/max15
+              temp9 = velrely*vorty/max18
+              temp8 = velrelz*vortz/max19
+              x4d = (vortx*velrelxd+velrelx*vortxd-temp10*max15d)/max15 &
+&               + (vorty*velrelyd+velrely*vortyd-temp9*max18d)/max18 + (&
+&               vortz*velrelzd+velrelz*vortzd-temp8*max19d)/max19
+              x4 = temp10 + temp9 + temp8
               if (x4 .ge. 0.) then
                 abs0d = x4d
                 abs0 = x4
@@ -1142,8 +1219,12 @@ contains
                 max16d = velmagd
                 max16 = velmag
               end if
-! eq.24 helicity uses the raw velocity curl; undo the
-! rotating-frame -2*omega baked into vortx so h_cf is frame-independent.
+! helicity h_cf = d*|u_hat . omega|/u (eqs.24-26) in the
+! relative frame: relative velocity (velrel) dotted with
+! relative vorticity (vortx = curl - 2*omega). helicity
+! u.omega is not frame-invariant; the old "+2*omega" undo
+! gave absolute-frame helicity, wrong on a rotor. omega=0
+! => bit-identical to the old form.
               temp10 = ydist*abs0/max16
               hcfd = (abs0*ydistd+ydist*abs0d-temp10*max16d)/max16
               hcf = temp10
@@ -1366,6 +1447,13 @@ contains
     real(kind=realtype) :: crossflowratio, crossflowphiprime, dhplus, &
 &   dhminus
     real(kind=realtype) :: ydist
+! rotating-frame (relative-velocity) helpers. see the block near
+! velmag below: v_rel = v_abs - omega x r. gated by isrotating so a
+! non-rotating section runs the original absolute-velocity path
+! unchanged (sc = 0).
+    real(kind=realtype) :: xc(3), xxc(3), sc(3)
+    real(kind=realtype) :: velrelx, velrely, velrelz, ureftrans
+    logical :: isrotating
     real(kind=realtype) :: uxhat, uyhat, uzhat, duds, lambdathetalocal
     real(kind=realtype) :: lambdathetaraw, lambdathetaclamped
     real(kind=realtype) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
@@ -1412,8 +1500,8 @@ contains
     real(kind=realtype) :: max17
     real(kind=realtype) :: max18
     real(kind=realtype) :: max19
-    real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
+    real(kind=realtype) :: result1
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -1423,6 +1511,10 @@ contains
     omegax = timeref*sections(sectionid)%rotrate(1)
     omegay = timeref*sections(sectionid)%rotrate(2)
     omegaz = timeref*sections(sectionid)%rotrate(3)
+! rotating-frame switch: only when this section actually rotates do
+! the transition bl quantities need the relative velocity. when false
+! the code below reduces to the original absolute-velocity path.
+    isrotating = omegax**2 + omegay**2 + omegaz**2 .gt. zero
 ! create switches to production term depending on the variable that
 ! should be used
     if (turbprod .eq. katolaunder) then
@@ -1629,8 +1721,46 @@ contains
               rethetatilde = w(i, j, k, itu3)
             end if
             ydist = d2wall(i, j, k)
-            velmag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, &
-&             k, ivz)**2
+! --- relative (rotating-frame) velocity ---
+! adflow stores the absolute velocity in w(:,ivx:ivz)
+! (a rotating no-slip wall carries u = omega x r, not
+! zero; see solverutils.f90 wall bc). the boundary-layer
+! correlations below (theta_bl eq.4, time scale eq.7,
+! lambda_theta eq.10, delta eq.4, helicity eq.26) are
+! defined in the frame where the bl is steady = the
+! relative (rotating) frame, so they must use
+! v_rel = v_abs - omega x r.
+! cell center from the 8 surrounding nodes and
+! sc = omega x (xc - rotcenter) follow the pattern in
+! solverutils.f90:gridvelocitiesfinelevel_block; omegax/y/z
+! are already timeref-scaled (see above). non-rotating
+! section => skip entirely (sc = 0), so v_rel = v_abs and
+! every term below is bit-identical to the original code.
+            if (isrotating) then
+              xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-&
+&               1, j, k-1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1&
+&               , k, 1)+x(i-1, j, k, 1)+x(i, j, k, 1))
+              xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-&
+&               1, j, k-1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1&
+&               , k, 2)+x(i-1, j, k, 2)+x(i, j, k, 2))
+              xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-&
+&               1, j, k-1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1&
+&               , k, 3)+x(i-1, j, k, 3)+x(i, j, k, 3))
+              xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
+              xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
+              xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
+              sc(1) = omegay*xxc(3) - omegaz*xxc(2)
+              sc(2) = omegaz*xxc(1) - omegax*xxc(3)
+              sc(3) = omegax*xxc(2) - omegay*xxc(1)
+            else
+              sc(1) = zero
+              sc(2) = zero
+              sc(3) = zero
+            end if
+            velrelx = w(i, j, k, ivx) - sc(1)
+            velrely = w(i, j, k, ivy) - sc(2)
+            velrelz = w(i, j, k, ivz) - sc(3)
+            velmag2 = velrelx**2 + velrely**2 + velrelz**2
             if (velmag2 .lt. xminn) then
               max3 = xminn
             else
@@ -1645,25 +1775,36 @@ contains
 ! chord): the physical cap scales as 1/√l. reflentrans supplies
 ! l in grid units; transitionreflength < 0 => use lengthref
 ! (aeroproblem chordref).
-! rotating frame not adress here!!!!! uinf has no meaning on it.
+! rotating frame: the cap is 1/20 of the characteristic bl
+! edge wall-vorticity ~ sqrt(u_e^3/(nu*l)); on a rotating
+! blade the relevant edge velocity u_e is the local section
+! speed, not the inertial freestream (uinf -> 0 in hover
+! would kill both p_gamma and e_gamma). use the blade-element
+! section velocity ureftrans = sqrt(uinf^2 + |omega x r|^2)
+! (|omega x r| = |sc|): exact for axial inflow (omega x r ⊥
+! v_inf: hover/climb/props/turbines) and a sound characteristic
+! for edgewise flow. reduces to uinf exactly when sc = 0
+! (non-rotating), so this is a no-op for every inertial case.
             if (transitionreflength .gt. zero) then
               reflentrans = transitionreflength
             else
               reflentrans = lengthref
             end if
+            arg1 = uinf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2
+            ureftrans = sqrt(arg1)
             if (muinf*reflentrans .lt. xminn) then
               max14 = xminn
             else
               max14 = muinf*reflentrans
             end if
-            x3 = uinf/max14
+            x3 = ureftrans/max14
             if (x3 .lt. xminn) then
               max4 = xminn
             else
               max4 = x3
             end if
             result1 = sqrt(max4)
-            vortlim = uinf*result1/20.0_realtype
+            vortlim = ureftrans*result1/20.0_realtype
             vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
 ! --- fonset (smooth tanh-based transition onset) ---
             res_val = w(i, j, k, irho)*ydist**2*strainmag/rlv(i, j, k)
@@ -1707,20 +1848,26 @@ contains
             else
               max7 = velmag
             end if
-! compute local lambdatheta = (thetabl^2 / nu) * du/ds
-            uxhat = w(i, j, k, ivx)/max7
+! compute local lambdatheta = (thetabl^2 / nu) * du/ds.
+! streamwise unit vector is along the relative velocity
+! (rotating-frame streamline). the velocity-gradient
+! stencils (uux..wwz) stay absolute: du/ds contracts them
+! with the symmetric u_hat_i u_hat_j, and the antisymmetric
+! rotation part of d(v_rel)/dx - d(v_abs)/dx cancels there,
+! so only u_hat needs the relative velocity.
+            uxhat = velrelx/max7
             if (velmag .lt. xminn) then
               max8 = xminn
             else
               max8 = velmag
             end if
-            uyhat = w(i, j, k, ivy)/max8
+            uyhat = velrely/max8
             if (velmag .lt. xminn) then
               max9 = xminn
             else
               max9 = velmag
             end if
-            uzhat = w(i, j, k, ivz)/max9
+            uzhat = velrelz/max9
             duds = two*fact*(uxhat*(uxhat*uux+uyhat*uuy+uzhat*uuz)+uyhat&
 &             *(uxhat*vvx+uyhat*vvy+uzhat*vvz)+uzhat*(uxhat*wwx+uyhat*&
 &             wwy+uzhat*wwz))
@@ -1784,9 +1931,8 @@ contains
               else
                 max19 = velmag
               end if
-              x4 = w(i, j, k, ivx)/max15*(vortx+two*omegax) + w(i, j, k&
-&               , ivy)/max18*(vorty+two*omegay) + w(i, j, k, ivz)/max19*&
-&               (vortz+two*omegaz)
+              x4 = velrelx/max15*vortx + velrely/max18*vorty + velrelz/&
+&               max19*vortz
               if (x4 .ge. 0.) then
                 abs0 = x4
               else
@@ -1797,8 +1943,12 @@ contains
               else
                 max16 = velmag
               end if
-! eq.24 helicity uses the raw velocity curl; undo the
-! rotating-frame -2*omega baked into vortx so h_cf is frame-independent.
+! helicity h_cf = d*|u_hat . omega|/u (eqs.24-26) in the
+! relative frame: relative velocity (velrel) dotted with
+! relative vorticity (vortx = curl - 2*omega). helicity
+! u.omega is not frame-invariant; the old "+2*omega" undo
+! gave absolute-frame helicity, wrong on a rotor. omega=0
+! => bit-identical to the old form.
               hcf = ydist*abs0/max16
               if (thetabl .lt. xminn) then
                 max17 = xminn
@@ -3811,6 +3961,10 @@ contains
     real(kind=realtype) :: velmag, velmag2, timescale
     real(kind=realtype) :: thetabl, deltabl, delta, fwake_val, fthetat
     real(kind=realtype) :: ydist
+! rotating-frame helpers (see source; gated by isrotating, no-op when off)
+    real(kind=realtype) :: xc(3), xxc(3), sc(3)
+    real(kind=realtype) :: velrelx, velrely, velrelz, ureftrans
+    logical :: isrotating
     real(kind=realtype) :: crossflowratio, crossflowphiprime, dhplus, &
 &   dhminus
     real(kind=realtype) :: epsrt, rethetatilde_p, rethetac_p
@@ -3853,8 +4007,8 @@ contains
     real(kind=realtype) :: max20
     real(kind=realtype) :: max21
     real(kind=realtype) :: max22
-    real(kind=realtype) :: result1
     real(kind=realtype) :: arg1
+    real(kind=realtype) :: result1
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -3863,6 +4017,7 @@ contains
     omegax = timeref*sections(sectionid)%rotrate(1)
     omegay = timeref*sections(sectionid)%rotrate(2)
     omegaz = timeref*sections(sectionid)%rotrate(3)
+    isrotating = omegax**2 + omegay**2 + omegaz**2 .gt. zero
 ! initialize output
     a = zero
 ! compute velocity gradients (scaled by 2*vol)
@@ -4004,8 +4159,35 @@ contains
       rethetatilde = w(i, j, k, itu3)
     end if
     ydist = d2wall(i, j, k)
-    velmag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)&
-&     **2
+! relative (rotating-frame) velocity v_rel = v_abs - omega x r; must
+! match the residual in source (see the detailed comment there). cell
+! center from the 8 nodes, sc = omega x (xc - rotcenter). non-rotating
+! section => skip (sc = 0) => identical to the old absolute form.
+    if (isrotating) then
+      xc(1) = eighth*(x(i-1, j-1, k-1, 1)+x(i, j-1, k-1, 1)+x(i-1, j, k-&
+&       1, 1)+x(i, j, k-1, 1)+x(i-1, j-1, k, 1)+x(i, j-1, k, 1)+x(i-1, j&
+&       , k, 1)+x(i, j, k, 1))
+      xc(2) = eighth*(x(i-1, j-1, k-1, 2)+x(i, j-1, k-1, 2)+x(i-1, j, k-&
+&       1, 2)+x(i, j, k-1, 2)+x(i-1, j-1, k, 2)+x(i, j-1, k, 2)+x(i-1, j&
+&       , k, 2)+x(i, j, k, 2))
+      xc(3) = eighth*(x(i-1, j-1, k-1, 3)+x(i, j-1, k-1, 3)+x(i-1, j, k-&
+&       1, 3)+x(i, j, k-1, 3)+x(i-1, j-1, k, 3)+x(i, j-1, k, 3)+x(i-1, j&
+&       , k, 3)+x(i, j, k, 3))
+      xxc(1) = xc(1) - sections(sectionid)%rotcenter(1)
+      xxc(2) = xc(2) - sections(sectionid)%rotcenter(2)
+      xxc(3) = xc(3) - sections(sectionid)%rotcenter(3)
+      sc(1) = omegay*xxc(3) - omegaz*xxc(2)
+      sc(2) = omegaz*xxc(1) - omegax*xxc(3)
+      sc(3) = omegax*xxc(2) - omegay*xxc(1)
+    else
+      sc(1) = zero
+      sc(2) = zero
+      sc(3) = zero
+    end if
+    velrelx = w(i, j, k, ivx) - sc(1)
+    velrely = w(i, j, k, ivy) - sc(2)
+    velrelz = w(i, j, k, ivz) - sc(3)
+    velmag2 = velrelx**2 + velrely**2 + velrelz**2
     if (velmag2 .lt. xminn) then
       max4 = xminn
     else
@@ -4017,19 +4199,22 @@ contains
     else
       reflentrans = lengthref
     end if
+! blade-element section-speed reference (see source): sqrt(uinf^2+|omega x r|^2)
+    arg1 = uinf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2
+    ureftrans = sqrt(arg1)
     if (muinf*reflentrans .lt. xminn) then
       max17 = xminn
     else
       max17 = muinf*reflentrans
     end if
-    x3 = uinf/max17
+    x3 = ureftrans/max17
     if (x3 .lt. xminn) then
       max5 = xminn
     else
       max5 = x3
     end if
     result1 = sqrt(max5)
-    vortlim = uinf*result1/20.0_realtype
+    vortlim = ureftrans*result1/20.0_realtype
 ! use the same smooth limiter as the residual (source) so this
 ! jacobian linearizes the source actually being solved.
     vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
@@ -4165,9 +4350,8 @@ contains
       else
         max22 = velmag
       end if
-      x4 = w(i, j, k, ivx)/max18*(vortx+two*omegax) + w(i, j, k, ivy)/&
-&       max21*(vorty+two*omegay) + w(i, j, k, ivz)/max22*(vortz+two*&
-&       omegaz)
+      x4 = velrelx/max18*vortx + velrely/max21*vorty + velrelz/max22*&
+&       vortz
       if (x4 .ge. 0.) then
         abs0 = x4
       else
@@ -4178,8 +4362,9 @@ contains
       else
         max19 = velmag
       end if
-! eq.24 helicity uses the raw velocity curl; undo the
-! rotating-frame -2*omega baked into vortx so h_cf is frame-independent.
+! helicity in the relative frame (matches source): relative velocity
+! dotted with relative vorticity (vortx = curl - 2*omega). omega=0 =>
+! bit-identical to the old absolute-frame form.
       hcf = ydist*abs0/max19
       if (thetabl .lt. xminn) then
         max20 = xminn
