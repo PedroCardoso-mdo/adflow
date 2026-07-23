@@ -1611,6 +1611,8 @@ contains
         Vec x, work
         integer(kind=intType) :: ierr, jj, nCells, mm
         integer(kind=intType) :: nDampCapGamma, nDampCapReTheta
+        integer(kind=intType) :: nSoftDampGamma, nSoftDampReTheta
+        real(kind=realType) :: minDampFactorGamma, minDampFactorReTheta
         real(kind=realType), pointer :: xPtr(:), workPtr(:)
         real(kind=realType) :: cs(1:nw)
         real(kind=realType) :: xOld, deltaScaled, dampFactor, candScaled, candPhys
@@ -1627,6 +1629,20 @@ contains
 
         nDampCapGamma = 0
         nDampCapReTheta = 0
+        ! Diagnostic-only counters (2026-07-19, nk_switch_crossing_test stall
+        ! investigation): the hard clip above (nDampCapGamma/ReTheta) never
+        ! fires in practice, but the *soft* exponential back-off runs
+        ! silently every iteration with no visibility -- it happens AFTER
+        ! the line search, so a cell sitting at its gamma/Re-theta-t bound
+        ! could have its accepted update crushed back to near-zero net
+        ! change regardless of how good the search direction was, and
+        ! neither the printed Step nor Lin Res columns would show it. These
+        ! track how many cells needed ANY back-off (dampFactor < 1) and the
+        ! worst-case factor, printed alongside the existing clip warning.
+        nSoftDampGamma = 0
+        nSoftDampReTheta = 0
+        minDampFactorGamma = one
+        minDampFactorReTheta = one
         nCells = size(workPtr) / nw
 
         do jj = 0, nCells - 1
@@ -1647,6 +1663,10 @@ contains
                 candPhys = min(max(candPhys, rsaGRgammaLo), rsaGRgammaHi)
                 candScaled = candPhys * cs(gammaOff)
             end if
+            if (dampFactor < one) then
+                nSoftDampGamma = nSoftDampGamma + 1
+                minDampFactorGamma = min(minDampFactorGamma, dampFactor)
+            end if
             workPtr(jj * nw + gammaOff) = candScaled
 
             ! Re-theta-t: exponential back-off until >= rsaGRreThetaLo (lower bound only)
@@ -1665,6 +1685,10 @@ contains
                 nDampCapReTheta = nDampCapReTheta + 1
                 candScaled = rsaGRreThetaLo * cs(rethetaOff)
             end if
+            if (dampFactor < one) then
+                nSoftDampReTheta = nSoftDampReTheta + 1
+                minDampFactorReTheta = min(minDampFactorReTheta, dampFactor)
+            end if
             workPtr(jj * nw + rethetaOff) = candScaled
         end do
 
@@ -1677,6 +1701,12 @@ contains
             print *, 'Warning: NK Algorithm 2 damping exhausted transitionDampMaxIter (', &
                 transitionDampMaxIter, ') in ', nDampCapGamma, ' gamma / ', &
                 nDampCapReTheta, ' reTheta cells on proc ', myid, '; values clipped.'
+        end if
+
+        if (nSoftDampGamma + nSoftDampReTheta > 0) then
+            print *, 'NK Algorithm 2 soft damping: ', nSoftDampGamma, ' gamma cells (worst factor ', &
+                minDampFactorGamma, '), ', nSoftDampReTheta, ' reTheta cells (worst factor ', &
+                minDampFactorReTheta, ') on proc ', myid
         end if
 
     end subroutine applyNKAlgorithm2Damping
