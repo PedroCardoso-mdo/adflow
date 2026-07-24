@@ -51,6 +51,10 @@ module NKSolver
     real(kind=realType) :: NK_rtolInit
     real(kind=realType) :: NK_divTol = 10
     real(kind=realType) :: NK_fixedStep
+    ! NK_LSRelax: off by default, matches ADflow's original LSCubic tuning
+    ! (alpha=1e-2, turb-blowup pre-limit factor=2.0). When True, LSCubic uses
+    ! alpha=1e-3 and factor=3.0 instead -- see LSCubic for the rationale.
+    logical :: NK_LSRelax = .False.
 
     ! Misc variables
     logical :: NK_solverSetup = .False.
@@ -711,12 +715,29 @@ contains
         real(kind=alwaysRealType) :: rellength
         integer(kind=intType) :: ierr, iter
         real(kind=alwaysRealType) :: turbRes1, turbRes2, flowRes1, flowRes2, totalRes1, totalRes2
+        real(kind=alwaysRealType) :: turbBlowupFactor
         logical :: hadANan
         ! Call to get the split norms
         call setRVec(g, flowRes1, turbRes1, totalRes1)
 
         ! Set some defaults:
-        alpha = 1.e-2_realType
+        ! NK_LSRelax (option NKLSRelax, off by default): trades some Armijo
+        ! robustness for actually taking full-ish steps when the line search
+        ! gets pinned at minlambda for many consecutive iterations on a stiff
+        ! production term (e.g. SA-BCM's intermittency blend near the
+        ! transition front, which has a sqrt/tanh kink). Same idea as
+        ! relaxing ANKUnsteadyLSTol/ANKPhysicalLSTol for coupled ANK. Off by
+        ! default: NK has no per-node physicality check (unlike ANK), so an
+        ! over-permissive alpha can accept a step that drives density/energy
+        ! unphysical with nothing to catch it -- only turn this on if a run
+        ! is observed pinned at minlambda for 100+ consecutive iterations.
+        if (NK_LSRelax) then
+            alpha = 1.e-3_realType
+            turbBlowupFactor = 3.0_alwaysRealType
+        else
+            alpha = 1.e-2_realType
+            turbBlowupFactor = 2.0_alwaysRealType
+        end if
         minlambda = .01
         nfevals = 0
         flag = .True.
@@ -770,7 +791,7 @@ contains
         ! order of magnitude or more.
 
         hadANan = .False.
-        if (myisnan(gnorm) .or. turbRes2 > 2.0 * turbRes1) then
+        if (myisnan(gnorm) .or. turbRes2 > turbBlowupFactor * turbRes1) then
             ! Special testing for nans
 
             if (myisnan(gnorm)) then

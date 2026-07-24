@@ -388,6 +388,7 @@ python module libadflow
          real(kind=realtype) :: nk_switchtol
          real(kind=realtype) :: nk_cfl0
          real(kind=realtype) :: nk_fixedstep
+         logical :: nk_lsrelax
          integer(kind=inttype) :: applypcsubspacesize
          logical :: freestreamresset
 

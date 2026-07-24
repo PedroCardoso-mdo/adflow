@@ -1258,9 +1258,13 @@ class ADFLOW(AeroSolver):
 
         if self.adflow.killsignals.fatalfail:
             numDigits = self.getOption("writeSolutionDigits")
-            fileName = f"failed_mesh_{self.curAP.name}_{self.curAP.adflowData.callCounter:0{numDigits}d}.cgns"
-            self.pp(f"Fatal failure during mesh warp! Bad mesh is written in output directory as {fileName}")
-            self.writeMeshFile(os.path.join(self.getOption("outputDirectory"), fileName))
+            meshFileName = f"failed_mesh_{self.curAP.name}_{self.curAP.adflowData.callCounter:0{numDigits}d}.cgns"
+            surfFileName = f"failed_surface_{self.curAP.name}_{self.curAP.adflowData.callCounter:0{numDigits}d}.cgns"
+            self.pp(
+                f"Fatal failure during mesh warp! Bad mesh is written in output directory as {meshFileName} and surface mesh as {surfFileName}"
+            )
+            self.writeMeshFile(os.path.join(self.getOption("outputDirectory"), meshFileName))
+            self.writeSurfaceSolutionFile(os.path.join(self.getOption("outputDirectory"), surfFileName))
             self.curAP.fatalFail = True
             self.curAP.solveFailed = True
             return
@@ -5802,6 +5806,14 @@ class ADFLOW(AeroSolver):
             "NKAMGNSmooth": [int, 1],
             "NKLS": [str, ["cubic", "none", "non-monotone"]],
             "NKFixedStep": [float, 0.25],
+            # NK line-search relaxation: off by default (alpha=1e-2, turb-blowup
+            # pre-limit factor=2.0, ADflow's original values). When True, LSCubic
+            # uses alpha=1e-3 and factor=3.0 instead -- a generic Newton-globalization
+            # relaxation (not tied to any specific turbulence model) found to help when
+            # NK's Armijo step gets pinned at minlambda for many consecutive iterations
+            # on a stiff production term (e.g. SA-BCM's intermittency blend near the
+            # transition front). See src/NKSolver/NKSolvers.F90:LSCubic.
+            "NKLSRelax": [bool, False],
             "RKReset": [bool, False],
             "nRKReset": [int, 5],
             # Approximate Newton-Krylov Parameters
@@ -6229,6 +6241,7 @@ class ADFLOW(AeroSolver):
                 "location": ["nk", "nk_ls"],
             },
             "nkfixedstep": ["nk", "nk_fixedstep"],
+            "nklsrelax": ["nk", "nk_lsrelax"],
             "rkreset": ["iter", "rkreset"],
             "nrkreset": ["iter", "miniternum"],
             # Approximate Newton-Krylov Parameters
