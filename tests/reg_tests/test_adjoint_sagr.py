@@ -202,6 +202,17 @@ class TestCmplxStepSAGR(reg_test_classes.CmplxRegTest):
         options["nkadpc"] = False
         options["ankcoupledswitchtol"] = 1e-16  # never couple -> stay decoupled
 
+        # Cap the per-DV complex re-converge. Verified in the archived study
+        # (Verification_tuturial_mesh/SaGammaReTheta): for the official points
+        # (alpha, span[0], twist[0], shape[0]) the complex-step derivative
+        # STABILIZES by iter ~200-500 -- err_cd already 3e-10 (alpha), 7e-9
+        # (twist), ~1e-11 (span/shape), all within 5e-8. Left uncapped the solver
+        # runs its natural ~850-1200 iters (10000 is just an unreached ceiling),
+        # and over-converging beyond stabilization does not improve -- and can
+        # slightly drift -- the derivative. 1000 stops shortly after
+        # stabilization with margin. (mach is non-blocking; it never settles.)
+        options["ncycles"] = 1000
+
         self.CFDSolver = ADFLOW_C(options=options, debug=True)
 
         self.CFDSolver.setMesh(USMesh_C(options=mesh_options))
