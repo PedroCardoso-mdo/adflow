@@ -115,7 +115,9 @@ Source routine (subroutine `Source`, line 146) computes:
 - "SST exists → 2-eq turb infrastructure exists → mirror it"
 - "ANK must work (more robust for complex geometries)"
 - "Don't care about multigrid"
-- "Don't care about crossflow for now" (helper exists if needed later)
+- Crossflow transition (D_scf, P&Z Eqs. 15-26) is **always on** — a standing
+  part of the model, not deferred. (`transitionCrossflow` remains a runtime
+  flag, but the model is developed/validated with it enabled.)
 - "Adjoint: freeze γ-Re̅θt linearization at this stage"
 - Both sLM2015 and LM2015 F_turb forms must be runtime-selectable
 
@@ -156,7 +158,7 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"turbResScale"` | list/None | `None` (auto) | Residual scaling per equation. Auto-set to `[10000, 10, 10000]` for this model. Override to tune convergence balance. |
 | `"transitionDampTheta"` | float | `0.99` | Back-off factor for per-variable γ/Re̅θt update damping in DD-ADI (P&Z Algorithm 2). |
 | `"transitionDampMaxIter"` | int | `10000` | Safety cap on the back-off loop (unbounded in the paper); 10000 ⇒ effectively unbounded (0.99¹⁰⁰⁰⁰ ≈ 0). A hard clip to the bounds remains as **last-resort fallback only**: it can only fire after the loop exhausts, which requires the previous state to already be out of bounds; when it fires, a warning with cell counts prints advising to raise this option or investigate the upstream bound violation. Changed from 40 on 2026-07-07 (D-A2-5). |
-| `"transitionCrossflow"` | bool | `True` | Enable the helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. Harmless in 2D (D_scf≡0); enable for swept/3D. |
+| `"transitionCrossflow"` | bool | `True` | Helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. **On by default and treated as always-on** — a standing part of the model, not an optional add-on. D_scf≡0 in 2D so it is inert there but still live in the residual/adjoint. |
 | `"transitionRoughnessHeight"` | float | `3.3e-6` | Surface roughness height h for the crossflow correlation (Eq. 17), as a physical length in mesh units (metres). 3.3e-6 = 3.3 µm (smooth surface). |
 | `"transitionRefLength"` | float | `-1.0` (auto) | Reference length l [mesh units] in the vorticity limiter (P&Z Eqs. 52-53; paper uses root chord — the physical cap scales as 1/√l, a calibration scale, NOT a unit conversion, so the "drop Re" rule of `nondimensionalization.md` does not apply). Negative = auto: uses the AeroProblem `chordRef` (via `inputPhysics%lengthRef`, refreshed at every `setAeroProblem`). Set explicitly to decouple from chordRef; `1.0` recovers the pre-option behavior (l = 1 m). Added 2026-07-07 to close finding D1. |
 | `"transitionNK"` | bool | `True` | Master switch for the NK/ANK/turbKSP column-scaling + Eq. 59 bundle (incl. NK reactivation-on-backtrack, Algorithm 2 in NK) — 2026-07-16. Default preserves existing behavior; still additionally gated on `turbModel==SA-Gamma-Retheta` everywhere. |

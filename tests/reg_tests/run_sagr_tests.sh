@@ -20,11 +20,18 @@
 # TestCmplxStepSAGR re-converges the complex build and checks it by CS. This
 # is the "adjoint" stage below (test_adjoint_sagr.py).
 #
+# On top of the derivatives, the suite also checks the PRIMAL residual operator
+# itself: test_blockette_sagr.py asserts the cache-blocked "blockette" residual
+# (blocketteResCore) equals the reference "block" residual (saGammaReTheta_block)
+# for the same state w, across all 8 variables -- guarding the inlined SA-GR
+# kernels in blockette.F90 against drift (this is the "blockette" stage below).
+#
 # Usage:
 #   ./run_sagr_tests.sh              run the whole suite (real + complex)
 #   ./run_sagr_tests.sh real        real-build stages only (1, 2, AD/FD)
 #   ./run_sagr_tests.sh cs          complex-build CS ground truth only
 #   ./run_sagr_tests.sh adjoint     full total-derivative adjoint vs CS
+#   ./run_sagr_tests.sh blockette   blockette residual == block residual
 #   ./run_sagr_tests.sh train       regenerate the JSON reference files
 #   ./run_sagr_tests.sh genw        regenerate the converged restart state (w)
 #
@@ -46,6 +53,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}   # never oversubscribe (see CLAUDE
 FWD=test_jacVecProdFWD_sagr.py
 BWD=test_jacVecProdBWDFast_sagr.py
 ADJ=test_adjoint_sagr.py
+BLK=test_blockette_sagr.py
 
 hr()  { printf '%.0s-' {1..72}; echo; }
 head() { hr; echo ">>> $*"; hr; }
@@ -66,6 +74,11 @@ run_adjoint() {
     "$PY" -m testflo -n "$NP" "$ADJ" -m "cmplx_test_*" -v
 }
 
+run_blockette() {
+    head "Blockette residual == block residual (SA-GR, same w, all 8 vars)"
+    "$PY" -m testflo -n "$NP" "$BLK" -v
+}
+
 do_train() {
     head "Retraining JSON reference files (crossflow-converged state)"
     "$PY" -m testflo -n "$NP" "$FWD" "$BWD" "$ADJ" -m "train*" -v
@@ -79,25 +92,28 @@ do_genw() {
 }
 
 case "${1:-all}" in
-    real)    run_real ;;
-    cs)      run_cs ;;
-    adjoint) run_adjoint ;;
-    train)   do_train ;;
-    genw)    do_genw "$@" ;;
+    real)      run_real ;;
+    cs)        run_cs ;;
+    adjoint)   run_adjoint ;;
+    blockette) run_blockette ;;
+    train)     do_train ;;
+    genw)      do_genw "$@" ;;
     all)
-        run_real;    rc_real=$?
-        run_cs;      rc_cs=$?
-        run_adjoint; rc_adj=$?
+        run_real;     rc_real=$?
+        run_cs;       rc_cs=$?
+        run_adjoint;  rc_adj=$?
+        run_blockette; rc_blk=$?
         hr
         echo "SUMMARY"
         echo "  real build (Stage 1/2/3-AD-FD): $([ $rc_real -eq 0 ] && echo PASS || echo FAIL)"
         echo "  complex build (Stage 3 CS)    : $([ $rc_cs   -eq 0 ] && echo PASS || echo FAIL)"
         echo "  full adjoint df/dx (real + CS): $([ $rc_adj  -eq 0 ] && echo PASS || echo FAIL)"
+        echo "  blockette == block residual   : $([ $rc_blk  -eq 0 ] && echo PASS || echo FAIL)"
         echo "  FD residual tests are @expectedFailure (metric noise on the"
         echo "  13-order residual); CS is the enforced ground truth."
         hr
-        [ $rc_real -eq 0 ] && [ $rc_cs -eq 0 ] && [ $rc_adj -eq 0 ]
+        [ $rc_real -eq 0 ] && [ $rc_cs -eq 0 ] && [ $rc_adj -eq 0 ] && [ $rc_blk -eq 0 ]
         ;;
     *)
-        echo "usage: $0 [all|real|cs|adjoint|train|genw]" >&2; exit 2 ;;
+        echo "usage: $0 [all|real|cs|adjoint|blockette|train|genw]" >&2; exit 2 ;;
 esac

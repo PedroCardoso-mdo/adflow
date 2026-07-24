@@ -28,7 +28,9 @@ the end, not task-by-task.
    multiplies SA production only (Eq. 41). *(Enforced: the
    `guard_protected_files.sh` PreToolUse hook hard-blocks edits to
    `src/turbulence/sa.F90`.)*
-3. **Skip multigrid (T1.6) and crossflow (T2.5).** User defers both.
+3. **Skip multigrid (T1.6).** User defers it. **Crossflow (T2.5) is always
+   on** — it is a standing part of the model, not deferred; treat the
+   crossflow `D_scf` source as live in all residual/adjoint work.
 4. **All transition diagnostics go to the volume CGNS** via the
    `transitionDebug` array. No new ASCII debug files. No per-cell printouts.
 5. **First-order upwind** for γ and Re̅θt convection (paper §IV.A).
