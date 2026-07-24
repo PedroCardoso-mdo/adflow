@@ -114,3 +114,75 @@ bottom. Three hooks write here:
     ?? tests/reg_tests/refs/adjoint_sagr_tut_wing.json
 - **2026-07-23 20:40:23** — auto-pip: reinstalled adflow (complex-step (CS) build) into mach env after `cd /home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver git add .claude/skills/build/SKILL.md` (site-packages now matches ./adflow)
 - **2026-07-23 21:07:16** — auto-pip: reinstalled adflow (real build) into mach env after `cd /home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver/tests/reg_tests; grep -n "complex bui` (site-packages now matches ./adflow)
+- **2026-07-23 21:48:21** — wrap-up prompt fired (change-set 43d393e62f2b); uncommitted task-relevant paths:
+     M tests/reg_tests/dev/diag_full_derivatives.py
+- **2026-07-23 21:48:45** — wrap-up prompt fired (change-set f752528ad67f); uncommitted task-relevant paths:
+     M tests/reg_tests/README_SAGR.md
+     M tests/reg_tests/dev/diag_full_derivatives.py
+- **2026-07-24 09:32:07** — wrap-up prompt fired (change-set 43d393e62f2b); uncommitted task-relevant paths:
+     M tests/reg_tests/dev/diag_full_derivatives.py
+- **2026-07-24 10:09:04** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && export PETSC_ARCH=real-debug && make 2>&1 | tail -` (site-packages now matches ./adflow)
+- **2026-07-24 10:09:35** — wrap-up prompt fired (change-set f07b2481f7c7); uncommitted task-relevant paths:
+     M src/NKSolver/blockette.F90
+     M tests/reg_tests/dev/diag_full_derivatives.py
+- **2026-07-24 10:24:28** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && export PETSC_ARCH=real-debug && make 2>&1 | tail -` (site-packages now matches ./adflow)
+- **2026-07-24 10:34:50** — wrap-up prompt fired (change-set 926e1e997ce4); uncommitted task-relevant paths:
+     M CLAUDE.md
+     M docs/architecture.md
+     M src/NKSolver/blockette.F90
+     M tests/reg_tests/dev/diag_full_derivatives.py
+- **2026-07-24 10:35:57** — wrap-up prompt fired (change-set f9f6c61b51ff); uncommitted task-relevant paths:
+     M CLAUDE.md
+     M docs/architecture.md
+     M docs/task-log/README.md
+     M src/NKSolver/blockette.F90
+     M tests/reg_tests/dev/diag_full_derivatives.py
+    ?? docs/task-log/2026-07-24-blockette-sagr-residual-sync.md
+- **2026-07-24 10:43:00** — wrap-up prompt fired (change-set bd2d70c12f0f); uncommitted task-relevant paths:
+     M CLAUDE.md
+     M docs/architecture.md
+     M docs/task-log/README.md
+     M src/NKSolver/blockette.F90
+     M tests/reg_tests/dev/diag_full_derivatives.py
+     M tests/reg_tests/run_sagr_tests.sh
+    ?? docs/task-log/2026-07-24-blockette-sagr-residual-sync.md
+    ?? tests/reg_tests/test_blockette_sagr.py
+- **2026-07-24 10:43:23** — wrap-up prompt fired (change-set a0d5b79a4fed); uncommitted task-relevant paths:
+     M CLAUDE.md
+     M docs/architecture.md
+     M docs/task-log/README.md
+     M src/NKSolver/blockette.F90
+     M tests/reg_tests/README_SAGR.md
+     M tests/reg_tests/dev/diag_full_derivatives.py
+     M tests/reg_tests/run_sagr_tests.sh
+    ?? docs/task-log/2026-07-24-blockette-sagr-residual-sync.md
+    ?? tests/reg_tests/test_blockette_sagr.py
+- **2026-07-24 11:06:21** — wrap-up prompt fired (change-set f67bc88e27a0); uncommitted task-relevant paths:
+     M CLAUDE.md
+     M docs/architecture.md
+     M docs/task-log/README.md
+     M src/NKSolver/blockette.F90
+     M tests/reg_tests/README_SAGR.md
+     M tests/reg_tests/dev/diag_full_derivatives.py
+     M tests/reg_tests/run_sagr_tests.sh
+    ?? docs/task-log/2026-07-24-blockette-sagr-residual-sync.md
+    ?? tests/reg_tests/dev/diag_min_iters.py
+    ?? tests/reg_tests/test_blockette_sagr.py
+- **2026-07-24 11:21:10** — wrap-up prompt fired (change-set 6ff85765c4de); uncommitted task-relevant paths:
+     M tests/reg_tests/README_SAGR.md
+     M tests/reg_tests/dev/diag_full_derivatives.py
+    ?? tests/reg_tests/dev/diag_min_iters.py
+- **2026-07-24 13:07:11** — wrap-up prompt fired (change-set 8f6f59ffc441); uncommitted task-relevant paths:
+     M tests/reg_tests/README_SAGR.md
+     M tests/reg_tests/dev/diag_full_derivatives.py
+     M tests/reg_tests/test_adjoint_sagr.py
+    ?? tests/reg_tests/dev/diag_min_iters.py
+- **2026-07-24 13:27:34** — guard: DENIED edit to SA model (rule 2) (`/home/mdo/MDOLab_3_v2/adflow_sabcm/src/turbulence/sa.F90`)
+- **2026-07-24 13:29:04** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ cd /home/mdo/M` (site-packages now matches ./adflow)
+- **2026-07-24 13:34:56** — wrap-up prompt fired (change-set bf458c87619c); uncommitted task-relevant paths:
+    A  docs/task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md
+    M  docs/task-log/README.md
+    M  tests/reg_tests/README_SAGR.md
+    M  tests/reg_tests/dev/diag_full_derivatives.py
+    M  tests/reg_tests/test_adjoint_sagr.py
+    ?? tests/reg_tests/dev/diag_min_iters.py

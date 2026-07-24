@@ -57,9 +57,28 @@ import argparse
 import numpy
 from mpi4py import MPI
 
-# tests/reg_tests on the path (this file lives in tests/reg_tests/dev/)
-RT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Resolve the config/ref root so this same file runs in TWO layouts:
+#   - repo:       tests/reg_tests/dev/diag_full_derivatives.py  (RT = tests/reg_tests)
+#   - standalone: <folder>/diag_full_derivatives.py beside reg_sagr.py + inputs/
+# (a self-contained copy, e.g. the Verification_tuturial_mesh archive that must
+#  run on another machine). Detection: if reg_sagr.py sits next to this file, we
+#  are standalone; otherwise assume the repo dev/ layout.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if os.path.isfile(os.path.join(_HERE, "reg_sagr.py")):
+    RT = _HERE  # standalone folder
+else:
+    RT = os.path.dirname(_HERE)  # repo: dev/ -> tests/reg_tests
 sys.path.insert(0, RT)
+
+
+def _default_ref():
+    """Trained adjoint ref, wherever this layout keeps it (repo refs/ or the
+    standalone inputs/)."""
+    for c in (os.path.join(RT, "refs", "adjoint_sagr_tut_wing.json"),
+              os.path.join(RT, "inputs", "adjoint_sagr_tut_wing.json")):
+        if os.path.isfile(c):
+            return c
+    return os.path.join(RT, "refs", "adjoint_sagr_tut_wing.json")
 
 from pygeo import DVGeometry
 from pyspline import Curve
@@ -206,26 +225,28 @@ def resolve_indices(spec, n):
 
 
 def print_table(rows):
-    """rows: list of (label, cs, ref). Prints an aligned adjoint-vs-CS table
-    with absolute, relative, and % error, then worst-case summary lines."""
-    hdr = "%-24s %18s %18s %11s %11s %11s" % (
-        "d(func)/d(dv)", "adjoint", "complex-step", "|abs err|", "rel err", "% err",
+    """rows: list of (label, cs, ref, l2). Prints an aligned adjoint-vs-CS table
+    with absolute, relative, and % error plus the L2 norm the complex primal
+    re-converged to for that DV (totalRfinal/totalR0), then worst-case lines."""
+    hdr = "%-24s %18s %18s %11s %11s %11s %11s" % (
+        "d(func)/d(dv)", "adjoint", "complex-step", "|abs err|", "rel err", "% err", "L2 reached",
     )
     rprint("\n" + "=" * len(hdr))
-    rprint("  SUMMARY TABLE: adjoint vs complex-step")
+    rprint("  SUMMARY TABLE: adjoint vs complex-step  (L2 reached = CS re-converge totalRfinal/totalR0)")
     rprint("=" * len(hdr))
     rprint(hdr)
     rprint("-" * len(hdr))
     worst_rel = (-1.0, "")
     n_noref = 0
-    for label, cs, ref in rows:
+    for label, cs, ref, l2 in rows:
+        l2s = "%.2e" % l2 if l2 is not None else "-"
         if ref is None:
-            rprint("%-24s %18.10e %18s %11s %11s %11s" % (label, cs, "(no ref)", "-", "-", "-"))
+            rprint("%-24s %18.10e %18s %11s %11s %11s %11s" % (label, cs, "(no ref)", "-", "-", "-", l2s))
             n_noref += 1
             continue
         ad = abs(cs - ref)
         rd = ad / max(abs(ref), 1e-30)
-        rprint("%-24s %18.10e %18.10e %11.2e %11.2e %10.4f%%" % (label, ref, cs, ad, rd, rd * 100.0))
+        rprint("%-24s %18.10e %18.10e %11.2e %11.2e %10.4f%% %11s" % (label, ref, cs, ad, rd, rd * 100.0, l2s))
         if rd > worst_rel[0]:
             worst_rel = (rd, label)
     rprint("-" * len(hdr))
@@ -285,47 +306,87 @@ def run_cs(args):
     rprint("     primal budget: ncycles=%s  l2convergence=%s (force all iters)" % (args.ncycles, args.l2))
     rprint("     sweeping %d shape + %d twist components" % (len(shape_idx), len(twist_idx)))
 
-    rows = []  # (label, cs, ref) for the final table
+    rows = []  # (label, cs, ref, l2) for the final table
+
+    # --- warm start ---------------------------------------------------------
+    # Default: resetFlow (freestream) before each DV -> the perturbed complex
+    # solve must re-converge from scratch, and on stiff directions (mach) the
+    # FD-PC stalls the REAL residual at ~4e-5, capping the derivative at ~1e-3.
+    # --warm instead deep-converges the UNPERTURBED base once, snapshots its
+    # (essentially real) state, and re-seats that state before applying each
+    # 1e-40j perturbation. NK then only has to propagate the infinitesimal
+    # imaginary part from an already-deep real state, rather than drag the real
+    # residual down from freestream -- the test of whether mach's ~1e-3 is an
+    # FD-PC-from-freestream artifact or a true floor.
+    base_w = None
+    if args.warm:
+        rprint("\n#### --warm: deep-converging the UNPERTURBED base once ####")
+        solver.resetFlow(ap)
+        solver(ap, writeSolution=False)
+        base_w = solver.getStates().copy()
+        r0, _, rf = solver.getResNorms()
+        rprint("  [base L2 reached: %.3e]" % (numpy.real(rf) / max(numpy.real(r0), 1e-300)))
+
+    def seat_base():
+        """Start point for the next perturbed solve: warm (deep base state) or
+        cold (freestream)."""
+        if args.warm and base_w is not None:
+            solver.setStates(base_w.copy())
+        else:
+            solver.resetFlow(ap)
+
+    def l2reached():
+        """L2 norm the primal actually re-converged to: totalRfinal/totalR0."""
+        r0, _, rf = solver.getResNorms()
+        r0 = numpy.real(r0)
+        return numpy.real(rf) / r0 if r0 > 0 else None
 
     def do_aero(dv):
         rprint("\n#### re-converging complex solver: aero DV %s ####" % dv)
         setattr(ap, dv, getattr(ap, dv) + h * 1j)
-        solver.resetFlow(ap)  # clean restart each DV -> no cross-DV contamination
+        seat_base()  # warm (deep base) or cold (freestream) start
         solver(ap, writeSolution=False)
+        l2 = l2reached()
         funcs = {}
         solver.evalFunctions(ap, funcs)
         setattr(ap, dv, getattr(ap, dv) - h * 1j)
+        rprint("  [L2 reached: %.3e]" % l2 if l2 is not None else "  [L2 reached: n/a]")
         for f in EVAL_FUNCS:
             cs = numpy.imag(funcs[ap.name + "_" + f]) / h
             r = refLookup(ref, ap.name, f, dv + "_" + ap.name)
             lbl = "d%s/d%s" % (f, dv)
             rprint("  " + cmpRow(lbl, cs, r))
-            rows.append((lbl, cs, r))
+            rows.append((lbl, cs, r, l2))
 
     def do_geom(dvname, idx, arrlen):
         rprint("\n#### re-converging complex solver: geom DV %s[%d] ####" % (dvname, idx))
         xRef = {"twist": numpy.zeros(NTWIST, dtype="D"), "span": numpy.zeros(1, dtype="D"),
                 "shape": numpy.zeros(nShape, dtype="D")}
         xRef[dvname][idx] += h * 1j
-        solver.resetFlow(ap)  # clean restart each DV -> no cross-DV contamination
+        seat_base()  # warm (deep base) or cold (freestream) start
         solver.DVGeo.setDesignVars(xRef)
         solver(ap, writeSolution=False)
+        l2 = l2reached()
         funcs = {}
         solver.evalFunctions(ap, funcs)
+        rprint("  [L2 reached: %.3e]" % l2 if l2 is not None else "  [L2 reached: n/a]")
         for f in EVAL_FUNCS:
             cs = numpy.imag(funcs[ap.name + "_" + f]) / h
             r = refLookup(ref, ap.name, f, dvname, idx=idx)
             lbl = "d%s/d%s[%d]" % (f, dvname, idx)
             rprint("  " + cmpRow(lbl, cs, r))
-            rows.append((lbl, cs, r))
+            rows.append((lbl, cs, r, l2))
 
     if not args.skip_aero:
-        for dv in ["alpha", "mach", "P", "T"]:
+        aero_dvs = [d.strip() for d in args.aero.split(",") if d.strip()] if args.aero else ["alpha", "mach", "P", "T"]
+        for dv in aero_dvs:
             do_aero(dv)
     if not args.skip_geom:
-        do_geom("span", 0, 1)
-        for i in twist_idx:
-            do_geom("twist", i, NTWIST)
+        if not args.skip_span:
+            do_geom("span", 0, 1)
+        if not args.skip_twist:
+            for i in twist_idx:
+                do_geom("twist", i, NTWIST)
         for j in shape_idx:
             do_geom("shape", j, nShape)
 
@@ -335,9 +396,9 @@ def run_cs(args):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--mode", choices=["adjoint", "cs"], required=True)
-    p.add_argument("--ref", default=os.path.join(RT, "refs", "adjoint_sagr_tut_wing.json"),
+    p.add_argument("--ref", default=_default_ref(),
                    help="adjoint totals json to compare CS against (cs mode)")
-    p.add_argument("--out", default=os.path.join(RT, "refs", "adjoint_sagr_tut_wing.json"),
+    p.add_argument("--out", default=_default_ref(),
                    help="where adjoint mode writes the totals")
     p.add_argument("--shape", default="all",
                    help="'all' (every FFD shape point, default) or comma-separated indices")
@@ -347,8 +408,15 @@ def main():
                    help="primal iteration budget for the (complex) re-converge (default 5000)")
     p.add_argument("--l2", type=float, default=1e-20,
                    help="L2Convergence target; 1e-20 forces all ncycles iters (default 1e-20)")
+    p.add_argument("--aero", default="", help="comma list of aero DVs to sweep (default: alpha,mach,P,T)")
+    p.add_argument("--warm", action="store_true",
+                   help="warm-start: deep-converge the unperturbed base once, then re-seat that "
+                        "state before each perturbation (NK only propagates the imaginary part) "
+                        "instead of resetFlow-to-freestream. Tests the mach FD-PC-floor hypothesis.")
     p.add_argument("--skip-aero", action="store_true")
     p.add_argument("--skip-geom", action="store_true")
+    p.add_argument("--skip-span", action="store_true", help="skip the span DV (geom mode)")
+    p.add_argument("--skip-twist", action="store_true", help="skip all twist DVs (geom mode)")
     args = p.parse_args()
 
     if args.mode == "adjoint":

@@ -115,8 +115,16 @@ re-converge, then a final abs/rel/% error TABLE vs the adjoint) reads.
 Defaults sweep `--shape all` (every FFD point) and `--twist all`, and force the
 complex primal to grind all iterations (`--ncycles 5000`, `--l2 1e-20` disables
 the L2 early-exit) to push the FD-PC solve past its ~1e-8 stall. `resetFlow`
-runs before every DV (no cross-DV contamination). All-shape × deep budget is
-expensive — narrow with `--shape a,b,c` / lower `--ncycles`, or `--skip-aero/geom`.
+runs before every DV (no cross-DV contamination). The final table also reports
+the **L2 reached** per DV (`totalRfinal/totalR0` of that CS re-converge), so a
+loose comparison is immediately attributable to a shallow complex solve. All-
+shape × deep budget is expensive — narrow with `--shape a,b,c` / lower
+`--ncycles`, isolate geom with `--skip-aero`/`--skip-span`/`--skip-twist`, or
+drop a whole family with `--skip-geom`. **Run CS at the SAME `-np` the adjoint
+ref was trained at (2)**: a different partition linearizes about a slightly
+different discrete state (~1e-10, reduction order) and contaminates the ~1e-7
+comparison. For parallel jobs on distinct cores use `--cpu-set` (not a second
+`--bind-to core`, which re-binds from core 0 and collides).
 
 ### `generate_sagr_restart.py`
 The upstream SA restarts are downloaded pre-made (`input_files/
