@@ -667,11 +667,13 @@ contains
         !
 
         use ADjointPETSc, only: dRdwT, psi_like1, psi_like2, adjointKSP, &
-                                adjResInit, adjResStart, adjResFinal
+                                adjResInit, adjResStart, adjResFinal, &
+                                psiHistory, psiHistoryIters, psiHistoryResid, psiHistoryCount
 
         use killsignals, only: adjointFailed
         use inputADjoint, only: adjAbsTol, adjDivTol, adjMaxIter, adjRelTol, &
-                                adjRelTolRel, adjMaxL2Dev, printTiming
+                                adjRelTolRel, adjMaxL2Dev, printTiming, &
+                                storePsiHistory, psiHistoryStep, psiHistoryMax
         use adjointVars, only: derivVarsAllocated
         use communication, only: myid, adflow_comm_world
         use blockPointers, only: nDom
@@ -783,6 +785,27 @@ contains
         call KSPSetTolerances(adjointKSP, L2Rel, L2Abs, adjDivTol, &
                               adjMaxIter, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! (Re)allocate the psi snapshot buffer for this solve and reset
+        ! it. This is deliberately a fresh buffer per solveAdjoint() call
+        ! (i.e. per objective function), since psi has a different
+        ! meaning for each.
+        if (storePsiHistory) then
+            if (allocated(psiHistory)) then
+                if (size(psiHistory, 1) /= nState .or. size(psiHistory, 2) /= psiHistoryMax) then
+                    deallocate (psiHistory, psiHistoryIters, psiHistoryResid)
+                end if
+            end if
+            if (.not. allocated(psiHistory)) then
+                allocate (psiHistory(nState, psiHistoryMax))
+                allocate (psiHistoryIters(psiHistoryMax))
+                allocate (psiHistoryResid(psiHistoryMax))
+            end if
+            psiHistory = zero
+            psiHistoryIters = 0
+            psiHistoryResid = zero
+        end if
+        psiHistoryCount = 0
 
         ! Solve the update (psi_like2)
         call KSPSolve(adjointKSP, adjointRes, psi_like2, ierr)
@@ -922,8 +945,10 @@ contains
                                         overlapCoarse, fillLevelCoarse, innerPreConItsCoarse)
         end if
 
-        ! Setup monitor if necessary:
-        if (setMonitor) then
+        ! Setup monitor if necessary. Also needed (independent of
+        ! setMonitor's stdout residual printing) whenever psi-history
+        ! buffering is requested, since both live in MyKSPMonitor.
+        if (setMonitor .or. storePsiHistory) then
             ! PETSC_NULL_CONTEXT doesn't exit...
             call KSPMonitorSet(adjointKSP, MyKSPMonitor, PETSC_NULL_FUNCTION, &
                                PETSC_NULL_FUNCTION, ierr)

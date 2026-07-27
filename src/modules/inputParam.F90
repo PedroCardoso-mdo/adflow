@@ -904,6 +904,16 @@ module inputADjoint
     integer(kind=intType) :: adjRestart
     integer(kind=intType) :: adjMonStep
 
+    ! storePsiHistory : Whether to buffer intermediate adjoint solution
+    !                   estimates during the KSP solve, so their total
+    !                   derivatives can be reported after convergence
+    !                   (see MyKSPMonitor / solveAdjoint).
+    ! psiHistoryStep  : Buffer a snapshot every this many KSP iterations.
+    ! psiHistoryMax   : Maximum number of snapshots to buffer.
+    logical :: storePsiHistory
+    integer(kind=intType) :: psiHistoryStep
+    integer(kind=intType) :: psiHistoryMax
+
     ! outerPCIts : Number of iterations to run for on (global) preconditioner
     ! intterPCIts : Number of iterations to run on local preconditioner
     integer(kind=intType) :: outerPreConIts

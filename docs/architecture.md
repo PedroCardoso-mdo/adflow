@@ -373,22 +373,42 @@ computes but never assigns the module-level `totalR`). Reflects whatever
 `transitionRowVolScale`/`transitionResidualAutoscale` are currently set to;
 identical to `"totalr"` when both are off.
 
-## Known infra bug: `.pyf` option wiring (2026-07-16, not yet fixed for all options)
+## Known infra bug: `.pyf` option wiring (2026-07-16, recurring — not module-specific)
 
 `src/f2py/adflow.pyf` is a **hand-maintained** f2py interface file, not
-auto-regenerated from Fortran source on every build. Any `inputIteration`
-module variable not explicitly listed there is invisible to real
-Python↔Fortran communication — but f2py's `fortran`-type Python objects
-silently accept **arbitrary attribute names** with no backing memory, so
-`setOption`/reading the option back gives no error and no warning. This
-branch's `.pyf` was stale enough to affect `transitionSrcDtRestrict`,
-`transitionSrcDtLimit`, `srcDtDeactivateIters`, `transitionDampTheta`,
-`transitionDampMaxIter` (added before this session — **still not fixed**,
-out of this session's scope) and `transitionNK`/`transitionRowVolScale`/
-`transitionResidualAutoscale` (added this session — **fixed**, entries
-added to `module inputiteration` in `adflow.pyf`). `transitionSrcDtEigMode`
-has no backing Fortran variable at all (separate, also pre-existing bug).
-**Before trusting any Python-side setting of an `inputIteration` option
-that isn't already validated working, grep `adflow.pyf`'s `module
-inputiteration` block for it first** — if it's missing, the option is a
-no-op from Python regardless of what `setOption`/read-back suggest.
+auto-regenerated from Fortran source on every build. Any Fortran module
+variable (new option, new diagnostic array, anything) not explicitly listed
+in its `.pyf` module block is invisible to real Python↔Fortran
+communication — but f2py's `fortran`-type Python objects silently accept
+**arbitrary attribute names** with no backing memory, so `setOption`/reading
+the value back gives no error and no warning, and reads whatever phantom
+Python attribute was last set instead of the (uninitialized/default)
+Fortran memory. This has now bitten **three separate modules**, confirming
+it's a structural hazard, not a one-off stale-file issue:
+
+- `module inputiteration`: `transitionSrcDtRestrict`, `transitionSrcDtLimit`,
+  `srcDtDeactivateIters`, `transitionDampTheta`, `transitionDampMaxIter`
+  (added before 2026-07-16 — **still not fixed**, out of scope at the time).
+  `transitionNK`/`transitionRowVolScale`/`transitionResidualAutoscale`
+  (added 2026-07-16 — **fixed**). `transitionSrcDtEigMode` has no backing
+  Fortran variable at all (separate, also pre-existing bug).
+- `module inputadjoint`: `storePsiHistory`, `psiHistoryStep`,
+  `psiHistoryMax` (added 2026-07-24 for the psi-history adjoint-convergence
+  diagnostic, see `VERIFICATION/adjoint-trace.md` — **fixed** same day,
+  after ~3 hours of debugging a silent no-op that looked like a Fortran
+  module-memory corruption bug before the real cause was found).
+- `module adjointpetsc`: `psiHistory`, `psiHistoryIters`, `psiHistoryResid`,
+  `psiHistoryCount` (same feature, same date — **fixed**).
+
+**Before trusting any Python-side setting of ANY option or diagnostic
+array that isn't already validated working — regardless of which Fortran
+module it lives in — grep `adflow.pyf` for that module's block first** (`grep
+-n "module <modulename>"` then check the variable is listed inside it). If
+it's missing, the option/array is a no-op from Python regardless of what
+`setOption`/read-back or even a direct `self.adflow.<module>.<var>` read
+suggests — that read is reading the phantom Python attribute, not Fortran
+memory. Symptom to recognize this by: a value reads back correctly in
+Python right after `setOption`, but a Fortran-side `write(*,*)` of the
+*same* variable inside a routine that runs later shows the type's zero
+value (`.False.`/`0`/`0.0`) — that mismatch is the signature of this bug,
+not memory corruption.

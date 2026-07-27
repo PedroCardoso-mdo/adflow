@@ -42,6 +42,55 @@
 
 ---
 
+## Adjoint-solve diagnostic: psi-history / derivative-convergence reporting (2026-07-24)
+
+Not part of the residual-differentiation inventory below (this touches the
+**hand-written adjoint solver**, `adjointAPI.F90`/`adjointUtils.F90` — not
+Tapenade-generated, so freely editable per `CLAUDE.md` rule 6). Opt-in via
+`storePsiHistory` (bool, default `False`) — off by default, zero behavior
+change unless explicitly enabled.
+
+**What it does**: buffers the adjoint solution estimate (`psi`) every
+`psiHistoryStep` KSP iterations (default 10, capped at `psiHistoryMax`
+snapshots, default 50) during `solveAdjoint`'s `KSPSolve`, via a custom
+PETSc `KSPMonitorSet` callback (`MyKSPMonitor`,
+`src/adjoint/adjointUtils.F90`) that calls `KSPBuildSolution` mid-solve and
+corrects it against the incoming guess (`psi_like1`). After the solve,
+Python (`_printPsiHistorySensitivities` /
+`_writePsiHistoryJSON`/`_printPsiHistoryTable` in `adflow/pyADflow.py`)
+contracts each buffered snapshot through the existing
+`computeJacobianVectorProductBwd` path (same machinery the converged-psi
+total-derivative call already uses — no new AD code) to show how the total
+derivative of each function evolves as the adjoint converges: a
+norm-collapsed table to screen (`#`-banner style matching the standard
+CL/CD convergence table) and the full per-DV-component values to
+`<outputDirectory>/psiHistory_<func>.json` for plotting.
+
+**Storage**: `ADjointPETSc` module gained `psiHistory(nState, snapshot)`,
+`psiHistoryIters(snapshot)`, `psiHistoryResid(snapshot)`,
+`psiHistoryCount` — allocated/reset once per `solveAdjoint` call (fresh
+buffer per objective function, since `psi` means something different for
+each). `inputADjoint` gained `storePsiHistory`, `psiHistoryStep`,
+`psiHistoryMax`.
+
+**Gotcha that cost ~3 hours to find**: none of those six new module
+variables/arrays worked the first build — `storePsiHistory` read `True`
+from Python right up to the last line before `solveAdjoint`'s Fortran body,
+then read `False` *inside* that same subroutine, with no assignment
+anywhere in the Fortran source that could explain it. Root cause: `.pyf`
+option wiring is hand-maintained and module-scoped (see
+`../architecture.md`'s "Known infra bug: `.pyf` option wiring" section) —
+none of the six were listed in `adflow.pyf`'s `module inputadjoint` /
+`module adjointpetsc` blocks, so Python was silently writing to phantom
+attributes on the wrapper object instead of real Fortran memory. Fixed by
+adding all six to their respective `.pyf` blocks. **Any future addition to
+`ADjointPETSc`/`inputADjoint` (or any module) needs a matching `.pyf`
+entry — it will not error, it will just silently no-op.**
+
+Verification run + plots: `/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/adjoint_psihistory_test/` (tutorial-wing mesh, crossflow off, restart from converged state, DVs alpha/span/twist/shape). Finding: total derivatives stabilize (within 1%) after roughly 1 order of magnitude of KSP residual reduction, far before the `adjointL2Convergence` stopping criterion — case-specific (mild subsonic attached flow), not a general rule for how tight `adjointL2Convergence` needs to be on other meshes/regimes.
+
+---
+
 ## Executive Inventory
 
 | Category | SA Files/Touchpoints | SA-GR Files/Touchpoints | Status |

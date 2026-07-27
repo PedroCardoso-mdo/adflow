@@ -19,7 +19,12 @@ the end, not task-by-task.
 
 ## Per-Task Workflow
 
-
+When you judge a task is genuinely finished (per the Definition of Done
+above), invoke the **`wrapup`** skill: it checks for uncommitted task-relevant
+changes, proposes any needed CLAUDE.md/docs updates, and asks whether to
+commit + push. This replaced an always-on Stop hook that over-triggered on
+routine pauses — it is now invoked deliberately, not automatically on every
+stop.
 
 ## Hard Rules
 
@@ -28,9 +33,16 @@ the end, not task-by-task.
    multiplies SA production only (Eq. 41). *(Enforced: the
    `guard_protected_files.sh` PreToolUse hook hard-blocks edits to
    `src/turbulence/sa.F90`.)*
-3. **Skip multigrid (T1.6).** User defers it. **Crossflow (T2.5) is always
-   on** — it is a standing part of the model, not deferred; treat the
-   crossflow `D_scf` source as live in all residual/adjoint work.
+3. **Skip multigrid (T1.6).** User defers it. **Crossflow (T2.5) default
+   flipped to OFF (2026-07-24)** — `transitionCrossflow=True` stalls (~3e-2
+   plateau, never reaches deep convergence) on the tutorial-wing mesh at
+   M=0.15, reproduced from the original crossflow implementation
+   (`e5cd58cd`) through the current HEAD; not a regression, never fixed
+   for this mesh/case (only ever validated on AR5). `pyADflow.py`'s
+   `transitionCrossflow` default is now `False` — do not flip it back to
+   `True` without explicit user instruction. The `D_scf` source code
+   itself is still live/correct in residual/adjoint work — this is a
+   runtime-option default change, not a code removal.
 4. **All transition diagnostics go to the volume CGNS** via the
    `transitionDebug` array. No new ASCII debug files. No per-cell printouts.
 5. **First-order upwind** for γ and Re̅θt convection (paper §IV.A).

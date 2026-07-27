@@ -1253,6 +1253,9 @@ python module libadflow
          logical :: verifyextra
          logical :: usematrixfreedrdw
          integer(kind=inttype) :: applyadjointpcsubspacesize
+         logical :: storepsihistory
+         integer(kind=inttype) :: psihistorystep
+         integer(kind=inttype) :: psihistorymax
        end module inputadjoint
 
        module inputtimespectral ! in :adflow:../../modules/inputParam.f90
@@ -1438,6 +1441,10 @@ python module libadflow
 
        module adjointpetsc
          real(kind=alwaysrealtype) :: adjresinit, adjresstart, adjresfinal
+         real(kind=realtype) allocatable,dimension(:,:) :: psihistory
+         integer(kind=inttype) allocatable,dimension(:) :: psihistoryiters
+         real(kind=alwaysrealtype) allocatable,dimension(:) :: psihistoryresid
+         integer(kind=inttype) :: psihistorycount
        end module adjointpetsc
 
        module inputtsstabderiv ! in :test:inputParam.f90

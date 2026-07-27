@@ -186,3 +186,30 @@ bottom. Three hooks write here:
     M  tests/reg_tests/dev/diag_full_derivatives.py
     M  tests/reg_tests/test_adjoint_sagr.py
     ?? tests/reg_tests/dev/diag_min_iters.py
+- **2026-07-24 14:10:51** — auto-pip: reinstalled adflow (complex-step (CS) build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=complex-debug && \ cd /home/md` (site-packages now matches ./adflow)
+- **2026-07-24 15:54:23** — wrap-up prompt fired (change-set 11cc0e29f96d); uncommitted task-relevant paths:
+     M src/modules/inputParam.F90
+- **2026-07-24 15:56:18** — wrap-up prompt fired (change-set 5a27364a2c71); uncommitted task-relevant paths:
+     M src/adjoint/adjointUtils.F90
+     M src/modules/ADjointPETSc.F90
+     M src/modules/inputParam.F90
+- **2026-07-24 16:05:48** — wrap-up prompt fired (change-set ba8abba2e27b); uncommitted task-relevant paths:
+     M src/adjoint/adjointAPI.F90
+     M src/adjoint/adjointUtils.F90
+     M src/modules/ADjointPETSc.F90
+     M src/modules/inputParam.F90
+- **2026-07-24 16:17:38** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make && \ pip ` (site-packages now matches ./adflow)
+- **2026-07-24 16:21:14** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make && \ pip ` (site-packages now matches ./adflow)
+- **2026-07-24 16:23:24** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make` (site-packages now matches ./adflow)
+- **2026-07-24 16:27:12** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make` (site-packages now matches ./adflow)
+- **2026-07-24 16:51:37** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make` (site-packages now matches ./adflow)
+- **2026-07-24 16:58:42** — auto-pip: reinstalled adflow (real build) into mach env after `cd ../adflow_sagr_bisect_a8478125 && \ source /home/mdo/packages_v2/mach/bin/activate && \ export PE` (site-packages now matches ./adflow)
+- **2026-07-24 17:00:21** — auto-pip: reinstalled adflow (real build) into mach env after `cd /home/mdo/MDOLab_3_v2/adflow_sagr_bisect_a8478125 && \ source /home/mdo/packages_v2/mach/bin/acti` (site-packages now matches ./adflow)
+- **2026-07-24 17:13:11** — auto-pip: reinstalled adflow (real build) into mach env after `cd /home/mdo/MDOLab_3_v2/adflow_sagr_bisect_a8478125 && \ source /home/mdo/packages_v2/mach/bin/acti` (site-packages now matches ./adflow)
+- **2026-07-24 17:23:18** — auto-pip: reinstalled adflow (real build) into mach env after `rm -rf /home/mdo/MDOLab_3_v2/adflow_sagr_bisect_a8478125/build cd /home/mdo/MDOLab_3_v2/adflow_sagr_` (site-packages now matches ./adflow)
+- **2026-07-24 17:36:22** — auto-pip: reinstalled adflow (real build) into mach env after `rm -rf /home/mdo/MDOLab_3_v2/adflow_sagr_bisect_a8478125/build cd /home/mdo/MDOLab_3_v2/adflow_sagr_` (site-packages now matches ./adflow)
+- **2026-07-24 17:37:32** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make && pip in` (site-packages now matches ./adflow)
+- **2026-07-24 17:39:35** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make` (site-packages now matches ./adflow)
+- **2026-07-24 17:52:57** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make && pip in` (site-packages now matches ./adflow)
+- **2026-07-24 17:57:03** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make && pip in` (site-packages now matches ./adflow)
+- **2026-07-24 18:00:35** — auto-pip: reinstalled adflow (real build) into mach env after `source /home/mdo/packages_v2/mach/bin/activate && \ export PETSC_ARCH=real-debug && \ make && pip in` (site-packages now matches ./adflow)
