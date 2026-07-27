@@ -4,52 +4,42 @@
 > session). When a task finishes, write its summary as a new file in `task-log/` (see
 > `task-log/README.md`), add it to that index, and replace this file's body with the next task.
 
-## Task: Stand up the SA-BCM derivative-test harness
+## Task: Root-cause `hard`'s complete-mode (complex-step) state contamination
 
-**Started:** 2026-07-09
-**Status:** in progress
+**Started:** 2026-07-27
+**Status:** open, not yet started
 
 ### Objective
 
-Get `tests/reg_tests/*_bcm.py` running end-to-end so the manuscript's caveat — "adjoint-based
-sensitivity results must be revalidated" — can actually be checked, per the verification ladder
-in `tests/reg_tests/README_BCM.md`.
+`hard`'s complete-mode verification (`dev/diag_full_derivatives_bcm.py --mode cs`, all 83 DVs)
+fails on **every single one of the 332 derivatives** (4 functionals × 83 DVs) — not just
+`cmz`/`drag` as earlier partial-DV sweeps suggested. The smoking gun: the log's
+`[L2 reached: ...]` is **identical (4.500e-09) on every one of the 83 DVs**, which should not
+happen if each DV's complex primal is genuinely re-converging independently from a fresh
+`resetFlow`. This points to state contamination between DVs — likely triggered once `hard`'s
+known exp-sqrt kink instability is hit on an early DV — rather than 79 independent physics
+failures. See `docs/task-log/2026-07-27-full-verification-sa-smooth-hard-complete.md` for the
+full context; `sa` and `smooth` do NOT show this pattern (324/332 and 320/332 rows agree with CS
+to <1%), so this is `hard`-specific.
 
 ### Context (read only what's listed — CLAUDE.md rule 8)
-- `docs/architecture.md` — runtime options, code path, paper-symbol lookup.
-- `tests/reg_tests/README_BCM.md` — how to run the ladder and read failures.
-- `tests/reg_tests/reg_bcm.py` — fixtures and assert helpers.
+- `docs/task-log/2026-07-27-full-verification-sa-smooth-hard-complete.md` — how this was found.
+- `docs/task-log/2026-07-24-reg-bcm-missing-ank-nk-options.md` — the ANK/NK fix already applied
+  (this bug appeared AFTER that fix, with NK genuinely engaged, so it is not the same issue).
+- `tests/reg_tests/dev/diag_full_derivatives_bcm.py` — the script, `run_cs`/`resetFlow` logic.
+- `tests/reg_tests/dev/logs/cs_bcm_hard_COMPLETO.log` — the raw evidence (search `L2 reached`).
 
-### Working files (this session)
-- `tests/reg_tests/reg_bcm.py` — shared config/fixtures.
-- `tests/reg_tests/generate_bcm_restart.py` — one-time restart CGNS generator.
-- `tests/reg_tests/test_jacVecProdFWD_bcm.py`, `test_jacVecProdBWDFast_bcm.py`,
-  `test_adjoint_bcm.py` — the actual test classes.
-
-### Checklist
-- [x] Discover SA-BCM's actual shape (no new state vars — modifier inside SA's own equation).
-- [x] Confirm AD is currently in sync with `sa.F90` (no Tapenade rerun needed yet).
-- [x] Grid/FFD: settled on SA-GR's tutorial wing wholesale (mach=0.15, alpha=1.8), not a new
-      NACA0012/NLF-0416 mesh — see `reg_bcm.py` and `docs/task-log/` (prior session).
-- [x] Harness code written (`reg_bcm.py`, `dev/run_bcm_case.py`, `dev/diag_blockette_bcm.py`,
-      `generate_bcm_restart.py`, `test_*_bcm.py`, `run_bcm_tests.sh`) — see
-      `tests/reg_tests/README_BCM.md`. Not yet run.
-- [x] Paper-vs-code verification (both variants) + Tapenade diff-variable audit — see
-      `docs/task-log/2026-07-24-paper-verification-and-nk-relax.md`. **Result: faithful, no bugs
-      found; the only deviations are the two already-documented, deliberate smoothings.**
-- [x] `NKLSRelax` option added (off by default) for the one generic NK convergence idea worth
-      trying cheaply — see same task-log entry.
-- [x] Real build + mach install done (this repo's `adflow` is now what's active in the shared
-      mach venv — re-`pip install` the sibling SA-GR repo before switching back to that work).
-- [ ] Complex build (`make -f Makefile_CS PETSC_ARCH=complex-debug`) — **never done in this
-      repo**, needed for the CS ground-truth stage.
-- [ ] Populate `input_files/` (`./get-input-files.sh` or copy the two tutorial-wing stock files
-      from the sibling SA-GR repo — see `README_BCM.md` step 0).
-- [ ] Run `dev/run_bcm_case.py` (raw log, expect it not to converge first try) for both variants.
-- [ ] Run `dev/diag_blockette_bcm.py` — safety-critical, `useBlockettes=True` is the default here.
-- [ ] Run `generate_bcm_restart.py`, then `run_bcm_tests.sh blockette` → `train` → full ladder.
+### Suggested approach (not started)
+- Instrument/rerun a handful of DVs individually (fresh process each time, e.g. `--shape 0`
+  alone vs `--shape 40` alone) to see if the corruption is present from DV #1 or only appears
+  after some earlier DV hits the kink.
+- Check whether `resetFlow` (or whatever restores the restart state between DVs in
+  `diag_full_derivatives_bcm.py`) actually clears the complex perturbation/derivative state, not
+  just the real-valued flow state.
 
 ### Definition of done
-Per CLAUDE.md: compiles, smoke test N iters no NaN, plus the harness itself runs end-to-end
-(even if it reveals the manuscript's suspected bug — finding it, not fixing physics, is this
-task's job; see checklist above for what's still missing before that's possible).
+Either the contamination is fixed and `hard`'s complete-mode numbers become DV-dependent and
+meaningful again, or the mechanism is understood and documented well enough to know whether it's
+a script bug (fixable) or a genuine property of `hard`'s unconverged restart (not fixable without
+a converged restart first — see the still-open `NKLSRelax` follow-up in
+`../Converging_tuturial_mesh/README.md`).

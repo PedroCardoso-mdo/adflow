@@ -68,10 +68,13 @@ from reg_bcm import (
     ap_bcm_tut_wing,
     bcmBaseOptionsSmooth,
     bcmBaseOptionsHard,
+    bcmPlainSAOptions,
     bcmAeroDVs,
     getStateBlocks,
     maskStateVector,
 )
+
+VARIANT_OPTIONS = {"smooth": bcmBaseOptionsSmooth, "hard": bcmBaseOptionsHard, "sa": bcmPlainSAOptions}
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
 COMM = MPI.COMM_WORLD
@@ -97,7 +100,7 @@ def buildSolver(variant, complex_build, restartfile):
     else:
         from adflow import ADFLOW as ADF
 
-    variantOptions = bcmBaseOptionsSmooth if variant == "smooth" else bcmBaseOptionsHard
+    variantOptions = VARIANT_OPTIONS[variant]
 
     options = copy.copy(adflowDefOpts)
     options["outputdirectory"] = os.path.join(baseDir, "../output_files")
@@ -233,7 +236,7 @@ def print_comparison(title, ref, got):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--variant", choices=["smooth", "hard"], required=True)
+    p.add_argument("--variant", choices=["smooth", "hard", "sa"], required=True)
     p.add_argument("--mode", choices=["ad", "fd", "cs", "bwd", "dot"], required=True)
     p.add_argument("--restartfile", default=None)
     p.add_argument("--seed", type=int, default=314)

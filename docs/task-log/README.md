@@ -11,6 +11,7 @@ ever-growing file. When a task in `../current-task.md` finishes: write
 |---|---|---|
 | 2026-07-24 | Paper verification, Tapenade audit, NK line-search relax option | [2026-07-24-paper-verification-and-nk-relax.md](2026-07-24-paper-verification-and-nk-relax.md) |
 | 2026-07-24 | `reg_bcm.py` missing ANK/NK options (useNKSolver silently False); isolated-adjoint drag fix | [2026-07-24-reg-bcm-missing-ank-nk-options.md](2026-07-24-reg-bcm-missing-ank-nk-options.md) |
+| 2026-07-27 | Full 3-layer verification (partials/adjoint/complete) for sa/smooth/hard, all 332 derivatives | [2026-07-27-full-verification-sa-smooth-hard-complete.md](2026-07-27-full-verification-sa-smooth-hard-complete.md) |
 
 ## Template
 
