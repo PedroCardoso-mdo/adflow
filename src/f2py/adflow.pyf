@@ -1108,6 +1108,7 @@ python module libadflow
          real(kind=realtype) :: disscontmidpoint
          real(kind=realtype) :: disscontsharpness
          integer(kind=4) :: turbdadicoupled
+         logical :: transitionfirstorderupwind
          logical :: transitioncrossflow
          real(kind=realtype) :: transitionroughnessheight
          logical :: transitionuseapproxsa
@@ -1119,6 +1120,11 @@ python module libadflow
          real(kind=realtype) :: transitionnkstallrtolcap
          logical :: transitionrowvolscale
          logical :: transitionresidualautoscale
+         logical :: transitionsrcdtrestrict
+         real(kind=realtype) :: transitionsrcdtlimit
+         integer(kind=inttype) :: srcdtdeactivateiters
+         real(kind=realtype) :: transitiondamptheta
+         integer(kind=inttype) :: transitiondampmaxiter
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

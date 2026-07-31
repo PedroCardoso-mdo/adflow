@@ -5866,7 +5866,6 @@ class ADFLOW(AeroSolver):
             "transitionResidualAutoscale": [bool, False],
             "transitionSrcDtRestrict": [bool, True],
             "transitionSrcDtLimit": [float, 0.9],
-            "transitionSrcDtEigMode": [str, "eigenvalue"],
             "srcDtDeactivateIters": [int, 5],
             # SA-γ-Reθt damping params (not in canonical ADflow)
             "transitionDampTheta": [float, 0.99],
@@ -6286,11 +6285,6 @@ class ADFLOW(AeroSolver):
             "transitionresidualautoscale": ["iter", "transitionresidualautoscale"],
             "transitionsrcdtrestrict": ["iter", "transitionsrcdtrestrict"],
             "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
-            "transitionsrcdteigmode": {
-                "gershgorin": 0,
-                "eigenvalue": 1,
-                "location": ["iter", "transitionsrcdteigmode"],
-            },
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],

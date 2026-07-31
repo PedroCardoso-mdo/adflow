@@ -167,9 +167,6 @@ sagrBaseOptions = {
     "transitionsrcdtrestrict": True,
     # the cap value for the restriction above (lambda_source*dt <= this)
     "transitionsrcdtlimit": 0.9,
-    # how lambda_source is estimated from the 3x3 source Jacobian:
-    # "eigenvalue" (largest positive eig, default) or "gershgorin" (bound)
-    "transitionsrcdteigmode": "eigenvalue",
     # deactivate the source-dt restriction after N clean turbKSP iterations
     # in the second-order regime (only engages if ANKSecondOrdSwitchTol is
     # raised from its 1e-16 default; see architecture.md D-A2-3)
