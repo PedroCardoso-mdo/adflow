@@ -86,6 +86,11 @@ module NKSolver
     ! Parameter for external preconditioner
     integer(kind=intType) :: applyPCSubSpaceSize
 
+    ! Guarded fixed-step (SA-GR LSNone only): lowest accepted residual norm
+    ! this NK phase, the reference for the global rise cap. Re-armed on every
+    ! fresh NK entry in NKStep(firstCall).
+    real(kind=alwaysRealType) :: nkGuardBestNorm = huge(1.0_alwaysRealType)
+
 contains
 
     subroutine setupNKsolver
@@ -605,6 +610,7 @@ contains
             ! a previous NK excursion already tripped it off.
             transitionNKActive = .true.
             nkStallCount = 0
+            nkGuardBestNorm = huge(1.0_alwaysRealType)
 
             ! Copy the adflow 'w' into the petsc wVec
             call setwVec(wVec)
@@ -1109,6 +1115,9 @@ contains
         use constants
         use utils, only: EChk
         use communication
+        use genericISNAN, only: myisnan
+        use inputPhysics, only: turbModel
+        use inputIteration, only: transitionNK, transitionNKActive
         implicit none
 
         ! Input/Output
@@ -1120,25 +1129,89 @@ contains
         !g    - residual evaluated at new iterate y
 
         integer(kind=intType) :: nfevals
-        integer(kind=intType) :: ierr
-        logical :: flag
+        integer(kind=intType) :: ierr, try
+        logical :: flag, useGuard
         real(kind=alwaysRealType) :: step
         real(kind=realType) :: tmp
+        real(kind=alwaysRealType) :: fnorm, gnorm
+
+        ! Guard constants (SA-GR only, see below). growFac bounds the
+        ! per-step residual growth; riseCap bounds the total drift above the
+        ! best norm seen this NK phase -- the fine-S809 campaign showed the
+        ! unguarded fixed step failing by exactly this slow drift (0.11 -> 9
+        ! over ~110 iterations at ~2%/step, each step individually harmless,
+        ! ending in NaN), which a per-step check alone cannot catch. A
+        ! rejected step halves and retries, and the resulting step < 1
+        ! feeds the existing Eq. 59 srcDt-reactivation-on-backtrack logic in
+        ! NKStep -- the paper's own globalization -- which a constant full
+        ! step can never trigger.
+        real(kind=alwaysRealType), parameter :: growFac = 1.5_alwaysRealType
+        real(kind=alwaysRealType), parameter :: riseCap = 10.0_alwaysRealType
+        integer(kind=intType), parameter :: maxHalvings = 6
+
         flag = .True.
-        ! We just accept the step and compute the new residual at the new iterate
         nfevals = 0
         step = nk_fixedStep
-        tmp = -step
 
-        call VecWAXPY(w, tmp, y, x, ierr)
+        ! Stock behavior (accept the fixed step blindly) for everything
+        ! except the SA-GR transition model with transitionNK active.
+        useGuard = (turbModel == spalartallmarasnoft2gammaretheta .and. &
+                    transitionNK .and. transitionNKActive)
+
+        if (.not. useGuard) then
+            tmp = -step
+            call VecWAXPY(w, tmp, y, x, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call setW(w)
+            call computeResidualNK(useUpdateIntermed=.True.)
+            call setRVec(g)
+            nfevals = nfevals + 1
+            return
+        end if
+
+        call VecNorm(f, NORM_2, fnorm, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
-        ! Compute new function:
-        call setW(w)
-        call computeResidualNK(useUpdateIntermed=.True.)
-        call setRVec(g)
+        do try = 0, maxHalvings
+            tmp = -step
+            call VecWAXPY(w, tmp, y, x, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call setW(w)
+            call computeResidualNK(useUpdateIntermed=.True.)
+            call setRVec(g)
+            nfevals = nfevals + 1
 
-        nfevals = nfevals + 1
+            call VecNorm(g, NORM_2, gnorm, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            if (.not. myisnan(gnorm)) then
+                if (gnorm <= growFac * fnorm .and. &
+                    gnorm <= riseCap * nkGuardBestNorm) exit
+                ! Last resort: accept the smallest-step (least-damage)
+                ! non-NaN state rather than fail the whole solve.
+                if (try == maxHalvings) exit
+            else if (try == maxHalvings) then
+                ! NaN survives even the smallest step: restore the current
+                ! iterate (zero step) so the state stays finite, and report
+                ! line-search failure so the caller can fall back.
+                call VecCopy(x, w, ierr)
+                call EChk(ierr, __FILE__, __LINE__)
+                call setW(w)
+                call computeResidualNK(useUpdateIntermed=.True.)
+                call setRVec(g)
+                step = zero
+                flag = .False.
+                if (myid == 0) then
+                    print *, 'LSNone guard: NaN persists at step ', &
+                        nk_fixedStep / real(2**maxHalvings, alwaysRealType), &
+                        '; step rejected.'
+                end if
+                return
+            end if
+            step = step * half
+        end do
+
+        nkGuardBestNorm = min(nkGuardBestNorm, gnorm)
     end subroutine LSNone
 
     subroutine LSNM(x, f, g, y, w, fnorm, ynorm, gnorm, nfevals, flag, step)
