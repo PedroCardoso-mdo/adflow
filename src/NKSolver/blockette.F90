@@ -7169,8 +7169,14 @@ contains
                           + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
                     ! Distinct clamp targets (not in-place) to match Source.
                     lambdaThetaRaw = (thetaBL**2 / nu) * dUds
-                    lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
-                    lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                    if (rsaGRclampLambdaTheta) then
+                        lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
+                        lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                    else
+                        ! Paper-faithful: no clamp -- keep in sync with Source.
+                        lambdaThetaClamped = lambdaThetaRaw
+                        lambdaThetaLocal = lambdaThetaRaw
+                    end if
 
                     reThetaT_target = reThetaTCorrelation(turbIntensityInf * 100.0_realType, lambdaThetaLocal)
 

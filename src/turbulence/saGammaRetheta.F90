@@ -726,8 +726,15 @@ contains
                         ! in-place form broke dR[reThetat]/dw[meanflow] in
                         ! _fast_b only; see docs/VERIFICATION.
                         lambdaThetaRaw = (thetaBL**2 / nu) * dUds
-                        lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
-                        lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                        if (rsaGRclampLambdaTheta) then
+                            lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
+                            lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                        else
+                            ! Paper-faithful: no clamp (P&Z Eqs. 54-57
+                            ! saturate internally; correlation floors at 20).
+                            lambdaThetaClamped = lambdaThetaRaw
+                            lambdaThetaLocal = lambdaThetaRaw
+                        end if
 
                         reThetaT_target = reThetaTCorrelation( &
                             turbIntensityInf * 100.0_realType, lambdaThetaLocal)

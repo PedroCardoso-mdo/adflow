@@ -2304,6 +2304,9 @@ contains
         real(kind=realType) :: reThetaT
 
         real(kind=realType) :: Flambda, F1val, F2val, F3val, Tu_safe
+        ! Parameter (not a bare literal) so the CS build's checked interface
+        ! auto-promotes it -- see the note in paramTurb.F90.
+        real(kind=realType), parameter :: reThetaTFloor = 20.0_realType
 
         Tu_safe = smoothMinMax(Tu, rsaGRtuFloor, rsaGRpmax)
 
@@ -2334,6 +2337,12 @@ contains
             reThetaT = 331.50_realType &
                        * (Tu_safe - 0.5658_realType)**(-0.671_realType) * Flambda
         end if
+
+        ! Floor at 20 (LM2009 correlation validity limit). With
+        ! lambda_theta unclamped (rsaGRclampLambdaTheta = .false.) the F3
+        ! cubic goes negative below lambda_theta ~ -0.23, which would give
+        ! a negative target Re_theta_t without this.
+        reThetaT = smoothMinMax(reThetaT, reThetaTFloor, rsaGRpmax)
 
     end function reThetaTCorrelation
 
