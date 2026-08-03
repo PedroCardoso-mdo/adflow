@@ -52,9 +52,13 @@ module paramTurb
     ! above the drag bucket): the +-0.1 lambda_theta clamp is a legacy
     ! LM2009 prescription that is NOT part of the P&Z smooth model -- their
     ! F(lambda_theta) (Eqs. 54-57) carries its own smooth saturations.
-    ! .false. = paper-faithful unclamped lambda_theta (reThetaTCorrelation
-    ! floors its output at 20 for safety); .true. = restore legacy clamp.
-    logical, parameter :: rsaGRclampLambdaTheta = .false.
+    ! TESTED 2026-08-03 and REJECTED: unclamped lambda_theta stalls the
+    ! solver (~1e-4 plateau on S809 SB3 alpha 4-6 at 300k cycles) and moves
+    ! cd AWAY from the paper (+106..129 counts vs clamped 67..116 vs paper
+    ! ~63-85). The +-0.1 bound is part of the correlation's validity domain
+    ! (separated-flow dU/ds drives lambda_theta far outside it near the
+    ! bubble). Keep .true.; the switch remains for future experiments.
+    logical, parameter :: rsaGRclampLambdaTheta = .true.
     real(kind=realType), parameter :: rsaGRcrossflowRatioCap = 0.4_realType
     real(kind=realType), parameter :: rsaGRhcfRef = 0.1066_realType
 !
