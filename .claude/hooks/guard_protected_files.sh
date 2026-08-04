@@ -37,10 +37,8 @@ print(json.dumps({"hookSpecificOutput": {
 PY
 }
 
-log() {  # $1 = short tag
-    local LOG="$REPO/docs/HOOK_ACTIVITY_LOG.md"
-    local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
-    printf -- '- **%s** — guard: %s (`%s`)\n' "$ts" "$1" "$fp" >> "$LOG" 2>/dev/null
+log() {  # $1 = short tag — no-op (activity log intentionally not kept)
+    :
 }
 
 # --- Rule 2: the SA model itself is off-limits -------------------------------

@@ -23,8 +23,8 @@ printf '%s' "$cmd" | grep -qE '(^|[;&|])[[:space:]]*make([[:space:]]|$)' || exit
 
 # Which build was it? A complex-step build drives Makefile_CS (produces
 # libadflow_cs.so); anything else is the real build. Same `pip install .`
-# reinstalls whichever .so was produced — this only labels the log/message so
-# HOOK_ACTIVITY_LOG.md tells you which binary just went into mach.
+# reinstalls whichever .so was produced — this only labels the message so you
+# can tell which binary just went into mach.
 if printf '%s' "$cmd" | grep -qE 'Makefile_CS'; then
     kind='complex-step (CS)'
 else
@@ -32,14 +32,9 @@ else
 fi
 
 cd "$REPO" 2>/dev/null || exit 0
-LOG="$REPO/docs/HOOK_ACTIVITY_LOG.md"
-ts=$(date '+%Y-%m-%d %H:%M:%S')
-short=$(printf '%s' "$cmd" | tr '\n' ' ' | cut -c1-100)
 if "$PIP" install . --no-deps -q >/tmp/adflow_pip_install.log 2>&1; then
-    printf -- '- **%s** — auto-pip: reinstalled adflow (%s build) into mach env after `%s` (site-packages now matches ./adflow)\n' "$ts" "$kind" "$short" >> "$LOG" 2>/dev/null
-    printf '{"systemMessage":"✔ auto-installed adflow (%s build) into mach env (post-make) — site-packages now matches ./adflow (logged to docs/HOOK_ACTIVITY_LOG.md)"}\n' "$kind"
+    printf '{"systemMessage":"✔ auto-installed adflow (%s build) into mach env (post-make) — site-packages now matches ./adflow"}\n' "$kind"
 else
-    printf -- '- **%s** — auto-pip: FAILED after `%s` (see /tmp/adflow_pip_install.log) — site-packages may be STALE\n' "$ts" "$short" >> "$LOG" 2>/dev/null
     echo '{"systemMessage":"⚠ auto pip install after make FAILED (see /tmp/adflow_pip_install.log) — reg tests may run a STALE binary until you reinstall"}'
 fi
 exit 0
