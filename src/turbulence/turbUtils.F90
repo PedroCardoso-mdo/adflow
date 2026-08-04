@@ -2296,7 +2296,13 @@ contains
         !       Tu          : freestream turbulence intensity in percent
         !       lambdaTheta : pressure-gradient parameter (0 for uniform inflow)
         !
-        use constants, only: realType, one
+        ! NOTE: deliberately NOT `only:`-restricted. This routine branches on
+        ! Tu, so Tapenade emits a pushControl/popControl pair, which
+        ! autoEditReverseFast.py rewrites into myIntPtr/myIntStack. Those live
+        ! in `constants`, and Tapenade propagates the `only:` list verbatim to
+        ! the generated code -- an `only:` list here makes turbUtils_fast_b.f90
+        ! fail to compile with "Symbol 'myintptr' has no IMPLICIT type".
+        use constants
         use paramTurb, only: rsaGRpmax, rsaGRpmin, rsaGRtuFloor
         implicit none
 

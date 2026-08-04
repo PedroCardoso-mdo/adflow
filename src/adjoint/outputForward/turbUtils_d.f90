@@ -2144,7 +2144,13 @@ nadvloopspectral:do ii=1,nadv
 !       tu          : freestream turbulence intensity in percent
 !       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
 !
-    use constants, only : realtype, one
+! note: deliberately not `only:`-restricted. this routine branches on
+! tu, so tapenade emits a pushcontrol/popcontrol pair, which
+! autoeditreversefast.py rewrites into myintptr/myintstack. those live
+! in `constants`, and tapenade propagates the `only:` list verbatim to
+! the generated code -- an `only:` list here makes turbutils_fast_b.f90
+! fail to compile with "symbol 'myintptr' has no implicit type".
+    use constants
     use paramturb, only : rsagrpmax, rsagrpmin, rsagrtufloor
     implicit none
     real(kind=realtype), intent(in) :: tu, lambdatheta
@@ -2152,11 +2158,15 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype), intent(out) :: rethetat
     real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
     real(kind=realtype) :: flambdad, f1vald, f2vald, f3vald
+! parameter (not a bare literal) so the cs build's checked interface
+! auto-promotes it -- see the note in paramturb.f90.
+    real(kind=realtype), parameter :: rethetatfloor=20.0_realtype
     intrinsic exp
     real(kind=realtype) :: arg1
     real(kind=8) :: temp
     real(realtype) :: temp0
     real(kind=realtype) :: temp1
+    real(kind=realtype) :: tmpresult
     tu_safe = smoothminmax(tu, rsagrtufloor, rsagrpmax)
 ! --- smooth f(lambda_theta) eqs. 54-57 ---
 ! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
@@ -2188,6 +2198,13 @@ nadvloopspectral:do ii=1,nadv
       rethetatd = temp1*331.50_realtype*flambdad
       rethetat = temp1*(331.50_realtype*flambda)
     end if
+! floor at 20 (lm2009 correlation validity limit). with
+! lambda_theta unclamped (rsagrclamplambdatheta = .false.) the f3
+! cubic goes negative below lambda_theta ~ -0.23, which would give
+! a negative target re_theta_t without this.
+    rethetatd = smoothminmax_d(rethetat, rethetatd, rethetatfloor, 0.0_8&
+&     , rsagrpmax, tmpresult)
+    rethetat = tmpresult
   end function rethetatcorrelation_d
 
 ! ----------------------------------------------------------------------
@@ -2204,12 +2221,21 @@ nadvloopspectral:do ii=1,nadv
 !       tu          : freestream turbulence intensity in percent
 !       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
 !
-    use constants, only : realtype, one
+! note: deliberately not `only:`-restricted. this routine branches on
+! tu, so tapenade emits a pushcontrol/popcontrol pair, which
+! autoeditreversefast.py rewrites into myintptr/myintstack. those live
+! in `constants`, and tapenade propagates the `only:` list verbatim to
+! the generated code -- an `only:` list here makes turbutils_fast_b.f90
+! fail to compile with "symbol 'myintptr' has no implicit type".
+    use constants
     use paramturb, only : rsagrpmax, rsagrpmin, rsagrtufloor
     implicit none
     real(kind=realtype), intent(in) :: tu, lambdatheta
     real(kind=realtype) :: rethetat
     real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
+! parameter (not a bare literal) so the cs build's checked interface
+! auto-promotes it -- see the note in paramturb.f90.
+    real(kind=realtype), parameter :: rethetatfloor=20.0_realtype
     intrinsic exp
     real(kind=realtype) :: arg1
     tu_safe = smoothminmax(tu, rsagrtufloor, rsagrpmax)
@@ -2233,6 +2259,11 @@ nadvloopspectral:do ii=1,nadv
       rethetat = 331.50_realtype*(tu_safe-0.5658_realtype)**(-&
 &       0.671_realtype)*flambda
     end if
+! floor at 20 (lm2009 correlation validity limit). with
+! lambda_theta unclamped (rsagrclamplambdatheta = .false.) the f3
+! cubic goes negative below lambda_theta ~ -0.23, which would give
+! a negative target re_theta_t without this.
+    rethetat = smoothminmax(rethetat, rethetatfloor, rsagrpmax)
   end function rethetatcorrelation
 
 !  differentiation of flengthcorrelation in forward (tangent) mode (with options i4 dr8 r8):

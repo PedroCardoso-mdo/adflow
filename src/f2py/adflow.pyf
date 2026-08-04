@@ -1021,6 +1021,12 @@ python module libadflow
          logical :: useblockettes
        end module inputdiscretization
 
+       module inputdissipation ! in :adflow:../../modules/inputParam.f90
+         use precision
+         real(kind=realtype) :: epsacoustic
+         real(kind=realtype) :: epsshear
+       end module inputdissipation
+
        module cgnsgrid
          use constants
          integer(kind=inttype) :: cgnsndom

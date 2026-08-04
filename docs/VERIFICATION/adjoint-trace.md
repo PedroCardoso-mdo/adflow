@@ -42,6 +42,41 @@
 
 ---
 
+## Tapenade regeneration 2026-08-04 — AD debt paid + a reusable gotcha
+
+Triggered by making `epsAcoustic`/`epsShear` runtime options (see
+`architecture.md`, "Matrix-dissipation eigenvalue limiters"): the generated
+`fluxes_*.f90` had those values baked in as local `parameter`s and had to be
+regenerated. Regenerate with `./AD_I.sh` from the repo root (runs
+`ad_forward`, `ad_reverse`, `ad_reverse_fast`, then `make`; it does **not**
+`pip install` — do that separately or site-packages stays stale).
+
+**Two things this regeneration surfaced.**
+
+1. **The committed AD files were stale.** They predated `be9d6d1d` /
+   `efed31cf` (switchable λ_θ clamp + `ReThetaT ≥ 20` floor), whose commit
+   message already said `TAPENADE NEEDED before any adjoint use`. So the
+   regen diff legitimately touches `saGammaRetheta_{d,b,fast_b}.f90` and
+   `turbUtils_{d,b,fast_b}.f90`, not just `fluxes_*`. Those routines are now
+   differentiated as the primal actually computes them.
+
+2. **`use constants, only: …` breaks `_fast_b` for any routine that
+   branches.** `autoEditReverseFast.py:222,228` rewrites Tapenade's
+   `pushControl1b`/`popControl1b` into bare `myIntPtr`/`myIntStack`
+   statements. Those symbols live in `constants`, and Tapenade propagates an
+   `only:` list verbatim into the generated code — so a restricted import
+   yields `Error: Symbol 'myintptr' at (1) has no IMPLICIT type` at compile
+   time. Hit in `reThetaTCorrelation` (`turbUtils.F90:2299`), which gained an
+   `if (Tu <= 1.3)` branch with the floor work. Fixed by dropping the
+   `only:` there, with an in-source comment.
+
+   **Rule of thumb: any hand-written routine that Tapenade will
+   reverse-differentiate and that contains a branch must `use constants`
+   unrestricted.** Branchless routines (`flengthCorrelation:2355`,
+   `rethetacCorrelation:2379`) are fine with `only:`.
+
+---
+
 ## Adjoint-solve diagnostic: psi-history / derivative-convergence reporting (2026-07-24)
 
 Not part of the residual-differentiation inventory below (this touches the

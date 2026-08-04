@@ -1110,12 +1110,20 @@ contains
             lambdathetarawd = temp10*2*thetabl*thetabld + thetabl**2*(&
 &             dudsd-temp10*nud)/nu
             lambdathetaraw = thetabl*thetabl*temp10
-            lambdathetaclampedd = smoothminmax_d(lambdathetaraw, &
-&             lambdathetarawd, rsagrlambdathetamin, 0.0_8, rsagrpmax, &
-&             lambdathetaclamped)
-            lambdathetalocald = smoothminmax_d(lambdathetaclamped, &
-&             lambdathetaclampedd, rsagrlambdathetamax, 0.0_8, rsagrpmin&
-&             , lambdathetalocal)
+            if (rsagrclamplambdatheta) then
+              lambdathetaclampedd = smoothminmax_d(lambdathetaraw, &
+&               lambdathetarawd, rsagrlambdathetamin, 0.0_8, rsagrpmax, &
+&               lambdathetaclamped)
+              lambdathetalocald = smoothminmax_d(lambdathetaclamped, &
+&               lambdathetaclampedd, rsagrlambdathetamax, 0.0_8, &
+&               rsagrpmin, lambdathetalocal)
+            else
+! paper-faithful: no clamp (p&z eqs. 54-57
+! saturate internally; correlation floors at 20).
+              lambdathetaclamped = lambdathetaraw
+              lambdathetalocald = lambdathetarawd
+              lambdathetalocal = lambdathetaraw
+            end if
             rethetat_targetd = rethetatcorrelation_d(turbintensityinf*&
 &             100.0_realtype, lambdathetalocal, lambdathetalocald, &
 &             rethetat_target)
@@ -1859,10 +1867,17 @@ contains
 ! in-place form broke dr[rethetat]/dw[meanflow] in
 ! _fast_b only; see docs/verification.
             lambdathetaraw = thetabl**2/nu*duds
-            lambdathetaclamped = smoothminmax(lambdathetaraw, &
-&             rsagrlambdathetamin, rsagrpmax)
-            lambdathetalocal = smoothminmax(lambdathetaclamped, &
-&             rsagrlambdathetamax, rsagrpmin)
+            if (rsagrclamplambdatheta) then
+              lambdathetaclamped = smoothminmax(lambdathetaraw, &
+&               rsagrlambdathetamin, rsagrpmax)
+              lambdathetalocal = smoothminmax(lambdathetaclamped, &
+&               rsagrlambdathetamax, rsagrpmin)
+            else
+! paper-faithful: no clamp (p&z eqs. 54-57
+! saturate internally; correlation floors at 20).
+              lambdathetaclamped = lambdathetaraw
+              lambdathetalocal = lambdathetaraw
+            end if
             rethetat_target = rethetatcorrelation(turbintensityinf*&
 &             100.0_realtype, lambdathetalocal)
 ! ftheta_t shielding: shields bl interior, allows

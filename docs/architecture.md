@@ -197,6 +197,45 @@ LSBs) is visible, not a silent physics error.
 | `"ANKTurbKSPDebug"` | bool | `False` | Print linear residual, KSP iters, step size each Turb-ANK iteration. |
 | `"ANKPhysicalLSTolTurb"` | float | `0.99` | Physicality line-search tolerance for ν̃ in Turb-ANK (γ uses absolute bounds instead). |
 
+### Matrix-dissipation eigenvalue limiters (2026-08-04)
+
+Swanson & Turkel's Vn / Vl limiters, previously hard-coded Fortran
+`parameter`s duplicated across five hand-written routines. Only active when
+`discretization = "central plus matrix dissipation"` (the scalar/JST default
+does not use them).
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `"epsAcoustic"` | float | `0.25` | Vn — floor on the two acoustic eigenvalues, `λ = max(λ, Vn·rrad)`. Prevents zero dissipation at sonic lines. |
+| `"epsShear"` | float | `0.025` | Vl — floor on the (triple) entropy/vorticity eigenvalue `\|u·n\|`. Prevents zero dissipation where the flow is parallel to the face. |
+
+Why they matter here: inside a boundary layer the flow is parallel to the
+wall, so `|u·n| ≈ 0` on wall-normal faces and `rrad ≈ a`. The shear-wave
+dissipation there is therefore *entirely* set by Vl and is unrelated to the
+local physics. P&Z 2020 §4.1 set **Vl = 0** for exactly this reason
+("overly dissipative in the laminar boundary layer"), keeping Vn = 0.25
+(0.30 for CRM-NLF). The ADflow default Vl = 0.025 is **not** the paper's
+value; it is kept as the default here only for backward compatibility.
+Lowering Vl costs robustness near stagnation points.
+
+Wiring (all five hand-written sites read the same module variables):
+
+| File | Routine |
+|---|---|
+| `src/modules/inputParam.F90:101-120` | `module inputDissipation` — declaration |
+| `src/inputParam/inputParamRoutines.F90:4278-4279` | defaults |
+| `src/solver/fluxes.F90:419` | `inviscidDissFluxMatrix` |
+| `src/solver/fluxes.F90:4357` | `inviscidDissFluxMatrixApprox` |
+| `src/solver/fluxes.F90:5218` | `inviscidDissFluxMatrixCoarse` |
+| `src/NKSolver/blockette.F90:2476, 4637` | ANK/NK residual path |
+| `src/f2py/adflow.pyf:1024-1028` | `module inputdissipation` block |
+| `adflow/pyADflow.py:5903-5904, 6174, 6330-6331` | option defaults + `moduleMap` + option map |
+
+They live in their own `inputDissipation` module rather than
+`inputDiscretization` because the Tapenade-generated `fluxes_*.f90` do a
+whole-module `use inputdiscretization`, which collided with their own local
+`parameter` declarations of the same names.
+
 ## Examples
 
 ### 1. Robust startup (recommended defaults)
@@ -399,6 +438,10 @@ it's a structural hazard, not a one-off stale-file issue:
   module-memory corruption bug before the real cause was found).
 - `module adjointpetsc`: `psiHistory`, `psiHistoryIters`, `psiHistoryResid`,
   `psiHistoryCount` (same feature, same date — **fixed**).
+- `module inputdissipation`: `epsAcoustic`, `epsShear` (added 2026-08-04 —
+  **fixed at the time of writing**; the `.pyf` block was added in the same
+  change, and `libadflow.inputdissipation.epsacoustic` was verified readable
+  and writable from Python before the feature was declared done).
 
 **Before trusting any Python-side setting of ANY option or diagnostic
 array that isn't already validated working — regardless of which Fortran

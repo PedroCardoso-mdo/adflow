@@ -4201,6 +4201,7 @@ contains
 
         !  --------- Bare imports...too many to list -------
         use inputDiscretization
+        use inputDissipation
         use inputIO
         use inputIteration
         use inputMotion
@@ -4273,6 +4274,9 @@ contains
         vis2 = half
         vis4 = one / 64.0_realType
         vis2Coarse = half
+
+        epsAcoustic = 0.25_realType         ! Swanson-Turkel eigenvalue
+        epsShear = 0.025_realType           ! limiter coefficients.
 
         dirScaling = .true.                 ! Apply isotropic directional
         adis = two * third              ! scaling in the artificial

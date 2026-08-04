@@ -2473,6 +2473,7 @@ contains
         use constants
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use utils, only: getCorrectForK, myDim
@@ -2481,8 +2482,6 @@ contains
         !      Local parameters.
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
-        real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !
@@ -4635,6 +4634,7 @@ contains
         use constants
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4, sigma
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use utils, only: getCorrectForK, myDim
@@ -4643,8 +4643,6 @@ contains
         !      Local parameters.
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
-        real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !

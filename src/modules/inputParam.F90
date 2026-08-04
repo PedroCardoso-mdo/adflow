@@ -98,6 +98,30 @@ end module inputDiscretization
 
 !      ==================================================================
 
+module inputDissipation
+    !
+    !       Input parameters of the artificial dissipation scheme that
+    !       cannot live in inputDiscretization, because the Tapenade
+    !       generated flux routines use-associate that module in full and
+    !       still declare local parameters with these names.
+    !
+    !       epsAcoustic:  Swanson-Turkel eigenvalue limiter coefficient for
+    !                     the acoustic eigenvalues of the matrix
+    !                     dissipation scheme.
+    !       epsShear:     Swanson-Turkel eigenvalue limiter coefficient for
+    !                     the shear (convective) eigenvalues of the matrix
+    !                     dissipation scheme.
+    !
+    use precision, only: realType
+    implicit none
+    save
+
+    real(kind=realType) :: epsAcoustic, epsShear
+end module inputDissipation
+
+
+!      ==================================================================
+
 module inputIO
     !
     !       Input parameters which are related to io issues, like file

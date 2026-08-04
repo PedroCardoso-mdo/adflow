@@ -788,12 +788,20 @@ contains
 ! in-place form broke dr[rethetat]/dw[meanflow] in
 ! _fast_b only; see docs/verification.
         lambdathetaraw = thetabl**2/nu*duds
-        arg10 = rsagrlambdathetamin
-        lambdathetaclamped = smoothminmax(lambdathetaraw, arg10, &
-&         rsagrpmax)
-        arg11 = rsagrlambdathetamax
-        lambdathetalocal = smoothminmax(lambdathetaclamped, arg11, &
-&         rsagrpmin)
+        if (rsagrclamplambdatheta) then
+          arg10 = rsagrlambdathetamin
+          lambdathetaclamped = smoothminmax(lambdathetaraw, arg10, &
+&           rsagrpmax)
+          arg11 = rsagrlambdathetamax
+          lambdathetalocal = smoothminmax(lambdathetaclamped, arg11, &
+&           rsagrpmin)
+          call pushcontrol1b(1)
+        else
+! paper-faithful: no clamp (p&z eqs. 54-57
+! saturate internally; correlation floors at 20).
+          lambdathetalocal = lambdathetaraw
+          call pushcontrol1b(0)
+        end if
         arg1 = turbintensityinf*100.0_realtype
         rethetat_target = rethetatcorrelation(arg1, lambdathetalocal)
 ! ftheta_t shielding: shields bl interior, allows
@@ -1036,17 +1044,22 @@ contains
         vortmagd = ydist*tempd2
         call popcontrol1b(branch)
         if (branch .ne. 0) velmagd = velmagd + max10d
+        thetabld = thetabld + 7.5_realtype*deltabld
         arg1 = turbintensityinf*100.0_realtype
         call rethetatcorrelation_b(arg1, lambdathetalocal, &
 &                            lambdathetalocald, rethetat_targetd)
-        lambdathetaclampedd = 0.0_8
-        call smoothminmax_b(lambdathetaclamped, lambdathetaclampedd, &
-&                     arg11, arg1d1, rsagrpmin, lambdathetalocald)
-        lambdathetarawd = 0.0_8
-        call smoothminmax_b(lambdathetaraw, lambdathetarawd, arg10, &
-&                     arg1d0, rsagrpmax, lambdathetaclampedd)
-        thetabld = thetabld + 7.5_realtype*deltabld + 2*thetabl*duds*&
-&         lambdathetarawd/nu
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          lambdathetarawd = lambdathetalocald
+        else
+          lambdathetaclampedd = 0.0_8
+          call smoothminmax_b(lambdathetaclamped, lambdathetaclampedd, &
+&                       arg11, arg1d1, rsagrpmin, lambdathetalocald)
+          lambdathetarawd = 0.0_8
+          call smoothminmax_b(lambdathetaraw, lambdathetarawd, arg10, &
+&                       arg1d0, rsagrpmax, lambdathetaclampedd)
+        end if
+        thetabld = thetabld + 2*thetabl*duds*lambdathetarawd/nu
         tempd2 = thetabl**2*lambdathetarawd/nu
         dudsd = tempd2
         nud = -(duds*tempd2/nu)
@@ -2043,10 +2056,17 @@ contains
 ! in-place form broke dr[rethetat]/dw[meanflow] in
 ! _fast_b only; see docs/verification.
         lambdathetaraw = thetabl**2/nu*duds
-        lambdathetaclamped = smoothminmax(lambdathetaraw, &
-&         rsagrlambdathetamin, rsagrpmax)
-        lambdathetalocal = smoothminmax(lambdathetaclamped, &
-&         rsagrlambdathetamax, rsagrpmin)
+        if (rsagrclamplambdatheta) then
+          lambdathetaclamped = smoothminmax(lambdathetaraw, &
+&           rsagrlambdathetamin, rsagrpmax)
+          lambdathetalocal = smoothminmax(lambdathetaclamped, &
+&           rsagrlambdathetamax, rsagrpmin)
+        else
+! paper-faithful: no clamp (p&z eqs. 54-57
+! saturate internally; correlation floors at 20).
+          lambdathetaclamped = lambdathetaraw
+          lambdathetalocal = lambdathetaraw
+        end if
         arg1 = turbintensityinf*100.0_realtype
         rethetat_target = rethetatcorrelation(arg1, lambdathetalocal)
 ! ftheta_t shielding: shields bl interior, allows
