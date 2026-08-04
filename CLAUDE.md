@@ -54,15 +54,28 @@ stop.
    authorizes a manual edit.)* Hand-written adjoint code (top-level
    `adjoint*.F90`, `masterRoutines.F90`, `fortranPC.F90`, `autoEdit/*.py`,
    `Makefile_tapenade`) is **not** restricted.
-7. **Compile + run = done.** Do not attempt physics verification yourself.
+7. **Every run log must identify its ADflow revision.** ADflow prints a
+   provenance banner on the root proc at solver init:
+   `| ADflow 2.11.0 | git <hash> (<branch>) | installed <timestamp>`, plus
+   `*** DIRTY WORKING TREE ***` if there were uncommitted changes at install
+   time. It reports only — it does not compare against the repo's current
+   HEAD, since that flags harmless cases and misses the real one (rebuild
+   without reinstall, where HEAD never moves). The stamp comes from
+   `adflow/gitInfo.py`,
+   written by `setup.py` at **`pip install` time** (not at run time — runs
+   import from site-packages, so the repo's HEAD is not necessarily what
+   executed). `gitInfo.py` is gitignored; it is a build artifact. **A run log
+   without this banner is not a valid verification result** — reinstall and
+   rerun. Never delete or silence it to tidy output.
+8. **Compile + run = done.** Do not attempt physics verification yourself.
    Do not interpret results. Do not "improve" beyond the task spec.
-8. **Do not load files outside the task block's `Context:` list.** Token
+9. **Do not load files outside the task block's `Context:` list.** Token
    discipline matters — every task block is self-contained for a reason.
-9. **Paper wins** when paper and code disagree. Source of truth:
+10. **Paper wins** when paper and code disagree. Source of truth:
    `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`
    (full paper text — the only physics reference; do not create or rely on
    distilled physics summaries).
-10. **Units are p-ρ non-dimensional, not velocity-based.** ADflow scales by
+11. **Units are p-ρ non-dimensional, not velocity-based.** ADflow scales by
     pressure/density: velocity normalizes to M·√γ (not 1), viscosities are ratios
     to μ_∞ (`rlv`, `rev`), and `1/Re` is NOT absorbed into the viscosity. Read
     `docs/nondimensionalization.md` before touching any equation involving
@@ -79,7 +92,7 @@ minimal narration).
 All docs are indexed in **[`docs/README.md`](docs/README.md)** — the master
 index. It carries a **Task → files routing table**: for any question, look up
 the row that matches your task and **load only the file(s) it lists, in order**.
-Do **not** read the whole KB (rule 8 — token discipline).
+Do **not** read the whole KB (rule 9 — token discipline).
 
 Quick routing (full table in `docs/README.md`):
 
@@ -136,17 +149,31 @@ part of this KB — don't rely on them for transition-model facts.
 ## Verification Test Runs
 
 All small verification/smoke tests go in
-`/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/Acelarating convergence/Baseline/3D_Plain_Wing/`
-— **not** the scratchpad. For each test:
+`/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/`
+— **not** the scratchpad. That tree is organised into numbered top-level
+folders, each with its own `PURPOSE.md` and a `README.md` index at the root:
 
-1. Create a new subfolder there named for the test (e.g. `nk_colscale_test/`).
-2. Put the runner script, the full run log, and a short `PURPOSE.md`
-   (what is being tested, expected vs. observed outcome) in that folder.
+| Folder | Holds |
+|---|---|
+| `01_solver_verification` | Partial/total derivative checks, output files |
+| `02_adjoint_checks` | Adjoint verification runs |
+| `03_convergence_strategy` | `2d_airfoils`, `3d_plain_wing`, `tutorial_wing` — the usual smoke-test home |
+| `04_mesh_families` / `05_mesh_independence` | Grid studies (`MESH_STUDY_INDEX.md`) |
+| `06_alpha_sweep`, `07_sickle_wing`, `08_optimization`, `09_ar5_winglet_refinement`, `10_tmr_flatplate` | Campaign-specific |
+
+For each test:
+
+1. Create a new subfolder under the matching numbered folder, named for the
+   test (e.g. `03_convergence_strategy/tutorial_wing/nk_colscale_test/`).
+2. Put the runner script, the full run log, and a `PURPOSE.md` in it — see the
+   `purpose-md` skill. Dead ends go to `_old/` with a README saying why.
 3. Run with the mach env so the user can reproduce it exactly, **always with
-   `--bind-to core`**:
-   `mpirun -np 12 --bind-to core /home/mdo/packages_v2/mach/bin/python <script>.py`
+   `--bind-to core`** and **always `OMP_NUM_THREADS=1`** (unset =
+   oversubscription, 10 min+ vs 31 s):
+   `OMP_NUM_THREADS=1 mpirun -np 12 --bind-to core /home/mdo/packages_v2/mach/bin/python <script>.py`
    (build + `pip install` into `/home/mdo/packages_v2/mach` first if the
-   Fortran code changed).
+   Fortran code changed — otherwise the run loads the stale binary from
+   site-packages, and rule 7's banner will say so).
 
 ## Build Commands
 
