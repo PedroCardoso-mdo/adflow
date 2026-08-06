@@ -45,7 +45,7 @@ matched cl): **+1.1 / +1.2 / +6.7 / +22.3 / +30.2 counts at cl −0.23 /
 | Reynolds offset | Re 1.5/2.0/2.5e6 bracketing | eliminated |
 | Freestream Tu level | existing Tu sweep 0.02–0.07% | ~1 count / 0.01% — far too weak |
 | JST dissipation level | vis4 ×½ / ×2 on SB3 | ×2 converged: −2.3 counts (wrong size+sign); ×½ destabilizes into limit cycle |
-| Matrix dissipation (paper's scheme) | cold, cold+conservative ANK, warm-started | all 3 fail to converge — parked, needs dedicated stabilization |
+| Matrix dissipation (paper's scheme) | cold, cold+conservative ANK, warm-started on SB3; **defaults on L1, 13 alphas (job 1807627, 2026-08-05)** | **RESOLVED 2026-08-06**: it was being run below its stability threshold. Sweeping vis4 inside the matrix scheme (86 runs, jobs 1808897/1808924/1808951/1809388) converges above vis4 ~0.03, working range 0.08–0.1 (blocks of alphas at 12–13 orders). There, cd is insensitive to the coefficient (63/115/173 counts at alpha 0/6/10 across a 3x change) and it is the CLOSEST result to the paper above the corner in the whole campaign (+23.6 counts vs +25.1 for the best scalar). The corner still sits at alpha ~4.5 |
 | λθ ±0.1 clamp not in paper | `rsaGRclampLambdaTheta=.false.` build, S809 α 4–6 | REJECTED: stalls ~1e-4, cd +38 counts wrong direction; clamp is part of correlation validity; reverted (`efed31cf`) |
 | C-grid wake cut dislikes α≠0 | TCMPS grid rotated +4°, run at α=0 | ~2 counts vs freestream-α run — eliminated |
 | Farfield circulation correction | code inspection | feature doesn't exist in ADflow (dead `vortexCorr` flag); sub-count at 470–1000c anyway |
@@ -99,3 +99,95 @@ Branch `new_conv_strategie_test` @ `efed31cf`: λθ clamp switchable
 (default ON = legacy), Re̅θt_eq ≥ 20 floor in `reThetaTCorrelation`
 (inert with clamp on). Local mach and Deucalion machV2 builds in sync.
 TAPENADE NEEDED before any adjoint use of these changes.
+
+---
+
+# ADENDA 2026-08-05 — a SB3 nunca esteve convergida
+
+Campanha de convergência a pedido do utilizador (bucket S809 com dissipação
+reduzida). Pastas: `06_alpha_sweep/s809/dissipation_convergence/1_sb3_vis2_0_vis4_0p01/` e
+`06_alpha_sweep/s809/dissipation_convergence/` (PURPOSE.md em ambas);
+dashboard interativo com as 319 corridas S809 em
+`s809/dissipation_convergence/s809_dashboard.html`.
+
+## A1. O que obriga a rever este relatório
+
+**A malha SB3 — a malha em que assentam as §1–§6 acima — estagna a
+1e-4…1e-3 mesmo com a dissipação default.** Todos os α do sweep
+`results_geomfix_m010_SB3` têm `converged: false`. A única corrida SB3 no
+histórico que chegou a 1e-12 é o probe de **vis4 dobrado**
+(`vis4dbl_a5p0`, 96.2 counts) — e é esse o número que a §6 atribui ao
+baseline ("SB3 α=5 cold-start converges, 98.5 counts, 1e-12"). A
+atribuição está errada: o baseline não convergiu.
+
+Consequência: os desvios ao paper citados na §1 (~20–30 counts acima do
+canto) foram medidos em estados estagnados, e a dispersão entre receitas
+no mesmo α chega a 40 counts. **Não são medidas do modelo.**
+
+## A2. O que foi tentado para convergir a SB3 (16 receitas, ~136 corridas)
+
+| alavanca | resultado |
+|---|---|
+| `ANKSecondOrdSwitchTol` 1e-5 → 1e-2 | α=0 passa de 2.6 → **12.6 ordens**; α≥4 fica em ~1e-3 |
+| NK forçado a 3e-3, subspace 400 | piso 1e-3 → 1e-5 (a única alavanca que o moveu) |
+| `NKLS = non-monotone` | melhor variante do NK (5.8e-6) |
+| `turbResScale` do Re̅θt (1e-6, 1e-3, 1e-2) | nada nos dois sentidos; 1e-6 + PC forte → NaN |
+| turbulência por KSP, srcDt sempre ligado, CFL limitado | nada (KSP custa 6–8× o tempo) |
+| continuação de dissipação (arranque quente e nativa) | o arranque quente **piora** (2e-2) |
+| 1e6 ciclos | orçamento não é o limite |
+
+Assinatura em todos: `Step = 0.00` no NK com o **resíduo do Re̅θt** preso
+(~8–15, ~46 % do total) enquanto o resíduo de massa já vai em 1e-3…1e-4.
+
+## A3. Onde converge
+
+`s809_v2/mesh_L1`: **11.5–12.4 ordens** com vis4 de 0.0156 até 0.005, a
+α = 0 e 4 (matriz 2×5) e ao longo de todo o bucket até α = 7. O tail
+α ≥ 8 fica em ~5 ordens, como já acontecia no sweep L1 original.
+
+## A4. Dissipação — o que se sabe agora
+
+- **`vis2` é inerte** a M = 0.10: quatro valores (0.25 → 0) dão cd e
+  ordens idênticos, no S809 e na flat plate (matriz completa 4×5,
+  `10_tmr_flatplate/PURPOSE.md`). A comparação vis2 = 0 vs 0.25 desta
+  campanha não estava a medir nada.
+- **`vis4` tem limiar ≈ 0.01 nas malhas finas.** Flat plate: L0 converge
+  até 0.0078 e falha a 0.005; L1 e L2 falham já a 0.0078. Na S809 L1
+  converge-se até 0.005 — o limiar é da malha, não do coeficiente.
+- **A sensibilidade do cd ao vis4 era erro de malha**: flat plate L0
+  26.5 → 19.3 counts ao longo da gama, L1 20.4 → 20.6, L2 21.1 → 21.0.
+
+## A5. Bucket convergido (L1, job 1805694) vs o paper
+
+| | nosso (vis4 0.0156) | paper |
+|---|---|---|
+| fundo do bucket | 63.8 counts | 63–66 |
+| canto | α ≈ 4.5 | entre 5 e 6 |
+| cd a α = 6 | 120.7 | 85 |
+
+Baixar o vis4 corta até 30 counts a α = 10 (207 → 175) e **nada** abaixo
+de α = 5. Ou seja: a dissipação explica parte do excesso a alto α e
+**nenhuma parte do canto prematuro** — que continua a ser o defeito real,
+agora medido em solução convergida.
+
+## A6. O que muda no plano
+
+O passo definido na §7 (x_tr(α) sobreposto às curvas digitalizadas)
+mantém-se válido e passa a ser mais informativo, **mas tem de correr na
+L1**, não na SB3. Qualquer comparação futura com o paper feita na SB3
+mede o piso de convergência dessa malha.
+
+## A7. Dois testes que fecham a hipótese numérica (2026-08-05)
+
+- **Matrix dissipation na L1, tudo no default** (job 1807627): falha nos 13 α
+  (1.3–2.9 ordens, cd 1908…20013 counts). Corrige a leitura anterior — o
+  problema não era o transiente da SB3. **E é ele próprio corrigido a
+  2026-08-06:** varrendo o vis4 dentro do esquema matricial, converge acima de
+  ~0.03, com zona útil 0.08–0.1 e o melhor acordo com o paper acima do canto de
+  toda a campanha (+23.6 counts). O default 0.0156 estava abaixo do limiar de
+  estabilidade do esquema.
+- **vis4 acima do default** (job 1807690, 0.05 e 0.08 na L1): converge
+  (7.4–11.6 ordens) mas afasta-se do paper em todo o α (+19/+61 e +26/+82
+  counts) e **não desloca o canto**, que fica em α ≈ 4.5 com vis4 de 0.005 a
+  0.08. Com a direção oposta já testada, o canto prematuro deixa de ter
+  explicação dissipativa.

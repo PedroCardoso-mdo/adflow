@@ -32,6 +32,7 @@ from mpi4py import MPI
 from baseclasses import AeroSolver, AeroProblem, getPy3SafeString
 from baseclasses.utils import Error, CaseInsensitiveDict
 from . import MExt
+from . import __version__
 import hashlib
 from collections import OrderedDict
 
@@ -131,6 +132,10 @@ class ADFLOW(AeroSolver):
         self.adflow.communication.recvrequests = numpy.zeros(comm.size)
         self.myid = self.adflow.communication.myid = comm.rank
         self.adflow.communication.nproc = comm.size
+
+        # Every run log must identify the source revision it came from.
+        if self.myid == 0:
+            self._printBuildProvenance()
 
         if options is None:
             raise Error(
@@ -5801,6 +5806,33 @@ class ADFLOW(AeroSolver):
         # Set in the correct module
         setattr(module, variable, value)
 
+    def _printBuildProvenance(self):
+        """Print which source revision this ADflow was installed from.
+
+        Called once on the root proc at solver init so that every run log
+        carries it. ``adflow/gitInfo.py`` is written by ``setup.py`` at
+        ``pip install`` time -- see the note there for why install time and
+        not run time.
+
+        Deliberately reports only, without comparing against the repo's
+        current HEAD. Such a comparison flags the harmless case (a commit
+        landed after the install) while missing the one that actually bites
+        -- editing and rebuilding without reinstalling, where HEAD never
+        moves. The DIRTY flag below is the honest signal: it says the stamp
+        alone does not pin down the source.
+        """
+        try:
+            from . import gitInfo
+        except ImportError:
+            print("| ADflow provenance: UNAVAILABLE (adflow/gitInfo.py missing -- reinstall with pip)")
+            return
+
+        dirty = "  *** DIRTY WORKING TREE ***" if gitInfo.GIT_DIRTY else ""
+        print(
+            "| ADflow %s | git %s (%s) | installed %s%s"
+            % (__version__, gitInfo.GIT_HASH, gitInfo.GIT_BRANCH, gitInfo.INSTALL_TIME, dirty)
+        )
+
     @staticmethod
     def _getDefaultOptions():
         defOpts = {
@@ -5900,6 +5932,8 @@ class ADFLOW(AeroSolver):
             "vis4": [float, 0.0156],
             "vis2": [float, 0.25],
             "vis2Coarse": [float, 0.5],
+            "epsAcoustic": [float, 0.25],
+            "epsShear": [float, 0.025],
             "restrictionRelaxation": [float, 0.80],
             "liftIndex": [int, [2, 3]],
             "lowSpeedPreconditioner": [bool, False],
@@ -6169,6 +6203,7 @@ class ADFLOW(AeroSolver):
         moduleMap = {
             "io": self.adflow.inputio,
             "discr": self.adflow.inputdiscretization,
+            "dissipation": self.adflow.inputdissipation,
             "iter": self.adflow.inputiteration,
             "physics": self.adflow.inputphysics,
             "stab": self.adflow.inputtsstabderiv,
@@ -6324,6 +6359,8 @@ class ADFLOW(AeroSolver):
             "vis4": ["discr", "vis4"],
             "vis2": ["discr", "vis2"],
             "vis2coarse": ["discr", "vis2coarse"],
+            "epsacoustic": ["dissipation", "epsacoustic"],
+            "epsshear": ["dissipation", "epsshear"],
             "restrictionrelaxation": ["iter", "fcoll"],
             "forcesastractions": ["physics", "forcesastractions"],
             "lowspeedpreconditioner": ["discr", "lowspeedpreconditioner"],
