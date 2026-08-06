@@ -62,6 +62,9 @@ module saGammaReTheta
 
     real(kind=realType), dimension(:, :, :, :, :), allocatable :: qq
 
+    ! One-shot flag so the rotating-frame warning prints only once per run.
+    logical :: rotWarnDone = .false.
+
 contains
 
     subroutine saGammaReTheta_block(resOnly)
@@ -82,6 +85,12 @@ contains
         !      Local variables.
         !
         integer(kind=intType) :: nn, sps
+
+        ! One-time heads-up about the rotating-frame status of the model.
+        ! Hidden from Tapenade (diagnostic only, pulls in communication/cgnsGrid).
+#ifndef USE_TAPENADE
+        call warnRotatingTransition
+#endif
 
         ! Set the arrays for the boundary condition treatment.
 
@@ -131,6 +140,71 @@ contains
         deallocate (qq)
 
     end subroutine saGammaReTheta_block
+
+#ifndef USE_TAPENADE
+    subroutine warnRotatingTransition
+        !
+        ! One-time warning (rank 0) about the rotating-frame status when the
+        ! SA-GR transition model is active. Tells the user which form defined
+        ! the rotation and whether the model's relative-frame boundary-layer
+        ! correction (V_rel = V_abs - Omega x r) is actually being applied.
+        ! cgnsDoms and sections are globally replicated, so no MPI is needed.
+        ! Not differentiated (called only from the block driver, not Source).
+        !
+        use constants
+        use communication, only: myID
+        use cgnsGrid, only: cgnsDoms, cgnsNDom
+        use section, only: sections, nSections
+        implicit none
+
+        integer(kind=intType) :: n
+        logical :: secRot, cgnsRot
+        real(kind=realType), parameter :: rotEps = 1.0e-14_realType
+
+        if (rotWarnDone) return
+        rotWarnDone = .true.
+        if (myID /= 0) return
+
+        ! Form A: rotation carried through to the sections (rotating frame of
+        ! reference defined in the grid). This is the rate the transition
+        ! model reads, so the relative-frame correction IS applied.
+        secRot = .false.
+        do n = 1, nSections
+            if (sections(n)%rotRate(1)**2 + sections(n)%rotRate(2)**2 &
+                + sections(n)%rotRate(3)**2 > rotEps) secRot = .true.
+        end do
+
+        ! Form B: rotation set on the CGNS domains only (e.g. Python
+        ! setRotationRate), not propagated to the sections -> the transition
+        ! model does not see it and the correction is NOT applied.
+        cgnsRot = .false.
+        do n = 1, cgnsNDom
+            if (cgnsDoms(n)%rotRate(1)**2 + cgnsDoms(n)%rotRate(2)**2 &
+                + cgnsDoms(n)%rotRate(3)**2 > rotEps) cgnsRot = .true.
+        end do
+
+        if (secRot) then
+            print "(a)", "#"
+            print "(a)", "#               Warning!!!!"
+            print "(a)", "# SA-GR transition: a rotating frame of reference is active"
+            print "(a)", "# (rotation defined in the grid / sections). The transition"
+            print "(a)", "# model is applying its relative-frame boundary-layer"
+            print "(a)", "# correction: V_rel = V_abs - Omega x r."
+            print "(a)", "#"
+        else if (cgnsRot) then
+            print "(a)", "#"
+            print "(a)", "#               Warning!!!!"
+            print "(a)", "# SA-GR transition: rotation is defined on the CGNS domains"
+            print "(a)", "# (e.g. via setRotationRate) but is NOT propagated to the"
+            print "(a)", "# sections, so the transition model's relative-frame"
+            print "(a)", "# correction is NOT active -- boundary-layer quantities use"
+            print "(a)", "# the absolute velocity. Define the rotation in the grid"
+            print "(a)", "# (rotating frame of reference) to enable the correction."
+            print "(a)", "#"
+        end if
+
+    end subroutine warnRotatingTransition
+#endif
 
 
 
@@ -240,7 +314,14 @@ contains
         real(kind=realType) :: pReTheta, dScf, reScf, hcf
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: yDist
+        ! Rotating-frame (relative-velocity) helpers. See the block near
+        ! velMag below: V_rel = V_abs - Omega x r. Omega (rotRate) is a fixed
+        ! input, so sc is computed unconditionally; a non-rotating section has
+        ! rotRate = 0 => sc = 0 exactly, a bit-identical no-op.
+        real(kind=realType) :: xc(3), xxc(3), sc(3)
+        real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
+        real(kind=realType) :: lambdaThetaRaw, lambdaThetaClamped
         real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
         real(kind=realType) :: dwdx, dwdy, dwdz
         real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
@@ -433,8 +514,31 @@ contains
                         ! Compute the source term; some terms are saved for the
                         ! linearization. The source term is stored in scratch.
 
-                        ! Clamp gamma to the physical range for SA production coupling.
-                        gammaForSA = min(max(w(i, j, k, itu2), zero), one)
+                        ! Clamp the intermittency multiplying SA production
+                        ! (Eq. 41: P~_nu = gamma*P_nu). gamma is the RAW
+                        ! intermittency in [0,1] here: unlike standard
+                        ! Langtry-Menter, P&Z drop the separation-induced
+                        ! gamma_sep term (Sec. II), so the SA-production
+                        ! multiplier never exceeds 1 -- hence the upper cap is
+                        ! ~1 (one + xminn), NOT rsaGRgammaHi=2.0 (that 2.0 is
+                        ! gammaLocal's raw solver-state bound from Algorithm 2, a
+                        ! different role). This is a failure/divergence safeguard,
+                        ! not normal physics -- gamma stays in [0,1] on its own in
+                        ! any healthy solve. A bare min(max(gamma,0),1) ties
+                        ! exactly at gamma==1, which gamma legitimately reaches
+                        ! over large fully-turbulent regions, and Tapenade's
+                        ! forward tangent picks the wrong branch there vs.
+                        ! complex-step (confirmed 2026-07-23 by cell-by-cell
+                        ! AD-vs-CS diffing: every mismatched cell in
+                        ! dR[nuTilde]/dw[gamma] had gamma==1.0 bit-exact, CS=0
+                        ! correctly, AD nonzero incorrectly). Padding the upper
+                        ! bound to one + xminn keeps gamma==1.0 strictly inside
+                        ! the pass-through region (xminn=1e-10 >> the observed
+                        ! ~1-ULP overshoot), removing the tie. The lower bound
+                        ! xminn is only met asymptotically (steady-state gamma
+                        ! respects the implicit 0.02 floor), so it carries no tie
+                        ! risk and just guards divergent/negative gamma.
+                        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
 
                         if (approxSA .and. transitionUseApproxSA) then
                             term1 = zero
@@ -480,11 +584,59 @@ contains
                         nutSA = w(i, j, k, itu1) * fv1
                         !rTurb= ν_t/ν
                         rTurb = nutSA / nu
+                        ! gammaLocal clamps intermittency to [rsaGRgammaLo,
+                        ! rsaGRgammaHi] = [1e-10, 2.0] -- these are the model's
+                        ! own bounds from Algorithm 2 (P&Z Eq. context, line 630:
+                        ! "while gamma > 2 or gamma < 1e-10 ... limit
+                        ! intermittency"), NOT arbitrary numbers, so they stay as
+                        ! defined. Unlike gammaForSA above (whose min(.,1) ties at
+                        ! gamma's natural saturation value 1.0 -> AD-vs-CS branch
+                        ! mismatch, fixed there with a margin), gammaLocal's upper
+                        ! bound is 2.0, so gamma==1.0 sits STRICTLY INTERIOR: no
+                        ! tie point at any value gamma naturally reaches, hence no
+                        ! margin needed here. The 1e-10 lower bound is only met
+                        ! asymptotically (gamma->0 in fully laminar regions is not
+                        ! bit-exact), so it too carries no tie risk. reThetaTilde's
+                        ! floor (Algorithm 2: reThetat clamped >= 20) is likewise a
+                        ! plain hard clamp.
                         gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
                         reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
                         yDist = d2Wall(i, j, k)
-                        velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
-                                  + w(i, j, k, ivz)**2
+
+                        ! --- Relative (rotating-frame) velocity ---
+                        ! ADflow stores the ABSOLUTE velocity in w(:,ivx:ivz)
+                        ! (a rotating no-slip wall carries u = Omega x r, not
+                        ! zero; see solverUtils.F90 wall BC). The boundary-layer
+                        ! correlations below (theta_BL Eq.4, time scale Eq.7,
+                        ! lambda_theta Eq.10, delta Eq.4, helicity Eq.26) are
+                        ! defined in the frame where the BL is steady = the
+                        ! relative (rotating) frame, so they must use
+                        ! V_rel = V_abs - Omega x r.
+                        ! Cell center from the 8 surrounding nodes and
+                        ! sc = Omega x (xc - rotCenter) follow the pattern in
+                        ! solverUtils.F90:gridVelocitiesFineLevel_block; omegax/y/z
+                        ! are already timeRef-scaled (see above). For a
+                        ! non-rotating section rotRate = 0 => sc = 0 exactly, so
+                        ! V_rel = V_abs and every term below is bit-identical.
+                        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+                              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+                              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+                        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+                              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+                              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+                        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+                              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+                              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+                        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+                        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+                        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+                        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+                        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+                        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+                        velRelx = w(i, j, k, ivx) - sc(1)
+                        velRely = w(i, j, k, ivy) - sc(2)
+                        velRelz = w(i, j, k, ivz) - sc(3)
+                        velMag2 = velRelx**2 + velRely**2 + velRelz**2
                         velMag = sqrt(max(velMag2, xminn))
 
                         ! --- Vorticity limiting ---
@@ -495,13 +647,23 @@ contains
                         ! chord): the physical cap scales as 1/√l. refLenTrans supplies
                         ! l in grid units; transitionRefLength < 0 => use lengthRef
                         ! (AeroProblem chordRef).
-                        ! Rotating frame not adress here!!!!! uInf has no meaning on it.
+                        ! Rotating frame: the cap is 1/20 of the characteristic BL
+                        ! edge wall-vorticity ~ sqrt(U_e^3/(nu*l)); on a rotating
+                        ! blade the relevant edge velocity U_e is the local section
+                        ! speed, not the inertial freestream (uInf -> 0 in hover
+                        ! would kill both P_gamma and E_gamma). Use the blade-element
+                        ! section velocity uRefTrans = sqrt(uInf^2 + |Omega x r|^2)
+                        ! (|Omega x r| = |sc|): exact for axial inflow (Omega x r ⊥
+                        ! V_inf: hover/climb/props/turbines) and a sound characteristic
+                        ! for edgewise flow. Reduces to uInf exactly when sc = 0
+                        ! (non-rotating), so this is a no-op for every inertial case.
                         if (transitionRefLength > zero) then
                             refLenTrans = transitionRefLength
                         else
                             refLenTrans = lengthRef
                         end if
-                        vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) &
+                        uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
+                        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) &
                                 / 20.0_realType
 
                         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
@@ -541,17 +703,38 @@ contains
                         thetaBL = reThetaTilde * nu &
                                   / max(velMag, xminn)
 
-                        ! Compute local lambdaTheta = (thetaBL^2 / nu) * dU/ds
-                        uxhat = w(i, j, k, ivx) / max(velMag, xminn)
-                        uyhat = w(i, j, k, ivy) / max(velMag, xminn)
-                        uzhat = w(i, j, k, ivz) / max(velMag, xminn)
+                        ! Compute local lambdaTheta = (thetaBL^2 / nu) * dU/ds.
+                        ! Streamwise unit vector is along the RELATIVE velocity
+                        ! (rotating-frame streamline). The velocity-gradient
+                        ! stencils (uux..wwz) stay absolute: dU/ds contracts them
+                        ! with the symmetric u_hat_i u_hat_j, and the antisymmetric
+                        ! rotation part of d(V_rel)/dx - d(V_abs)/dx cancels there,
+                        ! so only u_hat needs the relative velocity.
+                        uxhat = velRelx / max(velMag, xminn)
+                        uyhat = velRely / max(velMag, xminn)
+                        uzhat = velRelz / max(velMag, xminn)
                         dUds = two * fact &
                              * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
                               + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
                               + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
-                        lambdaThetaLocal = (thetaBL**2 / nu) * dUds
-                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, -0.1_realType, rsaGRpmax)
-                        lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, 0.1_realType, rsaGRpmin)
+                        ! Use distinct targets for each clamp (NOT in-place
+                        ! overwrite) so the reverse-fast AD recomputes each
+                        ! intermediate instead of relying on a push/pop stack
+                        ! that autoEditReverseFast.py strips -- matching the
+                        ! convention used by every other smoothMinMax here
+                        ! (vortMagLim, crossflowRatio, dHplus, ...). The
+                        ! in-place form broke dR[reThetat]/dw[meanflow] in
+                        ! _fast_b only; see docs/VERIFICATION.
+                        lambdaThetaRaw = (thetaBL**2 / nu) * dUds
+                        if (rsaGRclampLambdaTheta) then
+                            lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
+                            lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                        else
+                            ! Paper-faithful: no clamp (P&Z Eqs. 54-57
+                            ! saturate internally; correlation floors at 20).
+                            lambdaThetaClamped = lambdaThetaRaw
+                            lambdaThetaLocal = lambdaThetaRaw
+                        end if
 
                         reThetaT_target = reThetaTCorrelation( &
                             turbIntensityInf * 100.0_realType, lambdaThetaLocal)
@@ -573,17 +756,21 @@ contains
                         reScf = zero
                         hcf = zero
                         if (transitionCrossflow) then
-                            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
-                            ! Eq.24 helicity uses the raw velocity curl; undo the
-                            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
-                            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
-                                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
-                                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
+                            ! Helicity H_cf = d*|U_hat . Omega|/U (Eqs.24-26) in the
+                            ! RELATIVE frame: relative velocity (velRel) dotted with
+                            ! relative vorticity (vortx = curl - 2*Omega). Helicity
+                            ! U.Omega is NOT frame-invariant; the old "+2*omega" undo
+                            ! gave absolute-frame helicity, wrong on a rotor. Omega=0
+                            ! => bit-identical to the old form.
+                            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                                + (velRely / max(velMag, xminn)) * vorty &
+                                + (velRelz / max(velMag, xminn)) * vortz) &
                                 / max(velMag, xminn)
                             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                                 + 319.51_realType
-                            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
-                            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
                             reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
                             reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
                             dScf = (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
@@ -712,17 +899,21 @@ contains
                             * (one - fThetaT), zero)
 
                         if (transitionCrossflow) then
-                            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
-                            ! Eq.24 helicity uses the raw velocity curl; undo the
-                            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
-                            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
-                                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
-                                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
+                            ! Helicity H_cf = d*|U_hat . Omega|/U (Eqs.24-26) in the
+                            ! RELATIVE frame: relative velocity (velRel) dotted with
+                            ! relative vorticity (vortx = curl - 2*Omega). Helicity
+                            ! U.Omega is NOT frame-invariant; the old "+2*omega" undo
+                            ! gave absolute-frame helicity, wrong on a rotor. Omega=0
+                            ! => bit-identical to the old form.
+                            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                                + (velRely / max(velMag, xminn)) * vorty &
+                                + (velRelz / max(velMag, xminn)) * vortz) &
                                 / max(velMag, xminn)
                             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                                 + 319.51_realType
-                            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
-                            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
                             reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
                             reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
                             if (reScf < reThetaTilde) then
@@ -2270,6 +2461,9 @@ contains
         real(kind=realType) :: velMag, velMag2, timeScale
         real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: yDist
+        ! Rotating-frame helpers (see Source; no-op when rotRate = 0 => sc = 0)
+        real(kind=realType) :: xc(3), xxc(3), sc(3)
+        real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
         real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
         real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
         real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
@@ -2354,7 +2548,12 @@ contains
         termFw = ((one + cw36) / (gg6 + cw36))**sixth
         fwSa = gg * termFw
 
-        gammaForSA = min(max(w(i, j, k, itu2), zero), one)
+        ! Clamp -- kept in lockstep with Source's gammaForSA (this is the
+        ! hand-coded PC/DADI Jacobian, not Tapenade-differentiated, but must
+        ! clamp gamma the same way as the residual for the linearization point
+        ! to stay physically consistent): [xminn, one + xminn], upper cap ~1
+        ! since Eq. 41's SA-production multiplier is the raw gamma in [0,1].
+        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
 
         term2_prod = dist2Inv * kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2)
         term2_dest = -dist2Inv * rsaCw1 * fwSa
@@ -2393,7 +2592,30 @@ contains
         gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
         reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
         yDist = d2Wall(i, j, k)
-        velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
+
+        ! Relative (rotating-frame) velocity V_rel = V_abs - Omega x r; must
+        ! match the residual in Source (see the detailed comment there). Cell
+        ! center from the 8 nodes, sc = Omega x (xc - rotCenter). Non-rotating
+        ! section => rotRate = 0 => sc = 0 => identical to the old absolute form.
+        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+        velRelx = w(i, j, k, ivx) - sc(1)
+        velRely = w(i, j, k, ivy) - sc(2)
+        velRelz = w(i, j, k, ivz) - sc(3)
+        velMag2 = velRelx**2 + velRely**2 + velRelz**2
         velMag = sqrt(max(velMag2, xminn))
 
         if (transitionRefLength > zero) then
@@ -2401,7 +2623,9 @@ contains
         else
             refLenTrans = lengthRef
         end if
-        vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) / 20.0_realType
+        ! Blade-element section-speed reference (see Source): sqrt(uInf^2+|Omega x r|^2)
+        uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
+        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) / 20.0_realType
         ! Use the same smooth limiter as the residual (Source) so this
         ! Jacobian linearizes the source actually being solved.
         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
@@ -2472,17 +2696,18 @@ contains
 
         A(3,3) = -(rsaGRcthetat / max(timeScale, xminn) * (one - fThetaT))
         if (transitionCrossflow) then
-            crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
-            ! Eq.24 helicity uses the raw velocity curl; undo the
-            ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
-            hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
-                + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
-                + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
+            ! Helicity in the RELATIVE frame (matches Source): relative velocity
+            ! dotted with relative vorticity (vortx = curl - 2*Omega). Omega=0 =>
+            ! bit-identical to the old absolute-frame form.
+            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                + (velRely / max(velMag, xminn)) * vorty &
+                + (velRelz / max(velMag, xminn)) * vortz) &
                 / max(velMag, xminn)
             reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                 + 319.51_realType
-            dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
-            dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
             reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
             reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
             if (reScf < reThetaTilde) then

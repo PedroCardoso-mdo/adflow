@@ -2296,16 +2296,25 @@ contains
         !       Tu          : freestream turbulence intensity in percent
         !       lambdaTheta : pressure-gradient parameter (0 for uniform inflow)
         !
-        use constants, only: realType, one
-        use paramTurb, only: rsaGRpmax, rsaGRpmin
+        ! NOTE: deliberately NOT `only:`-restricted. This routine branches on
+        ! Tu, so Tapenade emits a pushControl/popControl pair, which
+        ! autoEditReverseFast.py rewrites into myIntPtr/myIntStack. Those live
+        ! in `constants`, and Tapenade propagates the `only:` list verbatim to
+        ! the generated code -- an `only:` list here makes turbUtils_fast_b.f90
+        ! fail to compile with "Symbol 'myintptr' has no IMPLICIT type".
+        use constants
+        use paramTurb, only: rsaGRpmax, rsaGRpmin, rsaGRtuFloor
         implicit none
 
         real(kind=realType), intent(in) :: Tu, lambdaTheta
         real(kind=realType) :: reThetaT
 
         real(kind=realType) :: Flambda, F1val, F2val, F3val, Tu_safe
+        ! Parameter (not a bare literal) so the CS build's checked interface
+        ! auto-promotes it -- see the note in paramTurb.F90.
+        real(kind=realType), parameter :: reThetaTFloor = 20.0_realType
 
-        Tu_safe = smoothMinMax(Tu, 0.027_realType, rsaGRpmax)
+        Tu_safe = smoothMinMax(Tu, rsaGRtuFloor, rsaGRpmax)
 
         ! --- Smooth F(lambda_theta) Eqs. 54-57 ---
         ! Eq. 54: F1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-Tu/0.5)
@@ -2334,6 +2343,12 @@ contains
             reThetaT = 331.50_realType &
                        * (Tu_safe - 0.5658_realType)**(-0.671_realType) * Flambda
         end if
+
+        ! Floor at 20 (LM2009 correlation validity limit). With
+        ! lambda_theta unclamped (rsaGRclampLambdaTheta = .false.) the F3
+        ! cubic goes negative below lambda_theta ~ -0.23, which would give
+        ! a negative target Re_theta_t without this.
+        reThetaT = smoothMinMax(reThetaT, reThetaTFloor, rsaGRpmax)
 
     end function reThetaTCorrelation
 

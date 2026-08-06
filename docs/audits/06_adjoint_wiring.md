@@ -76,7 +76,8 @@ and traced the adjoint state-vector/coupling wiring with line-level evidence.
 mean "the code matches my independent derivation / the current primal text";
 numerical verification (partials tests) remains the decisive check and is
 still pending. Complements `docs/audits/adjoint_audit_2026-07-07.md` (visual
-wiring pass) and `docs/adjoint-trace.md`.
+wiring pass) and `docs/VERIFICATION/adjoint-trace.md`. Numerical
+verification has since been run — see `docs/VERIFICATION/three-stage-verification.md`.
 
 ---
 

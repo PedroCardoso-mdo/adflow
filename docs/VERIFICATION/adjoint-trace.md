@@ -42,6 +42,90 @@
 
 ---
 
+## Tapenade regeneration 2026-08-04 — AD debt paid + a reusable gotcha
+
+Triggered by making `epsAcoustic`/`epsShear` runtime options (see
+`architecture.md`, "Matrix-dissipation eigenvalue limiters"): the generated
+`fluxes_*.f90` had those values baked in as local `parameter`s and had to be
+regenerated. Regenerate with `./AD_I.sh` from the repo root (runs
+`ad_forward`, `ad_reverse`, `ad_reverse_fast`, then `make`; it does **not**
+`pip install` — do that separately or site-packages stays stale).
+
+**Two things this regeneration surfaced.**
+
+1. **The committed AD files were stale.** They predated `be9d6d1d` /
+   `efed31cf` (switchable λ_θ clamp + `ReThetaT ≥ 20` floor), whose commit
+   message already said `TAPENADE NEEDED before any adjoint use`. So the
+   regen diff legitimately touches `saGammaRetheta_{d,b,fast_b}.f90` and
+   `turbUtils_{d,b,fast_b}.f90`, not just `fluxes_*`. Those routines are now
+   differentiated as the primal actually computes them.
+
+2. **`use constants, only: …` breaks `_fast_b` for any routine that
+   branches.** `autoEditReverseFast.py:222,228` rewrites Tapenade's
+   `pushControl1b`/`popControl1b` into bare `myIntPtr`/`myIntStack`
+   statements. Those symbols live in `constants`, and Tapenade propagates an
+   `only:` list verbatim into the generated code — so a restricted import
+   yields `Error: Symbol 'myintptr' at (1) has no IMPLICIT type` at compile
+   time. Hit in `reThetaTCorrelation` (`turbUtils.F90:2299`), which gained an
+   `if (Tu <= 1.3)` branch with the floor work. Fixed by dropping the
+   `only:` there, with an in-source comment.
+
+   **Rule of thumb: any hand-written routine that Tapenade will
+   reverse-differentiate and that contains a branch must `use constants`
+   unrestricted.** Branchless routines (`flengthCorrelation:2355`,
+   `rethetacCorrelation:2379`) are fine with `only:`.
+
+---
+
+## Adjoint-solve diagnostic: psi-history / derivative-convergence reporting (2026-07-24)
+
+Not part of the residual-differentiation inventory below (this touches the
+**hand-written adjoint solver**, `adjointAPI.F90`/`adjointUtils.F90` — not
+Tapenade-generated, so freely editable per `CLAUDE.md` rule 6). Opt-in via
+`storePsiHistory` (bool, default `False`) — off by default, zero behavior
+change unless explicitly enabled.
+
+**What it does**: buffers the adjoint solution estimate (`psi`) every
+`psiHistoryStep` KSP iterations (default 10, capped at `psiHistoryMax`
+snapshots, default 50) during `solveAdjoint`'s `KSPSolve`, via a custom
+PETSc `KSPMonitorSet` callback (`MyKSPMonitor`,
+`src/adjoint/adjointUtils.F90`) that calls `KSPBuildSolution` mid-solve and
+corrects it against the incoming guess (`psi_like1`). After the solve,
+Python (`_printPsiHistorySensitivities` /
+`_writePsiHistoryJSON`/`_printPsiHistoryTable` in `adflow/pyADflow.py`)
+contracts each buffered snapshot through the existing
+`computeJacobianVectorProductBwd` path (same machinery the converged-psi
+total-derivative call already uses — no new AD code) to show how the total
+derivative of each function evolves as the adjoint converges: a
+norm-collapsed table to screen (`#`-banner style matching the standard
+CL/CD convergence table) and the full per-DV-component values to
+`<outputDirectory>/psiHistory_<func>.json` for plotting.
+
+**Storage**: `ADjointPETSc` module gained `psiHistory(nState, snapshot)`,
+`psiHistoryIters(snapshot)`, `psiHistoryResid(snapshot)`,
+`psiHistoryCount` — allocated/reset once per `solveAdjoint` call (fresh
+buffer per objective function, since `psi` means something different for
+each). `inputADjoint` gained `storePsiHistory`, `psiHistoryStep`,
+`psiHistoryMax`.
+
+**Gotcha that cost ~3 hours to find**: none of those six new module
+variables/arrays worked the first build — `storePsiHistory` read `True`
+from Python right up to the last line before `solveAdjoint`'s Fortran body,
+then read `False` *inside* that same subroutine, with no assignment
+anywhere in the Fortran source that could explain it. Root cause: `.pyf`
+option wiring is hand-maintained and module-scoped (see
+`../architecture.md`'s "Known infra bug: `.pyf` option wiring" section) —
+none of the six were listed in `adflow.pyf`'s `module inputadjoint` /
+`module adjointpetsc` blocks, so Python was silently writing to phantom
+attributes on the wrapper object instead of real Fortran memory. Fixed by
+adding all six to their respective `.pyf` blocks. **Any future addition to
+`ADjointPETSc`/`inputADjoint` (or any module) needs a matching `.pyf`
+entry — it will not error, it will just silently no-op.**
+
+Verification run + plots: `/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/adjoint_psihistory_test/` (tutorial-wing mesh, crossflow off, restart from converged state, DVs alpha/span/twist/shape). Finding: total derivatives stabilize (within 1%) after roughly 1 order of magnitude of KSP residual reduction, far before the `adjointL2Convergence` stopping criterion — case-specific (mild subsonic attached flow), not a general rule for how tight `adjointL2Convergence` needs to be on other meshes/regimes.
+
+---
+
 ## Executive Inventory
 
 | Category | SA Files/Touchpoints | SA-GR Files/Touchpoints | Status |

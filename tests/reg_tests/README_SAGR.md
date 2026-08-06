@@ -5,6 +5,16 @@ Test scaffolding for verifying the SA-GR transition model's AD derivatives
 differences and the complex-step (CS) build. Written per
 `docs/audits/08_test_prep.md`; background in `docs/audits/06_adjoint_wiring.md`.
 
+**2026-07-23: case is the SA tutorial-wing grid** (`mdo_tutorial_sagr_dp.cgns`,
+an NK-converged state on the standard ADflow tutorial-wing mesh at Mach=0.15).
+It was briefly on the AR5 plain-wing case (2026-07-19) but that stalled
+chronically — see `reg_sagr.py`'s header comments for the full rationale.
+The old `_flatplate` labels (class-name suffixes, ref JSON filenames) were a
+legacy misnomer from before either switch and have now been **renamed to
+`_tut_wing`** (refs, test `name`s, `ap_sagr_tut_wing`) to stop misleading —
+the case has never been a flat plate. `ap_sagr_ar5_wing` remains as a
+backward-compat alias for the dev/ diagnostic scripts.
+
 ## File tree
 
 ```
@@ -15,9 +25,9 @@ tests/reg_tests/
 ├── test_jacVecProdBWDFast_sagr.py   # reverse-fast vs reverse consistency + dot products
 ├── test_adjoint_sagr.py             # adjoint totals vs ref + complex-step totals
 └── refs/                            # trained JSON reference files land here
-    ├── jacvecfwd_sagr_flatplate.json    (created by training)
-    ├── jacvecbwd_sagr_flatplate.json    (created by training)
-    └── adjoint_sagr_flatplate.json      (created by training)
+    ├── jacvecfwd_sagr_tut_wing.json    (created by training)
+    ├── jacvecbwd_sagr_tut_wing.json    (created by training)
+    └── adjoint_sagr_tut_wing.json      (created by training)
 ```
 
 They mirror the upstream SA suite one-to-one:
@@ -77,19 +87,58 @@ They mirror the upstream SA suite one-to-one:
 ### `test_adjoint_sagr.py`
 - `TestAdjointSAGR` (real build): residuals + `evalFunctionsSens` totals vs
   ref, for `cl, cd, cmz, drag` (cd/cmz deliberately included — sst_dev
-  post-mortem: never verify `cl` only).
+  post-mortem: never verify `cl` only). Uses `mdo_tutorial_ffd.fmt` + the
+  twist/span/shape ref-axis DVGeo the SA `test_adjoint.py` uses. Needs
+  `adjointMaxIter=3000` (set in `reg_sagr.py`): the SA-GR 8-state adjoint KSP
+  takes ~583–597 iters to reach `adjointL2Convergence=1e-14`; the default 500
+  cap clips it just short and mis-flags a converging adjoint as failed.
 - `TestCmplxStepSAGR` (complex build): re-converges the complex solver with a
-  1e-40j perturbation per DV (`alpha`, `mach`, and a local `shape` geometric
-  DV via DVGeo/idwarp) and compares imag(f)/h against the adjoint totals in
-  the ref file.
+  1e-40j perturbation per DV (`alpha`, `mach`, and `twist`/`span`/`shape` via
+  DVGeo/idwarp) and compares imag(f)/h against the adjoint totals in the ref.
+  **Complex-build caveat:** the complexify build excludes the Tapenade AD
+  routines, so the AD preconditioner the real solve relies on is unavailable —
+  `setUp` overrides `ankadpc/nkadpc=False` + `ankcoupledswitchtol=1e-16` so the
+  complex primal re-converges with FD-colored PC on the decoupled ANK→NK path
+  (otherwise it aborts with "Forward AD routines are not complexified"). That
+  FD-PC path stalls ~1e-8 (STRATEGY.md: FD-PC weak on SA-GR), so the complex
+  functions — and hence CS-vs-adjoint agreement — cap at ~1e-8 absolute. The
+  adjoint totals are correct to that level; whether to loosen the inherited
+  `5e-9` tol or push the complex solve deeper is an **open item** (see
+  `docs/task-log/2026-07-23-sagr-full-adjoint-test.md`).
+
+### `dev/diag_full_derivatives.py`
+Dev diagnostic (NOT a testflo test) for the full df/dx check with ADflow's
+flow-solver / adjoint-KSP output VISIBLE, over ALL aero + geom DVs incl. every
+individual `shape` component. `--mode adjoint` (real build: dump all adjoint
+totals) writes a json that `--mode cs` (complex build: per-DV complex
+re-converge, then a final abs/rel/% error TABLE vs the adjoint) reads.
+Defaults sweep `--shape all` (every FFD point) and `--twist all`, and force the
+complex primal to grind all iterations (`--ncycles 5000`, `--l2 1e-20` disables
+the L2 early-exit) to push the FD-PC solve past its ~1e-8 stall. `resetFlow`
+runs before every DV (no cross-DV contamination). The final table also reports
+the **L2 reached** per DV (`totalRfinal/totalR0` of that CS re-converge), so a
+loose comparison is immediately attributable to a shallow complex solve. All-
+shape × deep budget is expensive — narrow with `--shape a,b,c` / lower
+`--ncycles`, isolate geom with `--skip-aero`/`--skip-span`/`--skip-twist`, or
+drop a whole family with `--skip-geom`. **Run CS at the SAME `-np` the adjoint
+ref was trained at (2)**: a different partition linearizes about a slightly
+different discrete state (~1e-10, reduction order) and contaminates the ~1e-7
+comparison. For parallel jobs on distinct cores use `--cpu-set` (not a second
+`--bind-to core`, which re-binds from core 0 and collides).
 
 ### `generate_sagr_restart.py`
 The upstream SA restarts are downloaded pre-made (`input_files/
 get-input-files.sh`); this script is the SA-GR equivalent. It converges the
-SA tutorial-wing grid with SA-GR at a chosen Mach (P/T fixed at the SA test
-values, so Re scales with Mach) and writes a grid+solution CGNS containing
-all 8 states (the SA-GR restart set includes Intermittency/ReThetat —
-`outputMod.F90`). Refuses to write if the solve failed.
+**AR5 plain-wing grid** (`ar5_plain_wing_vol_L3.cgns`, copied into
+`input_files/`, gitignored like the rest of that directory) with SA-GR
+through the validated ANK->CANK->NK production ladder (STRATEGY.md /
+`.../3D_Plain_Wing/best_strategie/run_strategy.py`) and writes a
+grid+solution CGNS containing all 8 states (the SA-GR restart set includes
+Intermittency/ReThetat — `outputMod.F90`). Still writes the file with a
+WARNING if `L2Convergence` isn't reached within `ncycles` (expected here:
+this case hits a reproducible NK stall, so `ncycles` — not
+`L2Convergence` — controls how deep the restart is; see the script's own
+`--l2`/`--ncycles` help text).
 
 ## How to run (in order)
 
@@ -97,10 +146,13 @@ Prereqs: `testflo` and `parameterized` in the test env
 (`pip install .[testing]`), and `input_files/get-input-files.sh` run once.
 
 ```bash
-# 0. (once, real build) generate the restart the tests linearize about
+# 0. (once, real build) generate the restart the tests linearize about --
+#    defaults already match ap_sagr_ar5_wing (mach=0.2, alpha=0.0, tu=0.0025),
+#    so no flags are needed unless deviating from that case
 cd tests/reg_tests
-python generate_sagr_restart.py --mach 0.25 --tu 0.003
-#    -> then update reg_sagr.py paths/AeroProblem to match (see script output)
+python generate_sagr_restart.py
+#    -> confirm reg_sagr.py's sagrRestartFile/ap_sagr_ar5_wing still match
+#       the script's printed summary (see script output)
 
 # 1. (real build) self-contained FD sanity check — no ref files needed
 testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGRFD -v
@@ -120,8 +172,16 @@ testflo test_jacVecProdFWD_sagr.py test_adjoint_sagr.py test_jacVecProdBWDFast_s
 testflo test_jacVecProdFWD_sagr.py test_adjoint_sagr.py -m "cmplx_test*"
 ```
 
+**Building the complex lib:** use the `/build` skill, or
+`PETSC_ARCH=complex-debug make -f Makefile_CS` (the complex build MUST point at
+the complex PETSc arch; the default `real-debug` arch gives COMPLEX→REAL PETSc
+type-mismatch errors in fortranPC/adjointAPI). After any Fortran rebuild,
+`pip install .` into the mach env (site-packages, not `./adflow`, is what the
+tests import — see [[tests-load-site-packages-not-repo]]). The whole suite is
+also driven by `./run_sagr_tests.sh {all,real,cs,adjoint,train,genw}`.
+
 Single test example:
-`testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGR_0_sagr_flatplate.test_coupling_blocks`
+`testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGR_0_sagr_tut_wing.test_coupling_blocks`
 (use `testflo --dryrun` to list exact signatures).
 
 ## Verification ladder / how to read failures

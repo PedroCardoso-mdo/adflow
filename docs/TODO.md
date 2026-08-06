@@ -62,6 +62,26 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 
 - [ ] **Valor de inicialização de gamma e retheta** para já está a 0.02 diferente da BC, testar o que dá melhor resultado
 
+## Test infrastructure
+
+- [x] **Restructure `tests/reg_tests/` to match upstream ADflow's official
+  test conventions/fixtures** — DONE 2026-07-22
+  (`task-log/2026-07-22-sagr-test-suite-standardization.md`). The ladder is
+  now registered testflo tests (`test_jacVecProdFWD_sagr.py`,
+  `test_jacVecProdBWDFast_sagr.py` + `reg_sagr.py` + `refs/*.json`), driven by
+  `run_sagr_tests.sh` (`all|real|cs|train|genw`). The old one-off scripts moved
+  to `tests/reg_tests/dev/` (documented in `dev/README.md`); `w` is produced by
+  `dev/generate_sagr_restart.py` (reads `reg_sagr` config), JSON by
+  `run_sagr_tests.sh train`. Mesh swap = edit `reg_sagr.py` → `genw` → `train`
+  → run. Remaining sub-items below.
+- [ ] **Wire the complete-mode `test_adjoint` (total `dF/dX`) in, `@skip`ped**
+  with a per-mesh reason: this AR5 state doesn't converge deeply enough for
+  total-sensitivity validation. Re-enable on a better-converged mesh. This is
+  the one gap between "partials validated" and "gradient validated".
+- [ ] **(cosmetic)** delete the now-superseded `dev/sanity_check_*` /
+  `dev/check_3way_fwd.py` once their mesh/`--crossflow` flags are no longer
+  wanted; rename `_flatplate` refs → `_sagr` (the case is a wing).
+
 ## Adjoint / partials (de `audits/adjoint_audit_2026-07-07.md`, 2026-07-07)
 
 - [ ] **Rerun Tapenade** para apanhar `uInf, muInf` ativos no head
@@ -71,7 +91,7 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 - [ ] **Decisão em aberto (default = diferenciar):** cap do limitador de
   vorticidade diferenciado vs congelado ("frozen limiter"). Se preferir
   congelar: reverter a linha do `Makefile_tapenade` e documentar; dR/dw é
-  idêntico nas duas opções. Análise: `adjoint-trace.md` header.
+  idêntico nas duas opções. Análise: `VERIFICATION/adjoint-trace.md` header.
 - [ ] **Ao testar partials:** (a) se o dot-product BWDFast falhar, suspeitar
   primeiro do stripping push/pop do `autoEditReverseFast.py` (partiu o
   fast_b do SST upstream — foi desativado lá, continua ativo neste branch);

@@ -1344,9 +1344,18 @@ contains
         !      iteration (default PETSc monitor), it only does it every
         !      'adjMonStep' iterations.
         !
+        !      If storePsiHistory is set, it additionally buffers the
+        !      current adjoint solution estimate (psi_like1 corrected by
+        !      the in-progress update) every psiHistoryStep iterations,
+        !      into ADjointPETSc::psiHistory, for post-hoc total-derivative
+        !      convergence reporting on the Python side.
+        !
+        use constants, only: one, alwaysRealType
         use ADjointPETSc
         use inputADjoint
         use communication
+#include <petsc/finclude/petsc.h>
+        use petsc
         implicit none
         !
         !     Subroutine arguments.
@@ -1357,14 +1366,43 @@ contains
         ! dummy - Optional user-defined monitor context (unused here)
         ! ierr  - Return error code
 
-        real(kind=realType), pointer, dimension(:, :) :: myKsp
+        KSP myKsp
         integer(kind=intType) :: n, dummy, ierr
         real(kind=realType) :: rnorm
+
+        Vec kspUpdate, psiEstimate
+        real(kind=realType), pointer :: psiPtr(:)
+        integer(kind=intType) :: localErr
 
         ! Write the residual norm to stdout every adjMonStep iterations.
 
         if (mod(n, adjMonStep) == 0) then
             if (myid == 0) write (*, "(I4, 1X, A, 1X, ES16.10)") n, 'KSP Residual norm', rnorm
+        end if
+
+        if (storePsiHistory .and. n > 0 .and. mod(n, psiHistoryStep) == 0) then
+            if (psiHistoryCount < psiHistoryMax) then
+                call VecDuplicate(psi_like1, kspUpdate, localErr)
+                call VecDuplicate(psi_like1, psiEstimate, localErr)
+
+                ! kspUpdate is the current (non-converged) solution of the
+                ! delta-psi system being solved in solveAdjoint.
+                call KSPBuildSolution(myKsp, kspUpdate, kspUpdate, localErr)
+
+                ! The current estimate of psi itself is psi_like1 (the
+                ! incoming guess) minus that delta.
+                call VecWAXPY(psiEstimate, -one, kspUpdate, psi_like1, localErr)
+
+                call VecGetArrayReadF90(psiEstimate, psiPtr, localErr)
+                psiHistoryCount = psiHistoryCount + 1
+                psiHistory(:, psiHistoryCount) = psiPtr
+                psiHistoryIters(psiHistoryCount) = n
+                psiHistoryResid(psiHistoryCount) = real(rnorm, kind=alwaysRealType)
+                call VecRestoreArrayReadF90(psiEstimate, psiPtr, localErr)
+
+                call VecDestroy(kspUpdate, localErr)
+                call VecDestroy(psiEstimate, localErr)
+            end if
         end if
 
         ierr = 0

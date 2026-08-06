@@ -1021,6 +1021,12 @@ python module libadflow
          logical :: useblockettes
        end module inputdiscretization
 
+       module inputdissipation ! in :adflow:../../modules/inputParam.f90
+         use precision
+         real(kind=realtype) :: epsacoustic
+         real(kind=realtype) :: epsshear
+       end module inputdissipation
+
        module cgnsgrid
          use constants
          integer(kind=inttype) :: cgnsndom
@@ -1108,10 +1114,23 @@ python module libadflow
          real(kind=realtype) :: disscontmidpoint
          real(kind=realtype) :: disscontsharpness
          integer(kind=4) :: turbdadicoupled
+         logical :: transitionfirstorderupwind
          logical :: transitioncrossflow
          real(kind=realtype) :: transitionroughnessheight
          logical :: transitionuseapproxsa
          real(kind=realtype) :: transitionreflength
+         logical :: transitionnk
+         real(kind=realtype) :: transitionnkautodisabletol
+         real(kind=realtype) :: transitionnkstallsteptol
+         integer(kind=inttype) :: transitionnkstallcounttrigger
+         real(kind=realtype) :: transitionnkstallrtolcap
+         logical :: transitionrowvolscale
+         logical :: transitionresidualautoscale
+         logical :: transitionsrcdtrestrict
+         real(kind=realtype) :: transitionsrcdtlimit
+         integer(kind=inttype) :: srcdtdeactivateiters
+         real(kind=realtype) :: transitiondamptheta
+         integer(kind=inttype) :: transitiondampmaxiter
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90
@@ -1246,6 +1265,9 @@ python module libadflow
          logical :: verifyextra
          logical :: usematrixfreedrdw
          integer(kind=inttype) :: applyadjointpcsubspacesize
+         logical :: storepsihistory
+         integer(kind=inttype) :: psihistorystep
+         integer(kind=inttype) :: psihistorymax
        end module inputadjoint
 
        module inputtimespectral ! in :adflow:../../modules/inputParam.f90
@@ -1431,6 +1453,10 @@ python module libadflow
 
        module adjointpetsc
          real(kind=alwaysrealtype) :: adjresinit, adjresstart, adjresfinal
+         real(kind=realtype) allocatable,dimension(:,:) :: psihistory
+         integer(kind=inttype) allocatable,dimension(:) :: psihistoryiters
+         real(kind=alwaysrealtype) allocatable,dimension(:) :: psihistoryresid
+         integer(kind=inttype) :: psihistorycount
        end module adjointpetsc
 
        module inputtsstabderiv ! in :test:inputParam.f90

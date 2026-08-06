@@ -36,6 +36,32 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRcthetat = 0.03_realType
     real(kind=realType), parameter :: rsaGRccrossflow = 0.6_realType
 !
+!       SA-noft2-Gamma-Retheta correlation constants (paper Eqs. 54-57, 15-26).
+!       Named module-level parameters, NOT bare literals, at smoothMinMax()
+!       call sites: a bare `0.4_realType`-style literal argument fails to
+!       complexify (the complex build's smoothMinMax has an explicit
+!       COMPLEX interface, and Fortran does not auto-promote a REAL literal
+!       actual argument to COMPLEX at a checked interface -- it only
+!       auto-promotes on assignment/parameter-initialization, which is why
+!       `one`/`zero`/`rsaGRpmax` work here but a bare literal doesn't).
+!
+    real(kind=realType), parameter :: rsaGRtuFloor = 0.027_realType
+    real(kind=realType), parameter :: rsaGRlambdaThetaMin = -0.1_realType
+    real(kind=realType), parameter :: rsaGRlambdaThetaMax = 0.1_realType
+    ! 2026-08-03 test (NLF0416 exact-grid showed +22/+30 counts vs paper
+    ! above the drag bucket): the +-0.1 lambda_theta clamp is a legacy
+    ! LM2009 prescription that is NOT part of the P&Z smooth model -- their
+    ! F(lambda_theta) (Eqs. 54-57) carries its own smooth saturations.
+    ! TESTED 2026-08-03 and REJECTED: unclamped lambda_theta stalls the
+    ! solver (~1e-4 plateau on S809 SB3 alpha 4-6 at 300k cycles) and moves
+    ! cd AWAY from the paper (+106..129 counts vs clamped 67..116 vs paper
+    ! ~63-85). The +-0.1 bound is part of the correlation's validity domain
+    ! (separated-flow dU/ds drives lambda_theta far outside it near the
+    ! bubble). Keep .true.; the switch remains for future experiments.
+    logical, parameter :: rsaGRclampLambdaTheta = .true.
+    real(kind=realType), parameter :: rsaGRcrossflowRatioCap = 0.4_realType
+    real(kind=realType), parameter :: rsaGRhcfRef = 0.1066_realType
+!
 !       SA-noft2-Gamma-Retheta smooth-Fonset constants.
 !
     real(kind=realType), parameter :: rsaGRfonsetC  = 2.6_realType
@@ -47,6 +73,18 @@ module paramTurb
     real(kind=realType), parameter :: rsaGRgammaLo  = 1.e-10_realType
     real(kind=realType), parameter :: rsaGRgammaHi  = 2.0_realType
     real(kind=realType), parameter :: rsaGRreThetaLo = 20.0_realType
+    ! Safety margin for the gammaForSA clamp (saGammaRetheta.F90) that keeps
+    ! gamma's own natural saturation values (0 = fully laminar, 1 = fully
+    ! turbulent) strictly INSIDE the unclamped pass-through zone, not sitting
+    ! bit-exact on the clamp boundary. A raw min(max(gamma,0),1) ties exactly
+    ! at those physically-routine values, and Tapenade's forward-mode tangent
+    ! picks the wrong branch there vs. complex-step ground truth (confirmed
+    ! 2026-07-23: every AD-vs-CS mismatch cell in dR[nuTilde]/dw[gamma] had
+    ! gamma==1.0 bit-exact, CS=0 correctly, AD nonzero incorrectly). Padding
+    ! is >> the observed NK overshoot (~2e-16, i.e. 1 ULP) but still tiny
+    ! relative to gamma's O(1) physical range, so this is purely a
+    ! failure/divergence safeguard, not a change to normal-operation physics.
+    real(kind=realType), parameter :: rsaGRgammaForSAMargin = 1.e-3_realType
 !
 !       SA-Gamma-Retheta stabilization: source dt restriction and scaling.
 !

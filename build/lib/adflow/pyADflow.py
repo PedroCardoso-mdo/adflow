@@ -22,6 +22,7 @@ v. 1.0  - Original pyAero Framework Implementation (RP,SM 2008)
 # Imports
 # =============================================================================
 import os
+import json
 import time
 import copy
 import types
@@ -31,6 +32,7 @@ from mpi4py import MPI
 from baseclasses import AeroSolver, AeroProblem, getPy3SafeString
 from baseclasses.utils import Error, CaseInsensitiveDict
 from . import MExt
+from . import __version__
 import hashlib
 from collections import OrderedDict
 
@@ -130,6 +132,10 @@ class ADFLOW(AeroSolver):
         self.adflow.communication.recvrequests = numpy.zeros(comm.size)
         self.myid = self.adflow.communication.myid = comm.rank
         self.adflow.communication.nproc = comm.size
+
+        # Every run log must identify the source revision it came from.
+        if self.myid == 0:
+            self._printBuildProvenance()
 
         if options is None:
             raise Error(
@@ -1822,6 +1828,11 @@ class ADFLOW(AeroSolver):
                 self.computeJacobianVectorProductBwd(resBar=psi, funcsBar=self._getFuncsBar(f), xDvDeriv=True)
             )
 
+            # Opt-in only: with storePsiHistory off (the default) this is a
+            # no-op and behavior is identical to before this option existed.
+            if self.getOption("storePsiHistory"):
+                self._printPsiHistorySensitivities(f)
+
             totalSensEndTime[f] = time.time()
 
         finalEvalSensTime = time.time()
@@ -1842,6 +1853,116 @@ class ADFLOW(AeroSolver):
             print("|")
             print("| %-30s: %10.3f sec" % ("Complete Sensitivity Time", finalEvalSensTime - startEvalSensTime))
             print("+--------------------------------------------------+")
+
+    def _printPsiHistorySensitivities(self, funcName):
+        """
+        Debug/diagnostic aid only. Guarded by the 'storePsiHistory' option
+        (default False) -- if the option is off, this is never called and
+        adjoint behavior is byte-for-byte identical to before this feature
+        existed. If on, it consumes the psi snapshots buffered by the
+        Fortran-side MyKSPMonitor during the just-completed solveAdjoint()
+        call for 'funcName', and reports how the total derivative of
+        'funcName' evolves as the adjoint KSP solve converges: a norm-
+        collapsed table to screen, and the full per-component values to a
+        JSON file (self.getOption('outputDirectory')/psiHistory_<key>.json)
+        for later plotting.
+        """
+        count = int(self.adflow.adjointpetsc.psihistorycount)
+        if count == 0:
+            return
+
+        iters = numpy.array(self.adflow.adjointpetsc.psihistoryiters[0:count])
+        hist = self.adflow.adjointpetsc.psihistory[:, 0:count]
+
+        funcsBar = self._getFuncsBar(funcName)
+        colNames = None
+        rows = []
+        fullValues = None
+        for j in range(count):
+            # Same sign convention as the converged-psi seed used just
+            # above in evalFunctionsSens: resBar = -psi.
+            resBar = -hist[:, j].copy()
+            sens = self.computeJacobianVectorProductBwd(resBar=resBar, funcsBar=funcsBar, xDvDeriv=True)
+            if colNames is None:
+                colNames = sorted(sens.keys())
+                fullValues = {name: [] for name in colNames}
+            row = []
+            for name in colNames:
+                val = numpy.asarray(sens[name])
+                row.append(float(val.item()) if val.size == 1 else float(numpy.linalg.norm(val)))
+                fullValues[name].append(numpy.real(val).flatten().tolist())
+            rows.append(row)
+
+        self._printPsiHistoryTable(funcName, iters, colNames, rows)
+        self._writePsiHistoryJSON(funcName, iters, fullValues)
+
+    def _writePsiHistoryJSON(self, funcName, iters, fullValues):
+        """
+        Write the full (non-norm-collapsed) per-component derivative-vs-
+        iteration data for 'funcName' to a JSON file in outputDirectory,
+        one point per buffered psi snapshot -- e.g. {"twist": [[6 values
+        at iter 5], [6 values at iter 10], ...], ...}. Root proc only.
+        """
+        if self.comm.rank != 0:
+            return
+
+        outDir = self.getOption("outputDirectory")
+        if outDir and not os.path.isdir(outDir):
+            os.makedirs(outDir, exist_ok=True)
+
+        data = {
+            "function": funcName,
+            "kspIterations": [int(i) for i in iters],
+            "derivatives": fullValues,
+        }
+        outFile = os.path.join(outDir, "psiHistory_%s.json" % funcName)
+        with open(outFile, "w") as fh:
+            json.dump(data, fh, indent=2)
+        print("# Wrote psi-history derivative-convergence data -> %s" % outFile)
+
+    def _printPsiHistoryTable(self, funcName, iters, colNames, rows):
+        """
+        Print the psi-history sensitivity table to screen, root proc only,
+        in the same '#'-prefixed banner/column style ADflow already uses
+        for its per-iteration CL/CD/residual convergence table (see
+        convergenceHeader/convergenceInfo in src/utils/utils.F90 and
+        src/solver/solvers.F90). Vector-valued sensitivities (e.g. the
+        geometric/mesh DVs) are collapsed to their 2-norm so the table
+        stays readable; wraps to multiple column blocks if it would
+        otherwise run too wide.
+        """
+        if self.comm.rank != 0 or not colNames:
+            return
+
+        colWidth = 18
+        maxLineWidth = 132
+        iterColWidth = 8
+        perChunk = max(1, (maxLineWidth - iterColWidth) // colWidth)
+
+        print("#")
+        print(
+            "# Adjoint derivative convergence: d(%s)/dx  (psi snapshot every %d KSP its)"
+            % (funcName, self.getOption("psiHistoryStep"))
+        )
+        for start in range(0, len(colNames), perChunk):
+            chunk = colNames[start : start + perChunk]
+            lineWidth = iterColWidth + colWidth * len(chunk)
+
+            print("#" + "-" * lineWidth)
+            header = "#" + "Iter".rjust(iterColWidth - 1) + " |"
+            for name in chunk:
+                label = name if len(name) <= colWidth - 2 else name[: colWidth - 2]
+                header += label.rjust(colWidth - 1) + "|"
+            print(header)
+            print("#" + "-" * lineWidth)
+
+            for i in range(len(iters)):
+                line = " " + str(int(iters[i])).rjust(iterColWidth - 2) + " |"
+                for j in range(start, start + len(chunk)):
+                    line += ("%.10e" % rows[i][j]).rjust(colWidth - 1) + "|"
+                print(line)
+            print("#" + "-" * lineWidth)
+        print("#")
 
     def propagateUncertainty(self, aeroProblem, evalFuncs=None, UQDict=None):
         """
@@ -5685,6 +5806,33 @@ class ADFLOW(AeroSolver):
         # Set in the correct module
         setattr(module, variable, value)
 
+    def _printBuildProvenance(self):
+        """Print which source revision this ADflow was installed from.
+
+        Called once on the root proc at solver init so that every run log
+        carries it. ``adflow/gitInfo.py`` is written by ``setup.py`` at
+        ``pip install`` time -- see the note there for why install time and
+        not run time.
+
+        Deliberately reports only, without comparing against the repo's
+        current HEAD. Such a comparison flags the harmless case (a commit
+        landed after the install) while missing the one that actually bites
+        -- editing and rebuilding without reinstalling, where HEAD never
+        moves. The DIRTY flag below is the honest signal: it says the stamp
+        alone does not pin down the source.
+        """
+        try:
+            from . import gitInfo
+        except ImportError:
+            print("| ADflow provenance: UNAVAILABLE (adflow/gitInfo.py missing -- reinstall with pip)")
+            return
+
+        dirty = "  *** DIRTY WORKING TREE ***" if gitInfo.GIT_DIRTY else ""
+        print(
+            "| ADflow %s | git %s (%s) | installed %s%s"
+            % (__version__, gitInfo.GIT_HASH, gitInfo.GIT_BRANCH, gitInfo.INSTALL_TIME, dirty)
+        )
+
     @staticmethod
     def _getDefaultOptions():
         defOpts = {
@@ -5739,11 +5887,17 @@ class ADFLOW(AeroSolver):
             "turbulenceOrder": [str, ["first order", "second order"]],
             "turbResScale": [(float, list, type(None)), None],
             "transitionFirstOrderUpwind": [bool, True],
-            "transitionCrossflow": [bool, True],
+            "transitionCrossflow": [bool, False],
             "transitionRoughnessHeight": [float, 3.3e-6],
+            "transitionNK": [bool, True],
+            "transitionNKAutoDisableTol": [float, 0.0],
+            "transitionNKStallStepTol": [float, 0.1],
+            "transitionNKStallCountTrigger": [int, 3],
+            "transitionNKStallRtolCap": [float, 1.0],
+            "transitionRowVolScale": [bool, False],
+            "transitionResidualAutoscale": [bool, False],
             "transitionSrcDtRestrict": [bool, True],
             "transitionSrcDtLimit": [float, 0.9],
-            "transitionSrcDtEigMode": [str, "eigenvalue"],
             "srcDtDeactivateIters": [int, 5],
             # SA-γ-Reθt damping params (not in canonical ADflow)
             "transitionDampTheta": [float, 0.99],
@@ -5778,6 +5932,8 @@ class ADFLOW(AeroSolver):
             "vis4": [float, 0.0156],
             "vis2": [float, 0.25],
             "vis2Coarse": [float, 0.5],
+            "epsAcoustic": [float, 0.25],
+            "epsShear": [float, 0.025],
             "restrictionRelaxation": [float, 0.80],
             "liftIndex": [int, [2, 3]],
             "lowSpeedPreconditioner": [bool, False],
@@ -5969,6 +6125,9 @@ class ADFLOW(AeroSolver):
                 ["modified Gram-Schmidt", "CGS never refine", "CGS refine if needed", "CGS always refine"],
             ],
             "adjointMonitorStep": [int, 10],
+            "storePsiHistory": [bool, False],
+            "psiHistoryStep": [int, 10],
+            "psiHistoryMax": [int, 50],
             "dissipationLumpingParameter": [float, 6.0],
             "preconditionerSide": [str, ["right", "left"]],
             "matrixOrdering": [
@@ -6044,6 +6203,7 @@ class ADFLOW(AeroSolver):
         moduleMap = {
             "io": self.adflow.inputio,
             "discr": self.adflow.inputdiscretization,
+            "dissipation": self.adflow.inputdissipation,
             "iter": self.adflow.inputiteration,
             "physics": self.adflow.inputphysics,
             "stab": self.adflow.inputtsstabderiv,
@@ -6151,13 +6311,15 @@ class ADFLOW(AeroSolver):
             "transitionfirstorderupwind": ["iter", "transitionfirstorderupwind"],
             "transitioncrossflow": ["iter", "transitioncrossflow"],
             "transitionroughnessheight": ["iter", "transitionroughnessheight"],
+            "transitionnk": ["iter", "transitionnk"],
+            "transitionnkautodisabletol": ["iter", "transitionnkautodisabletol"],
+            "transitionnkstallsteptol": ["iter", "transitionnkstallsteptol"],
+            "transitionnkstallcounttrigger": ["iter", "transitionnkstallcounttrigger"],
+            "transitionnkstallrtolcap": ["iter", "transitionnkstallrtolcap"],
+            "transitionrowvolscale": ["iter", "transitionrowvolscale"],
+            "transitionresidualautoscale": ["iter", "transitionresidualautoscale"],
             "transitionsrcdtrestrict": ["iter", "transitionsrcdtrestrict"],
             "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
-            "transitionsrcdteigmode": {
-                "gershgorin": 0,
-                "eigenvalue": 1,
-                "location": ["iter", "transitionsrcdteigmode"],
-            },
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
@@ -6197,6 +6359,8 @@ class ADFLOW(AeroSolver):
             "vis4": ["discr", "vis4"],
             "vis2": ["discr", "vis2"],
             "vis2coarse": ["discr", "vis2coarse"],
+            "epsacoustic": ["dissipation", "epsacoustic"],
+            "epsshear": ["dissipation", "epsshear"],
             "restrictionrelaxation": ["iter", "fcoll"],
             "forcesastractions": ["physics", "forcesastractions"],
             "lowspeedpreconditioner": ["discr", "lowspeedpreconditioner"],
@@ -6416,6 +6580,9 @@ class ADFLOW(AeroSolver):
             "adjointmaxiter": ["adjoint", "adjmaxiter"],
             "adjointsubspacesize": ["adjoint", "adjrestart"],
             "adjointmonitorstep": ["adjoint", "adjmonstep"],
+            "storepsihistory": ["adjoint", "storepsihistory"],
+            "psihistorystep": ["adjoint", "psihistorystep"],
+            "psihistorymax": ["adjoint", "psihistorymax"],
             "dissipationlumpingparameter": ["discr", "sigma"],
             "preconditionerside": {"left": "left", "right": "right", "location": ["adjoint", "adjointpcside"]},
             "matrixordering": {

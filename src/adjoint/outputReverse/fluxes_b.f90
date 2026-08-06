@@ -754,6 +754,7 @@ contains
 &   , factfamilyi, factfamilyj, factfamilyk
     use flowvarrefstate, only : pinfcorr, pinfcorrd
     use inputdiscretization, only : vis2, vis4
+    use inputdissipation, only : epsacoustic, epsshear
     use inputphysics, only : equations
     use iteration, only : rfil
     use cgnsgrid, only : massflowfamilydiss
@@ -763,8 +764,6 @@ contains
 !      local parameters.
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
-    real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -2804,6 +2803,7 @@ contains
 &   sfacej, sfacek, factfamilyi, factfamilyj, factfamilyk
     use flowvarrefstate, only : pinfcorr
     use inputdiscretization, only : vis2, vis4
+    use inputdissipation, only : epsacoustic, epsshear
     use inputphysics, only : equations
     use iteration, only : rfil
     use cgnsgrid, only : massflowfamilydiss
@@ -2813,8 +2813,6 @@ contains
 !      local parameters.
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
-    real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -13813,6 +13811,7 @@ contains
     use constants
     use flowvarrefstate
     use inputdiscretization
+    use inputdissipation, only : epsacoustic, epsshear
     use inputphysics
     use iteration
     use utils_b, only : getcorrectfork
@@ -13821,8 +13820,6 @@ contains
 !      local parameters.
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
-    real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -15705,6 +15702,7 @@ contains
     use constants
     use flowvarrefstate
     use inputdiscretization
+    use inputdissipation, only : epsacoustic, epsshear
     use inputphysics
     use iteration
     use utils_b, only : getcorrectfork
@@ -15713,8 +15711,6 @@ contains
 !      local parameters.
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
-    real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !

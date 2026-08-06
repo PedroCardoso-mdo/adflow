@@ -98,6 +98,30 @@ end module inputDiscretization
 
 !      ==================================================================
 
+module inputDissipation
+    !
+    !       Input parameters of the artificial dissipation scheme that
+    !       cannot live in inputDiscretization, because the Tapenade
+    !       generated flux routines use-associate that module in full and
+    !       still declare local parameters with these names.
+    !
+    !       epsAcoustic:  Swanson-Turkel eigenvalue limiter coefficient for
+    !                     the acoustic eigenvalues of the matrix
+    !                     dissipation scheme.
+    !       epsShear:     Swanson-Turkel eigenvalue limiter coefficient for
+    !                     the shear (convective) eigenvalues of the matrix
+    !                     dissipation scheme.
+    !
+    use precision, only: realType
+    implicit none
+    save
+
+    real(kind=realType) :: epsAcoustic, epsShear
+end module inputDissipation
+
+
+!      ==================================================================
+
 module inputIO
     !
     !       Input parameters which are related to io issues, like file
@@ -302,6 +326,69 @@ module inputIteration
     logical :: transitionFirstOrderUpwind = .true.
     logical :: transitionCrossflow = .true.
     real(kind=realType) :: transitionRoughnessHeight = 3.3e-6_realType
+    ! Master switch for the NK/ANK/turbKSP convergence-acceleration bundle
+    ! (column scaling + Eq. 59 source-dt restriction, incl. NK reactivation-
+    ! on-backtrack): default True keeps today's behavior for SA-Gamma-Retheta
+    ! unchanged (all of it is still additionally gated on
+    ! turbModel==spalartallmarasnoft2gammaretheta / nwt==3, since the
+    ! underlying srcLambda eigenvalue machinery is model-specific). Exposed
+    ! as its own switch so it can be turned off independently, or reused
+    ! later for another stiff turbulence model without touching the
+    ! turbModel gates themselves.
+    logical :: transitionNK = .true.
+    ! One-way runtime latch for the NK phase only: once the Newton residual
+    ! (relative to totalR0) drops below transitionNKAutoDisableTol, the whole
+    ! transitionNK bundle (PC/column scaling, Eq. 59 reactivation, Algorithm 2
+    ! damping) is turned off for the remainder of the NK phase, i.e. NK falls
+    ! back to ADflow's native turbModel-agnostic behavior. Added 2026-07-18 to
+    ! probe an NK stall (Step pinned near minlambda for 100s of iterations
+    ! around scaledTotalRes~1.7e-3, nk_switch_crossing_test) in case the
+    ! bundle's PC scaling is contributing indirectly to the stalled steps.
+    ! Default 0.0 disables the latch: NK phase always follows the static
+    ! transitionNK option, unchanged behavior. Not user-facing state beyond
+    ! this trigger tolerance -- transitionNKActive itself is internal
+    ! (like srcDtRestrictActive/noBacktrackCount), reset each solve by
+    ! setupNKSolver.
+    real(kind=realType) :: transitionNKAutoDisableTol = 0.0_realType
+    logical :: transitionNKActive = .true.
+    ! Stall escape (2026-07-18, nk_switch_crossing_test): once Step
+    ! (stepMonitor) has been below transitionNKStallStepTol for
+    ! transitionNKStallCountTrigger consecutive NK iterations, force the
+    ! Eisenstat-Walker linear-solve rtol down to transitionNKStallRtolCap
+    ! for that iteration. Rationale: getEWTol's rtol = (norm/oldNorm)^1.618
+    ! -- when stalled, norm~oldNorm so the ratio~1 and rtol rises to its
+    ! 0.8 cap, i.e. EW asks for the LOOSEST linear solve exactly when the
+    ! stall needs the tightest one (a poor direction from an under-solved
+    ! linear system is the likely cause of the tiny step in the first
+    ! place). transitionNKStallRtolCap=1.0 (default) disables this (never
+    ! caps below whatever EW already picked); nkStallCount is internal
+    ! (like noBacktrackCount), reset each NK entry in NKStep.
+    real(kind=realType) :: transitionNKStallStepTol = 0.1_realType
+    integer(kind=intType) :: transitionNKStallCountTrigger = 3
+    real(kind=realType) :: transitionNKStallRtolCap = 1.0_realType
+    integer(kind=intType) :: nkStallCount = 0
+    ! Eq. 58 (P&Z 2020) geometric row-scaling factor, on top of the existing
+    ! turbResScale 1/max row scaling: multiplies NK's residual rows (setRVec)
+    ! by volRef**(5/3) for flow rows, volRef**(2/3) for turb rows, bringing
+    ! ADflow's uniform 1/volRef row normalization toward the paper's
+    ! per-block J^{2/3}/J^{-1/3} exponents. NOT verified to match the
+    ! paper's SBP metric Jacobian J exactly (ADflow's volRef is physical
+    ! cell volume, not necessarily the same normalization) -- off by
+    ! default pending validation, same caution level as
+    ! transitionResidualAutoscale.
+    logical :: transitionRowVolScale = .false.
+    ! Eq. 58 (P&Z 2020) residual-autoscaling (S_a) proxy: the paper gives no
+    ! formula (cites Osusky & Zingg's thesis, unavailable here). This is an
+    ! adaptive per-equation-block row rescaling from monitored residual-norm
+    ! ratios -- same intent, NOT verified identical to their method. Off by
+    ! default.
+    logical :: transitionResidualAutoscale = .false.
+    ! Per-block autoscale factor [flow, nuTilde, gamma, reTheta] computed by
+    ! NKSolver's computeNKResidualAutoscale (lagged, same cadence as
+    ! NK_jacobianLag). Lives here (not in NKSolver) so both NKSolver and
+    ! utils (generic monitor/residual printing) can read it without a
+    ! circular module dependency.
+    real(kind=realType) :: nkAutoScaleFac(4) = one
     logical :: transitionSrcDtRestrict = .true.
     real(kind=realType) :: transitionSrcDtLimit = 0.9_realType
     ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)
@@ -840,6 +927,16 @@ module inputADjoint
     integer(kind=intType) :: adjMaxIter
     integer(kind=intType) :: adjRestart
     integer(kind=intType) :: adjMonStep
+
+    ! storePsiHistory : Whether to buffer intermediate adjoint solution
+    !                   estimates during the KSP solve, so their total
+    !                   derivatives can be reported after convergence
+    !                   (see MyKSPMonitor / solveAdjoint).
+    ! psiHistoryStep  : Buffer a snapshot every this many KSP iterations.
+    ! psiHistoryMax   : Maximum number of snapshots to buffer.
+    logical :: storePsiHistory
+    integer(kind=intType) :: psiHistoryStep
+    integer(kind=intType) :: psiHistoryMax
 
     ! outerPCIts : Number of iterations to run for on (global) preconditioner
     ! intterPCIts : Number of iterations to run on local preconditioner

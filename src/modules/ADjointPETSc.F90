@@ -26,4 +26,15 @@ module ADjointPETSc
     real(kind=alwaysRealType) :: adjResFinal
     logical :: adjointPETScVarsAllocated
 
+    ! Buffer of intermediate adjoint solution estimates, sampled every
+    ! psiHistoryStep KSP iterations during solveAdjoint, used to report
+    ! how the total derivative evolves as the adjoint converges. Only
+    ! psiHistory(:, 1:psiHistoryCount) / psiHistoryIters(1:psiHistoryCount)
+    ! hold valid data. Populated in MyKSPMonitor, (re)allocated/reset in
+    ! solveAdjoint.
+    real(kind=realType), dimension(:, :), allocatable :: psiHistory
+    integer(kind=intType), dimension(:), allocatable :: psiHistoryIters
+    real(kind=alwaysRealType), dimension(:), allocatable :: psiHistoryResid
+    integer(kind=intType) :: psiHistoryCount
+
 end module ADjointPETSc

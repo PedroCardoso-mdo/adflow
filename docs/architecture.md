@@ -4,7 +4,7 @@
 > facts, and every runtime option added for the SA-γ-Re̅θt transition model.
 > Physics equations live in the full paper, [`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md);
 > non-dim conventions in [`nondimensionalization.md`](nondimensionalization.md); adjoint/AD
-> touchpoints in [`adjoint-trace.md`](adjoint-trace.md).
+> touchpoints in [`VERIFICATION/adjoint-trace.md`](VERIFICATION/adjoint-trace.md).
 
 ---
 
@@ -115,7 +115,9 @@ Source routine (subroutine `Source`, line 146) computes:
 - "SST exists → 2-eq turb infrastructure exists → mirror it"
 - "ANK must work (more robust for complex geometries)"
 - "Don't care about multigrid"
-- "Don't care about crossflow for now" (helper exists if needed later)
+- Crossflow transition (D_scf, P&Z Eqs. 15-26) is **always on** — a standing
+  part of the model, not deferred. (`transitionCrossflow` remains a runtime
+  flag, but the model is developed/validated with it enabled.)
 - "Adjoint: freeze γ-Re̅θt linearization at this stage"
 - Both sLM2015 and LM2015 F_turb forms must be runtime-selectable
 
@@ -156,9 +158,14 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"turbResScale"` | list/None | `None` (auto) | Residual scaling per equation. Auto-set to `[10000, 10, 10000]` for this model. Override to tune convergence balance. |
 | `"transitionDampTheta"` | float | `0.99` | Back-off factor for per-variable γ/Re̅θt update damping in DD-ADI (P&Z Algorithm 2). |
 | `"transitionDampMaxIter"` | int | `10000` | Safety cap on the back-off loop (unbounded in the paper); 10000 ⇒ effectively unbounded (0.99¹⁰⁰⁰⁰ ≈ 0). A hard clip to the bounds remains as **last-resort fallback only**: it can only fire after the loop exhausts, which requires the previous state to already be out of bounds; when it fires, a warning with cell counts prints advising to raise this option or investigate the upstream bound violation. Changed from 40 on 2026-07-07 (D-A2-5). |
-| `"transitionCrossflow"` | bool | `True` | Enable the helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. Harmless in 2D (D_scf≡0); enable for swept/3D. |
+| `"transitionCrossflow"` | bool | `True` | Helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. **On by default and treated as always-on** — a standing part of the model, not an optional add-on. D_scf≡0 in 2D so it is inert there but still live in the residual/adjoint. |
 | `"transitionRoughnessHeight"` | float | `3.3e-6` | Surface roughness height h for the crossflow correlation (Eq. 17), as a physical length in mesh units (metres). 3.3e-6 = 3.3 µm (smooth surface). |
 | `"transitionRefLength"` | float | `-1.0` (auto) | Reference length l [mesh units] in the vorticity limiter (P&Z Eqs. 52-53; paper uses root chord — the physical cap scales as 1/√l, a calibration scale, NOT a unit conversion, so the "drop Re" rule of `nondimensionalization.md` does not apply). Negative = auto: uses the AeroProblem `chordRef` (via `inputPhysics%lengthRef`, refreshed at every `setAeroProblem`). Set explicitly to decouple from chordRef; `1.0` recovers the pre-option behavior (l = 1 m). Added 2026-07-07 to close finding D1. |
+| `"transitionNK"` | bool | `True` | Master switch for the NK/ANK/turbKSP column-scaling + Eq. 59 bundle (incl. NK reactivation-on-backtrack, Algorithm 2 in NK) — 2026-07-16. Default preserves existing behavior; still additionally gated on `turbModel==SA-Gamma-Retheta` everywhere. |
+| `"transitionNKAutoDisableTol"` | float | `0.0` | One-way latch, NK phase only: once the Newton residual norm drops below this fraction of `totalR0` (the **freestream** reference residual from `getFreeStreamResidual`, `solvers.F90:972` — NOT the restart-point residual; e.g. ~8.91e7 on `3D_Plain_Wing`), the `transitionNK` bundle (column scaling, Algorithm 2 damping, Eq. 59 reactivation) is turned off for the rest of the NK phase — i.e. "fall back to native NK." Default `0.0` never trips (unchanged behavior). **Tested 2026-07-18, `nk_switch_crossing_test`, and found unsafe at any point in NK**: tripping it either at NK engagement or ~10 outer iterations later (deep past engagement, residual already down 2+ orders) produces the identical catastrophic blowup (nuturb res → O(1e3), totalRes → O(1e9)) both times. Column scaling is load-bearing for the *entire* NK phase for this model — the 13-orders-of-magnitude state spread (ν̃, γ, Re̅θt) doesn't shrink with the residual, so "native NK" is never safe to fall back to. Kept as a diagnostic knob, not a recommended option. |
+| `"transitionRowVolScale"` | bool | `False` | Eq. 58 (P&Z) geometric row-scaling factor on NK's residual rows (`volRef**(5/3)` flow, `volRef**(2/3)` turb, on top of existing `turbResScale`). **Off by default — genuinely tested 2026-07-16 and found to stall NK's linear solve** (lin res pinned ~1.0) on the 3D_Plain_Wing case; see `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §5. Not recommended until the volRef-vs-paper's-J correspondence is revisited. |
+| `"transitionNKStallStepTol"` / `"transitionNKStallCountTrigger"` / `"transitionNKStallRtolCap"` | float / int / float | `0.1` / `3` / `1.0` | Attempted NK stall escape (`nk_switch_crossing_test`, 2026-07-18/19) — **NOT validated, do not rely on it.** Motivation: `getEWTol` (`NKSolvers.F90:2174`, standard PETSc EW) computes the Krylov `rtol` as `(norm/oldNorm)^1.618` — when the Newton step is pinned (`Step`~0), the ratio→1 and `rtol` rises to its 0.8 cap, i.e. EW picks the *loosest* linear solve exactly when stalled. This option forces `rtol` down to `transitionNKStallRtolCap` once `Step` has been below `transitionNKStallStepTol` for `transitionNKStallCountTrigger` consecutive NK iterations. `transitionNKStallRtolCap=1.0` (default) disables this (never caps) — pure diagnostic overhead only, no behavior change, safe to leave on any run. **One run with the cap at 0.05 pushed further than one earlier baseline run** (baseline froze at scaledTotalRes~1.7473e-3 for 300+ iterations and drifted up to ~1.79e-3; the capped run reached 1.4772e-3 by iter 308, later 9.4e-4 by iter ~6100 before re-stalling). **However, a same-day repeat of the unmodified baseline (only new, behaviorally-inert `print` diagnostics added elsewhere in this file) converged cleanly past the same point with no fix applied at all** — i.e. this exact case shows run-to-run variance in outcome from logically-identical code, most likely floating-point-order sensitivity in the matrix-free Jacobian (`-ffast-math`, `mpicc`/`mpifort` codegen) on a system that sits on a numerical knife-edge at this residual level. **Conclusion: the one observed improvement cannot be attributed to this option with confidence — it may equally be the same unexplained run-to-run variance.** Needs a controlled re-test (multiple repeats of both baseline and capped, same binary, before/after) to actually validate. |
+| `"transitionResidualAutoscale"` | bool | `False` | Eq. 58 (P&Z) S_a residual-autoscaling proxy — periodically (every NK Jacobian reform) rescales each turbulence variable's row to match the mean-flow block's current residual norm. The paper gives no formula (cites Osusky & Zingg's thesis, unavailable here); this is a same-intent proxy, not verified identical. Off by default — tested 2026-07-16: no stall, real progress, but noisier/smaller steps than baseline; marginal, not clearly better. |
 
 **`transitionRefLength` plumbing & guidance.** No new AeroProblem wiring was
 added: `pyADflow.py` already pushes `ap.chordRef` into `inputPhysics%lengthRef`
@@ -189,6 +196,45 @@ LSBs) is visible, not a silent physics error.
 | `"ANKTurbCFLScale"` | float | `1.0` | CFL multiplier for turb equations relative to flow. |
 | `"ANKTurbKSPDebug"` | bool | `False` | Print linear residual, KSP iters, step size each Turb-ANK iteration. |
 | `"ANKPhysicalLSTolTurb"` | float | `0.99` | Physicality line-search tolerance for ν̃ in Turb-ANK (γ uses absolute bounds instead). |
+
+### Matrix-dissipation eigenvalue limiters (2026-08-04)
+
+Swanson & Turkel's Vn / Vl limiters, previously hard-coded Fortran
+`parameter`s duplicated across five hand-written routines. Only active when
+`discretization = "central plus matrix dissipation"` (the scalar/JST default
+does not use them).
+
+| Option | Type | Default | What it does |
+|---|---|---|---|
+| `"epsAcoustic"` | float | `0.25` | Vn — floor on the two acoustic eigenvalues, `λ = max(λ, Vn·rrad)`. Prevents zero dissipation at sonic lines. |
+| `"epsShear"` | float | `0.025` | Vl — floor on the (triple) entropy/vorticity eigenvalue `\|u·n\|`. Prevents zero dissipation where the flow is parallel to the face. |
+
+Why they matter here: inside a boundary layer the flow is parallel to the
+wall, so `|u·n| ≈ 0` on wall-normal faces and `rrad ≈ a`. The shear-wave
+dissipation there is therefore *entirely* set by Vl and is unrelated to the
+local physics. P&Z 2020 §4.1 set **Vl = 0** for exactly this reason
+("overly dissipative in the laminar boundary layer"), keeping Vn = 0.25
+(0.30 for CRM-NLF). The ADflow default Vl = 0.025 is **not** the paper's
+value; it is kept as the default here only for backward compatibility.
+Lowering Vl costs robustness near stagnation points.
+
+Wiring (all five hand-written sites read the same module variables):
+
+| File | Routine |
+|---|---|
+| `src/modules/inputParam.F90:101-120` | `module inputDissipation` — declaration |
+| `src/inputParam/inputParamRoutines.F90:4278-4279` | defaults |
+| `src/solver/fluxes.F90:419` | `inviscidDissFluxMatrix` |
+| `src/solver/fluxes.F90:4357` | `inviscidDissFluxMatrixApprox` |
+| `src/solver/fluxes.F90:5218` | `inviscidDissFluxMatrixCoarse` |
+| `src/NKSolver/blockette.F90:2476, 4637` | ANK/NK residual path |
+| `src/f2py/adflow.pyf:1024-1028` | `module inputdissipation` block |
+| `adflow/pyADflow.py:5903-5904, 6174, 6330-6331` | option defaults + `moduleMap` + option map |
+
+They live in their own `inputDissipation` module rather than
+`inputDiscretization` because the Tapenade-generated `fluxes_*.f90` do a
+whole-module `use inputdiscretization`, which collided with their own local
+`parameter` declarations of the same names.
 
 ## Examples
 
@@ -354,3 +400,58 @@ These are managed automatically by the solver when `transitionSrcDtRestrict = Tr
 
 - `srcDtRestrictActive`: starts `True`, flips to `False` after `srcDtDeactivateIters` consecutive clean turbKSP iterations in the second-order regime. Returns to `True` when backtracking is triggered or when `totalR` rises back above `ANKSecondOrdSwitchTol·totalR0`.
 - `noBacktrackCount`: counter driving the above (module variable, `inputParam.F90`; persists across solves — self-corrects via the residual condition on the first iteration of each solve).
+
+## Monitor variable: `"scaledtotalr"` (2026-07-16)
+
+Add `"scaledtotalr"` to `monitorVariables` to print an additional column
+showing the Eq. 58 S_r/S_a-scaled residual (`sumAllResidualsScaled`,
+`src/utils/utils.F90`) alongside the unchanged `"totalr"` column. Purely
+for visibility — it does **not** feed `totalR`/switch tolerances the way
+`"totalr"` does (see the `'scaledtotalR'` case in `solvers.F90`, which
+computes but never assigns the module-level `totalR`). Reflects whatever
+`transitionRowVolScale`/`transitionResidualAutoscale` are currently set to;
+identical to `"totalr"` when both are off.
+
+## Known infra bug: `.pyf` option wiring (2026-07-16, recurring — not module-specific)
+
+`src/f2py/adflow.pyf` is a **hand-maintained** f2py interface file, not
+auto-regenerated from Fortran source on every build. Any Fortran module
+variable (new option, new diagnostic array, anything) not explicitly listed
+in its `.pyf` module block is invisible to real Python↔Fortran
+communication — but f2py's `fortran`-type Python objects silently accept
+**arbitrary attribute names** with no backing memory, so `setOption`/reading
+the value back gives no error and no warning, and reads whatever phantom
+Python attribute was last set instead of the (uninitialized/default)
+Fortran memory. This has now bitten **three separate modules**, confirming
+it's a structural hazard, not a one-off stale-file issue:
+
+- `module inputiteration`: `transitionSrcDtRestrict`, `transitionSrcDtLimit`,
+  `srcDtDeactivateIters`, `transitionDampTheta`, `transitionDampMaxIter`
+  (added before 2026-07-16 — **still not fixed**, out of scope at the time).
+  `transitionNK`/`transitionRowVolScale`/`transitionResidualAutoscale`
+  (added 2026-07-16 — **fixed**). `transitionSrcDtEigMode` has no backing
+  Fortran variable at all (separate, also pre-existing bug).
+- `module inputadjoint`: `storePsiHistory`, `psiHistoryStep`,
+  `psiHistoryMax` (added 2026-07-24 for the psi-history adjoint-convergence
+  diagnostic, see `VERIFICATION/adjoint-trace.md` — **fixed** same day,
+  after ~3 hours of debugging a silent no-op that looked like a Fortran
+  module-memory corruption bug before the real cause was found).
+- `module adjointpetsc`: `psiHistory`, `psiHistoryIters`, `psiHistoryResid`,
+  `psiHistoryCount` (same feature, same date — **fixed**).
+- `module inputdissipation`: `epsAcoustic`, `epsShear` (added 2026-08-04 —
+  **fixed at the time of writing**; the `.pyf` block was added in the same
+  change, and `libadflow.inputdissipation.epsacoustic` was verified readable
+  and writable from Python before the feature was declared done).
+
+**Before trusting any Python-side setting of ANY option or diagnostic
+array that isn't already validated working — regardless of which Fortran
+module it lives in — grep `adflow.pyf` for that module's block first** (`grep
+-n "module <modulename>"` then check the variable is listed inside it). If
+it's missing, the option/array is a no-op from Python regardless of what
+`setOption`/read-back or even a direct `self.adflow.<module>.<var>` read
+suggests — that read is reading the phantom Python attribute, not Fortran
+memory. Symptom to recognize this by: a value reads back correctly in
+Python right after `setOption`, but a Fortran-side `write(*,*)` of the
+*same* variable inside a routine that runs later shows the type's zero
+value (`.False.`/`0`/`0.0`) — that mismatch is the signature of this bug,
+not memory corruption.

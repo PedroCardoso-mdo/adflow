@@ -2473,6 +2473,7 @@ contains
         use constants
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use utils, only: getCorrectForK, myDim
@@ -2481,8 +2482,6 @@ contains
         !      Local parameters.
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
-        real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !
@@ -4635,6 +4634,7 @@ contains
         use constants
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4, sigma
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use utils, only: getCorrectForK, myDim
@@ -4643,8 +4643,6 @@ contains
         !      Local parameters.
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
-        real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !
@@ -6942,12 +6940,18 @@ contains
         real(kind=realType) :: fLength_val, fTurb_val
         real(kind=realType) :: pGamma, eGamma
         real(kind=realType) :: timeScale, thetaBL, lambdaThetaLocal
+        real(kind=realType) :: lambdaThetaRaw, lambdaThetaClamped
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds
         real(kind=realType) :: reThetaT_target, deltaBL, delta, fWake_val, fThetaT
         real(kind=realType) :: pReTheta
         real(kind=realType) :: refLenTrans
         real(kind=realType) :: dScf, reScf, hcf
         real(kind=realType) :: crossflowRatio, dHplus, dHminus
+        ! Rotating-frame (relative-velocity) helpers. V_rel = V_abs - Omega x r.
+        ! Omega (rotRate) is a fixed input, so sc is computed unconditionally; a
+        ! non-rotating section has rotRate = 0 => sc = 0 exactly, a no-op.
+        real(kind=realType) :: xc(3), xxc(3), sc(3)
+        real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
 
         ! Set model constants
         cv13 = rsaCv1**3
@@ -7057,7 +7061,12 @@ contains
                     ! ========================================================
                     ! SA SOURCE (modified by gamma)
                     ! ========================================================
-                    gammaForSA = min(max(w(i, j, k, itu2), zero), one)
+                    ! Clamp intermittency multiplying SA production (Eq. 41).
+                    ! Upper cap padded to one + xminn (not one) so gamma==1.0
+                    ! stays strictly inside the pass-through region -- keeps this
+                    ! in lockstep with saGammaRetheta.F90 Source (see the detailed
+                    ! comment there; the margin removes an AD-vs-CS tie at gamma==1).
+                    gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
 
                     if (approxSA .and. transitionUseApproxSA) then
                         term1 = zero
@@ -7079,7 +7088,33 @@ contains
                     gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
                     reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
                     yDist = d2Wall(i, j, k)
-                    velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2
+
+                    ! --- Relative (rotating-frame) velocity ---
+                    ! ADflow stores ABSOLUTE velocity in w(:,ivx:ivz); the BL
+                    ! correlations below are defined in the relative (rotating)
+                    ! frame, so use V_rel = V_abs - Omega x r. Cell center from the
+                    ! 8 surrounding nodes; sc = Omega x (xc - rotCenter). Non-rotating
+                    ! section => rotRate = 0 => sc = 0, so V_rel = V_abs (no-op).
+                    ! Kept identical to saGammaRetheta.F90 Source.
+                    xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+                          + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+                          + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+                    xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+                          + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+                          + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+                    xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+                          + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+                          + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+                    xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+                    xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+                    xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+                    sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+                    sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+                    sc(3) = omegax * xxc(2) - omegay * xxc(1)
+                    velRelx = w(i, j, k, ivx) - sc(1)
+                    velRely = w(i, j, k, ivy) - sc(2)
+                    velRelz = w(i, j, k, ivz) - sc(3)
+                    velMag2 = velRelx**2 + velRely**2 + velRelz**2
                     velMag = sqrt(max(velMag2, xminn))
 
                     ! Vorticity limiting — keep identical to saGammaRetheta.F90
@@ -7090,7 +7125,11 @@ contains
                     else
                         refLenTrans = lengthRef
                     end if
-                    vortLim = uInf * sqrt(max(uInf / max(muInf * refLenTrans, xminn), xminn)) &
+                    ! Blade-element section velocity uRefTrans = sqrt(uInf^2 +
+                    ! |Omega x r|^2) (|Omega x r| = |sc|); reduces to uInf when
+                    ! sc = 0. Kept identical to saGammaRetheta.F90 Source.
+                    uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
+                    vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) &
                               / 20.0_realType
                     vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
 
@@ -7116,17 +7155,26 @@ contains
                     timeScale = 500.0_realType * nu / max(velMag2, xminn)
                     thetaBL = reThetaTilde * nu / max(velMag, xminn)
 
-                    ! Local lambdaTheta
-                    uxhat = w(i, j, k, ivx) / max(velMag, xminn)
-                    uyhat = w(i, j, k, ivy) / max(velMag, xminn)
-                    uzhat = w(i, j, k, ivz) / max(velMag, xminn)
+                    ! Local lambdaTheta. Streamwise unit vector is along the
+                    ! RELATIVE velocity; the velocity-gradient stencils stay
+                    ! absolute (the antisymmetric rotation part cancels in dU/ds).
+                    uxhat = velRelx / max(velMag, xminn)
+                    uyhat = velRely / max(velMag, xminn)
+                    uzhat = velRelz / max(velMag, xminn)
                     dUds = two * fact &
                          * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
                           + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
                           + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
-                    lambdaThetaLocal = (thetaBL**2 / nu) * dUds
-                    lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, -0.1_realType, rsaGRpmax)
-                    lambdaThetaLocal = smoothMinMax(lambdaThetaLocal, 0.1_realType, rsaGRpmin)
+                    ! Distinct clamp targets (not in-place) to match Source.
+                    lambdaThetaRaw = (thetaBL**2 / nu) * dUds
+                    if (rsaGRclampLambdaTheta) then
+                        lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
+                        lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                    else
+                        ! Paper-faithful: no clamp -- keep in sync with Source.
+                        lambdaThetaClamped = lambdaThetaRaw
+                        lambdaThetaLocal = lambdaThetaRaw
+                    end if
 
                     reThetaT_target = reThetaTCorrelation(turbIntensityInf * 100.0_realType, lambdaThetaLocal)
 
@@ -7144,17 +7192,19 @@ contains
                     ! saGammaRetheta.F90 Source.
                     dScf = zero
                     if (transitionCrossflow) then
-                        crossflowRatio = smoothMinMax(rTurb, 0.4_realType, rsaGRpmin)
-                        ! Eq.24 helicity uses the raw velocity curl; undo the
-                        ! rotating-frame -2*omega baked into vortx so H_cf is frame-independent.
-                        hcf = yDist * abs((w(i, j, k, ivx) / max(velMag, xminn)) * (vortx + two * omegax) &
-                            + (w(i, j, k, ivy) / max(velMag, xminn)) * (vorty + two * omegay) &
-                            + (w(i, j, k, ivz) / max(velMag, xminn)) * (vortz + two * omegaz)) &
+                        crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
+                        ! Helicity H_cf = d*|U_hat . Omega|/U (Eqs.24-26) in the
+                        ! RELATIVE frame: relative velocity dotted with relative
+                        ! vorticity (vortx = curl - 2*Omega). Omega = 0 => identical
+                        ! to the absolute form. Kept identical to Source.
+                        hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                            + (velRely / max(velMag, xminn)) * vorty &
+                            + (velRelz / max(velMag, xminn)) * vortz) &
                             / max(velMag, xminn)
                         reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
                             + 319.51_realType
-                        dHplus = smoothMinMax(0.1066_realType - hcf * (one + crossflowRatio), zero, rsaGRpmax)
-                        dHminus = smoothMinMax(-(0.1066_realType - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                        dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                        dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
                         reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
                         reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
                         dScf = (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
@@ -7188,10 +7238,20 @@ contains
         ! Sec. IV.A) unless the user explicitly disables it — same
         ! behavior as turbAdvection/saGammaReTheta_block.
         secondOrd = .false.
-        if (groundLevel == 1_intType .and. orderTurb == secondOrder &
-            .and. .not. transitionFirstOrderUpwind) secondOrd = .true.
+        if (groundLevel == 1_intType .and. orderTurb == secondOrder .and. &
+            .not. transitionFirstOrderUpwind) secondOrd = .true.
 
         offset = itu1 - 1
+
+        ! -----------------------------------------------------------------
+        ! NOTE: sign/limiter convention is kept BIT-IDENTICAL to the validated
+        ! blockette saAdvection (and turbAdvection), just looped over nAdv = 3
+        ! transition equations. The residual subtracts uu*dwt with the upwind
+        ! difference dwt = w(cell) - w(upstream) (e.g. w(k)-w(k-1) for uu>0).
+        ! A previous version used dwt = w(upstream)-w(cell) (sign-flipped) with
+        ! a different minmod form, which made the blockette residual disagree
+        ! with the block path by ~2x on the transition variables.
+        ! -----------------------------------------------------------------
 
         ! K-direction advection
         do k = 2, kl
@@ -7209,28 +7269,56 @@ contains
                     if (uu > zero) then
                         do ii = 1, nAdv
                             jj = ii + offset
-                            if (secondOrd .and. k > 2) then
+                            if (secondOrd) then
                                 dwtm1 = w(i, j, k - 1, jj) - w(i, j, k - 2, jj)
                                 dwt = w(i, j, k, jj) - w(i, j, k - 1, jj)
-                                dwtk = half * (sign(one, dwtm1) + sign(one, dwt)) &
-                                       * min(abs(dwtm1), abs(dwt))
+                                dwtp1 = w(i, j, k + 1, jj) - w(i, j, k, jj)
+                                dwtk = dwt
+                                if (dwt * dwtp1 > zero) then
+                                    if (abs(dwt) < abs(dwtp1)) then
+                                        dwtk = dwtk + half * dwt
+                                    else
+                                        dwtk = dwtk + half * dwtp1
+                                    end if
+                                end if
+                                if (dwt * dwtm1 > zero) then
+                                    if (abs(dwt) < abs(dwtm1)) then
+                                        dwtk = dwtk - half * dwt
+                                    else
+                                        dwtk = dwtk - half * dwtm1
+                                    end if
+                                end if
                             else
-                                dwtk = zero
+                                dwtk = w(i, j, k, jj) - w(i, j, k - 1, jj)
                             end if
-                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j, k - 1, jj) + dwtk - w(i, j, k, jj))
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * dwtk
                         end do
                     else
                         do ii = 1, nAdv
                             jj = ii + offset
-                            if (secondOrd .and. k < kl) then
+                            if (secondOrd) then
+                                dwtm1 = w(i, j, k, jj) - w(i, j, k - 1, jj)
                                 dwt = w(i, j, k + 1, jj) - w(i, j, k, jj)
                                 dwtp1 = w(i, j, k + 2, jj) - w(i, j, k + 1, jj)
-                                dwtk = half * (sign(one, dwt) + sign(one, dwtp1)) &
-                                       * min(abs(dwt), abs(dwtp1))
+                                dwtk = dwt
+                                if (dwt * dwtp1 > zero) then
+                                    if (abs(dwt) < abs(dwtp1)) then
+                                        dwtk = dwtk - half * dwt
+                                    else
+                                        dwtk = dwtk - half * dwtp1
+                                    end if
+                                end if
+                                if (dwt * dwtm1 > zero) then
+                                    if (abs(dwt) < abs(dwtm1)) then
+                                        dwtk = dwtk + half * dwt
+                                    else
+                                        dwtk = dwtk + half * dwtm1
+                                    end if
+                                end if
                             else
-                                dwtk = zero
+                                dwtk = w(i, j, k + 1, jj) - w(i, j, k, jj)
                             end if
-                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j, k + 1, jj) - dwtk - w(i, j, k, jj))
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * dwtk
                         end do
                     end if
                 end do
@@ -7253,28 +7341,56 @@ contains
                     if (uu > zero) then
                         do ii = 1, nAdv
                             jj = ii + offset
-                            if (secondOrd .and. j > 2) then
+                            if (secondOrd) then
                                 dwtm1 = w(i, j - 1, k, jj) - w(i, j - 2, k, jj)
                                 dwt = w(i, j, k, jj) - w(i, j - 1, k, jj)
-                                dwtj = half * (sign(one, dwtm1) + sign(one, dwt)) &
-                                       * min(abs(dwtm1), abs(dwt))
+                                dwtp1 = w(i, j + 1, k, jj) - w(i, j, k, jj)
+                                dwtj = dwt
+                                if (dwt * dwtp1 > zero) then
+                                    if (abs(dwt) < abs(dwtp1)) then
+                                        dwtj = dwtj + half * dwt
+                                    else
+                                        dwtj = dwtj + half * dwtp1
+                                    end if
+                                end if
+                                if (dwt * dwtm1 > zero) then
+                                    if (abs(dwt) < abs(dwtm1)) then
+                                        dwtj = dwtj - half * dwt
+                                    else
+                                        dwtj = dwtj - half * dwtm1
+                                    end if
+                                end if
                             else
-                                dwtj = zero
+                                dwtj = w(i, j, k, jj) - w(i, j - 1, k, jj)
                             end if
-                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j - 1, k, jj) + dwtj - w(i, j, k, jj))
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * dwtj
                         end do
                     else
                         do ii = 1, nAdv
                             jj = ii + offset
-                            if (secondOrd .and. j < jl) then
+                            if (secondOrd) then
+                                dwtm1 = w(i, j, k, jj) - w(i, j - 1, k, jj)
                                 dwt = w(i, j + 1, k, jj) - w(i, j, k, jj)
                                 dwtp1 = w(i, j + 2, k, jj) - w(i, j + 1, k, jj)
-                                dwtj = half * (sign(one, dwt) + sign(one, dwtp1)) &
-                                       * min(abs(dwt), abs(dwtp1))
+                                dwtj = dwt
+                                if (dwt * dwtp1 > zero) then
+                                    if (abs(dwt) < abs(dwtp1)) then
+                                        dwtj = dwtj - half * dwt
+                                    else
+                                        dwtj = dwtj - half * dwtp1
+                                    end if
+                                end if
+                                if (dwt * dwtm1 > zero) then
+                                    if (abs(dwt) < abs(dwtm1)) then
+                                        dwtj = dwtj + half * dwt
+                                    else
+                                        dwtj = dwtj + half * dwtm1
+                                    end if
+                                end if
                             else
-                                dwtj = zero
+                                dwtj = w(i, j + 1, k, jj) - w(i, j, k, jj)
                             end if
-                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i, j + 1, k, jj) - dwtj - w(i, j, k, jj))
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * dwtj
                         end do
                     end if
                 end do
@@ -7297,28 +7413,56 @@ contains
                     if (uu > zero) then
                         do ii = 1, nAdv
                             jj = ii + offset
-                            if (secondOrd .and. i > 2) then
+                            if (secondOrd) then
                                 dwtm1 = w(i - 1, j, k, jj) - w(i - 2, j, k, jj)
                                 dwt = w(i, j, k, jj) - w(i - 1, j, k, jj)
-                                dwti = half * (sign(one, dwtm1) + sign(one, dwt)) &
-                                       * min(abs(dwtm1), abs(dwt))
+                                dwtp1 = w(i + 1, j, k, jj) - w(i, j, k, jj)
+                                dwti = dwt
+                                if (dwt * dwtp1 > zero) then
+                                    if (abs(dwt) < abs(dwtp1)) then
+                                        dwti = dwti + half * dwt
+                                    else
+                                        dwti = dwti + half * dwtp1
+                                    end if
+                                end if
+                                if (dwt * dwtm1 > zero) then
+                                    if (abs(dwt) < abs(dwtm1)) then
+                                        dwti = dwti - half * dwt
+                                    else
+                                        dwti = dwti - half * dwtm1
+                                    end if
+                                end if
                             else
-                                dwti = zero
+                                dwti = w(i, j, k, jj) - w(i - 1, j, k, jj)
                             end if
-                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i - 1, j, k, jj) + dwti - w(i, j, k, jj))
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * dwti
                         end do
                     else
                         do ii = 1, nAdv
                             jj = ii + offset
-                            if (secondOrd .and. i < il) then
+                            if (secondOrd) then
+                                dwtm1 = w(i, j, k, jj) - w(i - 1, j, k, jj)
                                 dwt = w(i + 1, j, k, jj) - w(i, j, k, jj)
                                 dwtp1 = w(i + 2, j, k, jj) - w(i + 1, j, k, jj)
-                                dwti = half * (sign(one, dwt) + sign(one, dwtp1)) &
-                                       * min(abs(dwt), abs(dwtp1))
+                                dwti = dwt
+                                if (dwt * dwtp1 > zero) then
+                                    if (abs(dwt) < abs(dwtp1)) then
+                                        dwti = dwti - half * dwt
+                                    else
+                                        dwti = dwti - half * dwtp1
+                                    end if
+                                end if
+                                if (dwt * dwtm1 > zero) then
+                                    if (abs(dwt) < abs(dwtm1)) then
+                                        dwti = dwti + half * dwt
+                                    else
+                                        dwti = dwti + half * dwtm1
+                                    end if
+                                end if
                             else
-                                dwti = zero
+                                dwti = w(i + 1, j, k, jj) - w(i, j, k, jj)
                             end if
-                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * (w(i + 1, j, k, jj) - dwti - w(i, j, k, jj))
+                            dw(i, j, k, jj) = dw(i, j, k, jj) - uu * dwti
                         end do
                     end if
                 end do
