@@ -37,6 +37,33 @@ Fastest verified full path: freestream -> rel 1.8e-8 in ~32 min
 (28 min segregated + ~1 min CANK + 2 NK iters), `RUN/cank_both.log` after
 `RUN/seg_pure.log`. Old reference: 10 h to rel ~1e-5-equivalent (retheta 336).
 
+## Engaging NK too early is the most expensive mistake (2026-08-07)
+
+Measured on the AR5 corrected-foil family (5 levels, 0.46M-7.42M cells,
+`11_ar5_corrected_foil/`). Every level, launched with the 09 campaign's
+inherited `nkswitchtol = 1e-6`, **stalled in NK at rel ~1e-6**: `Step = 0.00`,
+CFL `----`, totalRes rising in the 12th digit, hundreds of wasted iterations.
+That threshold engages NK ~1.5 orders above the validated point (CSANK's floor,
+rel ~3.5e-8 — see the ladder table).
+
+Restarting the identical state with NK simply **disabled** (`useNKSolver: False`,
+letting CSANK finish) closed the gap immediately:
+
+| level | cells | iters after restart | wall | from -> to |
+|---|---:|---:|---:|---|
+| L4 | 459,452 | 2 | 36 s | 6.81 -> 8.00 orders |
+| L3 | 904,134 | 4 | 245 s | 6.89 -> 8.07 orders |
+| L2 | 1,783,442 | 17 | - | -> 8.04 orders |
+| L1 | 3,667,320 | 27 | - | -> 8.05 orders |
+
+So: **if NK pins at `Step = 0.00`, the first thing to test is that it engaged
+too early** — drive CSANK to its own floor instead, and only then hand over.
+Do not restart NK at the same threshold.
+
+Operational note: `scancel --signal=USR2` writes the state and ends the current
+*solve*, not the job. A runner that issues several staged `CFDSolver(ap)` calls
+will simply proceed to the next one; follow with a plain `scancel`.
+
 ## Known limits / do NOT
 
 - Do NOT couple early: CANK at rel 1e-2 stagnates (with or without the LS
@@ -87,9 +114,19 @@ together and passes that rho once NK runs to target.
 - `NKUseEW True` + weak deep PC = the 100-200-eval stall iterations:
   Eisenstat-Walker demands tighter linear tolerance as convergence improves,
   and with the PC saturating (lin res 0.8) GMRES just burns the full
-  subspace. Analysis-based mitigation if deep-NK cost matters before the PC
-  work lands: `NKUseEW False` + `NKLinearSolveTol 0.3` caps the per-iteration
-  waste (accepts poorer Newton steps, but each costs ~5x less). UNTESTED.
+  subspace. Analysis-based mitigation: `NKUseEW False` + `NKLinearSolveTol 0.3`
+  caps the per-iteration waste (accepts poorer Newton steps, but each costs
+  ~5x less). **TESTED 2026-08-07 — FALSIFIED.** On the AR5 corrected-foil L0
+  (7.42M cells, 64 ranks, at rel 2.5e-8:
+  `11_ar5_corrected_foil/results_refinement/L0`, job 1812053), with EW OFF and
+  the linear tolerance pinned at a slack 0.3, GMRES still returns **0.998** —
+  it cannot reach even that loose target. So EW is not what starves the deep
+  NK iterations; the preconditioner alone is. This kills the last
+  option-level lever: the deep wall is only addressable by the code items in
+  `adflow-vs-paper-solver.md` §5. Same run confirmed the wall is not an
+  engagement-point artefact either — NK entered at the correct rel 5e-8 (not
+  1e-6) and merely re-attained the depth CSANK had already reached, with the
+  linear residual DEGRADING 0.80 -> 0.97 as it went.
 - `ANKPCUpdateTol 0.5` / NKJacobianLag: PC freshness. JacLag 5 tested — no
   effect on the deep wall; the PC's *quality*, not staleness, is the limit.
 - Verdict: no remaining option is likely to move the deep-NK wall; the real
