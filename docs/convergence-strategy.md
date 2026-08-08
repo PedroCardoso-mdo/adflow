@@ -40,14 +40,17 @@ Fastest verified full path: freestream -> rel 1.8e-8 in ~32 min
 ## Engaging NK too early is the most expensive mistake (2026-08-07)
 
 Measured on the AR5 corrected-foil family (5 levels, 0.46M-7.42M cells,
-`11_ar5_corrected_foil/`). Every level, launched with the 09 campaign's
-inherited `nkswitchtol = 1e-6`, **stalled in NK at rel ~1e-6**: `Step = 0.00`,
-CFL `----`, totalRes rising in the 12th digit, hundreds of wasted iterations.
-That threshold engages NK ~1.5 orders above the validated point (CSANK's floor,
-rel ~3.5e-8 — see the ladder table).
+`11_ar5_corrected_foil/`), launched with the 09 campaign's inherited
+`nkswitchtol = 1e-6`. **Every case where NK actually engaged stalled at rel
+~1e-6**: `Step = 0.00`, CFL `----`, totalRes rising in the 12th digit, hundreds
+of wasted iterations. That is L4 (six Tu-sweep runs plus the refinement leg),
+L3, and L0. That threshold engages NK ~1.5 orders above the validated point
+(CSANK's floor, rel ~3.5e-8 — see the ladder table).
 
 Restarting the identical state with NK simply **disabled** (`useNKSolver: False`,
-letting CSANK finish) closed the gap immediately:
+letting CSANK finish) closed the gap immediately. Note L2 and L1 were switched
+PRE-EMPTIVELY, before NK engaged at all, so their rows show that CSANK alone
+reaches 1e-8 — not that NK had stalled on them:
 
 | level | cells | iters after restart | wall | from -> to |
 |---|---:|---:|---:|---|
