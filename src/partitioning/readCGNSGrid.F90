@@ -2785,11 +2785,20 @@ contains
 
         real(kind=realType) :: mult, trans
 
-        ! Check if this is a periodic boundary.
+        real(kind=cgnsPerType), dimension(3) :: rotCenterP, rotAnglesP, tlationP
+
+        ! Check if this is a periodic boundary. The data must be read into
+        ! variables of the CGNS periodic kind: real(x, kind) expressions are
+        ! temporaries, so the values the library writes would be discarded.
 
         call cg_conn_periodic_read_f(cgnsInd, cgnsBase, zone, conn, &
-                                     real(rotCenter, cgnsPerType), real(rotAngles, cgnsPerType), &
-                                     real(tlation, cgnsPerType), ierr)
+                                     rotCenterP, rotAnglesP, tlationP, ierr)
+
+        if (ierr == CG_OK) then
+            rotCenter = rotCenterP
+            rotAngles = rotAnglesP
+            tlation = tlationP
+        end if
 
         testPeriodic: if (ierr == CG_OK) then
 
@@ -2928,10 +2937,19 @@ contains
 
         real(kind=realType) :: mult, trans
 
-        ! Check if this is a periodic boundary.
+        real(kind=cgnsPerType), dimension(3) :: rotCenterP, rotAnglesP, tlationP
+
+        ! Check if this is a periodic boundary. The data must be read into
+        ! variables of the CGNS periodic kind: real(x, kind) expressions are
+        ! temporaries, so the values the library writes would be discarded.
         call cg_1to1_periodic_read_f(cgnsInd, cgnsBase, zone, conn, &
-                                     real(rotCenter, cgnsPerType), real(rotAngles, cgnsPerType), &
-                                     real(tlation, cgnsPerType), ierr)
+                                     rotCenterP, rotAnglesP, tlationP, ierr)
+
+        if (ierr == CG_OK) then
+            rotCenter = rotCenterP
+            rotAngles = rotAnglesP
+            tlation = tlationP
+        end if
 
         testPeriodic: if (ierr == CG_OK) then
 
