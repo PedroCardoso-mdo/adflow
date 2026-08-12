@@ -132,6 +132,31 @@ together and passes that rho once NK runs to target.
   linear residual DEGRADING 0.80 -> 0.97 as it went.
 - `ANKPCUpdateTol 0.5` / NKJacobianLag: PC freshness. JacLag 5 tested — no
   effect on the deep wall; the PC's *quality*, not staleness, is the limit.
+- **`ANKPCILUFill` / `NKPCILUFill` 1 vs 2 vs 3: TESTED 2026-08-12 — keep the
+  default 2; ILU(3) is WORSE, not better.** Measured on the AR5 corrected-foil
+  L0 (7.42M cells, 64 ranks, both options set together;
+  `11_ar5_corrected_foil/results_ilu/PURPOSE.md`). In ANK/CANK/CSANK the fill
+  level is irrelevant — mean linear residual 0.044–0.047 for all three, a 2–5 %
+  spread against a 44 % memory spread. In NK, ILU(3) **stalls**: mean linear
+  residual 0.996 (GMRES achieving nothing), step 0.00, Re_theta residual frozen
+  at its starting value, while ILU(2) gives 0.762 and drives Re_theta 23.9 -> 2.8.
+  ILU(1) costs ~18 % more iterations but does not stall (0.820). This is the
+  classic high-level-ILU failure — more fill, more density, less numerical
+  stability — and it contradicts `ADFLOW_BASE/adflow_solvers.md`, which
+  recommends raising `NKPCILUFill` to strengthen the PC. On SA-GR it does not.
+  **The deep-NK wall is therefore not the fill level either**: all three variants
+  sit at linear residual 0.76–1.00. With Eisenstat-Walker already falsified, no
+  option-level lever remains; the untried no-memory-cost knobs are
+  `NKOuterPreconIts` / `NKInnerPreconIts`.
+- **Memory: the ILU fill, not the NK subspace, is what forces extra nodes.**
+  Same study: at 7.42M cells on ONE node, ILU(1) survives at 3.03 GB/rank while
+  ILU(2) and ILU(3) both OOM **during CANK — before NK ever engages**, so the
+  Krylov subspace cannot be the driver. Arithmetic agrees: for the 8-variable
+  SA-GR state at 13.7M cells the coupled Jacobian is ~49 GB and ILU(2) on it
+  ~150–250 GB, against ~53 GB for a 60-vector NK subspace. Corollary: **raising
+  the rank count raises total memory** (each rank carries its own PC slice plus
+  duplicated halos) — 128 ranks on 2 nodes OOM'd a case that ran at 128 ranks on
+  4 nodes. Scale ranks with nodes, not within them.
 - Verdict: no remaining option is likely to move the deep-NK wall; the real
   fixes are the code items in `adflow-vs-paper-solver.md` §5.
 
