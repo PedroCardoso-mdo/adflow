@@ -1,5 +1,12 @@
 # Convergence acceleration campaign (SA-GR solver strategy) — 2026-07-16
 
+> Path note (2026-08-12): the run tree was renumbered — `best_strategie/` is
+> now `03_convergence_strategy/3d_plain_wing/best_strategy/` and
+> `claude_attempt/` is `.../3d_plain_wing/_old/campaign_2026-07-14_to_16/`.
+> Also: the "regardless of engagement point" clause and the EW mitigation in
+> the follow-ups were later falsified/refined — see
+> `docs/convergence-strategy.md` (2026-08-07/08, commits ef9fc10d/54c43475).
+
 **Problem:** SA-GR cases only converged via ~40k segregated iterations
 (~10 h to rho 1e-6 / retheta res 336, old binary); coupled and Newton
 phases stalled, oscillated, or thrashed, and nobody knew which solver

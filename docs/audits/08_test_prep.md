@@ -1,5 +1,11 @@
 # 08 — Derivative-test preparation for SA-γ-R̃e_θt (pre-complex-build)
 
+> **⚠️ SUPERSEDED (2026-08-12)** — this plan was fully executed (suite
+> live: see `../VERIFICATION/three-stage-verification.md` §Canonical way to
+> run). The F1/Tapenade blocker is resolved; the tolerance policy in §4 was
+> superseded 2026-07-24 by rtol=atol=5e-8 with mach/drag non-blocking. §3
+> (complex-build flags) is the one still-current section.
+
 **Date:** 2026-07-08. Branch `sa_gamma_rethetha`. Preparation only — nothing
 was built or executed (the complex-step ADflow build is not installed yet).
 Follows audits `06_adjoint_wiring.md` and `adjoint_audit_2026-07-07.md`

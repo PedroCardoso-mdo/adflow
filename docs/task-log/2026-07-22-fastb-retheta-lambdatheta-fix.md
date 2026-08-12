@@ -84,5 +84,5 @@ convention everywhere else in the file (mathematically identical):
   prior real-arch attempt) yields spurious COMPLEX→REAL interface errors
   in `fortranPC.F90`/`adjointAPI.F90`/`surfaceUtils.F90`/etc. that are
   toolchain artifacts, not source problems.
-- SA-GR's higher-level `evalFunctionsSens`-based adjoint/CS validation on
-  AR5 still not started — tracked in `../current-task.md`.
+- **DONE (2026-07-23):** SA-GR's higher-level `evalFunctionsSens`-based
+  adjoint/CS validation — see `2026-07-23-sagr-full-adjoint-test.md`.

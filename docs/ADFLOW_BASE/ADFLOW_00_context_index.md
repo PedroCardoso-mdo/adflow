@@ -10,13 +10,13 @@ master index: [`../README.md`](../README.md). Project rules are in `../../CLAUDE
 | File | What it is |
 |---|---|
 | `ADFLOW_00_context_index.md` | this sub-index |
-| `ADFLOW_01_flow_solver_theory.md` | flow solver, ANK/NK, PTC, R0/R1/R2, defaults — full extraction of Yildirim2019 |
+| `ADFLOW_01_flow_solver_theory.md` | flow solver, ANK/NK, PTC, R0/R1/R2, paper defaults (Yildirim et al. 2019) — full extraction of Yildirim2019; several defaults differ from current code — code/pyADflow.py wins |
 | `ADFLOW_02_adjoint_autodiff_theory.md` | discrete adjoint + AD, variants, appendices — full extraction of Kenway2019 |
 | `ADFLOW_03_concordance.md` | paper-math ↔ code-flag crosswalk + gotchas |
 | `ADFLOW_04_debugging_playbook.md` | symptom → cause → fix ladder → evidence for stalls, divergence, bad gradients |
 | `ADFLOW_05_options_and_operations_devguide.md` | ADflow options + operations (official docs; user-provided) |
-| `adflow_solvers.md` | **Raw source** (official ADflow docs, un-numbered) that fed `01`/`04`/`05`. Overlaps with those three, but keeps some troubleshooting detail (Very Small Step Sizes, High Linear Residuals, EW Algorithm Stalling) not otherwise distilled — check here if `04` doesn't have the symptom you're chasing. Not part of the routing table; read only as a last resort. |
-| `debugging_derivatives.md` | **Raw source**, mostly un-distilled. Holds the generic FD → reverse-mode dot-product → complex-step **derivative-checking ladder** — not covered in `02` or `04`. Referenced by the master index's "Validate partials / plan AD test campaign" and "Gradients wrong / adjoint won't converge" routing rows. |
+| `adflow_solvers.md` | **Raw source** (official ADflow docs, un-numbered) that fed `01`/`04`/`05`. ~Fully duplicated by `ADFLOW_05` Part 1 (Very Small Step Sizes / High Linear Residuals / EW Stalling are all there too), but this file IS what CLAUDE.md routes to for SA-GR convergence background. *(Corrected 2026-08-12: previously claimed unique troubleshooting detail.)* |
+| `../VERIFICATION/debugging_derivatives.md` | **Raw source**, mostly un-distilled. Holds the generic FD → reverse-mode dot-product → complex-step **derivative-checking ladder** — not covered in `02` or `04`. Referenced by the master index's "Validate partials / plan AD test campaign" and "Gradients wrong / adjoint won't converge" routing rows. |
 
 The full transition-model paper lives in `../SA_GAMMA_RETHETHA_BASE/`.
 

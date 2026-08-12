@@ -39,6 +39,11 @@ in `../TODO.md` and `../current-task.md`.
 - Jacobian (`evalSrcJacBlock`) treats the target as constant, so the clamps
   don't enter it — no residual/Jacobian conflict.
 - Verdict: keep both clamps as-is.
+- **Update 2026-08-03:** clamp made compile-time switchable
+  (`rsaGRclampLambdaTheta`, `paramTurb.F90`, a `parameter` — compile-time,
+  not runtime), unclamped tested on S809 and REJECTED (stalls ~1e-4, +38
+  counts); default remains ON (`be9d6d1d` → `efed31cf`). The ReThetaT
+  correlation also gained a ≥20 floor.
 
 ### D3 — Retired distilled-physics doc (historical note)
 
@@ -61,6 +66,8 @@ in `../TODO.md` and `../current-task.md`.
   Turb-ANK KSP path. Fully-coupled ANK/NK rely on the physicality check +
   CFL ramp alone. User decision: leave as-is; not expected to be exercised
   soon. CANK warnings added as a guard instead.
+- *Update 2026-08-12: Eq. 59 now also exists in the NK path via the
+  `transitionNK` bundle (`applyNKSrcDtDiagonal` etc.).*
 
 ### D-A2-2 — Additive (DADI) vs MAX (turbKSP) form of Eq. 59 — both kept, intentional
 
@@ -102,6 +109,11 @@ in `../TODO.md` and `../current-task.md`.
 
 ### D-A2-4 — `turbResScale` ν̃ scale: 1e4 (ADflow) vs 1e3 (paper §IV.C) — keep ADflow convention
 
+- **Correction 2026-08-12:** the shipped default is `[1e4, 0.1, 1e-4]`
+  (~1/state magnitude, see the `pyADflow.py` comment), NOT the
+  `[1e4, 10, 1e4]` discussed below — the argument below is historical; the
+  reconcile happened in code (the 2026-07-16 campaign value became the
+  default).
 - Default `[1e4, 10, 1e4]` (γ, Re̅θt scales match the paper exactly; only ν̃
   differs). `turbResScale` is residual row-scaling — a conditioning/tuning
   knob, not part of the converged solution, so "paper wins" (rule 9) doesn't
@@ -144,6 +156,8 @@ in `../TODO.md` and `../current-task.md`.
   mat-vecs use the slower residual path. Performance cost, not correctness.
   User decision: leave for now; implement in `blocketteResCore` when
   performance is evaluated. Tracked in `../TODO.md`.
+- *Update 2026-08-12: blockette kernels ARE implemented and tested since
+  2026-07-24; only the pyADflow force-off remains (`pyADflow.py:~6824`).*
 
 ---
 

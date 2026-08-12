@@ -3,8 +3,9 @@
 **Status (plain SA): all three stages PASS**, for plain SA on both the
 tutorial-wing and AR5 meshes, as of 2026-07-21.
 
-**Status (SA-GR, `nw=8`, AR5): all three stages PASS**, with crossflow
-**always ON** in the standing suite, as of 2026-07-22. Stage 2 initially
+**Status (SA-GR, `nw=8`): all three stages PASS**, with crossflow
+**OFF** in the standing suite (the model default flipped to
+`transitionCrossflow=False` on 2026-07-24), as of 2026-07-22. Stage 2 initially
 FAILED on the reThetat rows (`_b` vs `_fast_b` diverged, max abs diff ≈
 7.5e+2); this was root-caused to an in-place `smoothMinMax` double-clamp of
 `lambdaThetaLocal` in the primal and **fixed** (see "Results & provenance"
@@ -22,13 +23,23 @@ were trimmed — those scripts now live in `tests/reg_tests/dev/`).
 
 Everything runs from `tests/reg_tests/` through one script,
 `run_sagr_tests.sh`. The whole case (mesh, restart state `w`, AeroProblem,
-solver options, **crossflow ON**) is centralized in `reg_sagr.py`.
+solver options, **crossflow OFF** — `transitioncrossflow: False`, the model
+default since 2026-07-24) is centralized in `reg_sagr.py`. The standing case
+linearizes about the **tutorial wing** (`mdo_tutorial_sagr_dp.cgns`,
+mach 0.15, alpha 1.8).
+
+> Note (2026-08-12): the crossflow adjoint WAS validated once, on
+> 2026-07-22, with crossflow ON on the AR5 state (see
+> `../task-log/2026-07-22-fastb-retheta-lambdatheta-fix.md` and the pass
+> table below) — but it is NOT exercised by the standing suite anymore.
 
 ```bash
 cd tests/reg_tests/
-./run_sagr_tests.sh          # whole ladder: real (Stage 1/2/3-AD-FD) + complex (Stage 3 CS)
+./run_sagr_tests.sh          # whole ladder: real (Stage 1/2/3-AD-FD) + complex (Stage 3 CS) + adjoint + blockette
 ./run_sagr_tests.sh real     # Stage 1 (dot products) + Stage 2 (_b vs _fast_b) + Stage 3 AD/FD
 ./run_sagr_tests.sh cs       # Stage 3 complex-step ground truth (the decisive check)
+./run_sagr_tests.sh adjoint  # full total-sensitivity test (test_adjoint_sagr.py)
+./run_sagr_tests.sh blockette # blockette SA-GR residual-sync guard (test_blockette_sagr.py)
 ./run_sagr_tests.sh train    # rebuild the JSON reference files (after changing derivative code)
 ./run_sagr_tests.sh genw     # regenerate the converged restart state w (rarely needed)
 ```
@@ -45,7 +56,7 @@ after the derivative code changes.
 | `test_jacVecProdBWDFast_sagr.py` | 1 (dot products), 2 (`_b` vs `_fast_b`) | `TestDotProductsSAGR`, `TestJacVecBWDFastSAGR` |
 | `test_jacVecProdFWD_sagr.py` | 3 (AD vs ref, FD, CS) | `TestJacVecFwdSAGR` (AD), `TestJacVecFwdSAGRFD` (FD), `TestJacVecFwdSAGRCS` (CS) |
 | `reg_sagr.py` | shared config + block helpers | — |
-| `refs/jacvec{fwd,bwd}_sagr_flatplate.json` | trained AD/dot-product references | — |
+| `refs/jacvec{fwd,bwd}_sagr_tut_wing.json` | trained AD/dot-product references | — |
 
 **Real vs complex build.** Stages 1, 2, and the AD/FD half of Stage 3 use
 the real build (`test_*` methods). The decisive CS half of Stage 3 uses the
@@ -73,8 +84,8 @@ the complex lib if the change touches differentiated code).
   is required, not optional; removing it reintroduces a spurious ~2.15e-8
   failure on `dR[meanflow]/dw[gamma]` and `dR[meanflow]/dw[reThetat]`.
 
-**Changing the mesh** (for a future, better-converged case): edit
-`sagrGridFile` / `sagrRestartFile` (and the `ap_sagr_ar5_wing` conditions if
+**Changing the mesh**: edit
+`sagrGridFile` / `sagrRestartFile` (and the AeroProblem conditions if
 they differ) in `reg_sagr.py`, then `./run_sagr_tests.sh genw` (if you need
 a fresh converged `w`) → `train` (rebuild JSON) → run. Everything routes
 through that one config module.
@@ -87,22 +98,27 @@ matches the test case.
 **What this ladder does and does not prove.** It proves the differentiated
 code computes the derivative of the primal (partials: `dR/dw`, `dR/dXv`,
 `dR/d{aeroDV}`, plus output partials) — validated in all three AD modes
-against complex-step, with crossflow active. It does **not** validate the
-*total* sensitivity `dF/dX` through the assembled adjoint solve — that is
-the "complete-mode" `test_adjoint` (currently disabled: this mesh does not
-converge deeply enough), tracked in `../current-task.md`.
+against complex-step (crossflow OFF in the standing suite; crossflow was
+validated once on 2026-07-22, see the note above). The *total* sensitivity
+`dF/dX` through the assembled adjoint solve is now covered too:
+`test_adjoint_sagr.py` is live as the `adjoint` stage and passes (real 4/0;
+CS at rtol/atol 5e-8 with mach+drag non-blocking — see
+`../task-log/2026-07-23-sagr-full-adjoint-test.md` and
+`../task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`).
 
 ---
 
 This is the low-level, raw-API verification campaign — separate from (and
 a prerequisite trusted-input for) the higher-level `evalFunctionsSens`-based
-campaign tracked in `../current-task.md`.
+campaign (the AR5 dcd/dmach mismatch was re-characterized in
+`../task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`: mach CS does not
+settle; cause TBD, non-blocking).
 
 This ladder answers one question at three levels of the AD stack: **does
 the differentiated code actually compute the derivative of the primal
 code**, independent of any specific functional or DV. It does not check
 whether the adjoint *total* sensitivities match a physical/trained
-reference — that is `../current-task.md`'s job. Read
+reference — that is `test_adjoint_sagr.py`'s job (the `adjoint` stage). Read
 `VERIFICATION/debugging_derivatives.md` first for the generic
 FD→dot-product→CS theory behind why each stage below is structured the
 way it is.
@@ -136,8 +152,9 @@ The detailed per-script reproduction (the original one-off `dev/` scripts
 `--turbmodel` / `--crossflow` flags) has been trimmed. Those scripts live in
 `tests/reg_tests/dev/` and still run; day-to-day use `run_sagr_tests.sh`.
 
-**Key pass numbers** (AR5 mesh; the pass criterion is AD == CS to full
-displayed precision, FD is context only):
+**Key pass numbers** (from the original 2026-07-22 runs, mostly on the AR5
+mesh; the standing suite has since moved to the tutorial wing. Pass
+criterion is AD == CS to full displayed precision, FD is context only):
 
 | Case | AD | CS | agrees |
 |---|---|---|---|
@@ -160,8 +177,9 @@ distinct targets (`lambdaThetaRaw`→`lambdaThetaClamped`→`lambdaThetaLocal`) 
 Tapenade regen; `_fast_b` then matched to 1.27e-13. Full root-cause in
 `../task-log/2026-07-22-fastb-retheta-lambdatheta-fix.md`.
 
-**Relationship to the still-open AR5 CS mismatch.** `../current-task.md`
-documents a *different, higher-level* issue: `evalFunctionsSens`'s
+**Relationship to the AR5 CS mismatch.** A *different, higher-level* issue
+(re-characterized in `../task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`:
+mach CS does not settle; cause TBD, non-blocking): `evalFunctionsSens`'s
 `dcd/dmach` on AR5 (adjoint −0.537 vs CS −231.1). That is **not** a
 contradiction of the PASS above — this ladder checks the raw `dR/dw`
 Jacobian-vector product (confirmed correct); the `dcd/dmach` gap is
@@ -183,10 +201,13 @@ PETSC_ARCH=complex-debug make -f Makefile_CS
 
 ## What's not yet covered
 
-- **Total sensitivity `dF/dX`** through the assembled adjoint solve
-  (complete-mode `test_adjoint`) — still blocked: this AR5 state does not
-  converge deeply enough (absolute precision floor). Tracked in
-  `../current-task.md`; the partials tested here are a trusted input to it.
-- Crossflow `D_scf` is now covered (suite runs crossflow ON); the plain-SA
-  tutorial-wing path is no longer exercised by the registered suite (AR5
-  only) but remains reproducible via the `dev/` scripts' `--mesh` flag.
+- **Total sensitivity `dF/dX`** — no longer a gap (updated 2026-08-12):
+  `test_adjoint_sagr.py` is live as the `adjoint` stage and passes (real
+  4/0; CS at rtol/atol 5e-8 with mach+drag non-blocking — task-log
+  2026-07-23/24). The AR5 dcd/dmach mismatch was re-characterized in
+  `../task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md` (mach CS does
+  not settle; cause TBD, non-blocking).
+- Crossflow `D_scf` is **not** exercised by the standing suite (crossflow
+  OFF since the 2026-07-24 default flip); it was validated once on
+  2026-07-22 with crossflow ON on the AR5 state and remains reproducible
+  via the `dev/` scripts' `--crossflow` flag.

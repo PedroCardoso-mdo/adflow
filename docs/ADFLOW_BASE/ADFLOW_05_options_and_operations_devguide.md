@@ -37,7 +37,7 @@ Multigrid startup works well with multiblock meshes (coarse levels usually avail
 
 ## Approximate Newton–Krylov (ANK)
 
-ANK is one of ADflow's fully implicit methods, developed for efficient overset startup; it also converges difficult, heavily separated cases. Enable with `'useANKSolver': True`. Default `'ANKSwitchTol'` is `1.0`, so ADflow starts with ANK if enabled. However, if coarse levels are available and `MGCycle` is not `'sg'` (single grid), a full multigrid startup may run first, with ANK activated at the finest level. `MGStartLevel` controls the initializing grid level (default `-1` = coarsest available). ANK can also follow multigrid: set `ANKSwitchTol` to e.g. `1e-2` to switch after 2 orders.
+ANK is one of ADflow's fully implicit methods, developed for efficient overset startup; it also converges difficult, heavily separated cases. Enable with `'useANKSolver': True`. Default `'ANKSwitchTol'` is `1000.0` (matches the options table below and the code; corrected 2026-08-12 — previously stated `1.0` here), so ADflow starts with ANK if enabled. However, if coarse levels are available and `MGCycle` is not `'sg'` (single grid), a full multigrid startup may run first, with ANK activated at the finest level. `MGStartLevel` controls the initializing grid level (default `-1` = coarsest available). ANK can also follow multigrid: set `ANKSwitchTol` to e.g. `1e-2` to switch after 2 orders.
 
 ANK has many tunable parameters and modes. Defaults suit typical transonic aeronautical applications. For a quick solution just set `'useANKSolver': True`. For RANS, set a relatively high turbulence sub-iteration count `nSubiterTurb` between `3` and `7`.
 
@@ -132,7 +132,7 @@ NK solves the nonlinear governing equations by Newton's method — a large linea
 
 ADflow uses the Eisenstat–Walker (EW) algorithm to avoid *over-solving* the linear system per nonlinear iteration. The Newton update is a linearization about the current state: far from the solution, nonlinear gains are limited; near it, the Newton update yields several orders in one iteration. Linear solves are expensive; tighter tolerances cost more. Tradeoff: over-solving → better convergence but expensive; under-solving → cheaper but less accurate update, slower nonlinear convergence. EW monitors linear and nonlinear convergence rates and picks the optimal linear tolerance for the next iteration.
 
-Practical behavior: the solver starts with `NKLinearSolveTol` = `0.3`. To use a constant linear tolerance, set this option **and** disable EW via `'NKUseEW': False`. With default `'NKUseEW': True`, only the first NK iteration targets 0.3; afterward the solver monitors nonlinear convergence and sets the next tolerance. Read `Lin Res` in the output. Lower chosen tolerance → satisfactory nonlinear convergence, improve with a tighter linear solve (desired; NK gradually lowers the tolerance; expect 2–3 orders nonlinear convergence per iteration). If nonlinear convergence is unsatisfactory, EW picks a *larger* tolerance to avoid over-solving (state not close; take more low-cost iterations). Usually fine — it eventually lowers again. If it doesn't after a handful of iterations, lower `NKSwitchTol` and retry (ANK handles transients better; switching to NK later helps). Hard-coded upper limit for the linear tolerance is `0.8`: consistently solving to 0.8 means the state is far away → retry with lower `NKSwitchTol`.
+Practical behavior: the solver starts with `NKLinearSolveTol` = `0.3`. To use a constant linear tolerance, set this option **and** disable EW via `'NKUseEW': False`. (Falsified for the SA-GR deep-NK wall: with EW off and tol 0.3, GMRES still returns 0.998 — the preconditioner starves the deep iterations; ef9fc10d.) With default `'NKUseEW': True`, only the first NK iteration targets 0.3; afterward the solver monitors nonlinear convergence and sets the next tolerance. Read `Lin Res` in the output. Lower chosen tolerance → satisfactory nonlinear convergence, improve with a tighter linear solve (desired; NK gradually lowers the tolerance; expect 2–3 orders nonlinear convergence per iteration). If nonlinear convergence is unsatisfactory, EW picks a *larger* tolerance to avoid over-solving (state not close; take more low-cost iterations). Usually fine — it eventually lowers again. If it doesn't after a handful of iterations, lower `NKSwitchTol` and retry (ANK handles transients better; switching to NK later helps). Hard-coded upper limit for the linear tolerance is `0.8`: consistently solving to 0.8 means the state is far away → retry with lower `NKSwitchTol`.
 
 ### NK Linear Solver Performance
 
@@ -156,7 +156,7 @@ Three main NK failure modes below. In most cases, simply reduce the NK switch to
 
 **Very Small Step Sizes.** Common — the solver can't take a meaningful step, so state changes are tiny. Ideal fix: reduce NK switch tolerance and retry. Occurs if NK starts before transients settle, or flow/turbulence residuals aren't scaled properly — ANK handles both better (recommended). Alternatively relax line search via `'NKLS': 'non-monotone'`, or disable it with `'none'` — not advised (usually diverges or produces NaNs). Even when it works, it's usually slower than converging a few more orders with ANK and retrying NK.
 
-**EW Algorithm Stalling.** EW may consistently pick very large linear tolerances, capping NK's potential — due to unsatisfactory nonlinear convergence (multiple possible causes). Easier to return to ANK and switch to NK later. To force a constant linear tolerance, set `NKUseEW: False` and `NKLinearSolveTol`. This may add unnecessary cost — the lack of nonlinear convergence might be from small step sizes, but the solver will keep solving linear systems to tight tolerances until the max iteration limit.
+**EW Algorithm Stalling.** EW may consistently pick very large linear tolerances, capping NK's potential — due to unsatisfactory nonlinear convergence (multiple possible causes). Easier to return to ANK and switch to NK later. To force a constant linear tolerance, set `NKUseEW: False` and `NKLinearSolveTol`. (Falsified for the SA-GR deep-NK wall: with EW off and tol 0.3, GMRES still returns 0.998 — the preconditioner starves the deep iterations; ef9fc10d.) This may add unnecessary cost — the lack of nonlinear convergence might be from small step sizes, but the solver will keep solving linear systems to tight tolerances until the max iteration limit.
 
 ---
 
@@ -176,7 +176,7 @@ This guide is intended for developers of ADflow. Higher-level descriptions of th
 
 ## Extra Stuff
 - Triangles of zipper mesh live only in the root processor.
-- `surfaceIntegration.F90`: Takes care of forces and flow-through integrations. User-defined surfaces can only be used for flow-through integrations.
+- `src/solver/surfaceIntegrations.F90`: Takes care of forces and flow-through integrations. User-defined surfaces can only be used for flow-through integrations.
 - We only assemble the full Jacobian for the preconditioner. The adjoint is matrix-free. In the future we need a matrix-free preconditioner to avoid memory limitations.
 - Overset interpolation is in the `wOversetGeneric` subroutine, located in `src/utils/haloExchange.F90`.
 
@@ -305,6 +305,11 @@ Tapenade does not differentiate functions with MPI and PETSc calls, so they must
 
 # PART 5 — OPTIONS
 
+> **⚠️ Branch note (2026-08-12):** branch-added transition options are NOT in
+> this upstream reference — see `../architecture.md` Part 2 (e.g.
+> `transitionCrossflow`, default `False` since 2026-07-24). For any
+> load-bearing default, `adflow/pyADflow.py` wins.
+
 Format: **`optionName`** — `type` = default — then description and (where applicable) enumerated values. Grouping headers are added for navigation only; option order and content follow the source page.
 
 ## I/O, grids, output
@@ -387,11 +392,11 @@ Format: **`optionName`** — `type` = default — then description and (where ap
 
 **`flowType`** — `str` = `external` — `external` (extensively tested); `internal` (not well tested).
 
-**`turbulenceModel`** — `str` = `SA` — `SA`: Spalart-Allmaras — recommended for external aero and the **only** turbulence model that has been differentiated and the only one tested. Others: `SA-Edwards`; `k-omega Wilcox`; `k-omega modified`; `k-tau`; `Menter SST`; `v2f`.
+**`turbulenceModel`** — `str` = `SA` — `SA`: Spalart-Allmaras — recommended for external aero and the **only** turbulence model that has been differentiated and the only one tested. Others: `SA-Edwards`; `k-omega Wilcox`; `k-omega modified`; `k-tau`; `Menter SST`; `v2f`. *(Branch note 2026-08-12: this branch adds `SA-noft2-Gamma-Retheta`; "only SA differentiated" is stale here — SA-GR is Tapenade-differentiated and verified, see `../VERIFICATION/three-stage-verification.md`.)*
 
 **`turbulenceOrder`** — `str` = `first order` — `first order`: recommended (adjoint systems much easier to solve). `second order`: not typically used.
 
-**`turbResScale`** — `float or list or None` = `None` — Affects how the total residual is scaled; set automatically by turbulence model. Defaults usually sufficient. Values can be a float scalar up to a 4-element list. Defaults/types: `SA` — float scalar, Default `10e4`; `SA-Edwards` — NOT IMPLEMENTED; `k-omega Wilcox` — NOT IMPLEMENTED; `k-omega modified` — NOT IMPLEMENTED; `k-tau` — NOT IMPLEMENTED; `Menter SST` — float list of 2, Default `[1e3, 1e-6]`; `v2f` — NOT IMPLEMENTED.
+**`turbResScale`** — `float or list or None` = `None` — Affects how the total residual is scaled; set automatically by turbulence model. Defaults usually sufficient. Values can be a float scalar up to a 4-element list. Defaults/types: `SA` — float scalar, Default `10e4`; `SA-Edwards` — NOT IMPLEMENTED; `k-omega Wilcox` — NOT IMPLEMENTED; `k-omega modified` — NOT IMPLEMENTED; `k-tau` — NOT IMPLEMENTED; `Menter SST` — float list of 2, Default `[1e3, 1e-6]`; `v2f` — NOT IMPLEMENTED. *(Branch note 2026-08-12: for SA-GR the auto default is a 3-element list `[1e4, 0.1, 1e-4]`, not the scalar shown — load-bearing, never force a scalar.)*
 
 **`meshMaxSkewness`** — `float` = `1.0` — ADflow errors and fails if mesh skewness exceeds this. Only used when `useSkewnessCheck` is active.
 
@@ -593,7 +598,7 @@ Format: **`optionName`** — `type` = default — then description and (where ap
 
 **`NKLinearSolveTol`** — `float` = `0.3` — Initial tolerance for the Newton linear system. Only used for the first iteration if `NKUseEW` is True.
 
-**`NKUseEW`** — `bool` = `True` — Use the Eisenstat-Walker algorithm for per-iteration linear convergence. If False, always target `NKLinearSolveTol`. If True, only the initial iteration targets it; later iterations pick a tolerance from the previous nonlinear convergence (avoids wasted computation far from the solution; tightens near it). If working, NK converges in a few to tens of iterations. It may repeatedly pick very low tolerances and loop — then disable this (or better, switch to NK later).
+**`NKUseEW`** — `bool` = `True` — Use the Eisenstat-Walker algorithm for per-iteration linear convergence. If False, always target `NKLinearSolveTol`. If True, only the initial iteration targets it; later iterations pick a tolerance from the previous nonlinear convergence (avoids wasted computation far from the solution; tightens near it). If working, NK converges in a few to tens of iterations. It may repeatedly pick very low tolerances and loop — then disable this (or better, switch to NK later). (Falsified for the SA-GR deep-NK wall: with EW off and tol 0.3, GMRES still returns 0.998 — the preconditioner starves the deep iterations; ef9fc10d.)
 
 **`NKADPC`** — `bool` = `False` — Use the AD version of the NK preconditioner (vs finite-difference). AD improves preconditioner accuracy and linear performance at higher preconditioner cost.
 

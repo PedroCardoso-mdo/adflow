@@ -26,8 +26,14 @@ because it reproduces an input we cannot download from a server.
 # from tests/reg_tests/
 ./run_sagr_tests.sh genw            # wraps the call below
 # or directly:
-mpirun -np 2 <mach-python> dev/generate_sagr_restart.py
+OMP_NUM_THREADS=1 mpirun -np 2 --bind-to core \
+    /home/mdo/packages_v2/mach/bin/python dev/generate_sagr_restart.py
 ```
+
+> Standing rule (2026-08-09): ADflow *solver* runs belong on the Deucalion
+> HPC; this restart regeneration is a real solve, so prefer running it there
+> (or confirm with the user before a local run). The derivative tests
+> themselves linearize about the stored state and stay local.
 
 Then point `reg_sagr.sagrGridFile` / `sagrRestartFile` at the output and
 retrain the JSON refs (`./run_sagr_tests.sh train`).

@@ -150,6 +150,11 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 
 ## 6. Crossflow (D_scf) term dimension status
 
+> Note (2026-08-12): `transitionCrossflow` defaults to **False** since
+> 2026-07-24 (stalls the tutorial-wing case when ON — CLAUDE.md rule 3), so
+> D_scf is not in the default residual. The dimensional analysis below stays
+> valid for runs that enable it.
+
 The helicity-based crossflow source (Eq. 15–26) was added using the shift above.
 Where each new quantity lands dimensionally in the code:
 

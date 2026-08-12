@@ -1,8 +1,9 @@
 # Rotating-frame consistency audit — SA-sLM2015 transition model
 
 **Date:** 2026-07-23 · **Scope:** `src/turbulence/saGammaRetheta.F90` (+ its 3
-regenerated AD files; SA model untouched). **Status:** edits landed behind an
-`isRotating` guard, Tapenade regenerated, and verified — bit-identical residual in
+regenerated AD files; SA model untouched). **Status:** edits landed with **no
+runtime guard** (the `isRotating` guard was removed as redundant — see §4 and
+commit 4d28b5ce), Tapenade regenerated, and verified — bit-identical residual in
 normal (Ω=0) mode, real derivative suite 13/13, complex-step ground truth 10/10.
 
 ## 1. Motivation
@@ -101,7 +102,8 @@ prints once which rotation form is active, using the globally-replicated
 - **Complex-step ground truth:** `./run_sagr_tests.sh cs` — **10/10 pass**
   (Stage 3 CS), i.e. the regenerated forward AD matches complex step.
 - **Rotating-frame correctness is NOT yet exercised.** The AR5 case has Ω=0, so
-  `isRotating=.false.` / `sc=0` masks the `sc = Ω×r` formula; the no-op proves the
+  `sc=0` masks the `sc = Ω×r` formula (there is no `isRotating` runtime guard —
+  Ω=0 itself makes the terms vanish); the no-op proves the
   substitutions reduce correctly but not that the rotating path is numerically
   right. A case with `rotRate≠0` is needed — this is the user's physics-validation
   step.
@@ -111,6 +113,6 @@ prints once which rotation form is active, using the globally-replicated
 **Tapenade was regenerated** (`make -f Makefile_tapenade`, then real + complex
 rebuild). Only the three SA-GR AD files changed —
 `src/adjoint/output{Forward,Reverse,ReverseFast}/saGammaRetheta_{d,b,fast_b}.f90` —
-and now linearize the guarded relative-frame formulas. They were **not** hand-edited
+and now linearize the relative-frame formulas. They were **not** hand-edited
 (rule 6). The forward AD vs complex-step check (§5, 10/10) confirms consistency.
 Rotating-case gradients now use the correct relative-frame linearization.

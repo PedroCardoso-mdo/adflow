@@ -63,11 +63,9 @@ meshes for plain SA, per the numeric tables in
 solver itself in this task — verification scripts + doc reorg only.
 
 **Follow-ups:**
-- Run this same 3-stage ladder for SA-GR (`nw=8`) — Stage 2 in particular
-  has no real content yet on plain SA. Tracked as the next step in
-  `../current-task.md`.
-- Restructure `tests/reg_tests/` to match upstream ADflow's official test
-  conventions/fixtures, and add the generator scripts needed to produce
-  the reference state for SA (new meshes) and SA-GR test fixtures on
-  demand, rather than one-off ad-hoc scripts. Tracked in `../TODO.md`
-  ("Test infrastructure" section).
+- **DONE (same day):** Run this same 3-stage ladder for SA-GR (`nw=8`) —
+  see `2026-07-21-three-stage-adjoint-verification-sagr.md`.
+- **DONE (2026-07-22):** Restructure `tests/reg_tests/` to match upstream
+  ADflow's official test conventions/fixtures, with generator scripts —
+  landed as the standardized suite, see
+  `2026-07-22-sagr-test-suite-standardization.md`.

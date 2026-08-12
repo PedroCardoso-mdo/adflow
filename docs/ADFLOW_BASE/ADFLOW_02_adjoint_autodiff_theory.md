@@ -65,7 +65,7 @@ PETSc; PC matrix `[∂R/∂w]_PCᵀ` ≈ `[∂R/∂w]ᵀ` but easily invertible 
 - **GMRES** (top-level iterative solver).
 - **ASM** global PC (1–2 overlap) with **outer Richardson** iterations.
 - **ILU** local PC with **inner Richardson** iterations (Richardson damping = 1.0).
-- Richardson iterations emulate a higher ILU fill at **lower memory** → use **low fill (1–2)**. `[∂R/∂w]_PCᵀ` is much sparser than the exact Jacobian → extra Richardson mat-vecs are cheap vs GMRES iters. **Outer (ASM) > inner (ILU)** in effectiveness (ASM gathers cross-block info; ILU is block-local). Defaults: **3 outer, 2 inner**.
+- Richardson iterations emulate a higher ILU fill at **lower memory** → use **low fill (1–2)**. `[∂R/∂w]_PCᵀ` is much sparser than the exact Jacobian → extra Richardson mat-vecs are cheap vs GMRES iters. **Outer (ASM) > inner (ILU)** in effectiveness (ASM gathers cross-block info; ILU is block-local). Defaults: **3 outer, 1 inner** (`innerPreconIts=1` in code; corrected 2026-08-12 — previously stated 2 inner).
 
 ## 7. Existing discrete-adjoint solvers (§4.5, Table 1)
 
@@ -100,7 +100,7 @@ Fortran → transformation AD (Tapenade, faster/less memory); C++ → overloadin
 
 ## 9. Results (§5) — reference benchmark data
 
-**WU `(28)`:** `T_WU = nT/T_ref`, `T` = wall time (s), `n` = cores, `T_ref` = TauBench time (`mpirun -np 1 ./TauBench -n 250000 -s 10`); **`T_ref = 2.972 s`** on Stampede2 Skylake (Xeon Platinum 8160, 2.1 GHz, 48 cores/node, 196 GB, 100 GB/s Omni-Path). Memory = peak RSS (GB).
+**WU `(28)`:** `T_WU = nT/T_ref`, `T` = wall time (s), `n` = cores, `T_ref` = TauBench time (`mpirun -np 1 ./TauBench -n 250000 -s 10`); **`T_ref = 2.972 s`** on Stampede2 Skylake (Xeon Platinum 8160, 2.1 GHz, 48 cores/node, 196 GB, 100 GB/s Omni-Path). Memory = peak RSS (GB). (Stampede2-era paper measurement — do not use for Deucalion sizing.)
 
 ### 9.1 Case 3 — low-speed rectangular wing (Table 2)
 AR 6.12, NACA 0012, **102 912** cells, y⁺≈1.2, 20-chord domain; Re=1e6, M=0.15, SA; obj = C_D, target C_L=0.375; **8 twist DVs**; single Skylake core. Flow/adjoint iters: ADflow **1011/310**, DAFoam **720/143**; flow residual drop 14 (ADflow) / 12 (DAFoam) orders. Reference derivatives: complex-step (ADflow), full-code AD (DAFoam). Flow wall time (ADflow) = 148.6 s.
@@ -138,7 +138,7 @@ Boeing-777-class, fuselage/tail removed, root at symmetry; C_L=0.5, M=0.85, Re=5
 | 16 | 384 | 11581.0 (48.6) | 9208.2 (49.1) | 10006.1 (54.5) | 9407.2 (50.7) |
 | 32 | 768 | 14180.6 (39.7) | 12334.0 (36.7) | 13168.2 (41.4) | 12574.1 (37.9) |
 
-→ Adjoint parallel efficiency **>90%** when each proc owns **≥75 000 cells**. Using 48 (vs 24) cores/node lowers walltime but hurts efficiency (1536 cores: 30.1% vs 36.7%) — **memory-bandwidth**-bound, not CPU-bound (Skylake 2.1 GHz).
+→ Adjoint parallel efficiency **>90%** when each proc owns **≥75 000 cells**. Using 48 (vs 24) cores/node lowers walltime but hurts efficiency (1536 cores: 30.1% vs 36.7%) — **memory-bandwidth**-bound, not CPU-bound (Skylake 2.1 GHz). (Stampede2-era paper measurement — do not use for Deucalion sizing.)
 
 ### 9.3 Case 5 — wing-body-tail overset (Tables 8–9)
 CRM + fuselage + horizontal tail (= DPW4); Re=**4.3e7** (realistic scale); multiblock **overset**, **10 358 373** cells; **9 twist DVs**; 96 cores (4 Skylake). Shock on upper wing → high local sensitivity, weakened near root by wing-fuselage interaction. Only Jacobian-free run.
@@ -168,7 +168,7 @@ Key numbers: Jacobian-free up to **27% / 9%** faster than AD/FD-Jacobian; up to 
 # Appendix A — Solver-specific implementation (the implementation reference)
 
 ## A.1 States, residuals, DVs
-- **ADflow:** states `w = [ρ, u, v, w, ρE, ν̃]` per cell (primitive set); `R` and `w` length = **`6·n_C`**; **cell-by-cell ordering** (better for block ILU than state-by-state). **Turbulence `ν̃` included in `w`** and differentiated in `∂R/∂w` — critical for accurate totals (no frozen turbulence).
+- **ADflow:** states `w = [ρ, u, v, w, ρE, ν̃]` per cell (primitive set); `R` and `w` length = **`6·n_C`**; **cell-by-cell ordering** (better for block ILU than state-by-state). **Turbulence `ν̃` included in `w`** and differentiated in `∂R/∂w` — critical for accurate totals (no frozen turbulence). *(Branch note 2026-08-12: on this branch SA-GR adds γ and Re̅θt — 8 states per cell, so sizing statements scale accordingly.)*
 - **DAFoam:** `w = [u, v, w, p, ϕ, ν̃]` (`ϕ` = cell-face flux, a state due to segregated SIMPLE + Rhie–Chow); length ≈ **`8·n_C`** (mixed cell/face), topology-dependent.
 - **Geometric DVs `(A.1)`:** compute `df/dx_v` (volume coords), then `df/dx = df/dx_v · dx_v/dx_s · dx_s/dx` via **pyGeo** (FFD parametrization) + **IDWarp** (analytic inverse-distance mesh warp). Keeps the adjoint independent of parametrization/warp. (ADflow all-3 variants + DAFoam-JF use this; DAFoam-FD instead builds `∂R/∂x`, `∂f/∂x` directly because `∂R/∂x_v` is too dense to color.)
 
@@ -177,7 +177,7 @@ Key numbers: Jacobian-free up to **27% / 9%** faster than AD/FD-Jacobian; up to 
 - **Unstructured / overset:** connectivity is global → NP-hard, no analytic solution → **parallel heuristic coloring** (tentative local colors, resolve conflicts by global exchange). ADflow overset / DAFoam: **~1000 colors** (~3× the max nonzeros/row); state-Jacobian assembly cost ∝ colors, but colors depend only **weakly** on mesh size / core count (Fig A.10b denser, more irregular sparsity).
 
 ## A.3 Preconditioner-matrix construction
-- **ADflow `[∂R/∂w]_PCᵀ`:** exactly linearize an **alternative simple (level-one) flux** → **≤7 nonzero blocks/row** (greatly reduces PC storage). JST → **second-order dissipation only** (the shock-active term), augmented by `σκ₄`; **shock sensor frozen** for the linearization. Upwind → **first-order reconstruction**. Viscous → velocity/temperature gradients from **adjacent cell-center differences** (per Yildirim). SA → **first-order upwind**. **Overset:** compute the PC on **local blocks only** (ignore overset stencils) via the analytic block coloring.
+- **ADflow `[∂R/∂w]_PCᵀ`:** exactly linearize an **alternative simple (level-one) flux** → **≤7 nonzero blocks/row** (greatly reduces PC storage). JST → **second-order dissipation only** (the shock-active term), augmented by `σκ₄`; **shock sensor frozen** for the linearization. Upwind → **first-order reconstruction**. Viscous → velocity/temperature gradients from **adjacent cell-center differences** (per Yildirim). SA → **first-order upwind**. *(Branch note 2026-08-12: the SA-GR transition equations are also Tapenade-differentiated and verified — see `docs/VERIFICATION/three-stage-verification.md`.)* **Overset:** compute the PC on **local blocks only** (ignore overset stencils) via the analytic block coloring.
 - **DAFoam `[∂R/∂w]_PCᵀ`:** first-order upwind inviscid (reduce stiffness); **shrink `p`, `ϕ` stencils from level-3 to level-2**; **ignore turbulence production** (reduce stiffness near y⁺=1 viscous layer); scale partials by cell **volume** / **face area** for diagonal dominance; **normalize each state-Jacobian column by its far-field reference**.
 
 ## A.4 Differentiation of residuals & functions
@@ -190,9 +190,9 @@ Key numbers: Jacobian-free up to **27% / 9%** faster than AD/FD-Jacobian; up to 
     R      = F_res(x,w,w_int,w_bc,x_geo)
     f      = F_obj(x,w,w_int,w_bc,x_geo)
   ```
-- **Tapenade** produces forward `master_d` (Alg 2) and reverse `master_b` (Alg 3); a high-efficiency `masterfast_b` (Alg 4) computes only `∂R/∂w`-type products (reduced routine reused across GMRES iters). In forward mode differentiated routines run in master order; in reverse mode, reverse order.
+- **Tapenade** produces forward `master_d` (Alg 2) and reverse `master_b` (Alg 3); a high-efficiency `master_state_b` (Alg 4) computes only `∂R/∂w`-type products (reduced routine reused across GMRES iters). In forward mode differentiated routines run in master order; in reverse mode, reverse order.
 - **Manual assembly (not "differentiate the whole routine"):** differentiate subroutines, then hand-assemble, for two reasons — (a) forward-pass variables from the converged flow are **reused** across successive transpose mat-vecs (one forward pass serves many GMRES iters), and (b) variables known not to change between subroutine calls can be **kept off the AD tape** → less memory/time. Both matter because reverse-mode runs **every** GMRES iteration.
-- **Jacobian-free procedure (ADflow):** (1) set color rows of `ẇ` to 1, call `master_d` per color → assemble `[∂R/∂w]_PCᵀ`; (2) `f̄=1`, `master_b` → `[∂f/∂w]ᵀ`; (3) with PC = `[∂R/∂w]_PCᵀ` and RHS `[∂f/∂w]ᵀ`, seed `r₀` and use `masterfast_b` for `[∂R/∂w]ᵀr₀` in GMRES → solve for `ψ`; (4) `R̄=ψ`, `f̄=1`, `master_b` → total `df/dx = ∂f/∂x − ψᵀ ∂R/∂x`.
+- **Jacobian-free procedure (ADflow):** (1) set color rows of `ẇ` to 1, call `master_d` per color → assemble `[∂R/∂w]_PCᵀ`; (2) `f̄=1`, `master_b` → `[∂f/∂w]ᵀ`; (3) with PC = `[∂R/∂w]_PCᵀ` and RHS `[∂f/∂w]ᵀ`, seed `r₀` and use `master_state_b` for `[∂R/∂w]ᵀr₀` in GMRES → solve for `ψ`; (4) `R̄=ψ`, `f̄=1`, `master_b` → total `df/dx = ∂f/∂x − ψᵀ ∂R/∂x`.
 - **FD/AD-Jacobian (ADflow):** same but compute `[∂R/∂w]ᵀ`, `[∂R/∂w]_PCᵀ` by **FD** (FD-Jacobian) or **forward-AD** (AD-Jacobian) with coloring, store `[∂R/∂w]ᵀ` explicitly, and pass it to GMRES for the mat-vec.
 - **Extending:** add a residual term → differentiate only its subroutine with Tapenade and call it in `master_d`/`master_b`. This is why the higher up-front effort of source transformation pays back.
 - **DAFoam:** no single master routine (segregated) → separate `R_U, R_p, R_ϕ, R_ν̃, f` functions; **operator overloading (dco/c++)** because OpenFOAM is heavily templated C++ (impractical for source transformation). Its Jacobian-free is like ADflow's except `[∂R/∂w]_PCᵀ` is built by **FD** (not forward-AD); FD-Jacobian computes `∂R/∂x`, `∂f/∂x` by brute-force FD (per A.1).

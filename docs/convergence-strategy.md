@@ -1,17 +1,23 @@
-# SA-GR convergence strategy (validated 2026-07-15)
+# SA-GR convergence strategy (recipe validated 2026-07-15; last updated 2026-08-12)
 
 Current best practice for converging SA-Gamma-Retheta cases, distilled from
 the 2026-07-14→16 campaign (3D plain wing, 175k cells, M=0.2, Tu=0.25%).
 
+> **Scope:** the ladder table's switch tolerances and wall times were measured
+> on that ONE 175k-cell mesh at 12 ranks. The 2026-08-07/08 AR5 corrected-foil
+> sections below (0.46M–7.42M cells, 64 ranks) refine the NK-handover rule —
+> where they disagree with the table, they win.
+
 **Ready-to-use deliverable** (recipe, per-phase restart CGNS files, proof
 logs, phase-entry runner `run_strategy.py`):
-`~/Desktop/Run/MDO_PhD/Transition/gama_rethetha/Acelarating convergence/Baseline/3D_Plain_Wing/best_strategie/`
+`~/Desktop/Run/MDO_PhD/Transition/gama_rethetha/03_convergence_strategy/3d_plain_wing/best_strategy/`
 
-Full evidence: `.../3D_Plain_Wing/claude_attempt/` — master test table in
-`TESTS_AND_CONCLUSIONS.md`, narrative in `long_overnight/DECISIONS.md`,
-logs in `long_overnight/` (referred to as `RUN/` below). Solver background:
-`ADFLOW_BASE/adflow_solvers.md`. Why ADflow differs from the paper's
-solver: `adflow-vs-paper-solver.md`.
+Full evidence: `03_convergence_strategy/3d_plain_wing/_old/campaign_2026-07-14_to_16/`
+— master test table in `TESTS_AND_CONCLUSIONS.md`, narrative in
+`long_overnight/DECISIONS.md`, logs in `long_overnight/` (referred to as
+`RUN/` below). Solver background: `ADFLOW_BASE/adflow_solvers.md` (upstream —
+its NK/EW advice is overridden by the measurements here). Why ADflow differs
+from the paper's solver: `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md`.
 
 ## The recipe (phase ladder)
 
@@ -20,7 +26,7 @@ solver: `adflow-vs-paper-solver.md`.
 | ANK segregated | start (freestream) | `ANKUseTurbDADI: True` | -> rel ~1e-5 in ~28 min (flow converges; retheta res parks at ~2e4 — expected). **SANK variant** (`ANKSecondOrdSwitchTol 1e-4`, never couple, 2-leg run): **18 min, -36%** — needs its own leg because secondOrd is one value per run |
 | CANK (coupled) | `ANKCoupledSwitchTol: 1e-5` | `ANKADPC: True`, LS below | full 1.00 steps to rel ~1e-7; kills retheta (1.8e4 -> 1.6e3 in 20 iters, ~1 min) |
 | CSANK (2nd-order) | `ANKSecondOrdSwitchTol: 1e-6` | same LS | -> rel ~3.5e-8 (one order past CANK; ~40 min, iters get costly) |
-| NK | `nkswitchtol` 4.2e-8 (just above CSANK's floor; 1e-6..1e-7 if skipping CSANK) | `NKADPC: True`, `NKSubspaceSize` 200-300 | engaging at CSANK's max: 3.13 -> 0.94 in ONE 3-eval full step; record rel 3.3e-9; **wall below ~5e-9** (lin res -> 0.8) |
+| NK | `nkswitchtol` 4.2e-8 (just above CSANK's floor) — **do NOT use 1e-6/1e-7 "if skipping CSANK": falsified 2026-08-07, that engages NK prematurely and stalls at Step=0.00 (see next section)** | `NKADPC: True`, `NKSubspaceSize` 200-300 | engaging at CSANK's max: 3.13 -> 0.94 in ONE 3-eval full step; record rel 3.3e-9 (175k case); **wall below ~5e-9** (lin res -> 0.8). On AR5 L0, NK at the correct rel 5e-8 merely re-attained CSANK's depth (lin res degrading 0.80→0.97) — consider `useNKSolver: False` and letting CSANK finish |
 
 Non-negotiable global options:
 - `ANKUnsteadyLSTol: 1.5`, `ANKPhysicalLSTol: 0.5` — THE fix for coupled-phase
@@ -87,8 +93,8 @@ Deep endgame below rel ~1e-8: the NK linear solve saturates (lin res
 0.8-0.99, GMRES 200-300 exhausted, 60-200 evals/iter) regardless of
 engagement point, JacobianLag, or subspace size. Root causes and code items
 (per-node Alg. 2 damping, source-dt reactivation inside NK, stronger PC) in
-`adflow-vs-paper-solver.md` §5. Deepest state for PC experiments:
-`best_strategie/restarts/r3_deepest_record_rel3.3e-9_dp.cgns`. Note the
+`SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items"). Deepest state for PC experiments:
+`best_strategy/restarts/r3_deepest_record_rel3.3e-9_dp.cgns`. Note the
 wall's depth scales with how settled the field is (from the fully-settled
 40k field, NK reached rel 6.4e-11 before the same wall — nk_colscale_test).
 
@@ -126,7 +132,7 @@ together and passes that rho once NK runs to target.
   it cannot reach even that loose target. So EW is not what starves the deep
   NK iterations; the preconditioner alone is. This kills the last
   option-level lever: the deep wall is only addressable by the code items in
-  `adflow-vs-paper-solver.md` §5. Same run confirmed the wall is not an
+  `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items"). Same run confirmed the wall is not an
   engagement-point artefact either — NK entered at the correct rel 5e-8 (not
   1e-6) and merely re-attained the depth CSANK had already reached, with the
   linear residual DEGRADING 0.80 -> 0.97 as it went.
@@ -158,11 +164,11 @@ together and passes that rho once NK runs to target.
   duplicated halos) — 128 ranks on 2 nodes OOM'd a case that ran at 128 ranks on
   4 nodes. Scale ranks with nodes, not within them.
 - Verdict: no remaining option is likely to move the deep-NK wall; the real
-  fixes are the code items in `adflow-vs-paper-solver.md` §5.
+  fixes are the code items in `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items").
 
 ## Index of everything tested (read the log only if you need the details)
 
-All in `RUN/` (= `3D_Plain_Wing/claude_attempt/long_overnight/`) unless
+All in `RUN/` (= `03_convergence_strategy/3d_plain_wing/_old/campaign_2026-07-14_to_16/long_overnight/`) unless
 noted; `RUN/DECISIONS.md` has the narrative and
 `claude_attempt/TESTS_AND_CONCLUSIONS.md` the same table in Portuguese
 with more detail.

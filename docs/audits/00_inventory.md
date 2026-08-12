@@ -2,6 +2,10 @@
 
 Date: 2026-07-07. Branch: `sa_gamma_rethetha`. This is a file map only — no analysis or conclusions.
 
+> Inventory as of 2026-07-07 — the SA-GR test suite added later
+> (`reg_sagr.py`, `test_*_sagr.py`, `run_sagr_tests.sh`, `dev/`, `refs/`)
+> is not mapped here; see `tests/reg_tests/README_SAGR.md`.
+
 ## 1. Transition-model source files (primal)
 
 | File | Role |

@@ -50,10 +50,14 @@ crossflow `D_scf` Source branch in both paths.
 - **After fix:** all 8 variables agree to rel ≤ 1.2e-10 (summation-order
   roundoff) → **PASS**. Run: `OMP_NUM_THREADS=1 mpirun -np 4 --bind-to core`.
 
-**Coverage limitation:** the test case is the non-rotating tutorial wing with
-`transitionCrossflow=False`, so the rotating-frame and crossflow-helicity Source
-branches re-synced here are inert (not numerically exercised). A rotating/swept
-restart with crossflow on would exercise them.
+**Coverage limitation:** the test case is the non-rotating tutorial wing, so
+the rotating-frame Source branches re-synced here are inert (not numerically
+exercised); a rotating/swept restart would exercise them. *(Corrected
+2026-08-12: this section originally also claimed `transitionCrossflow=False`,
+contradicting the paragraph above — verified today that
+`test_blockette_sagr.py:73` sets `transitioncrossflow = True`, overriding the
+suite's crossflow-OFF base config, so the crossflow `D_scf` branch IS
+exercised by this test.)*
 
 **Not done (deliberate):** pyADflow still force-disables blockettes for SA-GR.
 Now that the residual operator matches, flipping that on is a separate outward-

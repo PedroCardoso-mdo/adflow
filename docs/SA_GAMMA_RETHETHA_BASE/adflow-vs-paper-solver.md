@@ -4,9 +4,9 @@ Purpose: explain why the paper converges SA-sLM2015 cases to machine zero in
 few iterations while ADflow's solver hierarchy (ANK/SANK/CANK/CSANK/NK)
 stalls or oscillates on the same physics. Grounded in the paper's §IV
 (Solution Methodology) and in the empirical campaign of 2026-07-14/15
-(`3D_Plain_Wing/claude_attempt/` — `TESTS_AND_CONCLUSIONS.md`,
+(`03_convergence_strategy/3d_plain_wing/_old/campaign_2026-07-14_to_16/` — `TESTS_AND_CONCLUSIONS.md`,
 `long_overnight/DECISIONS.md`, `archive/ab_matrix/RESULTS.md`; deliverable
-ladder + restart states in `3D_Plain_Wing/best_strategie/`).
+ladder + restart states in `03_convergence_strategy/3d_plain_wing/best_strategy/`).
 
 ## 1. The two architectures side by side
 
@@ -58,7 +58,7 @@ the remaining suspects are the ones actually still open (§7, §8): NK has
 `physicalityCheckANK`), so an over-permissive line-search `alpha` can accept
 a globally-stepped update that damages ρ/E with nothing to catch it before
 Algorithm 2 even runs on γ/Re̅θt; and PC staleness at the moving front
-(§8.4) is untested against the current damping/reactivation combination.
+(§8.4) has since been partially tested — JacLag 5 had no effect; the PC's quality is the limit (convergence-strategy.md, 2026-08-07/12).
 
 ### b) Newton with a parachute: source-Δt reactivation (RESOLVED 2026-07-16 — historical account below)
 
@@ -74,10 +74,20 @@ front nearly settled).
 
 **Reactivation-on-backtrack was ported into NK 2026-07-16** (same
 `noBacktrackCount`/`srcDtDeactivateIters` globals ANK uses, §4), and §7
-confirms NK is now reachable at the paper's stated ~1e-5 engagement point
-(`run_early_engage.log`, `nkswitchtol=1e-5`, 35+ iterations, no crash). If
-convergence is still poor from a shallow restart, look at the other two
-open items (§7's missing physicality check, §8's PC staleness) rather than
+records that NK *survived* (no crash) at the paper's ~1e-5 engagement point
+in ONE 35-iteration run on a 175k-cell restart (`run_early_engage.log`).
+
+> **⚠️ Correction (2026-08-12, per commits `ef9fc10d`/`54c43475`):** "no
+> crash" is not "converges". On the AR5 corrected-foil family (0.46M–7.42M
+> cells) even `nkswitchtol = 1e-6` — LATER than 1e-5 — engaged NK ~1.5
+> orders early and stalled every engaged level at `Step = 0.00`. Early NK
+> engagement is NOT a solved problem: the validated handover is at CSANK's
+> floor (~4.2e-8), or NK disabled entirely. See
+> `docs/convergence-strategy.md` ("Engaging NK too early is the most
+> expensive mistake").
+
+If convergence is still poor from a shallow restart, look at the other two
+open items (§7's missing physicality check, §8's PC quality) rather than
 this one.
 
 ### c) Linear solve quality at the front
@@ -176,14 +186,15 @@ differences" observed in the first pass of smoke testing were **pure
 floating-point recompilation noise**, not real effects — the code paths
 were never actually exercised until the `.pyf` fix.
 `transitionSrcDtRestrict` and its siblings (`transitionSrcDtLimit`,
-`srcDtDeactivateIters`, `transitionDampTheta`, `transitionDampMaxIter`) are
-**also** missing from the `.pyf` — not fixed this session (out of scope,
-pre-existing, and their Fortran defaults happen to match what runs have
-wanted so far), but flagged here since any future work relying on
-Python-side control of these needs the same fix first. `transitionSrcDtEigMode`
-is worse: the Python option has **no backing Fortran variable at all**.
+`srcDtDeactivateIters`, `transitionDampTheta`, `transitionDampMaxIter`)
+were also missing from the `.pyf` at the time. **Update 2026-08-12: all
+five are now wired (`adflow.pyf` L1129-1133), and `transitionSrcDtEigMode`
+has been removed from the codebase entirely — neither is a live bug.** The
+currently-known OPEN instance of this bug class is `module anksolver`:
+`ANKPhysicalLSTolReTheta` and `omegaMinGamma` are silent no-ops (see
+`docs/architecture.md`, Turb-ANK options).
 
-**Results once genuinely wired** (`nk_eq59_reactivation_test/run_10iter_step5_Sr_Sa_genuinely_wired_STALL.log`,
+**Results once genuinely wired** (`_old/nk_eq59_reactivation_test/run_10iter_step5_Sr_Sa_genuinely_wired_STALL.log`,
 `run_10iter_step4_Sa_alone_genuinely_wired.log`, restart from
 `r1c_CSANK_entry_rel1e-6_dp.cgns`, `nkswitchtol=1e-5`):
 
@@ -253,11 +264,12 @@ covers) would let `alpha` be relaxed further without the SEGV risk.
   settles into a slow plateau around totalRes≈0.219 (one self-correcting
   spike at iter 95).
 - **Shallow restart / early NK engagement** (`r1c_CSANK_entry_rel1e-6_dp.cgns`,
-  `nkswitchtol=1e-5` — matching the paper's stated ~1e-5 engagement point,
-  previously undocumented as reachable on this branch —
-  `nk_eq59_reactivation_test/run_early_engage.log`): 35+ iterations, no
+  `nkswitchtol=1e-5` — matching the paper's stated ~1e-5 engagement point —
+  `_old/nk_eq59_reactivation_test/run_early_engage.log`): 35+ iterations, no
   crash, fast initial drop (totalRes 21.75→0.174) then a similar slow
   plateau. Confirms the `alpha` fix isn't restart-depth-specific.
+  *(2026-08-12: "reachable without crashing" only — early engagement was
+  later shown to stall production runs; see the §2b correction box.)*
 - Both plateaus share the same character: a fast drop followed by a slow,
   non-crashing creep with `Step` oscillating between ~0 and ~1 rather than
   monotonic full steps. Worth investigating together with the missing
@@ -265,19 +277,24 @@ covers) would let `alpha` be relaxed further without the SEGV risk.
   the same root cause (PC/direction quality degrading as the front
   settles) rather than three separate issues.
 
-## 8. Open code items, in impact order (2026-07-16 view)
+## 8. Open code items, in impact order (2026-07-16 view; status updated 2026-08-12)
 
-1. Fix the `.pyf` bug for `transitionSrcDtRestrict` and siblings, and give
-   `transitionSrcDtEigMode` an actual backing Fortran variable (pre-existing,
-   out of this session's scope, but blocks any Python-side control of those
-   options).
+1. ~~Fix the `.pyf` bug for `transitionSrcDtRestrict` and siblings +
+   `transitionSrcDtEigMode`~~ — **DONE** (all five wired in `adflow.pyf`
+   L1129-1133; eigMode removed from the codebase). The open `.pyf` instance
+   is now `anksolver` (`ANKPhysicalLSTolReTheta`/`omegaMinGamma` no-ops —
+   see `architecture.md`).
 2. NK has no physicality/bounds check (§7) — the real fix behind the
    `alpha` workaround. Would let `alpha` relax further without SEGV risk.
 3. Investigate why S_r's geometric factor stalls the linear solve — likely
    the `volRef`-vs-paper's-`J` correspondence is wrong, or the exponents
    need recalibrating against how badly this mesh's cell volumes vary.
-4. Stronger NK PC for the front — one knob at a time from a
-   double-precision checkpoint (`NKJacobianLag` first; `NKViscPC` suspect).
+4. **Stronger NK PC for the front — now the decisive item.** Partly tested
+   since (2026-08-07/12, AR5 family): `NKJacobianLag 5` — no effect (PC
+   *quality*, not staleness, is the limit); EW-off + slack linear tol —
+   falsified; ILU(3) — worse (stalls). No option-level lever remains; the
+   deep-NK wall needs actual PC code work. See
+   `docs/convergence-strategy.md` §"Options analysis".
 
 ~~Eq. 59 reactivation in NK~~ — done 2026-07-16.
 ~~Faithful Algorithm 2~~ — done 2026-07-16 (NK path; DADI already had it).

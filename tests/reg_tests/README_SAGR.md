@@ -6,7 +6,10 @@ differences and the complex-step (CS) build. Written per
 `docs/audits/08_test_prep.md`; background in `docs/audits/06_adjoint_wiring.md`.
 
 **2026-07-23: case is the SA tutorial-wing grid** (`mdo_tutorial_sagr_dp.cgns`,
-an NK-converged state on the standard ADflow tutorial-wing mesh at Mach=0.15).
+an NK-converged state on the standard ADflow tutorial-wing mesh at Mach=0.15,
+α=1.8. This file is **regenerated, not downloaded** — it lives in
+`input_files/` which is gitignored; produce it with
+`dev/generate_sagr_restart.py` if absent).
 It was briefly on the AR5 plain-wing case (2026-07-19) but that stalled
 chronically — see `reg_sagr.py`'s header comments for the full rationale.
 The old `_flatplate` labels (class-name suffixes, ref JSON filenames) were a
@@ -20,14 +23,16 @@ backward-compat alias for the dev/ diagnostic scripts.
 ```
 tests/reg_tests/
 ├── reg_sagr.py                      # shared config + helpers (everything SA-GR-specific lives here)
-├── generate_sagr_restart.py         # one-off: produce the restart CGNS the tests linearize about
+├── run_sagr_tests.sh                # suite driver: all|real|cs|adjoint|blockette|train|genw
 ├── test_jacVecProdFWD_sagr.py       # forward (tangent) mode: AD vs ref / FD / CS
 ├── test_jacVecProdBWDFast_sagr.py   # reverse-fast vs reverse consistency + dot products
 ├── test_adjoint_sagr.py             # adjoint totals vs ref + complex-step totals
-└── refs/                            # trained JSON reference files land here
-    ├── jacvecfwd_sagr_tut_wing.json    (created by training)
-    ├── jacvecbwd_sagr_tut_wing.json    (created by training)
-    └── adjoint_sagr_tut_wing.json      (created by training)
+├── test_blockette_sagr.py           # block-loop vs blockette residual equivalence (SA-GR)
+├── dev/generate_sagr_restart.py     # one-off: produce the restart CGNS the tests linearize about
+└── refs/                            # trained JSON reference files (committed)
+    ├── jacvecfwd_sagr_tut_wing.json
+    ├── jacvecbwd_sagr_tut_wing.json
+    └── adjoint_sagr_tut_wing.json
 ```
 
 They mirror the upstream SA suite one-to-one:
@@ -37,6 +42,7 @@ They mirror the upstream SA suite one-to-one:
 | `test_jacVecProdFWD_sagr.py` | `test_jacVecProdFWD.py` | `computeJacobianVectorProductFwd` (the `outputForward/*_d.f90` code) |
 | `test_jacVecProdBWDFast_sagr.py` | `test_jacVecProdBWDFast.py` + dot products from `test_functionals.py` | `computeJacobianVectorProductBwdFast` (`outputReverseFast/*_fast_b.f90`) against the full reverse mode, and fwd↔rev transpose consistency |
 | `test_adjoint_sagr.py` | `test_adjoint.py` | total sensitivities from the adjoint solve (`outputReverse/*_b.f90`) vs complex step |
+| `test_blockette_sagr.py` | — (branch-specific) | block-loop vs blockette SA-GR residual equivalence (guards the 2026-07-24 resync; `run_sagr_tests.sh` `blockette` stage) |
 | `reg_sagr.py` | `reg_default_options.py` + `reg_aeroproblems.py` + `reg_test_utils.py` | — (fixtures + assert helpers) |
 
 ## What each file contains
@@ -62,7 +68,7 @@ They mirror the upstream SA suite one-to-one:
     check.
   - `assert_bwdfast_blocks_allclose` — `_b` vs `_fast_b` with `resBar` seeded
     one equation-row block at a time (localizes the `autoEditReverseFast.py`
-    stripping hazard, `docs/audits/sst_dev_lessons.md` watch item 1).
+    stripping hazard, `docs/audits/07_sst_dev_lessons.md` watch item 1).
   - `assert_coupling_dot_products_allclose` — blockwise transpose tests
     isolating each off-diagonal Jacobian block in fwd-vs-rev consistency.
 
@@ -100,11 +106,12 @@ They mirror the upstream SA suite one-to-one:
   `setUp` overrides `ankadpc/nkadpc=False` + `ankcoupledswitchtol=1e-16` so the
   complex primal re-converges with FD-colored PC on the decoupled ANK→NK path
   (otherwise it aborts with "Forward AD routines are not complexified"). That
-  FD-PC path stalls ~1e-8 (STRATEGY.md: FD-PC weak on SA-GR), so the complex
+  FD-PC path stalls ~1e-8 (`docs/convergence-strategy.md`: FD-PC weak on
+  SA-GR), so the complex
   functions — and hence CS-vs-adjoint agreement — cap at ~1e-8 absolute. The
-  adjoint totals are correct to that level; whether to loosen the inherited
-  `5e-9` tol or push the complex solve deeper is an **open item** (see
-  `docs/task-log/2026-07-23-sagr-full-adjoint-test.md`).
+  adjoint totals are correct to that level; **resolved 2026-07-24**: the
+  tolerance was set to `rtol=atol=5e-8` with mach and drag non-blocking (see
+  `docs/task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`).
 
 ### `dev/diag_full_derivatives.py`
 Dev diagnostic (NOT a testflo test) for the full df/dx check with ADflow's
@@ -126,19 +133,17 @@ different discrete state (~1e-10, reduction order) and contaminates the ~1e-7
 comparison. For parallel jobs on distinct cores use `--cpu-set` (not a second
 `--bind-to core`, which re-binds from core 0 and collides).
 
-### `generate_sagr_restart.py`
+### `dev/generate_sagr_restart.py`
 The upstream SA restarts are downloaded pre-made (`input_files/
-get-input-files.sh`); this script is the SA-GR equivalent. It converges the
-**AR5 plain-wing grid** (`ar5_plain_wing_vol_L3.cgns`, copied into
-`input_files/`, gitignored like the rest of that directory) with SA-GR
-through the validated ANK->CANK->NK production ladder (STRATEGY.md /
-`.../3D_Plain_Wing/best_strategie/run_strategy.py`) and writes a
-grid+solution CGNS containing all 8 states (the SA-GR restart set includes
-Intermittency/ReThetat — `outputMod.F90`). Still writes the file with a
-WARNING if `L2Convergence` isn't reached within `ncycles` (expected here:
-this case hits a reproducible NK stall, so `ncycles` — not
-`L2Convergence` — controls how deep the restart is; see the script's own
-`--l2`/`--ncycles` help text).
+get-input-files.sh`); this script is the SA-GR equivalent. As of 2026-07-23
+it converges the **tutorial-wing grid** with SA-GR (mach=0.15, α=1.8 — read
+`reg_sagr.py`'s header for the case rationale; the earlier AR5 plain-wing
+target stalled chronically) through the validated ANK→CANK→NK ladder
+(`docs/convergence-strategy.md`) and writes a grid+solution CGNS containing
+all 8 states (the SA-GR restart set includes Intermittency/ReThetat —
+`outputMod.F90`) into `input_files/` (gitignored). Still writes the file
+with a WARNING if `L2Convergence` isn't reached within `ncycles` (see the
+script's own `--l2`/`--ncycles` help text).
 
 ## How to run (in order)
 
@@ -147,11 +152,12 @@ Prereqs: `testflo` and `parameterized` in the test env
 
 ```bash
 # 0. (once, real build) generate the restart the tests linearize about --
-#    defaults already match ap_sagr_ar5_wing (mach=0.2, alpha=0.0, tu=0.0025),
-#    so no flags are needed unless deviating from that case
+#    the script reads its case config from reg_sagr.py (tutorial wing,
+#    mach=0.15, alpha=1.8); only needed if input_files/mdo_tutorial_sagr_dp.cgns
+#    is absent or the case config changed
 cd tests/reg_tests
-python generate_sagr_restart.py
-#    -> confirm reg_sagr.py's sagrRestartFile/ap_sagr_ar5_wing still match
+python dev/generate_sagr_restart.py
+#    -> confirm reg_sagr.py's sagrRestartFile/ap_sagr_tut_wing still match
 #       the script's printed summary (see script output)
 
 # 1. (real build) self-contained FD sanity check — no ref files needed
@@ -160,8 +166,8 @@ testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGRFD -v
 # 2. (real build) reverse-fast consistency — no ref files needed
 testflo test_jacVecProdBWDFast_sagr.py -v
 
-# 3. (real build) TRAIN the reference files (writes refs/*.json)
-#    !! only after the Tapenade rerun for audit-06 F1 (vortlimd) + make !!
+# 3. (real build) TRAIN the reference files (writes refs/*.json) — only
+#    needed after a change that legitimately shifts recorded values
 testflo test_jacVecProdFWD_sagr.py test_adjoint_sagr.py test_jacVecProdBWDFast_sagr.py -m "train*"
 
 # 4. (real build) regression run against the trained refs
@@ -177,8 +183,9 @@ testflo test_jacVecProdFWD_sagr.py test_adjoint_sagr.py -m "cmplx_test*"
 the complex PETSc arch; the default `real-debug` arch gives COMPLEX→REAL PETSc
 type-mismatch errors in fortranPC/adjointAPI). After any Fortran rebuild,
 `pip install .` into the mach env (site-packages, not `./adflow`, is what the
-tests import — see [[tests-load-site-packages-not-repo]]). The whole suite is
-also driven by `./run_sagr_tests.sh {all,real,cs,adjoint,train,genw}`.
+tests import — running without reinstalling exercises the stale previous
+binary). The whole suite is also driven by
+`./run_sagr_tests.sh {all,real,cs,adjoint,blockette,train,genw}`.
 
 Single test example:
 `testflo test_jacVecProdFWD_sagr.py:TestJacVecFwdSAGR_0_sagr_tut_wing.test_coupling_blocks`
@@ -198,4 +205,4 @@ Single test example:
    regeneration happened before training.
 
 Never fix a failing comparison by inflating its tolerance
-(`docs/audits/sst_dev_lessons.md` §3).
+(`docs/audits/07_sst_dev_lessons.md` §3).

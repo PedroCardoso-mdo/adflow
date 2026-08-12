@@ -23,7 +23,9 @@ that can never meet the standard element-wise tolerance on the 13-order residual
   `@unittest.expectedFailure` (FD can't pass element-wise on this residual; CS
   is the enforced ground truth). FD is proven correct in the norm sense (clean
   O(h) convergence). (commit 7d63aa27)
-- **Crossflow always ON** (`reg_sagr.sagrBaseOptions`): `transitioncrossflow=True`,
+- **Crossflow always ON** *(as of 2026-07-22 — the suite later moved to the
+  tutorial wing with crossflow False when the model default flipped,
+  2026-07-24)* (`reg_sagr.sagrBaseOptions`): `transitioncrossflow=True`,
   grid+restart → the crossflow-converged AR5 volume CGNS. The D_scf block
   `||dR[reThetat]/dw[nuTilde]||` = 2.02e7 is now guarded by every run. Refs
   retrained about the new state. `no_train=True` on the self-contained classes
@@ -58,9 +60,9 @@ docs only); the underlying `_fast_b` primal fix is the separate 2026-07-22
 lambdaTheta task.
 
 **Follow-ups (to `../TODO.md`):**
-- Total sensitivity `dF/dX` via the assembled adjoint (`test_adjoint`) is still
-  disabled — this mesh doesn't converge deeply enough; wire it in `@skip` and
-  re-enable on a better mesh.
+- **RESOLVED (2026-07-23):** Total sensitivity `dF/dX` via the assembled
+  adjoint — `test_adjoint_sagr.py` implemented and passing, see
+  `2026-07-23-sagr-full-adjoint-test.md`.
 - Optionally delete the now-superseded `dev/sanity_check_*` / `check_3way_fwd.py`
   (kept for their mesh/crossflow flags for now).
 - Rename `_flatplate` refs → `_sagr` (cosmetic; the case is a wing, not a plate).

@@ -28,7 +28,7 @@ stop.
 
 ## Hard Rules
 
-1. **One task per session.
+1. **One task per session.**
 2. **Do not modify the SA model directly.** Transition is a modifier — γ
    multiplies SA production only (Eq. 41). *(Enforced: the
    `guard_protected_files.sh` PreToolUse hook hard-blocks edits to
@@ -123,7 +123,7 @@ Quick routing (full table in `docs/README.md`):
 | `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` | Full paper text — **physics source of truth** (sole physics reference). |
 | `docs/SA_GAMMA_RETHETHA_BASE/README.md` | Sub-index for the transition physics KB. |
 | `docs/ADFLOW_BASE/ADFLOW_00…05` | Flow/ANK/NK theory (01), adjoint/AD theory (02), paper↔code concordance (03), debugging playbook (04), options devguide (05), sub-index (00). |
-| `docs/convergence-strategy.md` | Validated SA-GR convergence recipe (ANK→CANK→CSANK→NK, switch tols, LS options, measured limits) + index of every acceleration test (2026-07). Run-side deliverable: `…/3D_Plain_Wing/best_strategie/`. |
+| `docs/convergence-strategy.md` | Validated SA-GR convergence recipe (ANK→CANK→CSANK→NK, switch tols, LS options, measured limits, 2026-08 corrections: premature-NK rule, EW falsified) + index of every acceleration test. Run-side deliverable: `…/03_convergence_strategy/3d_plain_wing/best_strategy/`. |
 | `docs/ADFLOW_BASE/adflow_solvers.md` | Official ADflow solvers doc (MG/ANK/NK mechanics, troubleshooting). |
 | `docs/adflow-vs-paper-solver.md` | ADflow vs P&Z §IV solver-algorithm gaps + open code items (deep-NK wall). |
 
@@ -147,12 +147,25 @@ part of this KB — don't rely on them for transition-model facts.
 
 ## AD-Relevant Code (Triggers `TAPENADE NEEDED`)
 
-
-```
+Any change to differentiated residual math requires a Tapenade regen before
+the adjoint is trusted again: `src/turbulence/saGammaRetheta.F90` (Source,
+Viscous, correlations), the SA-GR helpers in `src/turbulence/turbUtils.F90`,
+and anything else listed in `src/adjoint/Makefile_tapenade`. Changes guarded
+by `#ifndef USE_TAPENADE` (LHS/qq blocks, DADI-only code) do NOT trigger it.
+When in doubt: `docs/VERIFICATION/adjoint-trace.md` has the full touchpoint
+inventory. State `TAPENADE NEEDED` in the task wrap-up; the user runs
+Tapenade, then `/build`.
 
 ## Verification Test Runs
 
-All small verification/smoke tests go in
+**Standing rule (2026-08-09): every ADflow solver run — including smoke
+tests and flag-validation runs — goes to the Deucalion HPC (sbatch), never
+the local workstation.** Local work = editing scripts, rsync of results,
+analysis/figures. Validate new runner flags with a tiny `--nCycles 15` HPC
+job, not a local mpirun. (The local mpirun command below is kept only for
+the rare case the user explicitly asks for a local run.)
+
+All small verification/smoke tests are organised in
 `/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/`
 — **not** the scratchpad. That tree is organised into numbered top-level
 folders, each with its own `PURPOSE.md` and a `README.md` index at the root:
@@ -162,8 +175,10 @@ folders, each with its own `PURPOSE.md` and a `README.md` index at the root:
 | `01_solver_verification` | Partial/total derivative checks, output files |
 | `02_adjoint_checks` | Adjoint verification runs |
 | `03_convergence_strategy` | `2d_airfoils`, `3d_plain_wing`, `tutorial_wing` — the usual smoke-test home |
-| `04_mesh_families` / `05_mesh_independence` | Grid studies (`MESH_STUDY_INDEX.md`) |
-| `06_alpha_sweep`, `07_sickle_wing`, `08_optimization`, `09_ar5_winglet_refinement`, `10_tmr_flatplate` | Campaign-specific |
+| `04_mesh_families` / `05_mesh_independence` | Grid studies (index: `05_mesh_independence/MESH_STUDY_INDEX.md`) |
+| `06_alpha_sweep`, `07_sickle_wing`, `08_optimization`, `10_tmr_flatplate`, `12_paper_conditions`, `13_nlf0415_swept` | Campaign-specific |
+| `09_ar5_winglet_refinement` | **Superseded** by `11_ar5_corrected_foil` (placeholder geometry) |
+| `11_ar5_corrected_foil` | The current AR5 campaign (real AFP_eppler foil + real winglet) |
 
 For each test:
 
@@ -171,9 +186,9 @@ For each test:
    test (e.g. `03_convergence_strategy/tutorial_wing/nk_colscale_test/`).
 2. Put the runner script, the full run log, and a `PURPOSE.md` in it — see the
    `purpose-md` skill. Dead ends go to `_old/` with a README saying why.
-3. Run with the mach env so the user can reproduce it exactly, **always with
-   `--bind-to core`** and **always `OMP_NUM_THREADS=1`** (unset =
-   oversubscription, 10 min+ vs 31 s):
+3. If (and only if) a local run was explicitly requested: use the mach env so
+   the user can reproduce it exactly, **always with `--bind-to core`** and
+   **always `OMP_NUM_THREADS=1`** (unset = oversubscription, 10 min+ vs 31 s):
    `OMP_NUM_THREADS=1 mpirun -np 12 --bind-to core /home/mdo/packages_v2/mach/bin/python <script>.py`
    (build + `pip install` into `/home/mdo/packages_v2/mach` first if the
    Fortran code changed — otherwise the run loads the stale binary from

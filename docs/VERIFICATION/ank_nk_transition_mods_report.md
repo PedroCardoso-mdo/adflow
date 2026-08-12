@@ -1,5 +1,8 @@
 # ANK / NK Modifications for the SA-γ-Re̅θt Transition Model — Audit Report
 
+*Historical audit (as of 2026-07-23, branch `sa_gamma_rethetha_paper_solver`,
+since merged). Line numbers have drifted — locate by symbol.*
+
 **Branch:** `sa_gamma_rethetha_paper_solver` vs `main`
 **Files audited:** `src/NKSolver/NKSolvers.F90` (+1335), `src/NKSolver/blockette.F90` (+716)
 **Date:** 2026-07-23
@@ -31,6 +34,11 @@ Three mechanisms from Piotrowski & Zingg (2020):
 residual/Jacobian assembly dispatch (`saGammaRethetaSource/Advection/Viscous/
 ResScale`). It is a new `select case` branch — other models fall through to
 their existing cases untouched.
+
+> Note: the blockette SA-GR kernels audited here were later found
+> sign-flipped and re-synced on 2026-07-24
+> (`../task-log/2026-07-24-blockette-sagr-residual-sync.md`;
+> `test_blockette_sagr.py` now guards them).
 
 ---
 
@@ -86,7 +94,8 @@ inspection.
 
 ➡️ **For any non-SA-GR run (Euler, SA, SST, k-ω…), the branch is
 byte-for-byte equivalent to stock ADflow on the ANK/NK path.** This is the
-strong invariant and it holds unconditionally.
+strong invariant and it holds unconditionally. *(Code-inspection claim; the
+proposed non-SA-GR regression run was never recorded as executed.)*
 
 ### 3b. When SA-γ-Re̅θt **is** active — depends on option defaults.
 

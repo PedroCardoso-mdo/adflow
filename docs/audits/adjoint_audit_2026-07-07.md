@@ -1,5 +1,10 @@
 # SA-γ-Re̅θt adjoint implementation audit (pre-partials-test)
 
+> **Historical audit (2026-07-07).** §3's "STATUS: TAPENADE NEEDED" is
+> RESOLVED — Tapenade rerun and AD files committed. §4 watch items both
+> confirmed by later events: item 1 (autoEdit fast_b stripping) was the
+> 2026-07-22 lambdaTheta culprit; item 2's use-CS advice was followed.
+
 **Date:** 2026-07-07. Visual check of the AD/adjoint wiring against the SST
 (`sst_dev`, PR #331) playbook in `audits/sst_dev_lessons.md`. No tests run;
 build compiled and imported (`make` → `Module libadflow was successfully

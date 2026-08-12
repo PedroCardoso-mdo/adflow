@@ -1,5 +1,8 @@
 # Is the SA-γ-Re̅θt ANK/NK Code Complexified? — Pre-CS-Adjoint Audit
 
+*Historical audit (as of 2026-07-23, branch `sa_gamma_rethetha_paper_solver`,
+since merged). Line numbers have drifted — locate by symbol.*
+
 **Purpose:** document complex-step (CS) safety of the transition-model code
 **before** running the full adjoint CS verification, so any CS mismatch can be
 attributed to the adjoint wiring rather than an un-complexifiable primal.
@@ -8,6 +11,11 @@ attributed to the adjoint wiring rather than an un-complexifiable primal.
 **Verdict: Yes — the code is complexified and CS-safe.** The complex library
 already builds, imports, and the Stage-3 AD = CS check matches to full
 precision. Details and scope below.
+
+> Operational caveat found later the same day: the complex build excludes
+> the Tapenade AD routines, so ANKADPC/NKADPC must be False in CS runs and
+> CS accuracy caps ~1e-8
+> (`../task-log/2026-07-23-sagr-full-adjoint-test.md`).
 
 ---
 

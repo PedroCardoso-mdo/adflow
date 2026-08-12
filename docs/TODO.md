@@ -7,26 +7,23 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 
 ## Tuning numérico
 
-- [ ] **Calibrar escalas `turbResScale`** (de D-A2-4, `audits/design-decisions.md`).
-  Default atual `[1e4, 10, 1e4]` — mantido por decisão (convenção ADflow para
-  ν̃; γ e Re̅θt do paper). Se um arranque acoplado estagnar numa linha de
-  turbulência: **medir, não transferir rácios do paper** — imprimir as normas
-  dos resíduos escalados por equação num caso representativo e ajustar via
-  opção de runtime `turbresscale` até ficarem comparáveis entre si e com o
-  mean-flow. Zero código.
-  **Nota 2026-07-16:** a campanha de convergência usou consistentemente
-  `[1e4, 0.1, 1e-4]` com sucesso (ver `convergence-strategy.md`) — o item
-  passa a ser "reconciliar o default com o valor de campanha", não calibrar
-  do zero.
+- [x] **Calibrar escalas `turbResScale`** — **FECHADO 2026-08-12**: o default
+  auto no código já É o valor de campanha `[1e4, 0.1, 1e-4]`
+  (`pyADflow.py:~6834`, ~1/magnitude de estado por equação, P&Z §IV.1). A
+  reconciliação pedida na nota de 2026-07-16 aconteceu no código; o registo
+  D-A2-4 em `audits/design-decisions.md` ficou histórico (argumentava pelos
+  valores antigos `[1e4, 10, 1e4]`).
 
 ## Solver profundo (da campanha de convergência 2026-07-14→16)
 
 - [ ] **Parede do NK abaixo de rel ~5e-9** — lin res 0.8-0.99 com GMRES
-  esgotado, independente do ponto de engate/JacLag/subespaço. Itens de
-  código por ordem de impacto em `adflow-vs-paper-solver.md` §5: Alg. 2
-  por nó, reativação Eq. 59 dentro do NK, PC mais forte. Case dir e branch
-  preparados (`.../3D_Plain_Wing/ADFLOW_SA_GAMMA_RETHETHA_SOLVER/`,
-  `sa_gamma_rethetha_paper_solver`). Testbed: `best_strategie/restarts/r3`.
+  esgotado. **Diagnóstico fechado 2026-08-07/12** (commits `ef9fc10d` +
+  estudo ILU): EW-off falsificado, JacLag sem efeito, ILU(3) pior — é o PC,
+  não há alavanca de opções. Itens de código por ordem de impacto em
+  `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items"):
+  PC mais forte (agora o item decisivo), physicality check ρ/E no NK. Case
+  dir: `03_convergence_strategy/3d_plain_wing/solver_code_items/`. Testbed:
+  `best_strategy/restarts/r3_deepest_record_rel3.3e-9_dp.cgns`.
 - [ ] **`ANKNSubiterTurb` é knob morto com `ANKUseTurbDADI=True`**
   (NKSolvers.F90: o loop de subiterações só existe no ANKTurbSolveKSP; o
   ramo DADI é uma chamada única) — ligar ou documentar na opção.
@@ -51,9 +48,11 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 ## Desempenho
 
 - [ ] **Blockettes para SA-GR** (de N-A2-6, `audits/design-decisions.md`).
-  `useBlockettes` forçado a False (`pyADflow.py:6656-6657`) — caminho de
-  resíduo mais lento em todos os mat-vecs matrix-free do ANK/NK. Implementar
-  em `blocketteResCore` quando se avaliar desempenho.
+  `useBlockettes` forçado a False (`pyADflow.py:~6824`). **Atualização
+  2026-07-24:** os kernels blockette SA-GR JÁ estão implementados,
+  re-sincronizados e testados (`test_blockette_sagr.py`,
+  `task-log/2026-07-24-blockette-sagr-residual-sync.md`) — falta só decidir
+  levantar o force-off e medir desempenho.
   
   
   
@@ -74,20 +73,20 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
   `dev/generate_sagr_restart.py` (reads `reg_sagr` config), JSON by
   `run_sagr_tests.sh train`. Mesh swap = edit `reg_sagr.py` → `genw` → `train`
   → run. Remaining sub-items below.
-- [ ] **Wire the complete-mode `test_adjoint` (total `dF/dX`) in, `@skip`ped**
-  with a per-mesh reason: this AR5 state doesn't converge deeply enough for
-  total-sensitivity validation. Re-enable on a better-converged mesh. This is
-  the one gap between "partials validated" and "gradient validated".
+- [x] **Wire the complete-mode `test_adjoint`** — DONE 2026-07-23/24
+  (`test_adjoint_sagr.py`, estágio `adjoint` do `run_sagr_tests.sh`; real
+  passa, CS a 5e-8 com mach/drag non-blocking —
+  `task-log/2026-07-23-sagr-full-adjoint-test.md` + `2026-07-24-…`).
 - [ ] **(cosmetic)** delete the now-superseded `dev/sanity_check_*` /
   `dev/check_3way_fwd.py` once their mesh/`--crossflow` flags are no longer
-  wanted; rename `_flatplate` refs → `_sagr` (the case is a wing).
+  wanted. ~~rename `_flatplate` refs~~ — done 2026-07-23 (`*_sagr_tut_wing.json`).
 
 ## Adjoint / partials (de `audits/adjoint_audit_2026-07-07.md`, 2026-07-07)
 
-- [ ] **Rerun Tapenade** para apanhar `uInf, muInf` ativos no head
-  `saGammaRetheta%Source` (`Makefile_tapenade`) → `vortlimd` deixa de ser
-  hard-zero; depois `make` e commit dos ficheiros gerados (os 6 já
-  regenerados + os novos ficam num só estado consistente).
+- [x] **Rerun Tapenade** (`uInf, muInf` no head do `Source`) — **FEITO**:
+  `Makefile_tapenade:187` tem `uInf, muInf`, `vortlimd = 0.0_8` já não
+  existe nos ficheiros gerados, e os AD files estão commitados (última
+  regen 2026-08-04, `2c4ce2c1`). Verificado 2026-08-12.
 - [ ] **Decisão em aberto (default = diferenciar):** cap do limitador de
   vorticidade diferenciado vs congelado ("frozen limiter"). Se preferir
   congelar: reverter a linha do `Makefile_tapenade` e documentar; dR/dw é

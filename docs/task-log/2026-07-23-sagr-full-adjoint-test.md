@@ -66,6 +66,10 @@ this.
   and hence CS-vs-adjoint agreement at ~1e-8. Options not yet chosen: (a) loosen
   the SA-GR adjoint CS tol to ~1e-7/1e-5; (b) warm-start the complex solve from
   the converged restart; (c) push the complex solve deeper.
+  **RESOLVED next day by option (a) at rtol=atol=5e-8** (with mach + geom
+  `drag` non-blocking); warm-start (b) was tried and made the mach
+  derivative WORSE — see `2026-07-24-sagr-cs-tolerance-nonblocking.md`.
 
-**Follow-ups:** decide the adjoint-CS tolerance/depth approach (above); optional
+**Follow-ups:** decide the adjoint-CS tolerance/depth approach (above —
+resolved 2026-07-24, option (a)); optional
 deeper `genw` restart; `rsaGRgammaForSAMargin` now unused (could be removed).

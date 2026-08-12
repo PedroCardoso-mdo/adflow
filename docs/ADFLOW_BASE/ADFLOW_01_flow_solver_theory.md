@@ -1,5 +1,16 @@
 # ADFLOW 01 — Flow Solver & ANK/NK (complete extraction: Yildirim2019)
 
+> **⚠️ SA-GR branch note (2026-08-12):** this is a faithful extraction of
+> Yildirim et al. 2019 (transonic aircraft, plain SA). Several of its
+> prescriptions are measured NOT to transfer to the SA-γ-Re̅θt model on this
+> branch: the NK switch at 1e-4…1e-6 stalls (premature engagement, Step=0.00 —
+> see `docs/convergence-strategy.md`, commit ef9fc10d); "decoupled beats
+> coupled" is inverted (SA-GR requires CANK→CSANK); L2Convergence code default
+> is 1e-8 and 1e-8 is the standing target for transition runs. Hardware/WU
+> numbers are Ivybridge/Skylake-era paper data, not Deucalion. Treat everything
+> below as paper record, checked against `docs/convergence-strategy.md` before
+> use on SA-GR.
+
 **Source:** Yildirim, Kenway, Mader, Martins, *A Jacobian-free approximate Newton–Krylov startup strategy for RANS simulations*, JCP (2019), doi:10.1016/j.jcp.2019.06.018.
 **Coverage:** comprehensive technical extraction of §1–§6. Abstract + narrative motivation dropped; hard facts retained. Prose paraphrased; equations and benchmark data reproduced as facts. Eq numbers `(n)` and table/section refs are the paper's.
 
@@ -162,7 +173,7 @@ Tuned for **transonic 3-D full/partial aircraft, millions–tens of millions of 
   - **D3ADI** — diagonalized diagonally-dominant ADI (Klopfer).
   - **ANK** — this paper.
   - **NK** — fully coupled JFNK; PC formed as in ANK, but matrix-free op is **exact `R0`**; **no time term** (CFL = ∞); linear tolerance via **Eisenstat–Walker**.
-- RK/D3ADI are MG smoothers (not applicable to overset). **ANK** works on multiblock + overset → **startup of choice for overset**. **NK** gives the best terminal rate *if inside the basin*, else diverges → needs ANK/MG first. Practice: **ANK to `η_rel=1e-5`, then NK to `1e-12`**. Witherden suggests `1e-4` for the NK switch; a *lower* value gives a smoother transition and avoids switch failures.
+- RK/D3ADI are MG smoothers (not applicable to overset). **ANK** works on multiblock + overset → **startup of choice for overset**. **NK** gives the best terminal rate *if inside the basin*, else diverges → needs ANK/MG first. Practice: **ANK to `η_rel=1e-5`, then NK to `1e-12`**. Witherden suggests `1e-4` for the NK switch; a *lower* value gives a smoother transition and avoids switch failures. (Falsified for SA-GR — see banner.)
 
 ## 6. Results (§5) — reference benchmark data
 
@@ -180,7 +191,7 @@ Tuned for **transonic 3-D full/partial aircraft, millions–tens of millions of 
 | 5 | R1 | coupled | 156 | 2723 | 13.30 | 161 | 2905 | 18.78 |
 | 6 | R0 | coupled | 95 | 2758 | 14.54 | 102 | 2974 | 21.11 |
 
-Findings: first ~2 orders identical across all (low CFL → approximations inert). `R0` decoupled = fewest NI but **worse walltime** than `R1`/`R2` (costlier linear). **Decoupled beats coupled**; approximate `R1`/`R2` beat exact `R0` on walltime. `R2` coupled diverged.
+Findings: first ~2 orders identical across all (low CFL → approximations inert). `R0` decoupled = fewest NI but **worse walltime** than `R1`/`R2` (costlier linear). **Decoupled beats coupled** (single-configuration result; inverted for SA-GR — see banner); approximate `R1`/`R2` beat exact `R0` on walltime. `R2` coupled diverged.
 
 ### 5.2 Lagged-PC eigenvalue study (§5.2, Figs 4–6)
 Three convergence stages: **initial** (fs→1e-2, low CFL, strong transients near no-slip surfaces), **intermediate** (1e-2→1e-4, far-field/no-slip interaction, strong turbulence transients), **final** (→1e-5, CFL at `CFL_max`, flow settled). Method: converge to η_target; fix CFL; refresh PC; raise linear iter limit to 300; solve to 0.05 (as baseline) then further to `η_lin=1e-8` for Arnoldi eigen-estimates (not to 1e-16 — FD `(9)` truncation corrupts eigenvalues); lag PC for 10 iters watching spectra at iters 1–5,10.
@@ -247,7 +258,7 @@ PADRI SBW overset, **6.4M** cells (Secco); complex overset → no coarser levels
 | Decoupled | 76 | 915 | 7.72 | 95 | 1356 | 22.7 |
 | Coupled | — fail (stalls before 1e-5) — | | | | | |
 
-→ Coupled **stalls**: the complex junction flow prevents finding an update that reduces the unsteady residual → line search returns the minimum step. **Decoupling wins even for tightly-coupled flow where residuals fluctuate.**
+→ Coupled **stalls**: the complex junction flow prevents finding an update that reduces the unsteady residual → line search returns the minimum step. **Decoupling wins even for tightly-coupled flow where residuals fluctuate.** (Single-configuration result; inverted for SA-GR — see banner.)
 
 ### 5.7 vs multigrid — 1172-airfoil sweep (Table 8)
 Webfoil subsonic airfoils (Li et al.), 1172 shapes, 35 840 cells each, structured 2-D; M=0.45, Re=6.5e6, T_ref=310.93, α=2.5°; 1 Skylake core each (embarrassingly parallel over 48), 1 WU=2.98 s. Four sets: **3w/4w/5w multigrid** (D3ADI smoother, CFL fixed 5) vs **ANK** (ILU fill reduced to 1, else defaults). Then NK to 1e-12. AM/SD over successful runs; 4 mesh-gen failures per method excluded; other failures = 5000-LI cap (MG: 5000 nonlinear iters).

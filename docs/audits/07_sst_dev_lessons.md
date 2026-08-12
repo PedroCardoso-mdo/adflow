@@ -1,5 +1,7 @@
 # Lessons from `mdolab/adflow` `sst_dev` for the SA-γ-Re̅θt AD/adjoint work
 
+> **Archived analysis (2026-07-07).**
+
 **Date:** 2026-07-07
 **Sources:** GitHub API compare `main...sst_dev` (31 commits, 82 files, David
 Anderegg, Sep 2023 – Jan 2024, merged upstream via PR #331); local analysis
@@ -173,12 +175,12 @@ The decision to ignore CANK (D-A2-1 response) is consistent with what
 | Auxiliary model fields | Moved `kwCD/f1/prod` from `turbMod` arrays into active `scratch` slots; reverse wrappers must **recompute** `prod` (eddy-viscosity overwrites it) | Correlations are functions (`turbUtils.F90:2279-2412`) with `_d` versions; SA-GR uses `scratch` for `dvt` slots | When AD unfreezes: audit every SA-GR `scratch` slot for overwrite between the forward sweep and the reverse sweep — this bit SST twice |
 | State-dependent turbulence BCs | Had to widen `bcTurbTreatment`/`applyAllTurbBC` active args (`bvt*`, BCData inlet quantities) | γ/Re̅θt BCs: freestream values from `wInf` (Re̅θt from Tu∞ — input param, not state) via standard `bmt/bvt`; SA-identical activity | No new active BC inputs expected; the widened upstream signature comes free on a future main merge |
 | Wall distance in derivatives | `d2wall` extended to halos `(0:ib,...)` + `exchanged2Wall`; recompute moved before main loop | `d2wall(2:il,...)` (pre-#331); SA-GR `Source` uses d2wall at owned cells only, like SA | Not needed for SA-GR per se; becomes relevant only on merging post-#331 main |
-| `fast_b` post-processing | `autoEditReverseFast.py` push/pop stripping **broke SST**; patterns disabled upstream | Stripping still **active** here (`autoEditReverseFast.py:23-28`) and SA-GR `fast_b` is built with it | **Watch item.** Same failure class (multi-eq `fast_b` with stripped push/pop) could bite `saGammaRetheta_fast_b`. When AD is regenerated/validated, run the BWDFast dot-product test first; if it fails, suspect the stripping before the model |
+| `fast_b` post-processing | `autoEditReverseFast.py` push/pop stripping **broke SST**; patterns disabled upstream | Stripping still **active** here (`autoEditReverseFast.py:23-28`) and SA-GR `fast_b` is built with it | **Watch item.** Same failure class (multi-eq `fast_b` with stripped push/pop) could bite `saGammaRetheta_fast_b`. When AD is regenerated/validated, run the BWDFast dot-product test first; if it fails, suspect the stripping before the model. OUTCOME: prediction confirmed 2026-07-22 — see `../task-log/2026-07-22-fastb-retheta-lambdatheta-fix.md` |
 | Per-equation solver plumbing | Introduced `nt1:nt2` physicality loops, `turbResScale(l-nt1+1)`, `stateToCons(nt1:nt2)` | Present (`NKSolvers.F90:1303,2178,2794,2988`; 8 `nt1,nt2` loops) — added independently on this branch | Convergent evolution; nothing to port |
 | Approx Jacobian for ANK PC | `approxSA`→`approxTurb`; drop production in low-order PC | `transitionUseApproxSA` (default true) — same idea, SA-GR scoped | Equivalent; keep straight that this is a PC approximation, never the adjoint Jacobian |
 | Source-term stiffness in coupled path | Nothing beyond approxTurb + physicality check; merged anyway | Same, plus Eq. 59 in DADI/turbKSP (paper device `sst_dev` lacked) | Our coverage is a superset; D-A2-1 "ignore CANK" decision consistent with what shipped |
 | Non-smooth model switches | `max`/`min` in μ_t and production limiter — inherent kinks, AD picks active branch | Fonset/Fturb/damping use `smoothMinMax` (differentiated `smoothminmax_d`) | SA-GR is deliberately *smoother* than SST at the same problem points |
-| Verification ladder | CS → FD-vs-forward → dot-product → fast dot-product; **tolerances inflated to non-verification** (rtol 2.11 / 41), adjoint regression `cl` only | No AD validation yet (linearization frozen) | Adopt the 4-layer ladder *and* the post-mortem: use norm-relative or masked metrics for mesh derivatives instead of inflating global rtol; validate cd/cm and all DVs with CS, not just lift |
+| Verification ladder | CS → FD-vs-forward → dot-product → fast dot-product; **tolerances inflated to non-verification** (rtol 2.11 / 41), adjoint regression `cl` only | No AD validation yet (linearization frozen) *(since validated — three-stage ladder + full adjoint, 2026-07-21..24)* | Adopt the 4-layer ladder *and* the post-mortem: use norm-relative or masked metrics for mesh derivatives instead of inflating global rtol; validate cd/cm and all DVs with CS, not just lift |
 
 ## 6. One-paragraph takeaway
 

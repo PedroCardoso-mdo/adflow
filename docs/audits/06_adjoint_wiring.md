@@ -1,5 +1,15 @@
 # 06 — Adjoint wiring & hand-written derivative audit (SA-γ-R̃e_θt)
 
+> **⚠️ STATUS 2026-08-12:** all findings in §5 are RESOLVED or
+> premise-changed — F1 (vortlimd) fixed & Tapenade regenerated (verified:
+> no `vortlimd = 0.0_8` remains); F5's premise inverted
+> (`transitionCrossflow` now defaults False; `inputParam.F90:327`'s Fortran
+> default is still `.true.` but Python pushes False); F6 fixed; F7 actually
+> fixed 2026-07-24 (blockette resync — not 2026-07-07 as the addendum
+> says). `turbResScale` default is now `[1e4, 0.1, 1e-4]`, not
+> `[1e4, 10, 1e4]`. AD files are committed. Read this file as a historical
+> audit; line numbers have drifted.
+
 **Date:** 2026-07-07. Branch `sa_gamma_rethetha`, working tree as of this audit
 (six regenerated AD files uncommitted). Audit-only; no code changed.
 
@@ -268,7 +278,7 @@ the primal, noting Tu∞ is not a design variable.
 
 | # | Severity | Finding | Affects |
 |---|---|---|---|
-| F1 | **High (open, known)** | `vortlimd = 0.0_8`: current AD files predate the `uInf/muInf` active declaration (Makefile fixed in 21f29567; **Tapenade rerun pending**) | dR/d(Mach, Re-type DVs) wherever the vorticity cap engages. dR/dw unaffected |
+| F1 | **High (open, known)** → RESOLVED | `vortlimd = 0.0_8`: current AD files predate the `uInf/muInf` active declaration (Makefile fixed in 21f29567; **Tapenade rerun pending**) | dR/d(Mach, Re-type DVs) wherever the vorticity cap engages. dR/dw unaffected |
 | F7 | Medium (latent) | Blockette SA-GR kernels drifted (no refLenTrans, no crossflow D_scf) — currently dead via `pyADflow.py:6668` force-off | Nothing today; residual/adjoint inconsistency if blockettes re-enabled |
 | F8 | Medium (conditional) | Master AD sweeps lack the `transitionFirstOrderUpwind` orderTurb switch; safe only because `orderTurb` defaults to first order | Adjoint consistency iff user sets `orderTurb='second order'` |
 | F2 | Low (LHS-only) | `qq(1,2)` keeps the `cb1(1−ft2)ss·ν̃` term when `approxSA∧transitionUseApproxSA` zeroes it in the residual | DADI convergence in approx-SA mode only |

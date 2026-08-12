@@ -11,6 +11,10 @@ each study folder has a PURPOSE.md); this file is the consolidated record.
 
 ## 1. The problem
 
+> **⚠️ Superseded by §A1 (2026-08-05):** the SB3-mesh cd numbers in §§1/6
+> are from runs that stagnate at 1e-4..1e-3 (`converged: false`) — they
+> are not model measurements.
+
 S809 (M 0.1, Re 2.0e6, Tu 0.07%): drag-bucket corner ~0.5–0.6° early
 (cl ≈ 0.70 vs paper 0.79) and cd ~20–30 counts high above the corner
 (α=5: ours 87.6 L1 / 98.5 SB3 vs paper ≈ 66; α=6: 113–116 vs ≈ 85).
@@ -80,10 +84,15 @@ The markdown KB lacks figure data; the PDF with figures is
    α=5 cold-start converges (98.5 counts, 1e-12); warm-started from the
    converged α=4 solution it *never* converges (300k cycles, residual
    wandering). Caps how precisely any steady code can pin the corner.
+   *(⚠️ Superseded by §A1, 2026-08-05: the 98.5-count "converged baseline"
+   attribution is wrong — that 1e-12 run was the doubled-vis4 probe; the
+   SB3 baseline never converged.)*
 2. **Large cycle budgets destabilize the late NK/deep-ANK phase:** NLF
    exact-grid cases at 60k budget reach 6–7 orders cleanly; at 300k, 5/7
    destabilize (one to negative cd). Related to the guarded-NK work in
-   `NKSolvers.F90` (checkpoint `03df399e`).
+   `NKSolvers.F90` (checkpoint `03df399e`). *(Re-diagnosed 2026-08-07/08
+   as premature NK engagement at nkswitchtol 1e-6 — see
+   `../convergence-strategy.md`, commits ef9fc10d/54c43475.)*
 
 ## 7. Next step (defined, not yet run)
 
@@ -98,7 +107,11 @@ the TCMPS grid spans y — one-line tweak needed first.
 Branch `new_conv_strategie_test` @ `efed31cf`: λθ clamp switchable
 (default ON = legacy), Re̅θt_eq ≥ 20 floor in `reThetaTCorrelation`
 (inert with clamp on). Local mach and Deucalion machV2 builds in sync.
-TAPENADE NEEDED before any adjoint use of these changes.
+
+*(Stale as of 2026-08-12: `new_conv_strategie_test` has since been merged
+into `sa_gamma_rethetha` (3b78dd1b), and Tapenade was regenerated
+2026-08-04 with AD files committed (2c4ce2c1) — the "TAPENADE NEEDED"
+blocker is resolved.)*
 
 ---
 
@@ -108,7 +121,7 @@ Campanha de convergência a pedido do utilizador (bucket S809 com dissipação
 reduzida). Pastas: `06_alpha_sweep/s809/dissipation_convergence/1_sb3_vis2_0_vis4_0p01/` e
 `06_alpha_sweep/s809/dissipation_convergence/` (PURPOSE.md em ambas);
 dashboard interativo com as 319 corridas S809 em
-`s809/dissipation_convergence/s809_dashboard.html`.
+`06_alpha_sweep/s809/s809_dashboard.html`.
 
 ## A1. O que obriga a rever este relatório
 
@@ -138,10 +151,12 @@ no mesmo α chega a 40 counts. **Não são medidas do modelo.**
 
 Assinatura em todos: `Step = 0.00` no NK com o **resíduo do Re̅θt** preso
 (~8–15, ~46 % do total) enquanto o resíduo de massa já vai em 1e-3…1e-4.
+*(Re-diagnosed 2026-08-07/08 as premature NK engagement at nkswitchtol
+1e-6 — see `../convergence-strategy.md`, commits ef9fc10d/54c43475.)*
 
 ## A3. Onde converge
 
-`s809_v2/mesh_L1`: **11.5–12.4 ordens** com vis4 de 0.0156 até 0.005, a
+`05_mesh_independence/s809_v2` (mesh L1): **11.5–12.4 ordens** com vis4 de 0.0156 até 0.005, a
 α = 0 e 4 (matriz 2×5) e ao longo de todo o bucket até α = 7. O tail
 α ≥ 8 fica em ~5 ordens, como já acontecia no sweep L1 original.
 

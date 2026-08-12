@@ -1,5 +1,9 @@
 # SA → SA-γ-R̃e_θt Adjoint Plumbing Trace
 
+*Historical strata: header banners are dated snapshots (2026-05-20 base +
+later updates); §§1-12 are reference. Line numbers into `src/` have
+drifted — locate by symbol name.*
+
 **Repository**: `/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha`  
 **Date**: 2026-05-20  
 **Purpose**: Research-only paired inventory of adjoint/AD touchpoints
@@ -7,7 +11,9 @@
 > **Regeneration status (2026-07-07, audit):** Tapenade WAS rerun after the
 > `transitionRefLength` (272ff47c) and farfield-BC (701668a6) primal changes —
 > the regenerated `saGammaRetheta_{d,b,fast_b}.f90` and
-> `turbBCRoutines_{d,b,fast_b}.f90` sit **uncommitted in the working tree** and
+> `turbBCRoutines_{d,b,fast_b}.f90` sat uncommitted in the working tree at
+> the time *(2026-08-12: since committed — Tapenade has been regenerated
+> several times since; latest 2026-08-06, commit 2c4ce2c1)* and
 > verifiably contain both changes (vortLim `refLenTrans` branch; generic
 > farfield ghost form, old `2*wInf` special case removed). Build compiles and
 > imports with them.
