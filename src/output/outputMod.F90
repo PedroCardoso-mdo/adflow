@@ -216,6 +216,9 @@ contains
         if (surfWriteTransQQ11) nSolVar = nSolVar + 1
         if (surfWriteTransQQ22) nSolVar = nSolVar + 1
         if (surfWriteTransQQ33) nSolVar = nSolVar + 1
+        if (surfWriteTransDScf) nSolVar = nSolVar + 1
+        if (surfWriteTransReScf) nSolVar = nSolVar + 1
+        if (surfWriteTransHcf) nSolVar = nSolVar + 1
 
     end subroutine numberOfSurfSolVariables
 
@@ -317,6 +320,9 @@ contains
         if (volWriteTransQQ11) nVolSolvar = nVolSolvar + 1
         if (volWriteTransQQ22) nVolSolvar = nVolSolvar + 1
         if (volWriteTransQQ33) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransDScf) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransReScf) nVolSolvar = nVolSolvar + 1
+        if (volWriteTransHcf) nVolSolvar = nVolSolvar + 1
 
         ! Check the discrete variables.
 
@@ -837,6 +843,9 @@ contains
         if (volWriteTransQQ11) then; nn = nn + 1; solNames(nn) = cgnsTransQQ11; end if
         if (volWriteTransQQ22) then; nn = nn + 1; solNames(nn) = cgnsTransQQ22; end if
         if (volWriteTransQQ33) then; nn = nn + 1; solNames(nn) = cgnsTransQQ33; end if
+        if (volWriteTransDScf) then; nn = nn + 1; solNames(nn) = cgnsTransDScf; end if
+        if (volWriteTransReScf) then; nn = nn + 1; solNames(nn) = cgnsTransReScf; end if
+        if (volWriteTransHcf) then; nn = nn + 1; solNames(nn) = cgnsTransHcf; end if
 
     end subroutine volSolNames
 
@@ -1042,6 +1051,9 @@ contains
         if (surfWriteTransQQ11) then; nn = nn + 1; solNames(nn) = cgnsTransQQ11; end if
         if (surfWriteTransQQ22) then; nn = nn + 1; solNames(nn) = cgnsTransQQ22; end if
         if (surfWriteTransQQ33) then; nn = nn + 1; solNames(nn) = cgnsTransQQ33; end if
+        if (surfWriteTransDScf) then; nn = nn + 1; solNames(nn) = cgnsTransDScf; end if
+        if (surfWriteTransReScf) then; nn = nn + 1; solNames(nn) = cgnsTransReScf; end if
+        if (surfWriteTransHcf) then; nn = nn + 1; solNames(nn) = cgnsTransHcf; end if
 
     end subroutine surfSolNames
 
@@ -1675,7 +1687,8 @@ contains
               cgnsTransFturb, cgnsSAStrainRate, cgnsSAModStrainRate, cgnsTransFt2, &
               cgnsTransThetaBL, cgnsTransDeltaBL, cgnsTransDelta, cgnsTransVelMag, &
               cgnsTransDUds, cgnsTransNutSA, cgnsTransReThetaTilde, cgnsTransVortLim, &
-              cgnsTransQQ11, cgnsTransQQ22, cgnsTransQQ33)
+              cgnsTransQQ11, cgnsTransQQ22, cgnsTransQQ33, &
+              cgnsTransDScf, cgnsTransReScf, cgnsTransHcf)
 
             dbgVar = 0
             select case (solName)
@@ -1773,6 +1786,12 @@ contains
                 dbgVar = 47
             case (cgnsTransQQ33)
                 dbgVar = 48
+            case (cgnsTransDScf)
+                dbgVar = 49
+            case (cgnsTransReScf)
+                dbgVar = 50
+            case (cgnsTransHcf)
+                dbgVar = 51
             end select
 
             do k = kBeg, kEnd
@@ -2706,7 +2725,8 @@ contains
               cgnsTransFturb, cgnsSAStrainRate, cgnsSAModStrainRate, cgnsTransFt2, &
               cgnsTransThetaBL, cgnsTransDeltaBL, cgnsTransDelta, cgnsTransVelMag, &
               cgnsTransDUds, cgnsTransNutSA, cgnsTransReThetaTilde, cgnsTransVortLim, &
-              cgnsTransQQ11, cgnsTransQQ22, cgnsTransQQ33)
+              cgnsTransQQ11, cgnsTransQQ22, cgnsTransQQ33, &
+              cgnsTransDScf, cgnsTransReScf, cgnsTransHcf)
 
             ! Transition debug fields: map face (i,j) → 3D cell based on faceID.
             ! transitionDebug is indexed (2:il, 2:jl, 2:kl, slot).
@@ -2759,6 +2779,9 @@ contains
             case (cgnsTransQQ11);       dbgSlot = 46
             case (cgnsTransQQ22);       dbgSlot = 47
             case (cgnsTransQQ33);       dbgSlot = 48
+            case (cgnsTransDScf);       dbgSlot = 49
+            case (cgnsTransReScf);      dbgSlot = 50
+            case (cgnsTransHcf);        dbgSlot = 51
             end select
 
             do j = rangeFace(2, 1), rangeFace(2, 2)

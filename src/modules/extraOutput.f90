@@ -54,6 +54,7 @@ module extraOutput
     logical :: volWriteTransVelMag, volWriteTransDUds, volWriteTransNutSA
     logical :: volWriteTransReThetaTilde, volWriteTransVortLim
     logical :: volWriteTransQQ11, volWriteTransQQ22, volWriteTransQQ33
+    logical :: volWriteTransDScf, volWriteTransReScf, volWriteTransHcf
     ! Surface write flags for transition debug variables (all 29 slots)
     logical :: surfWriteFonset, surfWriteFonset1, surfWriteFlength, surfWriteRturb
     logical :: surfWriteReThetaTarget, surfWriteReS, surfWriteReThetaC, surfWriteReSOverCrit
@@ -72,6 +73,7 @@ module extraOutput
     logical :: surfWriteTransVelMag, surfWriteTransDUds, surfWriteTransNutSA
     logical :: surfWriteTransReThetaTilde, surfWriteTransVortLim
     logical :: surfWriteTransQQ11, surfWriteTransQQ22, surfWriteTransQQ33
+    logical :: surfWriteTransDScf, surfWriteTransReScf, surfWriteTransHcf
 !
 !       The logical variables, which define the isosurface variables
 !       to be written.

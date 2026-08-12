@@ -2425,6 +2425,8 @@ contains
         surfWriteTransReThetaTilde = .false.; surfWriteTransVortLim = .false.
         surfWriteTransQQ11 = .false.; surfWriteTransQQ22 = .false.
         surfWriteTransQQ33 = .false.
+        surfWriteTransDScf = .false.; surfWriteTransReScf = .false.
+        surfWriteTransHcf = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2748,6 +2750,18 @@ contains
                 surfWriteTransQQ33 = .true.
                 nVarSpecified = nVarSpecified + 1
 
+            case ("dscf")
+                surfWriteTransDScf = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rescf")
+                surfWriteTransReScf = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("hcf")
+                surfWriteTransHcf = .true.
+                nVarSpecified = nVarSpecified + 1
+
             case default
                 pos = len_trim(keyword)
                 write (errorMessage, "(3a)") "Unknown surface output &
@@ -2846,6 +2860,8 @@ contains
         volWriteTransReThetaTilde = .false.; volWriteTransVortLim = .false.
         volWriteTransQQ11 = .false.; volWriteTransQQ22 = .false.
         volWriteTransQQ33 = .false.
+        volWriteTransDScf = .false.; volWriteTransReScf = .false.
+        volWriteTransHcf = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -3183,6 +3199,18 @@ contains
 
             case ("qq33")
                 volWriteTransQQ33 = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("dscf")
+                volWriteTransDScf = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("rescf")
+                volWriteTransReScf = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("hcf")
+                volWriteTransHcf = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default

@@ -266,6 +266,12 @@ module cgnsNames
     character(len=maxCGNSNameLen), parameter :: &
         cgnsTransQQ33 = "TransitionQQ33"
     character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransDScf = "TransitionDScf"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransReScf = "TransitionReScf"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsTransHcf = "TransitionHcf"
+    character(len=maxCGNSNameLen), parameter :: &
         cgnsTransRho = "TransitionRho"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsTransMu = "TransitionMu"
