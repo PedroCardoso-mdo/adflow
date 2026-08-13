@@ -4962,7 +4962,7 @@ contains
         use blockPointers, only: nDom, flowDoms, shockSensor, ib, jb, kb, p, w, gamma
         use inputPhysics, only: equations, turbModel
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
-                                  solverStallDiag, solverStallDiagStep
+                                  solverStallDiag, solverStallDiagStep, ankCFLMinCap
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
@@ -5094,6 +5094,13 @@ contains
 
             ! First of all, update the minimum cfl wrt the overall convergence
             ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase * (totalR0 / totalR)**ANK_CFLExponent)
+
+            ! VERIF_06 F1: cap how far that ramp may carry the floor. Without a
+            ! cap the floor reaches ANK_CFLLimit at depth and the cutback below
+            ! becomes a no-op, so the controller can never back off a bad step.
+            ! This is the analogue of the thesis's user-specified dt_ref,min
+            ! (§3.1.3, Algorithms 2 and 4). <= 0 => disabled (previous behaviour).
+            if (ankCFLMinCap > zero) ANK_CFLMin = min(ANK_CFLMin, ankCFLMinCap)
 
             ! Update the CFL number depending on the outcome of the last iteration
             stallCFLBefore = ANK_CFL

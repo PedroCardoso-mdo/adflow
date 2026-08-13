@@ -1139,6 +1139,7 @@ python module libadflow
          integer(kind=inttype) :: transitiondampmaxiter
          logical :: solverstalldiag
          real(kind=realtype) :: solverstalldiagstep
+         real(kind=realtype) :: ankcflmincap
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

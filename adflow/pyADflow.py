@@ -5912,6 +5912,11 @@ class ADFLOW(AeroSolver):
             # iterations whose accepted step is below it (1.0 => every iter).
             "solverStallDiag": [bool, False],
             "solverStallDiagStep": [float, 1.0],
+            # VERIF_06 F1: absolute ceiling on the convergence-ramped ANK CFL
+            # floor, so the CFL cutback keeps room to act at depth (the
+            # analogue of the thesis's user-specified dt_ref,min).
+            # <= 0 => disabled, floor ramps exactly as before.
+            "ANKCFLMinCap": [float, 0.0],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6333,6 +6338,7 @@ class ADFLOW(AeroSolver):
             "transitionreflength": ["iter", "transitionreflength"],
             "solverstalldiag": ["iter", "solverstalldiag"],
             "solverstalldiagstep": ["iter", "solverstalldiagstep"],
+            "ankcflmincap": ["iter", "ankcflmincap"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {

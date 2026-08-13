@@ -422,6 +422,26 @@ module inputIteration
     logical :: solverStallDiag = .false.
     real(kind=realType) :: solverStallDiagStep = 1.0_realType
 
+    ! ------------------------------------------------------------------
+    ! ANK/CANK CFL floor cap (VERIF_06 F1).
+    !
+    ! ADflow ramps the CFL floor with convergence,
+    !     ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase*(totalR0/totalR)**ANK_CFLExponent),
+    ! and every CFL update is clipped from below by it. At depth the floor
+    ! reaches ANK_CFLLimit, at which point the cutback
+    !     ANK_CFL = max(ANK_CFL*ANK_CFLCutback, ANK_CFLMin)
+    ! cannot reduce ANK_CFL at all -- the coupled step controller loses its
+    ! only recovery mechanism exactly when a collapsing step needs it, and
+    ! the solver limit-cycles (huge CFL -> bad step -> backtrack -> repeat).
+    !
+    ! Piotrowski's thesis (§3.1.3, Algorithms 2 and 4) instead halves the
+    ! reference time step against a USER-SPECIFIED bound, dt_ref,min. This
+    ! option supplies that bound: an absolute ceiling on how far the ramped
+    ! floor may rise, so the cutback always has room to act.
+    !
+    ! <= 0 (default) => disabled, floor ramps exactly as before.
+    real(kind=realType) :: ankCFLMinCap = 0.0_realType
+
 end module inputIteration
 
 module inputCostFunctions
