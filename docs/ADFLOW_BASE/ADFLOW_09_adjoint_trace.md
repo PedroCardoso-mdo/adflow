@@ -31,7 +31,7 @@ drifted — locate by symbol name.*
 > The redundant `orderTurb` swap in `saGammaReTheta_block` was removed
 > (2026-07-08): it covered only the decoupled path and mutated a global,
 > invisible to the AD sweeps; the in-`turbAdvection` guard is the single
-> point of truth. Full finding/fix record: `docs/_archive/06_adjoint_wiring.md`.
+> point of truth. Full finding/fix record: `docs/ARCHIVE/ARCHIVE_01_adjoint_wiring.md`.
 >
 > **Why uInf/muInf are in the residual at all (and the design choice):** the
 > cap `vortLim = uInf·√(uInf/(muInf·l))/20` is ADflow's p-ρ spelling of the
@@ -51,7 +51,7 @@ drifted — locate by symbol name.*
 ## Tapenade regeneration 2026-08-04 — AD debt paid + a reusable gotcha
 
 Triggered by making `epsAcoustic`/`epsShear` runtime options (see
-`core/architecture.md`, "Matrix-dissipation eigenvalue limiters"): the generated
+`CORE_BASE/CORE_01_architecture.md`, "Matrix-dissipation eigenvalue limiters"): the generated
 `fluxes_*.f90` had those values baked in as local `parameter`s and had to be
 regenerated. Regenerate with `./AD_I.sh` from the repo root (runs
 `ad_forward`, `ad_reverse`, `ad_reverse_fast`, then `make`; it does **not**

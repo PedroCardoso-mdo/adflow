@@ -127,14 +127,14 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > Dimensional test: a threshold on Ω (1/s) built from freestream ρ, U, μ alone
 > *needs* a length — nothing else cancels it. Handled by the
 > `transitionRefLength` option (auto = AeroProblem `chordRef`; see
-> `../core/architecture.md` Part 2).
+> `../CORE_BASE/CORE_01_architecture.md` Part 2).
 >
 > **Rotating-frame update (2026-07-23).** `uInf` is meaningless on a rotor
 > (hover ⇒ `uInf→0` ⇒ the cap collapses and kills γ). The velocity in the cap is
 > now the blade-element section speed `U_ref = √(uInf² + |Ω×r|²)` (`|Ω×r| = |sc|`,
 > the local rotational grid velocity). It reduces to `uInf` **exactly** when Ω=0
 > (bit-identical no-op for every inertial case) and to the local blade speed in
-> hover. See `VERIFICATION/rotating-frame-audit.md`.
+> hover. See `VERIFICATION/VERIF_02_rotating_frame_audit.md`.
 >
 > **AD corollary (2026-07-07):** because `uInf`/`muInf` are the code's spelling
 > of the paper's freestream M and Re, the cap makes the *residual* depend on
@@ -145,8 +145,8 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > `muInf` must be declared active independents of `saGammaRetheta%Source` in
 > `Makefile_tapenade`, else Tapenade emits `vortlimd = 0` and `dR/dMach`-type
 > partials lose the limiter path in capped cells (state partials dR/dw are
-> unaffected). Details + frozen-cap alternative: `VERIFICATION/adjoint-trace.md` header and
-> `../_archive/adjoint_audit_2026-07-07.md` §3.
+> unaffected). Details + frozen-cap alternative: `ADFLOW_BASE/ADFLOW_09_adjoint_trace.md` header and
+> `../ARCHIVE/ARCHIVE_03_adjoint_audit_2026-07-07.md` §3.
 
 ## 6. Crossflow (D_scf) term dimension status
 
@@ -162,7 +162,7 @@ Where each new quantity lands dimensionally in the code:
 |---|---|---|---|
 | θt (`thetaBL`) | Re̅θt·μ/(ρU)·(1/Re) (Eq. 4) | `reThetaTilde*nu/velMag` | physical momentum thickness — non-dim by L_ref=1 m ⇒ **value in metres**. `velMag` is now the **relative** velocity `|V_rel|` (rotating-frame; = `|V_abs|` when Ω=0). |
 | h (`transitionRoughnessHeight`) | `h/θt` (Eq. 17) | input, default `3.3e-6` | physical roughness length — **must be in mesh units (metres)**; 3.3e-6 = 3.3 µm |
-| H_cf (`hcf`) | d·Ω_sw/U (Eq. 26) | `yDist*abs(Û_rel·ω_rel)/velMag_rel` | **dimensionless**. Uses **relative** velocity and **relative** vorticity (`vortx = curl − 2Ω`) — helicity `U·ω` is not frame-invariant. = old absolute form when Ω=0. See `VERIFICATION/rotating-frame-audit.md`. |
+| H_cf (`hcf`) | d·Ω_sw/U (Eq. 26) | `yDist*abs(Û_rel·ω_rel)/velMag_rel` | **dimensionless**. Uses **relative** velocity and **relative** vorticity (`vortx = curl − 2Ω`) — helicity `U·ω` is not frame-invariant. = old absolute form when Ω=0. See `VERIFICATION/VERIF_02_rotating_frame_audit.md`. |
 | Re_scf (`reScf`) | correlation (Eq. 17) | `-35.088·ln(h/θt)+319.51+f(ΔH⁺)−f(ΔH⁻)` | **physical Reynolds number** (calibrated correlation) |
 | D_scf (`dScf`) | (c_θt/t)·c_cf·min(Re_scf−Re̅θt,0)·F_θt (Eq. 15) | `(rsaGRcthetat/timeScale)*…` | **Re/time**, same units as `P_θt`; no explicit Re |
 
@@ -173,7 +173,7 @@ numbers. No explicit paper `Re` factor appears in any crossflow term — per §5
 
 ---
 
-**See also:** [`core/architecture.md`](../core/architecture.md) (state-vector layout,
+**See also:** [`CORE_BASE/CORE_01_architecture.md`](../CORE_BASE/CORE_01_architecture.md) (state-vector layout,
 `rlv`/`rev`/`timeRef` usage, crossflow options) and the full paper,
-[`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](../SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md)
+[`SA_GAMMA_RETHETHA_BASE/SAGR_01_paper_piotrowski_zingg_2020.md`](../SA_GAMMA_RETHETHA_BASE/SAGR_01_paper_piotrowski_zingg_2020.md)
 (equations that consume these non-dimensional quantities).

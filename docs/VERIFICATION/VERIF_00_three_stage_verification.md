@@ -119,7 +119,7 @@ the differentiated code actually compute the derivative of the primal
 code**, independent of any specific functional or DV. It does not check
 whether the adjoint *total* sensitivities match a physical/trained
 reference — that is `test_adjoint_sagr.py`'s job (the `adjoint` stage). Read
-`VERIFICATION/debugging_derivatives.md` first for the generic
+`VERIFICATION/VERIF_01_debugging_derivatives.md` first for the generic
 FD→dot-product→CS theory behind why each stage below is structured the
 way it is.
 

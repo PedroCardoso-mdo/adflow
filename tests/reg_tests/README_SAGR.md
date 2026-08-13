@@ -3,7 +3,7 @@
 Test scaffolding for verifying the SA-GR transition model's AD derivatives
 (Tapenade forward `_d`, reverse `_b`, reverse-fast `_fast_b`) against finite
 differences and the complex-step (CS) build. Written per
-`docs/_archive/08_test_prep.md`; background in `docs/_archive/06_adjoint_wiring.md`.
+`docs/ARCHIVE/ARCHIVE_02_test_prep.md`; background in `docs/ARCHIVE/ARCHIVE_01_adjoint_wiring.md`.
 
 **2026-07-23: case is the SA tutorial-wing grid** (`mdo_tutorial_sagr_dp.cgns`,
 an NK-converged state on the standard ADflow tutorial-wing mesh at Mach=0.15,
@@ -106,7 +106,7 @@ They mirror the upstream SA suite one-to-one:
   `setUp` overrides `ankadpc/nkadpc=False` + `ankcoupledswitchtol=1e-16` so the
   complex primal re-converges with FD-colored PC on the decoupled ANK→NK path
   (otherwise it aborts with "Forward AD routines are not complexified"). That
-  FD-PC path stalls ~1e-8 (`docs/core/convergence-strategy.md`: FD-PC weak on
+  FD-PC path stalls ~1e-8 (`docs/CORE_BASE/CORE_02_convergence_strategy.md`: FD-PC weak on
   SA-GR), so the complex
   functions — and hence CS-vs-adjoint agreement — cap at ~1e-8 absolute. The
   adjoint totals are correct to that level; **resolved 2026-07-24**: the
@@ -139,7 +139,7 @@ get-input-files.sh`); this script is the SA-GR equivalent. As of 2026-07-23
 it converges the **tutorial-wing grid** with SA-GR (mach=0.15, α=1.8 — read
 `reg_sagr.py`'s header for the case rationale; the earlier AR5 plain-wing
 target stalled chronically) through the validated ANK→CANK→NK ladder
-(`docs/core/convergence-strategy.md`) and writes a grid+solution CGNS containing
+(`docs/CORE_BASE/CORE_02_convergence_strategy.md`) and writes a grid+solution CGNS containing
 all 8 states (the SA-GR restart set includes Intermittency/ReThetat —
 `outputMod.F90`) into `input_files/` (gitignored). Still writes the file
 with a WARNING if `L2Convergence` isn't reached within `ncycles` (see the

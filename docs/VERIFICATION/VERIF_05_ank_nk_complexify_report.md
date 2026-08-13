@@ -114,7 +114,7 @@ only `realType` and comparisons — no raw casts — so it is complex-clean too.
   - Stage 3 **AD = CS = 3.3256409775e+13** on the fresh complex lib — no stale
     artifacts.
 
-Full procedure/results: `docs/VERIFICATION/three-stage-verification.md`.
+Full procedure/results: `docs/VERIFICATION/VERIF_00_three_stage_verification.md`.
 
 ---
 

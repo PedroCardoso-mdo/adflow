@@ -1,7 +1,7 @@
 # TODO — SA-gamma-Retheta
 
 Lista de itens de tuning/melhoria futuros, decididos mas adiados. Não são
-defeitos: cada um foi analisado e fechado em `design-decisions.md` (referência
+defeitos: cada um foi analisado e fechado em `CORE_03_design_decisions.md` (referência
 em cada item). Só atacar quando houver sintoma concreto (run que estagna,
 custo excessivo) ou quando o modelo estiver fisicamente validado.
 
@@ -11,7 +11,7 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
   auto no código já É o valor de campanha `[1e4, 0.1, 1e-4]`
   (`pyADflow.py:~6834`, ~1/magnitude de estado por equação, P&Z §IV.1). A
   reconciliação pedida na nota de 2026-07-16 aconteceu no código; o registo
-  D-A2-4 em `design-decisions.md` ficou histórico (argumentava pelos
+  D-A2-4 em `CORE_03_design_decisions.md` ficou histórico (argumentava pelos
   valores antigos `[1e4, 10, 1e4]`).
 
 ## Solver profundo (da campanha de convergência 2026-07-14→16)
@@ -20,7 +20,7 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
   esgotado. **Diagnóstico fechado 2026-08-07/12** (commits `ef9fc10d` +
   estudo ILU): EW-off falsificado, JacLag sem efeito, ILU(3) pior — é o PC,
   não há alavanca de opções. Itens de código por ordem de impacto em
-  `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items"):
+  `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §8 ("Open code items"):
   PC mais forte (agora o item decisivo), physicality check ρ/E no NK. Case
   dir: `03_convergence_strategy/3d_plain_wing/solver_code_items/`. Testbed:
   `best_strategy/restarts/r3_deepest_record_rel3.3e-9_dp.cgns`.
@@ -33,7 +33,7 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 
 
 - [ ] **Verificar se a cauda do DADI fica lenta demais com a Eq. 59 sempre
-  ativa** (de D-A2-3, `design-decisions.md`). No DADI a restrição
+  ativa** (de D-A2-3, `CORE_03_design_decisions.md`). No DADI a restrição
   aditiva de fonte nunca desativa (fiel ao paper — fase de globalização), mas
   os autovalores de fonte podem ficar grandes até ao fim ⇒ cauda assintótica
   potencialmente lenta na frente de transição em runs DADI-only profundos.
@@ -43,11 +43,11 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
   (default), (b) `False`, (c) `transitionSrcDtLimit: 2.0–5.0`. Se (a) for
   visivelmente mais lenta: subir `transitionSrcDtLimit` em runtime ou
   desligar a restrição tarde no run; alternativa de 1 linha (soma depois do
-  `factor`) já documentada em `design-decisions.md` §D-A2-2.
+  `factor`) já documentada em `CORE_03_design_decisions.md` §D-A2-2.
 
 ## Desempenho
 
-- [ ] **Blockettes para SA-GR** (de N-A2-6, `design-decisions.md`).
+- [ ] **Blockettes para SA-GR** (de N-A2-6, `CORE_03_design_decisions.md`).
   `useBlockettes` forçado a False (`pyADflow.py:~6824`). **Atualização
   2026-07-24:** os kernels blockette SA-GR JÁ estão implementados,
   re-sincronizados e testados (`test_blockette_sagr.py`,
@@ -81,7 +81,7 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
   `dev/check_3way_fwd.py` once their mesh/`--crossflow` flags are no longer
   wanted. ~~rename `_flatplate` refs~~ — done 2026-07-23 (`*_sagr_tut_wing.json`).
 
-## Adjoint / partials (de `../_archive/adjoint_audit_2026-07-07.md`, 2026-07-07)
+## Adjoint / partials (de `../ARCHIVE/ARCHIVE_03_adjoint_audit_2026-07-07.md`, 2026-07-07)
 
 - [x] **Rerun Tapenade** (`uInf, muInf` no head do `Source`) — **FEITO**:
   `Makefile_tapenade:187` tem `uInf, muInf`, `vortlimd = 0.0_8` já não
@@ -90,7 +90,7 @@ custo excessivo) ou quando o modelo estiver fisicamente validado.
 - [ ] **Decisão em aberto (default = diferenciar):** cap do limitador de
   vorticidade diferenciado vs congelado ("frozen limiter"). Se preferir
   congelar: reverter a linha do `Makefile_tapenade` e documentar; dR/dw é
-  idêntico nas duas opções. Análise: `VERIFICATION/adjoint-trace.md` header.
+  idêntico nas duas opções. Análise: `ADFLOW_BASE/ADFLOW_09_adjoint_trace.md` header.
 - [ ] **Ao testar partials:** (a) se o dot-product BWDFast falhar, suspeitar
   primeiro do stripping push/pop do `autoEditReverseFast.py` (partiu o
   fast_b do SST upstream — foi desativado lá, continua ativo neste branch);

@@ -58,7 +58,7 @@ their existing cases untouched.
   complexify-build bugs blocking the complex ADflow build") and `72325c8c`
   ("Stage-3 CS re-confirmed on freshly rebuilt complex lib") — the complex
   library was rebuilt and the complex-step derivative check passed. See
-  `docs/VERIFICATION/three-stage-verification.md`.
+  `docs/VERIFICATION/VERIF_00_three_stage_verification.md`.
 
 **Caveat:** the *soft-damping print diagnostics* (`applyNKAlgorithm2Damping`)
 do `print *,` counts — harmless to complex, but they are runtime chatter, not
@@ -142,4 +142,4 @@ runtime latches**, reset each solve — not user knobs.
 2. **SA-GR bundle on/off** — same case with `transitionNK=.true.` vs
    `.false.`: same *converged* state, different iteration history.
 3. **Complex-step** — rerun the Stage-3 CS check
-   (`docs/VERIFICATION/three-stage-verification.md`).
+   (`docs/VERIFICATION/VERIF_00_three_stage_verification.md`).

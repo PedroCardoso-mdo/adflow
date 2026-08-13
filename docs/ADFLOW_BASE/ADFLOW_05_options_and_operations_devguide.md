@@ -392,7 +392,7 @@ Format: **`optionName`** — `type` = default — then description and (where ap
 
 **`flowType`** — `str` = `external` — `external` (extensively tested); `internal` (not well tested).
 
-**`turbulenceModel`** — `str` = `SA` — `SA`: Spalart-Allmaras — recommended for external aero and the **only** turbulence model that has been differentiated and the only one tested. Others: `SA-Edwards`; `k-omega Wilcox`; `k-omega modified`; `k-tau`; `Menter SST`; `v2f`. *(Branch note 2026-08-12: this branch adds `SA-noft2-Gamma-Retheta`; "only SA differentiated" is stale here — SA-GR is Tapenade-differentiated and verified, see `../VERIFICATION/three-stage-verification.md`.)*
+**`turbulenceModel`** — `str` = `SA` — `SA`: Spalart-Allmaras — recommended for external aero and the **only** turbulence model that has been differentiated and the only one tested. Others: `SA-Edwards`; `k-omega Wilcox`; `k-omega modified`; `k-tau`; `Menter SST`; `v2f`. *(Branch note 2026-08-12: this branch adds `SA-noft2-Gamma-Retheta`; "only SA differentiated" is stale here — SA-GR is Tapenade-differentiated and verified, see `../VERIFICATION/VERIF_00_three_stage_verification.md`.)*
 
 **`turbulenceOrder`** — `str` = `first order` — `first order`: recommended (adjoint systems much easier to solve). `second order`: not typically used.
 

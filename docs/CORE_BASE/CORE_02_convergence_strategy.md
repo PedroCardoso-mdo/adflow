@@ -17,7 +17,7 @@ Full evidence: `03_convergence_strategy/3d_plain_wing/_old/campaign_2026-07-14_t
 `long_overnight/DECISIONS.md`, logs in `long_overnight/` (referred to as
 `RUN/` below). Solver background: `ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md` (upstream —
 its NK/EW advice is overridden by the measurements here). Why ADflow differs
-from the paper's solver: `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md`.
+from the paper's solver: `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md`.
 
 ## The recipe (phase ladder)
 
@@ -93,7 +93,7 @@ Deep endgame below rel ~1e-8: the NK linear solve saturates (lin res
 0.8-0.99, GMRES 200-300 exhausted, 60-200 evals/iter) regardless of
 engagement point, JacobianLag, or subspace size. Root causes and code items
 (per-node Alg. 2 damping, source-dt reactivation inside NK, stronger PC) in
-`SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items"). Deepest state for PC experiments:
+`SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §8 ("Open code items"). Deepest state for PC experiments:
 `best_strategy/restarts/r3_deepest_record_rel3.3e-9_dp.cgns`. Note the
 wall's depth scales with how settled the field is (from the fully-settled
 40k field, NK reached rel 6.4e-11 before the same wall — nk_colscale_test).
@@ -132,7 +132,7 @@ together and passes that rho once NK runs to target.
   it cannot reach even that loose target. So EW is not what starves the deep
   NK iterations; the preconditioner alone is. This kills the last
   option-level lever: the deep wall is only addressable by the code items in
-  `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items"). Same run confirmed the wall is not an
+  `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §8 ("Open code items"). Same run confirmed the wall is not an
   engagement-point artefact either — NK entered at the correct rel 5e-8 (not
   1e-6) and merely re-attained the depth CSANK had already reached, with the
   linear residual DEGRADING 0.80 -> 0.97 as it went.
@@ -164,7 +164,7 @@ together and passes that rho once NK runs to target.
   duplicated halos) — 128 ranks on 2 nodes OOM'd a case that ran at 128 ranks on
   4 nodes. Scale ranks with nodes, not within them.
 - Verdict: no remaining option is likely to move the deep-NK wall; the real
-  fixes are the code items in `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §8 ("Open code items").
+  fixes are the code items in `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §8 ("Open code items").
 
 ## Index of everything tested (read the log only if you need the details)
 

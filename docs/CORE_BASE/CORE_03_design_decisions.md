@@ -15,11 +15,11 @@ point-in-time audit trail lives in `../_archive/`. The old `findings/`
 dir's four files (`A1`/`A2`/`A3`/`A_confirmacao`) were folded into this
 single file 2026-07-09 to cut doc sprawl — nothing below lost information,
 only the exploratory back-and-forth was trimmed. `D1_transitionRefLength` is
-not repeated here — it's fully covered in `architecture.md` (Part 2,
+not repeated here — it's fully covered in `CORE_01_architecture.md` (Part 2,
 `transitionRefLength` option) and `../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` §5 exception.
 
 Status: A1-A3 fully closed. A4 (adjoint) closed with follow-up work tracked
-in `TODO.md` and `current-task.md`.
+in `CORE_04_todo.md` and `CORE_00_current_task.md`.
 
 ---
 
@@ -52,7 +52,7 @@ in `TODO.md` and `current-task.md`.
   factor instead of two independent per-variable back-off loops). The code
   was correct in every case; only the distilled doc was wrong.
 - Decision (2026-07-07): the distilled doc was deleted. The full paper text
-  (`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_...md`) is the sole physics
+  (`SA_GAMMA_RETHETHA_BASE/SAGR_01_paper_piotrowski_zingg_2020.md`) is the sole physics
   reference (CLAUDE.md rule 9).
 
 ---
@@ -90,7 +90,7 @@ in `TODO.md` and `current-task.md`.
 - **DADI**: never deactivates — correct, since DADI *is* the
   approximate-Newton globalization phase the paper says stays restricted.
   Runtime-tunable without recompiling (`transitionSrcDtRestrict`,
-  `transitionSrcDtLimit`). Open question tracked in `TODO.md`: whether the
+  `transitionSrcDtLimit`). Open question tracked in `CORE_04_todo.md`: whether the
   DADI tail slows down visibly with the restriction always on.
 - **turbKSP**: had 3 bugs vs the paper, all fixed 2026-07-07 in
   `NKSolvers.F90` (`ANKTurbSolveKSP`, ~lines 3505-3792):
@@ -128,7 +128,7 @@ in `TODO.md` and `current-task.md`.
 - Future correct calibration (if a coupled run stalls on a turb residual
   line): *measure*, don't transfer ratios — print scaled per-equation
   residual norms on a representative case and tune via runtime
-  `turbresscale`. Tracked in `TODO.md`.
+  `turbresscale`. Tracked in `CORE_04_todo.md`.
 
 ### D-A2-5 — Per-variable damping (Algorithm 2), not a single scalar factor — code matches paper
 
@@ -154,7 +154,7 @@ in `TODO.md` and `current-task.md`.
   (`blocketteResCore` doesn't implement it) — all matrix-free ANK/NK
   mat-vecs use the slower residual path. Performance cost, not correctness.
   User decision: leave for now; implement in `blocketteResCore` when
-  performance is evaluated. Tracked in `TODO.md`.
+  performance is evaluated. Tracked in `CORE_04_todo.md`.
 - *Update 2026-08-12: blockette kernels ARE implemented and tested since
   2026-07-24; only the pyADflow force-off remains (`pyADflow.py:~6824`).*
 
@@ -216,12 +216,12 @@ nothing needed changing. Only the divergences follow.
   activates γ — `initializeFlow.F90:2229-2245`). `eddyVisInfRatio` default
   1e-10 for SA-GR vs 0.009 (SA) — freestream quasi-laminar, consistent with
   a transition model. Physics validation of these values is on the user;
-  tracked in `TODO.md` ("gamma/Re̅θt initialization value").
+  tracked in `CORE_04_todo.md` ("gamma/Re̅θt initialization value").
 
 ### W6 — Stale doc claims (fixed where found)
 
-- `architecture.md` previously said γ's wall BC was Dirichlet (γ=0); it's
-  actually zero-gradient/Neumann (`bmt=-1`) — corrected in `architecture.md`.
+- `CORE_01_architecture.md` previously said γ's wall BC was Dirichlet (γ=0); it's
+  actually zero-gradient/Neumann (`bmt=-1`) — corrected in `CORE_01_architecture.md`.
   A stale file path/line-count reference to a nonexistent
   `saGammaRethetaHelpers.F90` was also corrected there (helpers actually
   live in `turbUtils.F90:2279-2410`).
@@ -231,9 +231,9 @@ nothing needed changing. Only the divergences follow.
 ## Provenance
 
 Original audit trails (now retired, folded in here 2026-07-09):
-`findings/A1` (nondim, folded into A1 section above + `architecture.md` +
+`findings/A1` (nondim, folded into A1 section above + `CORE_01_architecture.md` +
 `../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md`), `findings/A2_convergencia.md`,
 `findings/A3_coerencia.md`, `findings/A_confirmacao.md`,
-`findings/D1_transitionRefLength.md` (folded into `architecture.md` Part 2
+`findings/D1_transitionRefLength.md` (folded into `CORE_01_architecture.md` Part 2
 + `../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` §5). A4 (adjoint) findings live alongside
 this file in `adjoint_audit_2026-07-07.md` and `sst_dev_lessons.md`.
