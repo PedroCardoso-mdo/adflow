@@ -4148,6 +4148,98 @@ contains
 
     end subroutine applyANKAlgorithm2Damping
 
+    subroutine reportScaledStateStats(wv, dw)
+        ! VERIF_06 F9 metric: per-variable statistics of the COLUMN-SCALED
+        ! state and update.
+        !
+        ! Why this matters. ANK/CANK and NK all build their Jacobian-vector
+        ! products with PETSc MFFD (MatCreateMFFD; MatMFFDSetType and
+        ! MatMFFDSetFunctionError are never called, so it is Dennis-Schnabel
+        ! with an assumed function error of machine epsilon). MFFD uses ONE
+        ! scalar differencing step h for the whole vector:
+        !     J*a ~ [F(u + h*a) - F(u)] / h
+        ! so the perturbation seen by component i is h*a_i. If the scaled
+        ! components span orders of magnitude, no single h can be small
+        ! relative to the large components AND large relative to the noise
+        ! floor of the small ones -- the columns belonging to the small
+        ! components come back as noise, and the Newton DIRECTION is wrong in
+        ! exactly those equations even though the linear solve converges
+        ! beautifully. That is the observed signature: Step = 1.00, linear
+        ! residual 0.02-0.04, and no progress.
+        !
+        ! ADflow reuses turbResScale for BOTH the row (residual) scaling in
+        ! setRVec and the column (variable) scaling here, whereas the thesis
+        ! keeps S_r and S_c as separate reciprocal roles (Eq. 3.6-3.8). Values
+        ! chosen to normalise residuals need not normalise variables.
+        !
+        ! This routine reports what the scaling actually achieves, so the fix
+        ! is chosen from data rather than from argument.
+        use constants
+        use flowVarRefState, only: nw, nt1, nt2
+        use communication, only: ADflow_comm_world, myid
+        use utils, only: EChk
+        implicit none
+
+        Vec wv, dw
+        integer(kind=intType) :: ierr, jj, nCells, l
+        real(kind=realType), pointer :: wPtr(:), dPtr(:)
+        real(kind=realType) :: cs(1:nw)
+        real(kind=alwaysRealType) :: sw(nw), sd(nw), mw(nw)
+        real(kind=alwaysRealType) :: swG(nw), sdG(nw), mwG(nw)
+        integer(kind=intType) :: nTot, nTotG
+        character(len=8) :: vname
+
+        call getFullColScale(cs, 1_intType, nw)
+        call VecGetArrayReadF90(wv, wPtr, ierr); call EChk(ierr, __FILE__, __LINE__)
+        call VecGetArrayReadF90(dw, dPtr, ierr); call EChk(ierr, __FILE__, __LINE__)
+
+        sw = zero; sd = zero; mw = zero
+        nCells = size(wPtr) / nw
+        do jj = 0, nCells - 1
+            do l = 1, nw
+                sw(l) = sw(l) + wPtr(jj * nw + l)**2
+                sd(l) = sd(l) + dPtr(jj * nw + l)**2
+                mw(l) = max(mw(l), abs(wPtr(jj * nw + l)))
+            end do
+        end do
+        nTot = nCells
+
+        call VecRestoreArrayReadF90(wv, wPtr, ierr); call EChk(ierr, __FILE__, __LINE__)
+        call VecRestoreArrayReadF90(dw, dPtr, ierr); call EChk(ierr, __FILE__, __LINE__)
+
+        call mpi_allreduce(sw, swG, nw, MPI_DOUBLE, mpi_sum, ADflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call mpi_allreduce(sd, sdG, nw, MPI_DOUBLE, mpi_sum, ADflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call mpi_allreduce(mw, mwG, nw, MPI_DOUBLE, mpi_max, ADflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call mpi_allreduce(nTot, nTotG, 1_intType, MPI_INTEGER, mpi_sum, ADflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        if (myid == 0) then
+            do l = 1, nw
+                if (l < nt1) then
+                    write (vname, "(a,i1)") 'flow', l
+                else if (l == nt1) then
+                    vname = 'nuTilde'
+                else if (l == nt1 + 1) then
+                    vname = 'gamma'
+                else
+                    vname = 'reTheta'
+                end if
+                ! rmsW/maxW are the SCALED magnitudes a single MFFD h has to
+                ! serve simultaneously; spread across rows is the diagnosis.
+                write (*, "(a,a8,a,es10.3,a,es10.3,a,es10.3,a,es10.3)") &
+                    " SCALEDIAG ", vname, &
+                    "  colScale=", cs(l), &
+                    "  rmsW=", sqrt(swG(l) / real(max(nTotG, 1), alwaysRealType)), &
+                    "  maxW=", mwG(l), &
+                    "  rmsDelta=", sqrt(sdG(l) / real(max(nTotG, 1), alwaysRealType))
+            end do
+        end if
+
+    end subroutine reportScaledStateStats
+
     subroutine setWVecANKScaled(wVec, lStart, lEnd)
         ! Pack the state into the PETSc vector in COLUMN-SCALED form:
         ! wVec = w * fac (fac = 1 for flow entries and for non-transition
@@ -5286,6 +5378,10 @@ contains
                 ANK_CFL = max(ANK_CFL, ANK_CFLMin)
 
             end if
+
+            ! F9 metric: report what the column scaling actually achieves,
+            ! at PC-reform cadence so the cost is negligible.
+            if (solverStallDiag .and. ANK_coupled) call reportScaledStateStats(wVec, deltaW)
 
             ! Record the total residuals when the PC is calculated.
             totalR_pcUpdate = totalR
