@@ -463,6 +463,45 @@ behind them.
 
 ---
 
+## F7 — Which paper items are in NK vs CANK/CSANK: each has half of Alg. 2/4
+
+> User, 2026-08-13: *"temos coisas implementadas no NK que vieram do paper,
+> também elas estão implementadas no CANK?"* — the necessary follow-up to F0's
+> revision. If CSANK is the paper's inexact-Newton phase, the ported machinery
+> has to be there, not only in NK.
+
+Checked by call-site enumeration, not by assumption:
+
+| Paper item | NK | CANK / CSANK |
+|---|---|---|
+| Eq. 59 source-Δt diagonal | `applyNKSrcDtDiagonal` (`:1514`) + `NKSrcDtMatMult` (`:1576`) | `dtInvSrc` in `computeTimeStepBlock` (`:3029-3045`) |
+| Eq. 59 `srcLambda` freeze | `:464` | `:5090` (coupled), `:4678`/`:4772` (turb) |
+| Eq. 59 deactivation counter | `:795-799` | `:5330-5338` — **plus the residual-rise leg NK lacks** (F5/`:4947`) |
+| Eq. 58 `S_r` row scale / `S_a` autoscale | `setRVec` | **the same `setRVec`** (`:5454`, `:5034`) |
+| Eq. 58 `S_c` column scale | `getNKColScale` (`:1476`) | `getFullColScale` (`:3991`) / `getTurbColScale` |
+| **Alg. 2 per-node γ/Re̅θt damping** | `applyNKAlgorithm2Damping` (`:760`) | **ABSENT** |
+| Alg. 2 physicality on ρ/E | **ABSENT** (F6) | `physicalityCheckANK` (`:5175`) |
+| Alg. 4 unsteady-residual line search | ABSENT (cubic Armijo instead) | present — it *is* the unsteady LS |
+
+**Verdict: the two solvers hold mirror-image halves of the paper's
+Algorithm-2/4 pair, and neither holds both.** `applyNKAlgorithm2Damping` has
+exactly one call site in the whole file (`:760`, inside `NKStep`); there is no
+`ANKStep` equivalent.
+
+**Why the gap exists, and why it deserves a re-test.** Per-cell Algorithm-2
+damping *was* tried in `physicalityCheckANK` and deliberately reverted — the
+comment at `:4241-4247` records that locally damped front cells made the update
+inconsistent across the transition front, the γ residual bounced, and it lost to
+the global-λ throttle. **But that comparison was run before F2**, i.e. against a
+global-λ controller that we now know was in a limit cycle it could not exit. The
+baseline it lost to was broken. Re-test after F2 lands, not before.
+
+**Minor inconsistency found in passing:** `getNKColScale` gates on
+`transitionNK .and. transitionNKActive`, `getFullColScale` gates on
+`transitionNK` only. If the NK auto-disable latch ever trips, NK's column
+scaling switches off while CANK's stays on. Inert today
+(`transitionNKAutoDisableTol = 0` never trips it) but worth aligning.
+
 ## Confirmed-MATCH rows (checked, no action)
 
 | Element | Source | Ours | Verdict |
