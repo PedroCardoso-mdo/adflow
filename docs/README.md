@@ -6,8 +6,9 @@ of docs:
 - **Project-specific** (`docs/CORE_BASE/`, `docs/VERIFICATION/`, `docs/ARCHIVE/`,
   `docs/task-log/`) — unique to the Piotrowski & Zingg (2020) γ-Re̅θt
   implementation on this branch.
-- **Reference KB** (`docs/ADFLOW_BASE/`, `docs/SA_GAMMA_RETHETHA_BASE/`) — distilled
-  extractions of the published papers and the official ADflow docs.
+- **Reference KB** (`docs/ADFLOW_BASE/`, `docs/SA_GAMMA_RETHETHA_BASE/`,
+  `docs/MICHAEL_PIOTROWSKI/`) — distilled extractions of the published papers
+  and the official ADflow docs.
 
 > **Read only the file(s) a task needs — never load the whole KB.** Every file
 > is self-contained on purpose (token discipline; see `../CLAUDE.md` rule 9).
@@ -39,7 +40,14 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Paper symbol ↔ code flag (ADflow solver) | `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md` → `ADFLOW_BASE/ADFLOW_01_flow_solver_theory.md` |
 | Rotating mesh / rotating frame of reference (rotor, propeller, turbine) | `VERIFICATION/VERIF_02_rotating_frame_audit.md` → `ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` (§5 vortLim, §6 crossflow) |
-| Why does the paper converge faster than ADflow / solver-algorithm gaps | `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` |
+| Why does the paper converge faster than ADflow / solver-algorithm gaps | `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` → `MICHAEL_PIOTROWSKI/MP_03_zingg2022_numerical_behaviour_digest.md` → `MICHAEL_PIOTROWSKI/MP_06_piotrowski_phd_thesis_digest.md` |
+| Linear-system row/column scaling (Eq. 58 `S_r`/`S_c`) — exponents, constants | `MICHAEL_PIOTROWSKI/MP_06_piotrowski_phd_thesis_digest.md` §1 (explicit matrix, thesis Eq. 3.7) |
+| Physicality check / update damping / line-search design for NK | `MICHAEL_PIOTROWSKI/MP_06_piotrowski_phd_thesis_digest.md` §2 (Algorithms 2/3/4 pseudocode) |
+| Which coupling (fully / turb-trans / trans / decoupled) and when | `MICHAEL_PIOTROWSKI/MP_03_zingg2022_numerical_behaviour_digest.md` |
+| Crossflow stalls, or wrong/upstream transition front with crossflow on | `MICHAEL_PIOTROWSKI/MP_05_zingg2023_compressibility_corrections_digest.md` §2-3 |
+| Transonic / compressibility corrections (`ψ`, `ψ_scf`, SA-sLM2015cc) | `MICHAEL_PIOTROWSKI/MP_05_zingg2023_compressibility_corrections_digest.md` §4 |
+| Clipping vs smooth min/max, residual kinks, exponential penalty functions | `MICHAEL_PIOTROWSKI/MP_01_zingg2019_lctm_newton_krylov_digest.md` |
+| Anything else from the Piotrowski publication set (2019-2026 + PhD thesis) | `MICHAEL_PIOTROWSKI/MP_00_context_index.md` |
 | S809/NLF0416 physics validation vs the paper — what was tested, eliminated, still open | `VERIFICATION/VERIF_03_paper_validation_campaign.md` |
 | Adjoint / AD theory (general) | `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` |
 | Implement or extend the adjoint / AD on **this branch** | `ADFLOW_BASE/ADFLOW_09_adjoint_trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
@@ -107,6 +115,24 @@ here too but are actively routed-to, so they moved out instead.
 | [SA_GAMMA_RETHETHA_BASE/SAGR_00_context_index.md](SA_GAMMA_RETHETHA_BASE/SAGR_00_context_index.md) | Sub-index for the transition physics KB. |
 | [SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md](SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md) | How ADflow's solver hierarchy (ANK/CANK/CSANK/NK, global-λ step control) differs from the paper's Newton–Krylov–Schur algorithm (Eq. 58 scaling, Alg. 2 per-node damping, Eq. 59 source-Δt + reactivation), why the paper converges in fewer iterations, what's ported, and the open code items. Grounded in the 2026-07-14/15 test campaign. |
 
+### Piotrowski publication set (`docs/MICHAEL_PIOTROWSKI/`)
+
+Complete works of Michael Piotrowski: all six papers plus the PhD thesis, each
+as a **`_full.md` transcript** (verbatim PDF text) and a **`_digest.md`** (what
+matters to this branch). Several of these **supersede parts of the 2020 paper**
+— crossflow structure, row scaling, coupling strategy.
+
+| File | What's in it |
+|------|--------------|
+| [MICHAEL_PIOTROWSKI/MP_00_context_index.md](MICHAEL_PIOTROWSKI/MP_00_context_index.md) | Sub-index + per-question routing + a map from our open code items to the file that speaks to each. **Start here.** |
+| [MP_01 …2019 (LCTM in a Newton-Krylov algorithm)](MICHAEL_PIOTROWSKI/MP_01_zingg2019_lctm_newton_krylov_digest.md) | Origin paper. Measured proof that **non-smooth residual kinks stall the solver at 1e-5 even with source-Δt stepping on**; exponential-penalty smooth min/max (with the denormal-avoidance switch); Gaussian `F_length`; scalar-vs-matrix dissipation matters for crossflow. |
+| [MP_02 …2020 (SA-sLM2015)](MICHAEL_PIOTROWSKI/MP_02_zingg2020_smooth_lctm_sa_digest.md) | The canonical paper — **use `SA_GAMMA_RETHETHA_BASE/SAGR_01` for its equations**; this digest is a pointer plus a table of what the later papers supersede. |
+| [MP_03 …2022 Special Session (Numerical behaviour)](MICHAEL_PIOTROWSKI/MP_03_zingg2022_numerical_behaviour_digest.md) | **The controlled convergence study**: 4 coupling strategies × source-Δt on/off × 3 geometries. Fully-coupled + source-Δt wins, and the ranking **inverts with case difficulty** — partial coupling stalls at 4-5 orders on hard 3D cases. |
+| [MP_04 …2022 (Discrete-adjoint ASO)](MICHAEL_PIOTROWSKI/MP_04_zingg2022_discrete_adjoint_optimization_digest.md) | Adjoint verification practice; residual depends on control points **through off-wall spacing**; streamwise-grid requirements tighten with Re; multi-modal design space. |
+| [MP_05 …2023 AeroJ (Compressibility corrections)](MICHAEL_PIOTROWSKI/MP_05_zingg2023_compressibility_corrections_digest.md) | `ψ`/`ψ_scf`; **`D_scf` replaced by `F_onset,scf` in the γ equation**; **documented crossflow initialization pathology + staged-activation fix**; Appendix A = cleanest non-dimensional statement of the model. |
+| [MP_06 PhD thesis](MICHAEL_PIOTROWSKI/MP_06_piotrowski_phd_thesis_digest.md) | Superset of all papers. **§3.1: explicit `S_r`/`S_c` scaling matrices and Algorithms 2/3/4 pseudocode** (the missing NK physicality check). App. C transition-length modification; §6.2 his own open problems. |
+| [MP_07 Chau et al. 2026 (cruise-slotted TTBW)](MICHAEL_PIOTROWSKI/MP_07_chau2026_ttbw_cruise_slotted_digest.md) | **Fully turbulent — no transition model.** Filed for completeness; skip unless you need ASO methodology. |
+
 ### ADflow reference KB (`docs/ADFLOW_BASE/`)
 
 | File | What's in it |
@@ -135,6 +161,9 @@ here too but are actively routed-to, so they moved out instead.
 
 - Piotrowski & Zingg (2020), *AIAA Journal* 58(10) — γ-Re̅θt transition model
   → `SA_GAMMA_RETHETHA_BASE/`
+- Piotrowski publication set (2019, 2020, 2022 ×2, 2023, PhD thesis; Chau et al.
+  2026), source PDFs in `/home/mdo/Desktop/ARTIGOS SMOTH/`, transcribed
+  2026-08-13 → `MICHAEL_PIOTROWSKI/`
 - Yildirim et al., *J. Comput. Phys.* (2019), doi:10.1016/j.jcp.2019.06.018 → `ADFLOW_01`
 - Kenway et al., *Prog. Aerosp. Sci.* (2019), doi:10.1016/j.paerosci.2019.05.002 → `ADFLOW_02`
 - ADflow official docs (MDO Lab, retrieved 6 Jul 2026) → `ADFLOW_05`
