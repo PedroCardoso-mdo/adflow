@@ -33,6 +33,116 @@ that must converge. Two failure signatures across the 2026-08-11/12 rounds:
 
 ---
 
+## F0 — Their "inexact-Newton phase" is still pseudo-transient. Ours is pure Newton.
+
+**Verdict: DIVERGES, architecturally. This is the dominant finding — F1/F2 are
+the same disease in the other phase.**
+
+> Raised by the user 2026-08-13: *"os papers que te dei dele focam-se
+> essencialmente no NK, esse mecanismo que estás a falar de CFL é no ANK; porque
+> é que eles conseguem convergir tudo com NK e eu nem a começar a 1e-8 com as
+> alterações deles consigo?"* — correct, and this row is the answer.
+
+### What the authors' NK actually solves
+
+Thesis §3.1, Eq. 3.3 — **both** phases solve the same system:
+
+```
+(T^(n) + A^(n)) ΔQ^(n) = −R(Q^(n))
+```
+
+> "where `T^(n)` is a diagonal matrix containing the **inverse local time steps**
+> and `A^(n)` is the flow Jacobian"
+
+and the second phase is reached not by removing `T`, but by making it small:
+
+> "After the residual drops several orders of magnitude, the inexact-Newton
+> method using the full Jacobian is used to converge the system to a residual
+> norm of machine zero, where **the inexact-Newton method is recovered by
+> aggressively ramping the reference time step, Δt_ref**."
+
+So `T` never leaves their linear system. It is a continuation knob that is
+turned down — and, critically, **can be turned back up at any moment and any
+depth**. Algorithms 2 and 4 both end with exactly that move:
+
+> `if Δt_ref > Δt_ref,min:  Δt_ref = max(0.5·Δt_ref, Δt_ref,min);  retry`
+>
+> "This makes the linear system **more diagonally dominant** due to the inverse
+> time step in Equation 3.3, which improves convergence of the linear system and
+> reduces the magnitude of the solution update."
+
+Note `Δt_ref,min` is a **user-specified** bound, not a convergence-scaled one
+(contrast F1).
+
+### What ours solves
+
+`NKSolvers.F90` — the NK KSP is only ever handed two operators:
+
+```fortran
+221:            call KSPSetOperators(NK_KSP, dRdw, dRdwPre, ierr)
+473:            call KSPSetOperators(NK_KSP, dRdwNKSrcDt, dRdwPre, ierr)
+```
+
+- `dRdw` is the raw matrix-free FD Jacobian (`MatCreateMFFD`, `:179-183`) —
+  **no `T` term at all**.
+- `dRdwNKSrcDt` is that same MFFD wrapped with the Eq. 59 source-Δt diagonal
+  (`NKSrcDtMatMult`, `:1576-1651`) — which touches **only the 3 turbulence /
+  transition rows**, and switches off after `srcDtDeactivateIters` clean steps.
+
+The one shell that *would* add a pseudo-transient diagonal to **all** rows is
+`dRdwPseudo`, whose matmult is:
+
+```fortran
+291:        yPtr = yPtr + one / NK_CFL * xPtr
+```
+
+It is created at `:188`, given its shell operation at `:192`, destroyed at
+`:546` — and **never passed to `KSPSetOperators`**. `NK_CFL` is dutifully
+updated at `:644` (`NK_CFL = NK_CFL0 * (totalR0/norm)**1.5`) and consumed by
+nothing. Verified by exhaustive grep: those are the only two
+`KSPSetOperators(NK_KSP, …)` calls in the file, and the only `dRdwPseudo`
+references are create/shell-set/destroy.
+
+### Why this answers the question
+
+**Their NK does 8–11 orders of pseudo-transient continuation; ours is asked to
+do the last fraction of an order of pure Newton.** Two different algorithms
+sharing a name:
+
+| | P&Z inexact-Newton | ADflow NK |
+|---|---|---|
+| Engages at | rel **1e-4** (2D) / **1e-5** (3D) | validated ~**4e-8**; 1e-6 falsified as premature (`CORE_02`) |
+| Runs to | rel 1e-15 / abs 1e-10 (machine zero) | walls below ~5e-9 |
+| Diagonal term | `T = 1/Δt_ref`, all rows, always present | none on mean-flow rows; Eq. 59 on turb rows only, and it deactivates |
+| Recovery from a bad step | halve `Δt_ref` and **retry** the solve | shrink λ; at `minlambda = 0.01` "just take it" (documented E1, `SAGR_02` §7) |
+| Physicality check | Algorithm 2 on ρ/E | **none** (F6) |
+
+So porting "their NK modifications" (Eq. 59 in NK, Algorithm 2 damping on
+γ/Re̅θt) onto a **pure** Newton solve was always going to under-deliver: the
+piece those modifications lean on — a restorable `T` — is precisely the piece
+ADflow's NK does not have. That is why engaging our NK at their engagement point
+(1e-5) stalls, and why even at 4e-8 it walls.
+
+It also unifies this audit: **in both phases the mechanism that restores
+diagonal dominance after a bad step is unavailable** — dead in NK (this row),
+floored out by the convergence-scaled `ANK_CFLMin` in ANK/CANK (F1).
+
+### Action — this is now the top code item
+
+Install a pseudo-transient diagonal on the NK operator and give it a
+back-off-and-retry on step rejection, with a **user-specified floor**
+(`Δt_ref,min` equivalent), behind an option that defaults to today's behaviour.
+The shell (`dRdwPseudo`/`NKMatMult`) and the ramp law (`NK_CFL0·(totalR0/norm)^1.5`)
+already exist — this is re-activating and completing existing machinery, not
+inventing a mechanism. The matching diagonal must also be added to `dRdwPre`
+(e.g. `MatShift`) or the PC no longer preconditions the operator being solved.
+
+**Caveat to respect:** upstream ADflow's NK is deliberately pure Newton and works
+that way for fully-turbulent SA, where the problem is far less stiff. The option
+must therefore be scoped to the SA-GR path and default off.
+
+---
+
 ## F1 — CANK step-controller limit cycle: the CFL cutback is a no-op at depth
 
 **Verdict: DIVERGES from the paper. This is the primary finding.**
@@ -282,9 +392,22 @@ behind them.
 
 ## Priority order out of this audit
 
-1. **F3** — retest the swept wing with the validated ladder under matrix
-   dissipation. Zero code, one job, and it may move the whole problem.
-2. **F1 + F2** — the CANK step-controller limit cycle. One coherent correction.
-3. **F4** — `.pyf` gap (2 lines, unblocks a knob we may want).
-4. **F5** — `transitionSrcDtLimit` 0.8 A/B (no code).
-5. **F6** — NK physicality check, queued behind the above.
+Revised 2026-08-13 after F0. The user has authorised rewriting the step
+controller as an option, **step by step, with a verification test after each
+step that shows whether the change produced the intended effect — and if not,
+why**. That cadence is part of the plan, not an afterthought: each step below
+names its own falsifiable check.
+
+| # | Item | Code? | Verification that it worked |
+|---|---|---|---|
+| 1 | **F3** — retest swept wing with the validated ladder (CANK 1e-5, CSANK 1e-6, NK ~4e-8, LS 1.5/0.5) under **matrix** dissipation | none | Does it converge at all? Establishes whether F0/F1 are on this case's critical path before any code is written. |
+| 2 | **F0a** — pseudo-transient diagonal on the NK operator **and** the PC, behind an option | yes | (a) default-off ⇒ bit-identical; (b) option on with `NKCFL0` huge ⇒ `T→0` ⇒ results ≈ unchanged (proves the term is wired but inert); (c) option on with a modest `NKCFL0` ⇒ NK linear residual should *drop* at fixed state (more diagonally dominant). If (c) fails, the diagonal is not reaching the operator actually solved — check `dRdwPre` got the matching shift. |
+| 3 | **F0b** — reject-and-retry: on a collapsed step, halve `Δt_ref` against a **user** floor and re-solve | yes | `Step` should stop pinning: the histogram of `Step` in the NK phase must lose its spike at `minlambda`. If it does not, the rejection threshold is above the line-search floor — the F2 failure mode, one phase over. |
+| 4 | **F1 + F2** — the same two fixes in ANK/CANK: decouple the cutback floor from the convergence ramp, and apply `ANK_stepMin` to the post-line-search λ | yes | CFL must be observed *coming back down* in the log while `Step` recovers. Today it never does (evidence in F1). |
+| 5 | **F4** — `.pyf` gap (2 lines) | yes | `setOption` to a deliberately absurd value must now visibly change behaviour; today it cannot. |
+| 6 | **F5** — `transitionSrcDtLimit` 0.8 vs 0.9 | none | A/B iteration count. |
+| 7 | **F6** — NK physicality check (Algorithm 2 on ρ/E) | yes | Allows `LSCubic`'s `alpha` to be tightened back toward 1e-2 without the SEGV that forced 1e-3. |
+
+Items 2–4 are one coherent theme — **restore the ability to put diagonal
+dominance back after a bad step** — and are expected to be tested together on
+the swept wing once each is individually verified.
