@@ -338,9 +338,24 @@ Already a runtime option ⇒ pure A/B, no commit required to test.
 
 ---
 
-## F6 — NK has no physicality check
+## F6 — NK has no physicality check (ANK/CANK does)
 
-**Verdict: ABSENT.** Confirmed at `NKSolvers.F90:860-862` (the code says so
+> **Clarification (user, 2026-08-13: *"acho que temos physicality check no nosso
+> solver"* — correct).** We DO have one, in ANK: `physicalityCheckANK`
+> (`NKSolvers.F90:4064`) limits ρ and E to a relative change of
+> `ANK_physLSTol`, and its `ANK_coupled` branch (`:4155`) additionally covers
+> ν̃, γ and Re̅θt *with* the SA-GR bounds. So it **is** active in the phase where
+> the swept wing stalls. The gap is NK only.
+>
+> A consequence worth recording, found while checking this: in the coupled
+> branch a turbulence/transition ratio below `ANK_stepMin*ANK_stepFactor` is
+> **clipped per-cell and the ratio set to one** (`:4207-4219`, `:4272-4276`), so
+> γ/Re̅θt/ν̃ can never throttle the global λ below `ANK_stepMin`. **Only ρ and E
+> go straight into the global `min`.** Therefore a collapsed CANK step is either
+> ρ/E physicality or the unsteady line search — never the transition variables.
+> That is exactly the distinction the STALLDIAG output was added to settle.
+
+**Verdict for NK: ABSENT.** Confirmed at `NKSolvers.F90:860-862` (the code says so
 itself) — there is no ρ/E positivity check anywhere in `NKStep`/`LSCubic`/`LSNM`;
 the only safety valves are NaN detection and the post-step γ/Re̅θt clamp in
 `applyNKAlgorithm2Damping`. This is why `LSCubic`'s Armijo `alpha` was
