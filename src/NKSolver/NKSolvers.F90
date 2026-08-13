@@ -1808,6 +1808,7 @@ contains
 
     end subroutine applyNKAlgorithm2Damping
 
+
     subroutine computeNKResidualAutoscale()
         ! Eq. 58 (P&Z 2020) residual-autoscaling (S_a) proxy. The paper
         ! gives no formula for S_a (cites Osusky & Zingg's thesis,
@@ -2425,6 +2426,17 @@ module ANKSolver
     logical :: stallLSFailed = .false.               ! LS exhausted its budget
     logical :: stallCFLFloored = .false.             ! cutback requested but ANK_CFLMin blocked it
     real(kind=alwaysRealType) :: stallCFLBefore = zero, stallCFLAfter = zero
+    ! Algorithm 2 activity on the last coupled step: how many cells needed ANY
+    ! back-off, and the worst factor applied. A front that is being crushed
+    ! every iteration shows up here and nowhere else -- the damping happens
+    ! AFTER the line search, so neither Step nor Lin Res reveals it.
+    integer(kind=intType) :: stallSoftDampG = 0, stallSoftDampR = 0
+    real(kind=alwaysRealType) :: stallMinDampG = one, stallMinDampR = one
+    ! Oscillation detector: previous total residual and a run length of
+    ! consecutive iterations in which it ROSE. A solver that is oscillating
+    ! rather than stalling shows a nonzero, repeatedly-resetting run length.
+    real(kind=alwaysRealType) :: stallResPrev = -one
+    integer(kind=intType) :: stallRiseCount = 0, stallRiseMax = 0
 
 contains
 
@@ -4009,6 +4021,133 @@ contains
         end if
     end subroutine getFullColScale
 
+    subroutine applyANKAlgorithm2Damping(wv, dw, lam)
+        ! Paper Algorithm 2 (P&Z 2020 §IV.B.2) for the COUPLED ANK path.
+        !
+        ! VERIF_06 F0/F7: the thesis's inexact-Newton phase is (T + A_2nd)dQ =
+        ! -R, which is ADflow's CSANK -- not ADflow's NK. All the other ported
+        ! machinery (Eq. 58 S_r/S_a/S_c, Eq. 59 diagonal + freeze + deactivation)
+        ! is already present in both paths, but the per-node gamma/Re-theta-t
+        ! damping existed ONLY in NK (single call site in NKStep). This supplies
+        ! the missing half so CANK/CSANK runs the paper's algorithm.
+        !
+        ! Identical back-off to applyNKAlgorithm2Damping and to the DD-ADI loop
+        ! in saGammaReThetaSolve: same bounds (rsaGRgammaLo/Hi, rsaGRreThetaLo),
+        ! same transitionDampTheta/transitionDampMaxIter options.
+        !
+        ! Difference from the NK version, and the reason for the extra argument:
+        ! NK carries the pre-step state in a separate Vec, whereas ANKStep has
+        ! already applied VecAXPY(wv, -lam, dw). The pre-step value is therefore
+        ! reconstructed per node as wv + lam*dw. When lam == 0 (rejected step)
+        ! the delta is zero and this is a no-op, as it should be.
+        !
+        ! Operates in the column-scaled space (getFullColScale): damping a
+        ! linear interpolation by a scalar is scale-invariant, so only the
+        ! bounds check needs the physical value.
+        use constants
+        use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
+        use inputIteration, only: transitionDampTheta, transitionDampMaxIter, solverStallDiag
+        use flowVarRefState, only: nw, nt1
+        use communication, only: myid
+        use utils, only: EChk
+        implicit none
+
+        Vec wv, dw
+        real(kind=realType), intent(in) :: lam
+        integer(kind=intType) :: ierr, jj, nCells, mm
+        integer(kind=intType) :: nDampCapGamma, nDampCapReTheta
+        integer(kind=intType) :: nSoftDampGamma, nSoftDampReTheta
+        real(kind=realType) :: minDampFactorGamma, minDampFactorReTheta
+        real(kind=realType), pointer :: wPtr(:), dPtr(:)
+        real(kind=realType) :: cs(1:nw)
+        real(kind=realType) :: xOld, deltaScaled, dampFactor, candScaled, candPhys
+        integer(kind=intType) :: gammaOff, rethetaOff
+
+        call getFullColScale(cs, 1_intType, nw)
+        gammaOff = nt1 + 1
+        rethetaOff = nt1 + 2
+
+        call VecGetArrayF90(wv, wPtr, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call VecGetArrayReadF90(dw, dPtr, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        nDampCapGamma = 0
+        nDampCapReTheta = 0
+        nSoftDampGamma = 0
+        nSoftDampReTheta = 0
+        minDampFactorGamma = one
+        minDampFactorReTheta = one
+        nCells = size(wPtr) / nw
+
+        do jj = 0, nCells - 1
+            ! Gamma: exponential back-off until in [gammaLo, gammaHi]
+            deltaScaled = -lam * dPtr(jj * nw + gammaOff)
+            xOld = wPtr(jj * nw + gammaOff) - deltaScaled
+            dampFactor = one
+            candScaled = xOld + dampFactor * deltaScaled
+            do mm = 1, transitionDampMaxIter
+                candPhys = candScaled / cs(gammaOff)
+                if (candPhys >= rsaGRgammaLo .and. candPhys <= rsaGRgammaHi) exit
+                dampFactor = dampFactor * transitionDampTheta
+                candScaled = xOld + dampFactor * deltaScaled
+            end do
+            candPhys = candScaled / cs(gammaOff)
+            if (candPhys < rsaGRgammaLo .or. candPhys > rsaGRgammaHi) then
+                nDampCapGamma = nDampCapGamma + 1
+                candPhys = min(max(candPhys, rsaGRgammaLo), rsaGRgammaHi)
+                candScaled = candPhys * cs(gammaOff)
+            end if
+            if (dampFactor < one) then
+                nSoftDampGamma = nSoftDampGamma + 1
+                minDampFactorGamma = min(minDampFactorGamma, dampFactor)
+            end if
+            wPtr(jj * nw + gammaOff) = candScaled
+
+            ! Re-theta-t: back-off until >= rsaGRreThetaLo (lower bound only)
+            deltaScaled = -lam * dPtr(jj * nw + rethetaOff)
+            xOld = wPtr(jj * nw + rethetaOff) - deltaScaled
+            dampFactor = one
+            candScaled = xOld + dampFactor * deltaScaled
+            do mm = 1, transitionDampMaxIter
+                candPhys = candScaled / cs(rethetaOff)
+                if (candPhys >= rsaGRreThetaLo) exit
+                dampFactor = dampFactor * transitionDampTheta
+                candScaled = xOld + dampFactor * deltaScaled
+            end do
+            candPhys = candScaled / cs(rethetaOff)
+            if (candPhys < rsaGRreThetaLo) then
+                nDampCapReTheta = nDampCapReTheta + 1
+                candScaled = rsaGRreThetaLo * cs(rethetaOff)
+            end if
+            if (dampFactor < one) then
+                nSoftDampReTheta = nSoftDampReTheta + 1
+                minDampFactorReTheta = min(minDampFactorReTheta, dampFactor)
+            end if
+            wPtr(jj * nw + rethetaOff) = candScaled
+        end do
+
+        call VecRestoreArrayF90(wv, wPtr, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call VecRestoreArrayReadF90(dw, dPtr, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        if (nDampCapGamma + nDampCapReTheta > 0) then
+            print *, 'Warning: ANK Algorithm 2 damping exhausted transitionDampMaxIter (', &
+                transitionDampMaxIter, ') in ', nDampCapGamma, ' gamma / ', &
+                nDampCapReTheta, ' reTheta cells on proc ', myid, '; values clipped.'
+        end if
+
+        ! Hand the soft-damping activity to the stall diagnostics rather than
+        ! printing per-proc lines: it is reported on the single STALLDIAG ANK
+        ! line so stall/oscillation causes stay readable in one place.
+        stallSoftDampG = nSoftDampGamma
+        stallSoftDampR = nSoftDampReTheta
+        stallMinDampG = minDampFactorGamma
+        stallMinDampR = minDampFactorReTheta
+
+    end subroutine applyANKAlgorithm2Damping
+
     subroutine setWVecANKScaled(wVec, lStart, lEnd)
         ! Pack the state into the PETSc vector in COLUMN-SCALED form:
         ! wVec = w * fac (fac = 1 for flow entries and for non-transition
@@ -4963,7 +5102,8 @@ contains
         use inputPhysics, only: equations, turbModel
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
                                   solverStallDiag, solverStallDiagStep, ankCFLMinCap, &
-                                  ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted
+                                  ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted, &
+                                  ankAlgorithm2Damping
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
@@ -5443,6 +5583,20 @@ contains
             end if
         end if
 
+        ! ===== Algorithm 2 per-node damping, coupled path (VERIF_06 F0/F7) =====
+        ! The thesis's inexact-Newton phase is CSANK, not NK, so the per-node
+        ! gamma/Re-theta-t back-off has to live here too -- it previously had a
+        ! single call site, inside NKStep. Placed after the line search has
+        ! settled and before the residual evaluation below, mirroring NK's
+        ! placement (after the search accepts, before the state is final), and
+        ! covering every exit path of the search including a rejected step
+        ! (lambda = 0 makes it a no-op).
+        if (ankAlgorithm2Damping .and. ANK_coupled .and. transitionNK .and. &
+            turbModel == spalartallmarasnoft2gammaretheta) then
+            call applyANKAlgorithm2Damping(wVec, deltaW, lambda)
+            call setWANKScaled(wVec, 1, nState)
+        end if
+
         ! We need to now compute the residual for the next iteration.  We
         ! also need the to update the update the time step and the
         ! viscWall pointer stuff
@@ -5487,10 +5641,32 @@ contains
         !   bt       : backtracks used (12 = budget exhausted)
         !   CFL/min  : current CFL and the floor the cutback is clipped to
         !   FLOORED  : a cutback was requested but ANK_CFLMin blocked it (F1)
+        ! Oscillation detector: track consecutive iterations in which the total
+        ! residual ROSE. Stalling (residual flat, step pinned) and oscillating
+        ! (residual sawtoothing while the step swings) look identical in the
+        ! standard columns but need different fixes, so separate them here.
+        if (solverStallDiag) then
+            if (stallResPrev > zero .and. totalR > stallResPrev) then
+                stallRiseCount = stallRiseCount + 1
+                stallRiseMax = max(stallRiseMax, stallRiseCount)
+            else
+                stallRiseCount = 0
+            end if
+            stallResPrev = totalR
+        end if
+
         if (solverStallDiag .and. myid == 0 .and. lambda < solverStallDiagStep) then
             stallLamLS = lambda
             stallCFLAfter = ANK_CFL
-            write (*, "(a,i6,a,es9.2,a,a,a,i3,a,i4,i4,i4,a,es9.2,a,i3,a,l1,a,es9.2,a,es9.2,a,l1)") &
+            ! One line per iteration carrying every cause we can distinguish:
+            !   lamPhys/bind/blk/ijk : physicality limit and the exact cell
+            !   lamLS/bt/LSfail      : line-search outcome (bt at its budget
+            !                          means the search ran out of room)
+            !   CFL/CFLmin/FLOORED   : whether the controller could back off
+            !   dampG/dampR/wf       : Algorithm 2 cells damped + worst factor
+            !                          (a front being crushed every iteration)
+            !   rise                 : consecutive residual increases (oscillation)
+            write (*, "(a,i6,a,es9.2,a,a,a,i3,a,i4,i4,i4,a,es9.2,a,i3,a,l1,a,es9.2,a,es9.2,a,l1,a,i7,i7,a,es9.2,a,i4)") &
                 " STALLDIAG ANK iter=", ANK_iter, &
                 "  lamPhys=", stallLamPhys, &
                 "  bind=", trim(stallVarName(stallBindVar)), &
@@ -5501,7 +5677,10 @@ contains
                 "  LSfail=", stallLSFailed, &
                 "  CFL=", stallCFLAfter, &
                 "  CFLmin=", ANK_CFLMin, &
-                "  FLOORED=", stallCFLFloored
+                "  FLOORED=", stallCFLFloored, &
+                "  damp=", stallSoftDampG, stallSoftDampR, &
+                "  wf=", min(stallMinDampG, stallMinDampR), &
+                "  rise=", stallRiseCount
         end if
 
         ! ============== Source-dt deactivation switch (P&Z §IV.B.3), coupled path ==============

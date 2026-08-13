@@ -1143,6 +1143,7 @@ python module libadflow
          real(kind=realtype) :: ankunsteadylsfactor
          integer(kind=inttype) :: ankunsteadylsmaxiter
          logical :: ankrejectonlsexhausted
+         logical :: ankalgorithm2damping
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

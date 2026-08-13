@@ -5924,6 +5924,9 @@ class ADFLOW(AeroSolver):
             "ANKUnsteadyLSFactor": [float, 0.7],
             "ANKUnsteadyLSMaxIter": [int, 12],
             "ANKRejectOnLSExhausted": [bool, False],
+            # VERIF_06 F7: Algorithm 2 per-node damping in the coupled path
+            # (previously NK-only, but their inexact-Newton phase is CSANK).
+            "ANKAlgorithm2Damping": [bool, False],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6349,6 +6352,7 @@ class ADFLOW(AeroSolver):
             "ankunsteadylsfactor": ["iter", "ankunsteadylsfactor"],
             "ankunsteadylsmaxiter": ["iter", "ankunsteadylsmaxiter"],
             "ankrejectonlsexhausted": ["iter", "ankrejectonlsexhausted"],
+            "ankalgorithm2damping": ["iter", "ankalgorithm2damping"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {

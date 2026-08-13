@@ -468,6 +468,17 @@ module inputIteration
     ! accepting the floor step forever. Default .false. = previous behaviour.
     logical :: ankRejectOnLSExhausted = .false.
 
+    ! Algorithm 2 (P&Z §IV.B.2) per-node gamma/Re-theta-t damping in the
+    ! COUPLED ANK path (VERIF_06 F7). It previously existed only in NK, but
+    ! the thesis's inexact-Newton phase is CSANK, so the paper's algorithm
+    ! needs it here. Default .false. = previous behaviour.
+    !
+    ! Note: per-cell damping was tried in physicalityCheckANK and reverted
+    ! (see the comment there), but that comparison predates the F2 line-search
+    ! fix and so was measured against a global-lambda controller stuck in a
+    ! limit cycle. Re-test with F2 active before drawing a conclusion.
+    logical :: ankAlgorithm2Damping = .false.
+
 end module inputIteration
 
 module inputCostFunctions
