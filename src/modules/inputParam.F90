@@ -408,6 +408,20 @@ module inputIteration
     ! (the AeroProblem chordRef).
     real(kind=realType) :: transitionRefLength = -1.0_realType
 
+    ! ------------------------------------------------------------------
+    ! Stall diagnostics (VERIF_06). Purely diagnostic: when enabled the
+    ! ANK/CANK and NK step controllers report WHY the step collapsed --
+    ! which limiter bound the global step (rho/E physicality, turbulence
+    ! bound, unsteady line search, cubic line search), where the binding
+    ! cell is, and whether the CFL cutback was floored out by ANK_CFLMin.
+    ! No effect on the solution path; default off so production logs are
+    ! unchanged.
+    !
+    ! solverStallDiagStep: only report on iterations whose accepted step
+    ! is below this value (1.0 => report every iteration).
+    logical :: solverStallDiag = .false.
+    real(kind=realType) :: solverStallDiagStep = 1.0_realType
+
 end module inputIteration
 
 module inputCostFunctions

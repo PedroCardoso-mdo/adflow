@@ -5906,6 +5906,12 @@ class ADFLOW(AeroSolver):
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
             "transitionRefLength": [float, -1.0],
+            # Stall diagnostics (VERIF_06): report WHY the ANK/CANK/NK step
+            # controller collapsed the step. Diagnostic only -- does not change
+            # the solution path. solverStallDiagStep limits the reporting to
+            # iterations whose accepted step is below it (1.0 => every iter).
+            "solverStallDiag": [bool, False],
+            "solverStallDiagStep": [float, 1.0],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6325,6 +6331,8 @@ class ADFLOW(AeroSolver):
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
             "transitionreflength": ["iter", "transitionreflength"],
+            "solverstalldiag": ["iter", "solverstalldiag"],
+            "solverstalldiagstep": ["iter", "solverstalldiagstep"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {

@@ -583,11 +583,13 @@ contains
         use flowVarRefState, only: nw
         use inputPhysics, only: equations, turbModel
         use flowVarRefState, only: nw, nwf
-        use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, transitionNK, &
+        use inputIteration, only: solverStallDiag, solverStallDiagStep, &
+                                  L2conv, transitionSrcDtRestrict, noBacktrackCount, transitionNK, &
                                   transitionNKAutoDisableTol, transitionNKActive, transitionNKStallStepTol, &
                                   transitionNKStallCountTrigger, transitionNKStallRtolCap, nkStallCount
         use iteration, only: approxTotalIts, totalR0, stepMonitor, LinResMonitor, iterType
         use utils, only: EChk
+        use communication, only: myid
         use killSignals, only: routineFailed
         implicit none
 
@@ -806,6 +808,28 @@ contains
             else
                 nkStallCount = 0
             end if
+        end if
+
+        ! ============== Stall diagnostics (VERIF_06) ==============
+        ! NK has no physicality check and no pseudo-transient term (F0/F6), so
+        ! the only things that can throttle the step are the cubic line search
+        ! and the turbulence-residual pre-limit. Report what actually happened:
+        !   lam      : accepted step (minlambda = 0.01 means the search ran out
+        !              of room and the step was taken anyway -- the E1 symptom)
+        !   nfeval   : residual evaluations spent in the line search
+        !   linRes   : linear residual achieved by GMRES this iteration
+        !   stall    : consecutive pinned-step iterations
+        ! A run showing lam=1.0E-02 with a healthy linRes is step-limited, not
+        ! preconditioner-limited -- which is the distinction the whole audit
+        ! turns on.
+        if (solverStallDiag .and. myid == 0 .and. stepMonitor < solverStallDiagStep) then
+            write (*, "(a,i6,a,es9.2,a,i4,a,es9.2,a,l1,a,i4)") &
+                " STALLDIAG NK  iter=", NK_iter, &
+                "  lam=", stepMonitor, &
+                "  nfeval=", nfevals, &
+                "  linRes=", linResMonitor, &
+                "  LSok=", flag, &
+                "  stall=", nkStallCount
         end if
 
     end subroutine NKStep
@@ -2382,7 +2406,51 @@ module ANKSolver
     real(kind=realType) :: omegaMinGamma = 0.05_realType
     real(kind=alwaysRealType) :: linResOldTurb
 
+    ! ------------------------------------------------------------------
+    ! Stall diagnostics (VERIF_06), gated by inputIteration%solverStallDiag.
+    ! These record WHICH limiter bound the global step on the last
+    ! iteration, so a stalling log says why instead of just showing a small
+    ! Step. Purely diagnostic -- never read back into the solution path.
+    !
+    ! stallBindVar codes (the variable whose cell produced the binding ratio
+    ! in physicalityCheckANK/Turb):
+    !   0 = nothing bound it (lambda stayed at its incoming value)
+    !   1 = density        2 = total energy
+    !   3 = nuTilde        4 = gamma           5 = reTheta
+    integer(kind=intType) :: stallBindVar = 0
+    integer(kind=intType) :: stallBindLoc(4) = 0     ! (nn, i, j, k) of that cell
+    real(kind=alwaysRealType) :: stallLamPhys = one  ! lambda after physicality
+    real(kind=alwaysRealType) :: stallLamLS = one    ! lambda after the line search
+    integer(kind=intType) :: stallNBacktrack = 0     ! unsteady-LS backtracks used
+    logical :: stallLSFailed = .false.               ! LS exhausted its budget
+    logical :: stallCFLFloored = .false.             ! cutback requested but ANK_CFLMin blocked it
+    real(kind=alwaysRealType) :: stallCFLBefore = zero, stallCFLAfter = zero
+
 contains
+
+    function stallVarName(code) result(nameOut)
+        ! Human-readable name for a stallBindVar code (see above).
+        use constants
+        implicit none
+        integer(kind=intType), intent(in) :: code
+        character(len=8) :: nameOut
+
+        select case (code)
+        case (1)
+            nameOut = 'rho'
+        case (2)
+            nameOut = 'energy'
+        case (3)
+            nameOut = 'nuTilde'
+        case (4)
+            nameOut = 'gamma'
+        case (5)
+            nameOut = 'reTheta'
+        case default
+            nameOut = 'none'
+        end select
+
+    end function stallVarName
 
     subroutine setupANKsolver
 
@@ -4067,12 +4135,12 @@ contains
         use blockPointers, only: ndom, il, jl, kl
         use flowVarRefState, only: nw, nwf, nt1, nt2
         use inputPhysics, only: turbModel
-        use inputIteration, only: turbResScale
+        use inputIteration, only: turbResScale, solverStallDiag
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputtimespectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers, EChk
         use genericISNAN, only: myisnan
-        use communication, only: ADflow_comm_world
+        use communication, only: ADflow_comm_world, myid
         implicit none
 
         ! input variable
@@ -4086,6 +4154,11 @@ contains
         real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
         real(kind=alwaysRealType) :: ratio
         real(kind=alwaysRealType) :: wval, dval, ratioBound
+
+        ! Stall diagnostics (VERIF_06): track which variable/cell produced the
+        ! binding ratio. Only maintained when solverStallDiag is on.
+        integer(kind=intType) :: bindVar, bindLoc(4), minRank
+        real(kind=alwaysRealType) :: diagIn(2), diagOut(2)
 
         ! Determine the maximum step size that would yield
         ! a maximum relative change of ANK_physLSTol in density, and total energy.
@@ -4107,6 +4180,10 @@ contains
         ! deltaW contains the full update
         call VecGetArrayF90(deltaW, dvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! Stall diagnostics: nothing has bound the step yet.
+        bindVar = 0
+        bindLoc = 0
 
         ! in decoupled, we just have the flow variables
         if (.not. ANK_coupled) then
@@ -4132,6 +4209,9 @@ contains
                                 ! we want for the complex parts.
                                 ratio = abs(real(wvec_pointer(ii)) / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTol)
 #endif
+                                if (solverStallDiag .and. ratio < lambdaL) then
+                                    bindVar = 1; bindLoc = (/nn, i, j, k/)
+                                end if
                                 lambdaL = min(lambdaL, ratio)
 
                                 ! increment by 4 because we want to skip momentum variables
@@ -4144,6 +4224,9 @@ contains
 #else
                                 ratio = abs(real(wvec_pointer(ii)) / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTol)
 #endif
+                                if (solverStallDiag .and. ratio < lambdaL) then
+                                    bindVar = 2; bindLoc = (/nn, i, j, k/)
+                                end if
                                 lambdaL = min(lambdaL, ratio)
                                 ii = ii + 1
                             end do
@@ -4176,6 +4259,9 @@ contains
                                 ! we want for the complex parts.
                                 ratio = abs(real(wvec_pointer(ii)) / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTol)
 #endif
+                                if (solverStallDiag .and. ratio < lambdaL) then
+                                    bindVar = 1; bindLoc = (/nn, i, j, k/)
+                                end if
                                 lambdaL = min(lambdaL, ratio)
 
                                 ! increment by 4 because we want to skip momentum variables
@@ -4188,6 +4274,9 @@ contains
 #else
                                 ratio = abs(real(wvec_pointer(ii)) / real(dvec_pointer(ii) + eps)) * real(ANK_physLSTol)
 #endif
+                                if (solverStallDiag .and. ratio < lambdaL) then
+                                    bindVar = 2; bindLoc = (/nn, i, j, k/)
+                                end if
                                 lambdaL = min(lambdaL, ratio)
                                 ii = ii + 1
 
@@ -4216,6 +4305,9 @@ contains
                                     ! do not limit the step, negative updates below minimum
                                     ! step were already clipped.
                                     ratio = one
+                                end if
+                                if (solverStallDiag .and. ratio < lambdaL) then
+                                    bindVar = 3; bindLoc = (/nn, i, j, k/)
                                 end if
                                 lambdaL = min(lambdaL, ratio)
                                 ii = ii + 1
@@ -4274,6 +4366,9 @@ contains
                                             dvec_pointer(ii) = wvec_pointer(ii) * ANK_physLSTolTurb
                                         ratio = one
                                     end if
+                                    if (solverStallDiag .and. ratio < lambdaL) then
+                                        bindVar = 3 + (l - nt1); bindLoc = (/nn, i, j, k/)
+                                    end if
                                     lambdaL = min(lambdaL, ratio)
                                     ii = ii + 1
                                 end do
@@ -4310,6 +4405,25 @@ contains
         ! finally, as a safety check, purge the complex part of lambda
         lambdaP = cmplx(lambdaP_recv, 0.0_realType)
 #endif
+
+        ! Stall diagnostics: find which rank owns the globally binding cell
+        ! (MINLOC on the local lambdas) and broadcast its variable/location so
+        ! every rank -- and hence the root's log line -- reports the same cell.
+        if (solverStallDiag) then
+            diagIn(1) = lambdaL
+            diagIn(2) = real(myid, alwaysRealType)
+            call mpi_allreduce(diagIn, diagOut, 1_intType, MPI_2DOUBLE_PRECISION, &
+                               MPI_MINLOC, ADflow_comm_world, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            minRank = int(diagOut(2), intType)
+            call mpi_bcast(bindVar, 1_intType, MPI_INTEGER, minRank, ADflow_comm_world, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call mpi_bcast(bindLoc, 4_intType, MPI_INTEGER, minRank, ADflow_comm_world, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            stallBindVar = bindVar
+            stallBindLoc = bindLoc
+            stallLamPhys = lambdaP_recv
+        end if
 
     end subroutine physicalityCheckANK
 
@@ -4847,7 +4961,8 @@ contains
         use constants
         use blockPointers, only: nDom, flowDoms, shockSensor, ib, jb, kb, p, w, gamma
         use inputPhysics, only: equations, turbModel
-        use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK
+        use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
+                                  solverStallDiag, solverStallDiagStep
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
@@ -4981,9 +5096,18 @@ contains
             ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase * (totalR0 / totalR)**ANK_CFLExponent)
 
             ! Update the CFL number depending on the outcome of the last iteration
+            stallCFLBefore = ANK_CFL
+            stallCFLFloored = .False.
             if (lambda < ANK_stepMin * ANK_stepFactor) then
 
                 ! The step was too small, cut back the cfl
+                ! VERIF_06 F1: ANK_CFLMin is itself ramped by convergence
+                ! (ANK_CFLMinBase*(totalR0/totalR)**ANK_CFLExponent), so at depth
+                ! it can reach ANK_CFLLimit and this max() blocks the cutback
+                ! entirely -- the controller loses its only recovery mechanism.
+                ! Record when that happens so a stalling log says so.
+                if (solverStallDiag .and. ANK_CFL * ANK_CFLCutback < ANK_CFLMin) &
+                    stallCFLFloored = .True.
                 ANK_CFL = max(ANK_CFL * ANK_CFLCutback, ANK_CFLMin)
 
             else if (totalR < totalR_pcUpdate .and. lambda .ge. ANK_constCFLStep * ANK_stepFactor) then
@@ -5200,6 +5324,10 @@ contains
         ! initialize this outside the ls
         LSFailed = .False.
         backtrackTriggeredANK = .False.
+        ! Stall diagnostics: lambda entering the line search is the
+        ! physicality-limited one; reset the per-iteration LS counters.
+        stallNBacktrack = 0
+        stallLSFailed = .False.
 
         if ((unsteadyNorm > unsteadyNorm_old * ANK_unstdyLSTol .or. myisnan(unsteadyNorm))) then
             ! The unsteady residual is too high or we have a NAN. Do a
@@ -5240,12 +5368,15 @@ contains
 
                     ! Haven't backed off enough yet....keep going
                     lambda = lambda * 0.7_realType
+                    stallNBacktrack = iter
                 else
                     ! We have succefssfully reduced the norm
                     LSFailed = .False.
+                    stallNBacktrack = iter
                     exit
                 end if
             end do backtrack
+            stallLSFailed = LSFailed
 
             if (LSFailed .or. myisnan(unsteadyNorm)) then
                 ! the line search wasn't much help.
@@ -5319,6 +5450,33 @@ contains
 
         ! Update step monitor
         stepMonitor = lambda
+
+        ! ============== Stall diagnostics (VERIF_06) ==============
+        ! Report WHY the step collapsed. Printed on the root proc only, and
+        ! only for iterations whose accepted step is below solverStallDiagStep
+        ! (default 1.0 => every iteration once the feature is enabled).
+        !   lamPhys  : step surviving the physicality check
+        !   bind     : variable+cell whose ratio produced lamPhys
+        !   lamLS    : step after the unsteady-residual line search
+        !   bt       : backtracks used (12 = budget exhausted)
+        !   CFL/min  : current CFL and the floor the cutback is clipped to
+        !   FLOORED  : a cutback was requested but ANK_CFLMin blocked it (F1)
+        if (solverStallDiag .and. myid == 0 .and. lambda < solverStallDiagStep) then
+            stallLamLS = lambda
+            stallCFLAfter = ANK_CFL
+            write (*, "(a,i6,a,es9.2,a,a,a,i3,a,i4,i4,i4,a,es9.2,a,i3,a,l1,a,es9.2,a,es9.2,a,l1)") &
+                " STALLDIAG ANK iter=", ANK_iter, &
+                "  lamPhys=", stallLamPhys, &
+                "  bind=", trim(stallVarName(stallBindVar)), &
+                "  blk=", stallBindLoc(1), &
+                "  ijk=", stallBindLoc(2), stallBindLoc(3), stallBindLoc(4), &
+                "  lamLS=", stallLamLS, &
+                "  bt=", stallNBacktrack, &
+                "  LSfail=", stallLSFailed, &
+                "  CFL=", stallCFLAfter, &
+                "  CFLmin=", ANK_CFLMin, &
+                "  FLOORED=", stallCFLFloored
+        end if
 
         ! ============== Source-dt deactivation switch (P&Z §IV.B.3), coupled path ==============
         ! Mirror of the logic in ANKTurbSolveKSP: count clean iterations in the
