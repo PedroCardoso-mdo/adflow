@@ -477,6 +477,12 @@ python module libadflow
          real(kind=realtype) :: ank_constcflstep
          real(kind=realtype) :: ank_physlstol
          real(kind=realtype) :: ank_physlstolturb
+         ! VERIF_06 F4: these two were declared in Fortran (NKSolvers.F90) and
+         ! wired in pyADflow (defaults + optionMap) but never declared here, so
+         ! setOption silently created a phantom Python attribute and the
+         ! compiled code always used its declared default. Verified 2026-08-13.
+         real(kind=realtype) :: ank_physlstolretheta
+         real(kind=realtype) :: omegamingamma
          real(kind=realtype) :: ank_unstdylstol
          real(kind=realtype) :: ank_secondordswitchtol
          real(kind=realtype) :: ank_coupledswitchtol
@@ -1131,6 +1137,8 @@ python module libadflow
          integer(kind=inttype) :: srcdtdeactivateiters
          real(kind=realtype) :: transitiondamptheta
          integer(kind=inttype) :: transitiondampmaxiter
+         logical :: solverstalldiag
+         real(kind=realtype) :: solverstalldiagstep
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90
