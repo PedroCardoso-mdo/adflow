@@ -5927,6 +5927,10 @@ class ADFLOW(AeroSolver):
             # VERIF_06 F7: Algorithm 2 per-node damping in the coupled path
             # (previously NK-only, but their inexact-Newton phase is CSANK).
             "ANKAlgorithm2Damping": [bool, False],
+            # VERIF_06 F8: let Algorithm 2 bound gamma/ReTheta per node instead
+            # of letting them shrink the GLOBAL step. Measured: gamma was the
+            # binding variable in 7143 of ~7200 coupled iterations.
+            "ANKTransitionGlobalLambda": [bool, True],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6353,6 +6357,7 @@ class ADFLOW(AeroSolver):
             "ankunsteadylsmaxiter": ["iter", "ankunsteadylsmaxiter"],
             "ankrejectonlsexhausted": ["iter", "ankrejectonlsexhausted"],
             "ankalgorithm2damping": ["iter", "ankalgorithm2damping"],
+            "anktransitiongloballambda": ["iter", "anktransitiongloballambda"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {

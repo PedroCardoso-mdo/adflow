@@ -479,6 +479,29 @@ module inputIteration
     ! limit cycle. Re-test with F2 active before drawing a conclusion.
     logical :: ankAlgorithm2Damping = .false.
 
+    ! Whether gamma/Re-theta-t take part in the GLOBAL step limit of
+    ! physicalityCheckANK (VERIF_06 F8).
+    !
+    ! Measured 2026-08-13 on the NLF(2)-0415 swept wing, job 1820884: over
+    ! ~7200 coupled iterations the binding variable was
+    !     gamma 7143 | nuTilde 53 | rho 3
+    ! i.e. the transition front sets the global step ~99% of the time, and a
+    ! handful of front cells throttle the entire field to 1-3%. That is the
+    ! global-lambda pathology Algorithm 2 exists to avoid: the paper damps
+    ! gamma/Re-theta-t PER NODE and does not let them shrink the global step.
+    !
+    ! .true.  (default) = current behaviour: gamma/Re-theta-t ratios enter the
+    !                     global min alongside rho/E.
+    ! .false.           = paper behaviour: they are excluded from the global
+    !                     min and bounded per node by Algorithm 2 instead.
+    !                     Requires ankAlgorithm2Damping, which is forced on
+    !                     with a warning if it was left off (otherwise the
+    !                     bounds would be unenforced).
+    !
+    ! nuTilde deliberately KEEPS its global-limit role: the paper's Algorithm 2
+    ! covers gamma and Re-theta-t only.
+    logical :: ankTransitionGlobalLambda = .true.
+
 end module inputIteration
 
 module inputCostFunctions

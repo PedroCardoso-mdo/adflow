@@ -4274,7 +4274,7 @@ contains
         use blockPointers, only: ndom, il, jl, kl
         use flowVarRefState, only: nw, nwf, nt1, nt2
         use inputPhysics, only: turbModel
-        use inputIteration, only: turbResScale, solverStallDiag
+        use inputIteration, only: turbResScale, solverStallDiag, ankTransitionGlobalLambda
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputtimespectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers, EChk
@@ -4508,7 +4508,18 @@ contains
                                     if (solverStallDiag .and. ratio < lambdaL) then
                                         bindVar = 3 + (l - nt1); bindLoc = (/nn, i, j, k/)
                                     end if
-                                    lambdaL = min(lambdaL, ratio)
+                                    ! VERIF_06 F8: gamma/Re-theta-t take part in
+                                    ! the GLOBAL step limit only when
+                                    ! ankTransitionGlobalLambda is on. Measured
+                                    ! on the swept wing, gamma was the binding
+                                    ! variable in 7143 of ~7200 coupled
+                                    ! iterations -- a few front cells throttling
+                                    ! the whole field, which is exactly what the
+                                    ! paper's per-node Algorithm 2 avoids. With
+                                    ! the switch off the per-cell clipping above
+                                    ! still runs; the bounds are then enforced by
+                                    ! applyANKAlgorithm2Damping instead.
+                                    if (ankTransitionGlobalLambda) lambdaL = min(lambdaL, ratio)
                                     ii = ii + 1
                                 end do
                             end do
@@ -5103,7 +5114,7 @@ contains
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
                                   solverStallDiag, solverStallDiagStep, ankCFLMinCap, &
                                   ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted, &
-                                  ankAlgorithm2Damping
+                                  ankAlgorithm2Damping, ankTransitionGlobalLambda
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
@@ -5591,7 +5602,15 @@ contains
         ! placement (after the search accepts, before the state is final), and
         ! covering every exit path of the search including a rejected step
         ! (lambda = 0 makes it a no-op).
-        if (ankAlgorithm2Damping .and. ANK_coupled .and. transitionNK .and. &
+        ! Removing gamma/Re-theta-t from the global step limit leaves Algorithm 2
+        ! as the ONLY thing enforcing their bounds, so it must be active.
+        if ((.not. ankTransitionGlobalLambda) .and. (.not. ankAlgorithm2Damping) &
+            .and. ANK_coupled .and. transitionNK .and. myid == 0 .and. firstCall) then
+            print *, 'Warning: ANKTransitionGlobalLambda=False requires ', &
+                'ANKAlgorithm2Damping; enabling it so gamma/ReTheta stay bounded.'
+        end if
+        if ((ankAlgorithm2Damping .or. (.not. ankTransitionGlobalLambda)) &
+            .and. ANK_coupled .and. transitionNK .and. &
             turbModel == spalartallmarasnoft2gammaretheta) then
             call applyANKAlgorithm2Damping(wVec, deltaW, lambda)
             call setWANKScaled(wVec, 1, nState)
@@ -5666,8 +5685,9 @@ contains
             !   dampG/dampR/wf       : Algorithm 2 cells damped + worst factor
             !                          (a front being crushed every iteration)
             !   rise                 : consecutive residual increases (oscillation)
-            write (*, "(a,i6,a,es9.2,a,a,a,i3,a,i4,i4,i4,a,es9.2,a,i3,a,l1,a,es9.2,a,es9.2,a,l1,a,i7,i7,a,es9.2,a,i4)") &
-                " STALLDIAG ANK iter=", ANK_iter, &
+            write (*, "(a,es9.2,a,i6,a,es9.2,a,a,a,i3,a,i4,i4,i4,a,es9.2,a,i3,a,l1,a,es9.2,a,es9.2,a,l1,a,i7,i7,a,es9.2,a,i4)") &
+                " STALLDIAG ANK rel=", totalR / totalR0, &
+                "  pcIter=", ANK_iter, &
                 "  lamPhys=", stallLamPhys, &
                 "  bind=", trim(stallVarName(stallBindVar)), &
                 "  blk=", stallBindLoc(1), &

@@ -1144,6 +1144,7 @@ python module libadflow
          integer(kind=inttype) :: ankunsteadylsmaxiter
          logical :: ankrejectonlsexhausted
          logical :: ankalgorithm2damping
+         logical :: anktransitiongloballambda
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90
