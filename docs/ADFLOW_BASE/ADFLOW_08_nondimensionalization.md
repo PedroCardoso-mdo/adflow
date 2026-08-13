@@ -127,7 +127,7 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > Dimensional test: a threshold on Ω (1/s) built from freestream ρ, U, μ alone
 > *needs* a length — nothing else cancels it. Handled by the
 > `transitionRefLength` option (auto = AeroProblem `chordRef`; see
-> `architecture.md` Part 2).
+> `../core/architecture.md` Part 2).
 >
 > **Rotating-frame update (2026-07-23).** `uInf` is meaningless on a rotor
 > (hover ⇒ `uInf→0` ⇒ the cap collapses and kills γ). The velocity in the cap is
@@ -173,7 +173,7 @@ numbers. No explicit paper `Re` factor appears in any crossflow term — per §5
 
 ---
 
-**See also:** [`architecture.md`](architecture.md) (state-vector layout,
+**See also:** [`core/architecture.md`](../core/architecture.md) (state-vector layout,
 `rlv`/`rev`/`timeRef` usage, crossflow options) and the full paper,
 [`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](../SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md)
 (equations that consume these non-dimensional quantities).

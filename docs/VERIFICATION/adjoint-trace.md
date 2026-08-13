@@ -38,7 +38,7 @@ drifted — locate by symbol name.*
 > paper's `M·√(M·Re)/20` (Eqs. 52-53) — the model itself defines the cap from
 > freestream conditions (laminar-BL wall-vorticity scale `(U∞/l)·√Re`; paper
 > §IV calls it "a physical scaling independent of the nondimensionalization").
-> Derivation in `core/nondimensionalization.md` §5 (D1 exception). Since the paper
+> Derivation in `../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` §5 (D1 exception). Since the paper
 > also states the limiter is purely numerical (non-predictive), a legitimate
 > alternative is to **freeze the cap** ("frozen limiter" practice): revert the
 > `Makefile_tapenade` line and accept a small `dR/dMach`-type error confined to

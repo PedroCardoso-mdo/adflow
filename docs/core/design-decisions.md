@@ -16,7 +16,7 @@ dir's four files (`A1`/`A2`/`A3`/`A_confirmacao`) were folded into this
 single file 2026-07-09 to cut doc sprawl — nothing below lost information,
 only the exploratory back-and-forth was trimmed. `D1_transitionRefLength` is
 not repeated here — it's fully covered in `architecture.md` (Part 2,
-`transitionRefLength` option) and `nondimensionalization.md` §5 exception.
+`transitionRefLength` option) and `../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` §5 exception.
 
 Status: A1-A3 fully closed. A4 (adjoint) closed with follow-up work tracked
 in `TODO.md` and `current-task.md`.
@@ -232,8 +232,8 @@ nothing needed changing. Only the divergences follow.
 
 Original audit trails (now retired, folded in here 2026-07-09):
 `findings/A1` (nondim, folded into A1 section above + `architecture.md` +
-`nondimensionalization.md`), `findings/A2_convergencia.md`,
+`../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md`), `findings/A2_convergencia.md`,
 `findings/A3_coerencia.md`, `findings/A_confirmacao.md`,
 `findings/D1_transitionRefLength.md` (folded into `architecture.md` Part 2
-+ `nondimensionalization.md` §5). A4 (adjoint) findings live alongside
++ `../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` §5). A4 (adjoint) findings live alongside
 this file in `adjoint_audit_2026-07-07.md` and `sst_dev_lessons.md`.

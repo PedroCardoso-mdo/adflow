@@ -3,7 +3,7 @@
 > What Claude needs to know about ADflow internals, user constraints, confirmed
 > facts, and every runtime option added for the SA-γ-Re̅θt transition model.
 > Physics equations live in the full paper, [`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](../SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md);
-> non-dim conventions in [`nondimensionalization.md`](nondimensionalization.md); adjoint/AD
+> non-dim conventions in [`ADFLOW_BASE/ADFLOW_08_nondimensionalization.md`](../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md); adjoint/AD
 > touchpoints in [`VERIFICATION/adjoint-trace.md`](../VERIFICATION/adjoint-trace.md).
 
 ---
@@ -53,7 +53,7 @@ All stored as conservative (ρ·φ). Generic nVar extension handles sizing.
 
 > Values are non-dimensional. ADflow uses **pressure–density (p-ρ) scaling**, so
 > velocity normalizes to M·√γ (not 1) and viscosities are stored as ratios to
-> μ_∞. See [`nondimensionalization.md`](nondimensionalization.md).
+> μ_∞. See [`ADFLOW_BASE/ADFLOW_08_nondimensionalization.md`](../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md).
 
 ---
 
@@ -165,7 +165,7 @@ These options do not exist in upstream ADflow. All were added on this branch.
 | `"transitionDampMaxIter"` | int | `10000` | Safety cap on the back-off loop (unbounded in the paper); 10000 ⇒ effectively unbounded (0.99¹⁰⁰⁰⁰ ≈ 0). A hard clip to the bounds remains as **last-resort fallback only**: it can only fire after the loop exhausts, which requires the previous state to already be out of bounds; when it fires, a warning with cell counts prints advising to raise this option or investigate the upstream bound violation. Changed from 40 on 2026-07-07 (D-A2-5). |
 | `"transitionCrossflow"` | bool | **`False`** | Helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. **Default flipped OFF 2026-07-24** (`a34441c9`): ON it stalls the tutorial-wing case (~3e-2 plateau); only ever validated on AR5-type cases. D_scf≡0 in 2D. ⚠️ The **Fortran default** in `inputParam.F90` is still `.true.` — Python always pushes `False`, but any Fortran-only path that never receives a Python `setOption` runs crossflow ON. |
 | `"transitionRoughnessHeight"` | float | `3.3e-6` | Surface roughness height h for the crossflow correlation (Eq. 17), as a physical length in mesh units (metres). 3.3e-6 = 3.3 µm (smooth surface). |
-| `"transitionRefLength"` | float | `-1.0` (auto) | Reference length l [mesh units] in the vorticity limiter (P&Z Eqs. 52-53; paper uses root chord — the physical cap scales as 1/√l, a calibration scale, NOT a unit conversion, so the "drop Re" rule of `nondimensionalization.md` does not apply). Negative = auto: uses the AeroProblem `chordRef` (via `inputPhysics%lengthRef`, refreshed at every `setAeroProblem`). Set explicitly to decouple from chordRef; `1.0` recovers the pre-option behavior (l = 1 m). Added 2026-07-07 to close finding D1. |
+| `"transitionRefLength"` | float | `-1.0` (auto) | Reference length l [mesh units] in the vorticity limiter (P&Z Eqs. 52-53; paper uses root chord — the physical cap scales as 1/√l, a calibration scale, NOT a unit conversion, so the "drop Re" rule of `ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` does not apply). Negative = auto: uses the AeroProblem `chordRef` (via `inputPhysics%lengthRef`, refreshed at every `setAeroProblem`). Set explicitly to decouple from chordRef; `1.0` recovers the pre-option behavior (l = 1 m). Added 2026-07-07 to close finding D1. |
 | `"transitionNK"` | bool | `True` | Master switch for the NK/ANK/turbKSP column-scaling + Eq. 59 bundle (incl. NK reactivation-on-backtrack, Algorithm 2 in NK) — 2026-07-16. Default preserves existing behavior; still additionally gated on `turbModel==SA-Gamma-Retheta` everywhere. |
 | `"transitionNKAutoDisableTol"` | float | `0.0` | One-way latch, NK phase only: once the Newton residual norm drops below this fraction of `totalR0` (the **freestream** reference residual from `getFreeStreamResidual`, `solvers.F90:972` — NOT the restart-point residual; e.g. ~8.91e7 on `3D_Plain_Wing`), the `transitionNK` bundle (column scaling, Algorithm 2 damping, Eq. 59 reactivation) is turned off for the rest of the NK phase — i.e. "fall back to native NK." Default `0.0` never trips (unchanged behavior). **Tested 2026-07-18, `nk_switch_crossing_test`, and found unsafe at any point in NK**: tripping it either at NK engagement or ~10 outer iterations later (deep past engagement, residual already down 2+ orders) produces the identical catastrophic blowup (nuturb res → O(1e3), totalRes → O(1e9)) both times. Column scaling is load-bearing for the *entire* NK phase for this model — the 13-orders-of-magnitude state spread (ν̃, γ, Re̅θt) doesn't shrink with the residual, so "native NK" is never safe to fall back to. Kept as a diagnostic knob, not a recommended option. |
 | `"transitionRowVolScale"` | bool | `False` | Eq. 58 (P&Z) geometric row-scaling factor on NK's residual rows (`volRef**(5/3)` flow, `volRef**(2/3)` turb, on top of existing `turbResScale`). **Off by default — genuinely tested 2026-07-16 and found to stall NK's linear solve** (lin res pinned ~1.0) on the 3D_Plain_Wing case; see `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` §5. Not recommended until the volRef-vs-paper's-J correspondence is revisited. |

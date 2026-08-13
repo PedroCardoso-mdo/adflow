@@ -68,7 +68,7 @@ They mirror the upstream SA suite one-to-one:
     check.
   - `assert_bwdfast_blocks_allclose` — `_b` vs `_fast_b` with `resBar` seeded
     one equation-row block at a time (localizes the `autoEditReverseFast.py`
-    stripping hazard, `docs/core/07_sst_dev_lessons.md` watch item 1).
+    stripping hazard, `docs/ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md` watch item 1).
   - `assert_coupling_dot_products_allclose` — blockwise transpose tests
     isolating each off-diagonal Jacobian block in fwd-vs-rev consistency.
 
@@ -205,4 +205,4 @@ Single test example:
    regeneration happened before training.
 
 Never fix a failing comparison by inflating its tolerance
-(`docs/core/07_sst_dev_lessons.md` §3).
+(`docs/ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md` §3).

@@ -15,7 +15,7 @@ logs, phase-entry runner `run_strategy.py`):
 Full evidence: `03_convergence_strategy/3d_plain_wing/_old/campaign_2026-07-14_to_16/`
 — master test table in `TESTS_AND_CONCLUSIONS.md`, narrative in
 `long_overnight/DECISIONS.md`, logs in `long_overnight/` (referred to as
-`RUN/` below). Solver background: `ADFLOW_BASE/adflow_solvers.md` (upstream —
+`RUN/` below). Solver background: `ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md` (upstream —
 its NK/EW advice is overridden by the measurements here). Why ADflow differs
 from the paper's solver: `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md`.
 
@@ -108,7 +108,7 @@ is deeper on rho (1.06e-6 vs ~5e-4 at that point) — segregated SANK grinds
 the flow forever once turbulence settles; the ladder converges everything
 together and passes that rho once NK runs to target.
 
-## Options analysis — no-run exploration (2026-07-15, from logs + `ADFLOW_BASE/adflow_solvers.md`)
+## Options analysis — no-run exploration (2026-07-15, from logs + `ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md`)
 
 - `ANKCFLLimit 1e6`: not a lever. Segregated/CSANK ran AT the limit with
   full steps and lin res ~0.05; every step collapse in the logs coincides
@@ -148,7 +148,7 @@ together and passes that rho once NK runs to target.
   at its starting value, while ILU(2) gives 0.762 and drives Re_theta 23.9 -> 2.8.
   ILU(1) costs ~18 % more iterations but does not stall (0.820). This is the
   classic high-level-ILU failure — more fill, more density, less numerical
-  stability — and it contradicts `ADFLOW_BASE/adflow_solvers.md`, which
+  stability — and it contradicts `ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md`, which
   recommends raising `NKPCILUFill` to strengthen the PC. On SA-GR it does not.
   **The deep-NK wall is therefore not the fill level either**: all three variants
   sit at linear residual 0.76–1.00. With Eisenstat-Walker already falsified, no

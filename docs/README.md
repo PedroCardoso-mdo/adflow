@@ -27,7 +27,7 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Your task / question | Read (in order) |
 |---|---|
 | Implement/extend a transition equation, constant, or algorithm | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` → `core/architecture.md` |
-| Any equation touching velocity, viscosity, Reynolds number, or time scales | `core/nondimensionalization.md` (**first**) → `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` |
+| Any equation touching velocity, viscosity, Reynolds number, or time scales | `ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` (**first**) → `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` |
 | Paper symbol ↔ code flag (transition model) | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md` + `core/architecture.md` (Part 2) |
 | Exact **transition** runtime option name / default / enum | `core/architecture.md` (Part 2) |
 | Solver architecture, state-vector layout, code/module locations | `core/architecture.md` (Part 1) |
@@ -37,16 +37,16 @@ answer. `→` means "if the first isn't enough, go to the next."
 | Exact **ADflow** (flow/ANK/NK/adjoint) option name / default / enum | `ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md` |
 | Paper symbol ↔ code flag (ADflow solver) | `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md` → `ADFLOW_BASE/ADFLOW_01_flow_solver_theory.md` |
-| Rotating mesh / rotating frame of reference (rotor, propeller, turbine) | `VERIFICATION/rotating-frame-audit.md` → `core/nondimensionalization.md` (§5 vortLim, §6 crossflow) |
+| Rotating mesh / rotating frame of reference (rotor, propeller, turbine) | `VERIFICATION/rotating-frame-audit.md` → `ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` (§5 vortLim, §6 crossflow) |
 | Why does the paper converge faster than ADflow / solver-algorithm gaps | `SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` |
 | S809/NLF0416 physics validation vs the paper — what was tested, eliminated, still open | `VERIFICATION/paper-validation-campaign.md` |
 | Adjoint / AD theory (general) | `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` |
 | Implement or extend the adjoint / AD on **this branch** | `VERIFICATION/adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `ADFLOW_BASE/ADFLOW_03_concordance.md` |
 | Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` → `VERIFICATION/debugging_derivatives.md` (FD→dot-product→CS checking ladder) → `ADFLOW_BASE/ADFLOW_02_adjoint_autodiff_theory.md` → `VERIFICATION/adjoint-trace.md` |
-| Validate partials / plan AD test campaign | `core/current-task.md` → `VERIFICATION/debugging_derivatives.md` (generic checking ladder) → `VERIFICATION/three-stage-verification.md` (tests already run, commands, results) → `_archive/adjoint_audit_2026-07-07.md` → `core/07_sst_dev_lessons.md` (verification ladder + watch items) |
+| Validate partials / plan AD test campaign | `core/current-task.md` → `VERIFICATION/debugging_derivatives.md` (generic checking ladder) → `VERIFICATION/three-stage-verification.md` (tests already run, commands, results) → `_archive/adjoint_audit_2026-07-07.md` → `ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md` (verification ladder + watch items) |
 | Rerun/reproduce the low-level adjoint verification tests (dot-product, fast_b, 3-way fwd) | `VERIFICATION/three-stage-verification.md` (§"Canonical way to run" → `tests/reg_tests/run_sagr_tests.sh`) |
 | Run / retrain / regen-`w` for the SA-GR partials tests (how-to) | `VERIFICATION/three-stage-verification.md` §"Canonical way to run" → `tests/reg_tests/dev/README.md` (non-standard `w` generation) |
-| How another multi-equation turb model was differentiated (SST precedent) | `core/07_sst_dev_lessons.md` |
+| How another multi-equation turb model was differentiated (SST precedent) | `ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md` |
 | Why is X implemented this way / was this already discussed | `core/design-decisions.md` (memory of past discussion, not a spec — code/paper win if it disagrees) |
 | Converge an SA-GR case (phase ladder, switch tols, LS options, measured limits, falsified levers) | `core/convergence-strategy.md` → `ADFLOW_BASE/ADFLOW_04_debugging_playbook.md` |
 | Run a case on the HPC (Deucalion) — envs, job shape, checkpoints, graceful kill | run-tree `HPC_HOWTO.md` (`/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/`) + auto-memory HPC rules; **standing rule: all solver runs on HPC, local = analysis only** |
@@ -64,12 +64,12 @@ answer. `→` means "if the first isn't enough, go to the next."
 |------|--------------|
 | [README.md](README.md) | This master index + routing table. |
 | [core/architecture.md](core/architecture.md) | Solver architecture, state-vector layout, key code/module locations, user constraints, and the complete reference for every runtime option added for the transition model. |
-| [core/nondimensionalization.md](core/nondimensionalization.md) | How ADflow makes the governing equations dimensionless — the **pressure–density (p-ρ) scaling** (velocity normalizes to M·√γ, *not* 1). Read before touching any equation with velocity, viscosity, time scales, or Reynolds number. |
+| [ADFLOW_BASE/ADFLOW_08_nondimensionalization.md](ADFLOW_BASE/ADFLOW_08_nondimensionalization.md) | How ADflow makes the governing equations dimensionless — the **pressure–density (p-ρ) scaling** (velocity normalizes to M·√γ, *not* 1). Read before touching any equation with velocity, viscosity, time scales, or Reynolds number. |
 | [core/TODO.md](core/TODO.md) | Deferred tuning/improvement items (decided, not defects): `turbResScale` calibration, Eq. 59 relaxation options, damping-clip fallback, open dúvida D-A2-3, blockettes, test-infra restructure. Each item links back to its `core/design-decisions.md` analysis. |
 | [core/current-task.md](core/current-task.md) | The single task currently in progress (CLAUDE.md: one task per session) — objective, scoped context, working files, checklist. Overwritten each session. |
 | [task-log/](task-log/README.md) | Finished-task log, one file per task (a "case"), added over time — index + template in `task-log/README.md`. |
 | [core/convergence-strategy.md](core/convergence-strategy.md) | **The validated SA-GR convergence recipe** (ANK→CANK→CSANK→NK ladder, switch tols, non-negotiable options like `turbResScale [1e4, 0.1, 1e-4]` and `ADPC`), measured limits (CSANK floor ~3.5e-8, deep-NK preconditioner wall), the 2026-08-08 corrections (premature-NK-engagement rule; Eisenstat-Walker mitigation falsified), and the index of every acceleration test. |
-| [core/07_sst_dev_lessons.md](core/07_sst_dev_lessons.md) | Post-mortem of upstream `sst_dev` (SST, PR #331) — how a 2-equation model was differentiated, what broke, and a comparison table vs this branch's SA-GR. Read before any AD-unfreeze work or partials campaign. |
+| [ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md](ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md) | Post-mortem of upstream `sst_dev` (SST, PR #331) — how a 2-equation model was differentiated, what broke, and a comparison table vs this branch's SA-GR. Read before any AD-unfreeze work or partials campaign. |
 | [core/design-decisions.md](core/design-decisions.md) | **Not a spec — a memory.** Condensed log of resolved code-audit questions (A1-A3): nondim safeguards, convergence-strategy decisions (Eq. 59 forms, damping, `turbResScale`), and SA/SST code-coherence divergences (ft2 default, wall functions, source-Jacobian clips, farfield BC, init values). Read for "why is X implemented this way" — code/paper win if it ever disagrees with this file. |
 
 ### Verification (`docs/VERIFICATION/`)
@@ -88,7 +88,7 @@ answer. `→` means "if the first isn't enough, go to the next."
 
 Historical/point-in-time records, superseded by current docs — trust the
 dated snapshot, verify against current code before acting on specifics.
-`core/design-decisions.md` and `core/07_sst_dev_lessons.md` used to live
+`core/design-decisions.md` and `ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md` used to live
 here too but are actively routed-to, so they moved to `core/` instead.
 
 | File | What's in it |
@@ -116,7 +116,7 @@ here too but are actively routed-to, so they moved to `core/` instead.
 | [ADFLOW_03_concordance.md](ADFLOW_BASE/ADFLOW_03_concordance.md) | Paper-math ↔ code-flag crosswalk + gotchas. |
 | [ADFLOW_04_debugging_playbook.md](ADFLOW_BASE/ADFLOW_04_debugging_playbook.md) | Symptom → cause → fix ladder → evidence for stalls, divergence, bad gradients. |
 | [ADFLOW_05_options_and_operations_devguide.md](ADFLOW_BASE/ADFLOW_05_options_and_operations_devguide.md) | ADflow options + operations (official docs). |
-| [adflow_solvers.md](ADFLOW_BASE/adflow_solvers.md) | Raw official-docs source that fed `01`/`04`/`05` — its content is ~fully duplicated in `ADFLOW_05` Part 1; upstream advice, carries an SA-GR override banner. |
+| [ADFLOW_06_official_solvers_doc.md](ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md) | Raw official-docs source that fed `01`/`04`/`05` — its content is ~fully duplicated in `ADFLOW_05` Part 1; upstream advice, carries an SA-GR override banner. |
 
 ### Test-suite docs (`tests/reg_tests/`)
 

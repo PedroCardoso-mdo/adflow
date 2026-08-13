@@ -136,7 +136,7 @@ way it is.
    output (`autoEditReverseFast.py`) used for performance. If this
    diverges from `_b`, `autoEditReverseFast.py`'s push/pop stripping is
    the first suspect (this exact failure mode broke SST's `fast_b`
-   upstream — see `../core/07_sst_dev_lessons.md`).
+   upstream — see `../ADFLOW_BASE/ADFLOW_07_sst_dev_lessons.md`).
 3. **Forward verification test (3-way AD vs. FD vs. CS).** Only once 1
    and 2 agree does it make sense to ask whether the *shared* fwd/rev
    linearization is actually correct — i.e. matches the true derivative of
