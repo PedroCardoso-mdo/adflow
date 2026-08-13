@@ -78,7 +78,7 @@ stop.
 11. **Units are p-ρ non-dimensional, not velocity-based.** ADflow scales by
     pressure/density: velocity normalizes to M·√γ (not 1), viscosities are ratios
     to μ_∞ (`rlv`, `rev`), and `1/Re` is NOT absorbed into the viscosity. Read
-    `docs/nondimensionalization.md` before touching any equation involving
+    `docs/core/nondimensionalization.md` before touching any equation involving
     velocity, viscosity, time scales, or Reynolds number.
 
 ## Communication
@@ -98,15 +98,15 @@ Quick routing (full table in `docs/README.md`):
 
 | Task | Read (in order) |
 |------|-----------------|
-| Transition equation / constant / algorithm | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` → `architecture.md` |
-| Equation with velocity / viscosity / Re / time scale | `nondimensionalization.md` **first** → full paper |
-| Transition runtime option (name/default/enum) | `architecture.md` (Part 2) |
-| Solver architecture, state vector, code locations | `architecture.md` (Part 1) |
+| Transition equation / constant / algorithm | `SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` → `core/architecture.md` |
+| Equation with velocity / viscosity / Re / time scale | `core/nondimensionalization.md` **first** → full paper |
+| Transition runtime option (name/default/enum) | `core/architecture.md` (Part 2) |
+| Solver architecture, state vector, code locations | `core/architecture.md` (Part 1) |
 | Flow / ANK / NK theory, defaults | `ADFLOW_BASE/ADFLOW_01…` |
 | ANK/NK option mechanism | `ADFLOW_BASE/ADFLOW_03…` → `ADFLOW_BASE/ADFLOW_01…` |
 | ADflow option name/default/enum | `ADFLOW_BASE/ADFLOW_05…` |
 | Debug a stalling / diverging run | `ADFLOW_BASE/ADFLOW_04…` → `05…` → `01…` |
-| Converge an SA-GR case (phases, switch tols, LS opts, what's been tested) | `convergence-strategy.md` → `ADFLOW_BASE/adflow_solvers.md` |
+| Converge an SA-GR case (phases, switch tols, LS opts, what's been tested) | `core/convergence-strategy.md` → `ADFLOW_BASE/adflow_solvers.md` |
 | Adjoint / AD theory | `ADFLOW_BASE/ADFLOW_02…` |
 | Adjoint / AD on this branch | `VERIFICATION/adjoint-trace.md` → `ADFLOW_BASE/ADFLOW_02…` → `03…` |
 | Gradients wrong / adjoint won't converge | `ADFLOW_BASE/ADFLOW_04…` → `02…` → `VERIFICATION/adjoint-trace.md` |
@@ -116,16 +116,16 @@ Quick routing (full table in `docs/README.md`):
 
 | File | Holds |
 |------|-------|
-| `docs/architecture.md` | Solver architecture, state-vector layout, code/module locations, and every transition runtime option (name/default/enum). |
-| `docs/nondimensionalization.md` | ADflow's p-ρ non-dimensional scaling. Read before any velocity/viscosity/Re/time-scale equation. |
+| `docs/core/architecture.md` | Solver architecture, state-vector layout, code/module locations, and every transition runtime option (name/default/enum). |
+| `docs/core/nondimensionalization.md` | ADflow's p-ρ non-dimensional scaling. Read before any velocity/viscosity/Re/time-scale equation. |
 | `docs/VERIFICATION/adjoint-trace.md` | Adjoint/AD touchpoints on this branch (guards, Tapenade directives, generated files, wiring). |
 | `docs/VERIFICATION/three-stage-verification.md` | The 3-stage low-level adjoint verification ladder (dot-product reverse↔forward consistency, reverse vs fast-reverse consistency, 3-way AD/FD/CS forward check) — tests, exact run commands, and results. |
 | `docs/SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_…clean (1).md` | Full paper text — **physics source of truth** (sole physics reference). |
 | `docs/SA_GAMMA_RETHETHA_BASE/README.md` | Sub-index for the transition physics KB. |
 | `docs/ADFLOW_BASE/ADFLOW_00…05` | Flow/ANK/NK theory (01), adjoint/AD theory (02), paper↔code concordance (03), debugging playbook (04), options devguide (05), sub-index (00). |
-| `docs/convergence-strategy.md` | Validated SA-GR convergence recipe (ANK→CANK→CSANK→NK, switch tols, LS options, measured limits, 2026-08 corrections: premature-NK rule, EW falsified) + index of every acceleration test. Run-side deliverable: `…/03_convergence_strategy/3d_plain_wing/best_strategy/`. |
+| `docs/core/convergence-strategy.md` | Validated SA-GR convergence recipe (ANK→CANK→CSANK→NK, switch tols, LS options, measured limits, 2026-08 corrections: premature-NK rule, EW falsified) + index of every acceleration test. Run-side deliverable: `…/03_convergence_strategy/3d_plain_wing/best_strategy/`. |
 | `docs/ADFLOW_BASE/adflow_solvers.md` | Official ADflow solvers doc (MG/ANK/NK mechanics, troubleshooting). |
-| `docs/adflow-vs-paper-solver.md` | ADflow vs P&Z §IV solver-algorithm gaps + open code items (deep-NK wall). |
+| `docs/SA_GAMMA_RETHETHA_BASE/adflow-vs-paper-solver.md` | ADflow vs P&Z §IV solver-algorithm gaps + open code items (deep-NK wall). |
 
 Upstream ADflow docs (`/README.md`, `doc/`, `tests/`, `LICENSE.md`) are **not**
 part of this KB — don't rely on them for transition-model facts.

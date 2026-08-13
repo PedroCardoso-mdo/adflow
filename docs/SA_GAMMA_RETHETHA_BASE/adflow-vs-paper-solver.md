@@ -83,7 +83,7 @@ in ONE 35-iteration run on a 175k-cell restart (`run_early_engage.log`).
 > orders early and stalled every engaged level at `Step = 0.00`. Early NK
 > engagement is NOT a solved problem: the validated handover is at CSANK's
 > floor (~4.2e-8), or NK disabled entirely. See
-> `docs/convergence-strategy.md` ("Engaging NK too early is the most
+> `docs/core/convergence-strategy.md` ("Engaging NK too early is the most
 > expensive mistake").
 
 If convergence is still poor from a shallow restart, look at the other two
@@ -192,7 +192,7 @@ five are now wired (`adflow.pyf` L1129-1133), and `transitionSrcDtEigMode`
 has been removed from the codebase entirely — neither is a live bug.** The
 currently-known OPEN instance of this bug class is `module anksolver`:
 `ANKPhysicalLSTolReTheta` and `omegaMinGamma` are silent no-ops (see
-`docs/architecture.md`, Turb-ANK options).
+`docs/core/architecture.md`, Turb-ANK options).
 
 **Results once genuinely wired** (`_old/nk_eq59_reactivation_test/run_10iter_step5_Sr_Sa_genuinely_wired_STALL.log`,
 `run_10iter_step4_Sa_alone_genuinely_wired.log`, restart from
@@ -283,7 +283,7 @@ covers) would let `alpha` be relaxed further without the SEGV risk.
    `transitionSrcDtEigMode`~~ — **DONE** (all five wired in `adflow.pyf`
    L1129-1133; eigMode removed from the codebase). The open `.pyf` instance
    is now `anksolver` (`ANKPhysicalLSTolReTheta`/`omegaMinGamma` no-ops —
-   see `architecture.md`).
+   see `core/architecture.md`).
 2. NK has no physicality/bounds check (§7) — the real fix behind the
    `alpha` workaround. Would let `alpha` relax further without SEGV risk.
 3. Investigate why S_r's geometric factor stalls the linear solve — likely
@@ -294,7 +294,7 @@ covers) would let `alpha` be relaxed further without the SEGV risk.
    *quality*, not staleness, is the limit); EW-off + slack linear tol —
    falsified; ILU(3) — worse (stalls). No option-level lever remains; the
    deep-NK wall needs actual PC code work. See
-   `docs/convergence-strategy.md` §"Options analysis".
+   `docs/core/convergence-strategy.md` §"Options analysis".
 
 ~~Eq. 59 reactivation in NK~~ — done 2026-07-16.
 ~~Faithful Algorithm 2~~ — done 2026-07-16 (NK path; DADI already had it).

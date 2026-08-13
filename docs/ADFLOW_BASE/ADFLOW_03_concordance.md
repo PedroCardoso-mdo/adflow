@@ -60,7 +60,7 @@ Branch-only transition options (full catalogue: `../architecture.md` Part 2):
 | `transitionFirstOrderUpwind` | `True` | First-order upwind for γ / Re̅θt convection (paper §IV.A). |
 | `transitionNK` | `True` | — |
 | `transitionSrcDtRestrict` / `transitionSrcDtLimit` | `True` / `0.9` | — |
-| `ANKPhysicalLSTolReTheta`, `omegaMinGamma` | — | **Currently silent no-ops** — missing from the `.pyf` anksolver block; see `architecture.md`. |
+| `ANKPhysicalLSTolReTheta`, `omegaMinGamma` | — | **Currently silent no-ops** — missing from the `.pyf` anksolver block; see `core/architecture.md`. |
 
 ## C. Ambiguities & gotchas (read before trusting a mapping)
 

@@ -10,7 +10,7 @@ Full routing lives in the master index: [`../README.md`](../README.md).
 
 > There is deliberately **no distilled summary** of the paper: earlier
 > distillations accumulated errors that contradicted the full text (recorded
-> in `../audits/design-decisions.md` §D3 / §D-A2-5 — the old `findings/`
+> in `../core/design-decisions.md` §D3 / §D-A2-5 — the old `findings/`
 > files were consolidated there on 2026-07-09). Always cite the full paper
 > directly.
 

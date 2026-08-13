@@ -146,7 +146,7 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > `Makefile_tapenade`, else Tapenade emits `vortlimd = 0` and `dR/dMach`-type
 > partials lose the limiter path in capped cells (state partials dR/dw are
 > unaffected). Details + frozen-cap alternative: `VERIFICATION/adjoint-trace.md` header and
-> `audits/adjoint_audit_2026-07-07.md` §3.
+> `../_archive/adjoint_audit_2026-07-07.md` §3.
 
 ## 6. Crossflow (D_scf) term dimension status
 
@@ -175,5 +175,5 @@ numbers. No explicit paper `Re` factor appears in any crossflow term — per §5
 
 **See also:** [`architecture.md`](architecture.md) (state-vector layout,
 `rlv`/`rev`/`timeRef` usage, crossflow options) and the full paper,
-[`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md)
+[`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](../SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md)
 (equations that consume these non-dimensional quantities).

@@ -4,11 +4,11 @@
 > Yildirim et al. 2019 (transonic aircraft, plain SA). Several of its
 > prescriptions are measured NOT to transfer to the SA-γ-Re̅θt model on this
 > branch: the NK switch at 1e-4…1e-6 stalls (premature engagement, Step=0.00 —
-> see `docs/convergence-strategy.md`, commit ef9fc10d); "decoupled beats
+> see `docs/core/convergence-strategy.md`, commit ef9fc10d); "decoupled beats
 > coupled" is inverted (SA-GR requires CANK→CSANK); L2Convergence code default
 > is 1e-8 and 1e-8 is the standing target for transition runs. Hardware/WU
 > numbers are Ivybridge/Skylake-era paper data, not Deucalion. Treat everything
-> below as paper record, checked against `docs/convergence-strategy.md` before
+> below as paper record, checked against `docs/core/convergence-strategy.md` before
 > use on SA-GR.
 
 **Source:** Yildirim, Kenway, Mader, Martins, *A Jacobian-free approximate Newton–Krylov startup strategy for RANS simulations*, JCP (2019), doi:10.1016/j.jcp.2019.06.018.

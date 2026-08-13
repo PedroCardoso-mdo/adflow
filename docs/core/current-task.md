@@ -10,8 +10,8 @@
 
 The previous "Active Task" (gammaForSA clamp AD-vs-CS mismatch) was RESOLVED
 on 2026-07-23 and its full record lives in
-[`task-log/2026-07-23-sagr-full-adjoint-test.md`](task-log/2026-07-23-sagr-full-adjoint-test.md)
-and [`task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`](task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md)
+[`task-log/2026-07-23-sagr-full-adjoint-test.md`](../task-log/2026-07-23-sagr-full-adjoint-test.md)
+and [`../task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`](../task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md)
 (CS tolerance settled at 5e-8, mach/drag non-blocking). This file had
 retained the resolved task plus ~140 lines of a superseded July partials
 campaign; that content was already duplicated by the task-log entries and
@@ -36,7 +36,7 @@ campaign; that content was already duplicated by the task-log entries and
 - `.pyf` no-ops: `ANKPhysicalLSTolReTheta` / `omegaMinGamma`
   (`architecture.md`, Turb-ANK options).
 - Mach CS derivative doesn't settle (non-blocking) —
-  `task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`.
+  `../task-log/2026-07-24-sagr-cs-tolerance-nonblocking.md`.
 - Rotating-frame path not exercised by any test —
   `VERIFICATION/rotating-frame-audit.md` §5.
 - Physics gap vs paper (+20/30 counts above bucket) — campaign paused,

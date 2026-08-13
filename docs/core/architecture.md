@@ -2,9 +2,9 @@
 
 > What Claude needs to know about ADflow internals, user constraints, confirmed
 > facts, and every runtime option added for the SA-γ-Re̅θt transition model.
-> Physics equations live in the full paper, [`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md);
+> Physics equations live in the full paper, [`SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean (1).md`](../SA_GAMMA_RETHETHA_BASE/Piotrowski_Zingg_2020_SA-sLM2015_clean%20(1).md);
 > non-dim conventions in [`nondimensionalization.md`](nondimensionalization.md); adjoint/AD
-> touchpoints in [`VERIFICATION/adjoint-trace.md`](VERIFICATION/adjoint-trace.md).
+> touchpoints in [`VERIFICATION/adjoint-trace.md`](../VERIFICATION/adjoint-trace.md).
 
 ---
 
