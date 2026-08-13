@@ -442,6 +442,32 @@ module inputIteration
     ! <= 0 (default) => disabled, floor ramps exactly as before.
     real(kind=realType) :: ankCFLMinCap = 0.0_realType
 
+    ! ------------------------------------------------------------------
+    ! ANK/CANK unsteady line-search geometry (VERIF_06 F2).
+    !
+    ! ADflow backtracks by 0.7 for at most 12 iterations, so the smallest
+    ! step the line search can produce is 0.7**12 = 0.0138 -- ABOVE its own
+    ! rejection threshold ANK_stepMin*ANK_stepFactor (0.01 by default).
+    ! The search therefore cannot classify a collapsed step as a failure,
+    ! the CFL cutback never fires, the CFL stays pinned at ANK_CFLLimit,
+    ! and the solver limit-cycles: huge proposed step -> throttled to ~1-3%
+    ! -> repeat. Measured on the NLF(2)-0415 swept wing: CFL locked at 1e6
+    ! for 1800+ iterations with a healthy linear residual.
+    !
+    ! Piotrowski's thesis (Algorithm 4) backtracks by 0.90 with an explicit
+    ! 1% floor and rejects on reaching it -- gentler, allowed to go further,
+    ! and its floor coincides with the rejection threshold by construction.
+    ! From lambda = 1 that needs ~44 backtracks to reach 0.01.
+    !
+    ! Defaults reproduce ADflow's current 0.7 / 12 geometry exactly.
+    real(kind=realType) :: ankUnsteadyLSFactor = 0.7_realType
+    integer(kind=intType) :: ankUnsteadyLSMaxIter = 12
+
+    ! Treat an exhausted backtracking budget as a step rejection (thesis
+    ! Algorithm 4), so the CFL cutback actually fires instead of the solver
+    ! accepting the floor step forever. Default .false. = previous behaviour.
+    logical :: ankRejectOnLSExhausted = .false.
+
 end module inputIteration
 
 module inputCostFunctions

@@ -127,7 +127,48 @@ It also unifies this audit: **in both phases the mechanism that restores
 diagonal dominance after a bad step is unavailable** — dead in NK (this row),
 floored out by the convergence-scaled `ANK_CFLMin` in ANK/CANK (F1).
 
-### Action — this is now the top code item
+### REVISION 2026-08-13 — their inexact-Newton is our **CSANK**, not our NK
+
+> User: *"isto tudo não estamos a tornar o NK no ANK? tipo o solver deles que
+> chamam Newton já não é +/- o nosso CANK?"* — **yes, and this kills the
+> original action below.**
+
+Verified in code (`NKSolvers.F90:5148-5178`): the `*SANK`/`*CSANK` iteration
+types are selected when `totalR <= ANK_secondOrdSwitchTol*totalR0`, which is
+exactly the regime where `ANK_useDissApprox`, `lumpedDiss` and `approxSA` are
+**not** applied — i.e. the true second-order residual — while
+`computeTimeStepMat` still contributes the `T` term every iteration.
+
+So:
+
+| Thesis | ADflow |
+|---|---|
+| approximate-Newton: `(T + A_approx) ΔQ = −R` | **ANK / CANK** |
+| inexact-Newton: `(T + A_2nd) ΔQ = −R`, `Δt_ref` ramped up so `T → 0` | **SANK / CSANK** |
+| — (the `T = 0` limit) | **NK** |
+
+**ADflow's NK is the `T → 0` endpoint of a continuum that CSANK already
+traverses.** Adding a pseudo-transient diagonal to NK, as the original action
+proposed, would be re-deriving CSANK — new code for a solver we already have.
+
+**Consequence — the plan changes:** do **not** build `T` into NK. Instead make
+**CSANK** do what their inexact-Newton does: engage around rel 1e-5 and run to
+convergence. That reframes the target of every remaining item — F1/F2 are
+CSANK's step controller, and fixing them fixes the equivalent of their
+inexact-Newton phase directly.
+
+This also explains a symptom `CORE_02` already recorded but never accounted
+for: *"Do NOT hold … CSANK past ~3.5e-8: a front adjustment kicks the residual
+and the phase enters permanent oscillation (never recovers its best depth)."*
+**Permanent oscillation with no recovery is precisely the F2 limit cycle** — the
+controller cannot classify the collapsed step as a failure, so it never backs
+off. It is the same bug, seen one phase earlier.
+
+`useNKSolver: False` + letting CSANK finish — already the recommendation in
+`CORE_02` for AR5 L0 — is therefore not a workaround. **It is the paper's actual
+algorithm.**
+
+### Action — SUPERSEDED by the revision above
 
 Install a pseudo-transient diagonal on the NK operator and give it a
 back-off-and-retry on step rejection, with a **user-specified floor**
@@ -143,9 +184,25 @@ must therefore be scoped to the SA-GR path and default off.
 
 ---
 
-## F1 — CANK step-controller limit cycle: the CFL cutback is a no-op at depth
+## F1 — CANK step-controller limit cycle: the CFL cutback never fires
 
-**Verdict: DIVERGES from the paper. This is the primary finding.**
+> **CORRECTION 2026-08-13, same day.** This row originally claimed the cutback
+> was blocked because the ramped floor `ANK_CFLMin` had reached
+> `ANK_CFLLimit`. **That is wrong at the depths where the swept wing actually
+> stalls**, and the arithmetic proves it: at the stalled iterations
+> `totalRes/totalR0 ≈ 9.4e-6`, so
+> `ANK_CFLMin = 1.0·(1/9.4e-6)^0.5 ≈ 3.3e2` — three orders below the 1e6 the
+> CFL is pinned at. The cutback had ample room (`max(1e6·0.5, 3.3e2) = 5e5`).
+>
+> The floor-saturation trap is **real but latent**: it needs
+> `(totalR0/totalR)^0.5 ≥ ANK_CFLLimit`, i.e. rel ≈ 1e-12 for a 1e6 limit. It
+> plausibly explains the deep-restart strandedness `CORE_02` records ("raise
+> `ANKCFLMin` if stranded"), and `ANKCFLMinCap` (commit 6c31217d) remains a
+> correct guard for it — but it is **not** this stall's cause. The real
+> mechanism is F2, below, and the two rows should be read together.
+
+**Verdict: DIVERGES from the paper — but via F2's mechanism, not the one first
+claimed.**
 
 ### Evidence — our runs
 
@@ -227,9 +284,44 @@ today's behaviour as the revert path. **This is the highest-priority correction.
 
 ---
 
-## F2 — The unsteady line search lands just above the rejection threshold
+## F2 — The line search cannot reach its own rejection threshold
 
-**Verdict: DIVERGES (interacts with F1).**
+**Verdict: DIVERGES. Promoted 2026-08-13 to the actual cause of the swept-wing
+CANK stall** (see the correction in F1).
+
+### The arithmetic
+
+- Unsteady-LS backtracking: starts at `0.7·λ`, then up to **12** further
+  factors of 0.7 ⇒ smallest reachable step **`0.7^12 = 0.0138`**.
+- Rejection threshold for the CFL cutback: `ANK_stepMin·ANK_stepFactor` =
+  **`0.01`** (defaults `0.01 × 1.0`).
+
+**0.0138 > 0.01.** The line search structurally cannot produce a step small
+enough to be classified as a failure. The only route to `λ < 0.01` is the
+physicality check — and in the coupled branch the turbulence/transition
+variables are clipped per-cell to `ratio = one` (see F6), so only ρ or E can do
+it. Hence: **the cutback almost never fires, `ANK_CFL` stays pinned at
+`ANK_CFLLimit`, every iteration proposes an enormous step, the line search
+throttles it back to ~1–3%, and the cycle repeats.** Measured: CFL locked at
+1.00E+06 for 1800+ iterations, `Step` 0.01–0.30, lin res healthy 0.006–0.050.
+
+### What the authors do
+
+Thesis Algorithm 4: backtrack by **0.90** (not 0.7) with an explicit **1%
+floor**, and on reaching that floor **reject the step and halve `Δt_ref`**.
+From λ=1 a factor of 0.90 needs ~44 backtracks to reach 0.01 — so their search
+is both *gentler* and allowed to go *further*, and its floor coincides with the
+rejection threshold by construction rather than sitting above it.
+
+Two further differences already noted: their acceptance test is against the
+*current steady* residual `‖R(Q^n)‖₂`, ours against `unsteadyNorm_old ×
+ANK_unstdyLSTol`; and the `ANK_stepMin` floor check at `:5176` is applied to the
+*pre*-line-search physicality λ only, never to the accepted λ.
+
+### Action
+Make the backtrack factor and budget runtime options so the thesis's 0.90/1%
+geometry is reachable, and treat an exhausted budget as a rejection. Both
+default to today's 0.7/12 so nothing changes until asked.
 
 `NKSolvers.F90:5217-5248` — the coupled-ANK backtracking loop starts at
 `lambda = 0.7*lambda` and runs at most **12** iterations, each `lambda*0.7`:

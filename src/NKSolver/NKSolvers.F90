@@ -4962,7 +4962,8 @@ contains
         use blockPointers, only: nDom, flowDoms, shockSensor, ib, jb, kb, p, w, gamma
         use inputPhysics, only: equations, turbModel
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
-                                  solverStallDiag, solverStallDiagStep, ankCFLMinCap
+                                  solverStallDiag, solverStallDiagStep, ankCFLMinCap, &
+                                  ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
@@ -5349,9 +5350,13 @@ contains
 
             ! Set the initial new lambda. This is working off the
             ! potentially already physically limited step.
-            lambda = 0.7_realType * lambda
+            ! VERIF_06 F2: factor and budget are options. Defaults 0.7/12
+            ! reproduce ADflow exactly, whose floor 0.7**12 = 0.0138 sits ABOVE
+            ! the 0.01 rejection threshold and so can never trigger a cutback.
+            ! The thesis's Algorithm 4 geometry is 0.90 with ~44 iterations.
+            lambda = ankUnsteadyLSFactor * lambda
 
-            backtrack: do iter = 1, 12
+            backtrack: do iter = 1, ankUnsteadyLSMaxIter
 
                 ! Apply the new step
                 call VecAXPY(wVec, -lambda, deltaW, ierr)
@@ -5374,12 +5379,26 @@ contains
                     call EChk(ierr, __FILE__, __LINE__)
 
                     ! Haven't backed off enough yet....keep going
-                    lambda = lambda * 0.7_realType
+                    lambda = lambda * ankUnsteadyLSFactor
                     stallNBacktrack = iter
                 else
                     ! We have succefssfully reduced the norm
                     LSFailed = .False.
                     stallNBacktrack = iter
+
+                    ! VERIF_06 F2 / thesis Algorithm 4: a step accepted only
+                    ! because the backtracking budget ran out is a failed step,
+                    ! not a successful one. Without this the controller can
+                    ! never classify the collapse as a failure, so the CFL
+                    ! cutback never fires and the solver limit-cycles. Undo the
+                    ! step and fall through to the rejection branch below, which
+                    ! already handles restoring the state and cutting the CFL.
+                    if (ankRejectOnLSExhausted .and. &
+                        lambda < ANK_stepMin * ANK_stepFactor) then
+                        call VecAXPY(wVec, lambda, deltaW, ierr)
+                        call EChk(ierr, __FILE__, __LINE__)
+                        LSFailed = .True.
+                    end if
                     exit
                 end if
             end do backtrack

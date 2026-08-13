@@ -5917,6 +5917,13 @@ class ADFLOW(AeroSolver):
             # analogue of the thesis's user-specified dt_ref,min).
             # <= 0 => disabled, floor ramps exactly as before.
             "ANKCFLMinCap": [float, 0.0],
+            # VERIF_06 F2: unsteady line-search geometry. Defaults reproduce
+            # ADflow's 0.7/12 (floor 0.7**12 = 0.0138, which sits ABOVE the
+            # 0.01 rejection threshold and so can never trigger a CFL cutback).
+            # The thesis's Algorithm 4 geometry is 0.90 with ~44 iterations.
+            "ANKUnsteadyLSFactor": [float, 0.7],
+            "ANKUnsteadyLSMaxIter": [int, 12],
+            "ANKRejectOnLSExhausted": [bool, False],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6339,6 +6346,9 @@ class ADFLOW(AeroSolver):
             "solverstalldiag": ["iter", "solverstalldiag"],
             "solverstalldiagstep": ["iter", "solverstalldiagstep"],
             "ankcflmincap": ["iter", "ankcflmincap"],
+            "ankunsteadylsfactor": ["iter", "ankunsteadylsfactor"],
+            "ankunsteadylsmaxiter": ["iter", "ankunsteadylsmaxiter"],
+            "ankrejectonlsexhausted": ["iter", "ankrejectonlsexhausted"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {
