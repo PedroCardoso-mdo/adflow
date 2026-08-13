@@ -502,6 +502,33 @@ module inputIteration
     ! covers gamma and Re-theta-t only.
     logical :: ankTransitionGlobalLambda = .true.
 
+    ! MFFD differencing controls (VERIF_06 F9).
+    !
+    ! ANK/CANK and NK all build J*a by finite difference,
+    !     J*a ~ [F(u + h*a) - F(u)] / h
+    ! and PETSc picks h assuming F is evaluated to a relative accuracy of
+    ! machine epsilon -- MatMFFDSetFunctionError is never called. The SA-GR
+    ! residual goes through smoothMinMax blends, empirical correlations, tanh
+    ! and clipping, so its true noise floor is many orders above 1e-16. If the
+    ! real error is ~1e-10, the h PETSc chooses is ~1e-3 too small and J*a is
+    ! dominated by cancellation: a bad Newton direction from a linear solve
+    ! that still converges cleanly, which is the measured signature at the
+    ! stall (Step = 1.00, lin res 0.02-0.04, no progress).
+    !
+    ! Measured first (job 1821307): the COLUMN SCALING is not the problem --
+    ! the scaled state spans only ~2.3 orders (0.014 to 2.5) and the worst
+    ! pair is rho*E vs rho*v, both mean-flow; the transition variables sit
+    ! mid-range (nuTilde 0.026, gamma 0.091, reTheta 0.090). So h itself, not
+    ! the variable scaling, is what is left to test.
+    !
+    ! <= 0 (default) => do not call MatMFFDSetFunctionError, i.e. PETSc's
+    ! machine-epsilon assumption, exactly as before.
+    real(kind=realType) :: mffdFunctionError = 0.0_realType
+
+    ! MFFD h formula: 'ds' (default, Dennis-Schnabel, PETSc's default) or
+    ! 'wp' (Walker-Pernice). Empty/'ds' leaves PETSc untouched.
+    character(len=8) :: mffdType = 'ds'
+
 end module inputIteration
 
 module inputCostFunctions

@@ -182,6 +182,7 @@ contains
 
             call MatMFFDSetFunction(dRdw, FormFunction_mf, ctx, ierr)
             call EChk(ierr, __FILE__, __LINE__)
+            call configureMFFD(dRdw)
 
             ! Setup a matrix free matrix for drdw
             call MatCreateShell(ADFLOW_COMM_WORLD, nDimW, nDimW, PETSC_DETERMINE, &
@@ -1473,6 +1474,33 @@ contains
 
     end subroutine applyAdjointPC
 
+
+    subroutine configureMFFD(mat)
+        ! VERIF_06 F9: apply the MFFD differencing controls. PETSc's default is
+        ! Dennis-Schnabel with an assumed function error of machine epsilon,
+        ! which is wrong for a residual carrying smoothMinMax blends,
+        ! empirical correlations, tanh and clipping -- h then comes out far too
+        ! small and J*a is dominated by cancellation. Defaults leave PETSc
+        ! exactly as before.
+        use constants
+        use inputIteration, only: mffdFunctionError, mffdType
+        use utils, only: EChk
+        implicit none
+        Mat mat
+        integer(kind=intType) :: ierr
+
+        if (trim(mffdType) == 'wp') then
+            call MatMFFDSetType(mat, MATMFFD_WP, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end if
+
+        if (mffdFunctionError > zero) then
+            call MatMFFDSetFunctionError(mat, mffdFunctionError, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end if
+
+    end subroutine configureMFFD
+
     subroutine getNKColScale(cs)
         ! Column scale for the NK state vector: one for the mean-flow
         ! entries, turbResScale for the turbulence entries. For models other
@@ -2477,7 +2505,7 @@ contains
         use inputPhysics, only: equations
         use flowVarRefState, only: nw, viscous, nwf, nt1, nt2
         use ADjointVars, only: nCellsLocal
-        use NKSolver, only: destroyNKSolver, linearResidualMonitor
+        use NKSolver, only: destroyNKSolver, linearResidualMonitor, configureMFFD
         use utils, only: EChk
         use adjointUtils, only: myMatCreate, statePreAllocation
         use amg, only: setupAMG
@@ -2560,6 +2588,7 @@ contains
 
             call MatMFFDSetFunction(dRdw, FormFunction_mf, ctx, ierr)
             call EChk(ierr, __FILE__, __LINE__)
+            call configureMFFD(dRdw)
 
             call MatSetOption(dRdW, MAT_ROW_ORIENTED, PETSC_FALSE, ierr)
             call EChk(ierr, __FILE__, __LINE__)
@@ -2657,6 +2686,7 @@ contains
 
                 call MatMFFDSetFunction(dRdwTurb, FormFunction_mf_Turb, ctx, ierr)
                 call EChk(ierr, __FILE__, __LINE__)
+                call configureMFFD(dRdwTurb)
 
                 call MatSetOption(dRdWTurb, MAT_ROW_ORIENTED, PETSC_FALSE, ierr)
                 call EChk(ierr, __FILE__, __LINE__)

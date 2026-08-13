@@ -1145,6 +1145,8 @@ python module libadflow
          logical :: ankrejectonlsexhausted
          logical :: ankalgorithm2damping
          logical :: anktransitiongloballambda
+         real(kind=realtype) :: mffdfunctionerror
+         character(len=8) :: mffdtype
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

@@ -5931,6 +5931,13 @@ class ADFLOW(AeroSolver):
             # of letting them shrink the GLOBAL step. Measured: gamma was the
             # binding variable in 7143 of ~7200 coupled iterations.
             "ANKTransitionGlobalLambda": [bool, True],
+            # VERIF_06 F9: PETSc assumes the residual is evaluated to machine
+            # epsilon when choosing the MFFD step h. The SA-GR residual is far
+            # noisier (smoothMinMax, correlations, tanh, clipping), so h comes
+            # out far too small and J*a is cancellation noise. <=0 keeps
+            # PETSc's assumption.
+            "MFFDFunctionError": [float, 0.0],
+            "MFFDType": [("ds", "wp"), "ds"],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6358,6 +6365,8 @@ class ADFLOW(AeroSolver):
             "ankrejectonlsexhausted": ["iter", "ankrejectonlsexhausted"],
             "ankalgorithm2damping": ["iter", "ankalgorithm2damping"],
             "anktransitiongloballambda": ["iter", "anktransitiongloballambda"],
+            "mffdfunctionerror": ["iter", "mffdfunctionerror"],
+            "mffdtype": ["iter", "mffdtype"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {
