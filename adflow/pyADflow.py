@@ -5937,7 +5937,7 @@ class ADFLOW(AeroSolver):
             # out far too small and J*a is cancellation noise. <=0 keeps
             # PETSc's assumption.
             "MFFDFunctionError": [float, 0.0],
-            "MFFDType": [("ds", "wp"), "ds"],
+            "MFFDType": [str, "ds"],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],

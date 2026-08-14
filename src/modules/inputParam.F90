@@ -527,7 +527,7 @@ module inputIteration
 
     ! MFFD h formula: 'ds' (default, Dennis-Schnabel, PETSc's default) or
     ! 'wp' (Walker-Pernice). Empty/'ds' leaves PETSc untouched.
-    character(len=8) :: mffdType = 'ds'
+    character(len=maxStringLen) :: mffdType = 'ds'
 
 end module inputIteration
 
