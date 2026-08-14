@@ -4240,6 +4240,8 @@ contains
         call getFullColScale(cs, 1_intType, nw)
         call VecGetArrayReadF90(wv, wPtr, ierr); call EChk(ierr, __FILE__, __LINE__)
         call VecGetArrayReadF90(dw, dPtr, ierr); call EChk(ierr, __FILE__, __LINE__)
+        ! NOTE: both arrays are restored before the scaling update below, which
+        ! repacks wv -- PETSc forbids writing a vector whose array is checked out.
 
         sw = zero; sd = zero; mw = zero
         nCells = size(wPtr) / nw
@@ -4272,14 +4274,18 @@ contains
         if (ankColScaleUnit) then
             do l = 1, min(nw, size(colScaleUnitFac))
                 rmsL = sqrt(swG(l) / real(max(nTotG, 1), alwaysRealType))
-                if (rmsL > tiny(one)) then
-                    if (colScaleUnitFac(l) > zero) then
-                        colScaleUnitFac(l) = colScaleUnitFac(l) / rmsL
-                    else
-                        colScaleUnitFac(l) = cs(l) / rmsL
-                    end if
-                end if
+                ! Clamp the per-update change. A single step can only move a
+                ! factor by 10x either way, which keeps a bad measurement from
+                ! running the scaling away (the first implementation had no
+                ! clamp and no repack, and drove nuTilde's factor to 3e13).
+                rmsL = min(max(rmsL, 0.1_alwaysRealType), 10.0_alwaysRealType)
+                colScaleUnitFac(l) = cs(l) / rmsL
             end do
+            ! The factors have changed, so wVec -- packed with the OLD ones --
+            ! is now inconsistent with them. Repack from ADflow's w, which is
+            ! the authoritative unscaled state, before anything downstream
+            ! (FormJacobianANK, the MFFD base) uses either.
+            call setWVecANKScaled(wv, 1_intType, nw)
         end if
 
         if (myid == 0) then
