@@ -1147,6 +1147,7 @@ python module libadflow
          logical :: anktransitiongloballambda
          real(kind=realtype) :: mffdfunctionerror
          character(len=maxstringlen) :: mffdtype
+         logical :: ankcolscaleunit
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

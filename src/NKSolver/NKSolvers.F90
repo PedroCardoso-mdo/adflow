@@ -2463,6 +2463,10 @@ module ANKSolver
     ! Oscillation detector: previous total residual and a run length of
     ! consecutive iterations in which it ROSE. A solver that is oscillating
     ! rather than stalling shows a nonzero, repeatedly-resetting run length.
+    ! Unit column scale (VERIF_06 F10): per-variable factors making the
+    ! scaled state RMS one. <=0 entries mean 'not measured yet', in which
+    ! case getFullColScale falls back to the legacy scaling.
+    real(kind=realType) :: colScaleUnitFac(8) = -one
     real(kind=alwaysRealType) :: stallResPrev = -one
     integer(kind=intType) :: stallRiseCount = 0, stallRiseMax = 0
 
@@ -4036,7 +4040,7 @@ contains
         ! For models other than SA-Gamma-Retheta every factor is one.
         use constants
         use inputPhysics, only: turbModel
-        use inputIteration, only: turbResScale, transitionNK
+        use inputIteration, only: turbResScale, transitionNK, ankColScaleUnit
         use flowVarRefState, only: nt1, nt2
         implicit none
         integer(kind=intType), intent(in) :: lStart, lEnd
@@ -4047,6 +4051,18 @@ contains
         if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK) then
             do l = max(lStart, nt1), min(lEnd, nt2)
                 fac(l) = turbResScale(l - nt1 + 1)
+            end do
+        end if
+
+        ! VERIF_06 F10: replace the above with factors that put EVERY variable
+        ! at a unit RMS, so the single MFFD differencing step h is equally
+        ! appropriate for all of them. Only applied once the factors have
+        ! actually been measured (they are refreshed at PC-reform cadence);
+        ! until then the legacy scaling above stands, so the first iterations
+        ! behave exactly as before.
+        if (ankColScaleUnit) then
+            do l = lStart, min(lEnd, size(colScaleUnitFac))
+                if (colScaleUnitFac(l) > zero) fac(l) = colScaleUnitFac(l)
             end do
         end if
     end subroutine getFullColScale
@@ -4206,6 +4222,7 @@ contains
         ! is chosen from data rather than from argument.
         use constants
         use flowVarRefState, only: nw, nt1, nt2
+        use inputIteration, only: ankColScaleUnit
         use communication, only: ADflow_comm_world, myid
         use utils, only: EChk
         implicit none
@@ -4218,6 +4235,7 @@ contains
         real(kind=alwaysRealType) :: swG(nw), sdG(nw), mwG(nw)
         integer(kind=intType) :: nTot, nTotG
         character(len=8) :: vname
+        real(kind=alwaysRealType) :: rmsL
 
         call getFullColScale(cs, 1_intType, nw)
         call VecGetArrayReadF90(wv, wPtr, ierr); call EChk(ierr, __FILE__, __LINE__)
@@ -4245,6 +4263,24 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
         call mpi_allreduce(nTot, nTotG, 1_intType, MPI_INTEGER, mpi_sum, ADflow_comm_world, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! VERIF_06 F10: fold the measured RMS back into the column scale so
+        ! every variable ends up at unit RMS. rmsW is the RMS of the ALREADY
+        ! scaled state, so the update is new = old / rmsW, which drives the
+        ! scaled RMS to one. Done here, at PC-reform cadence, so the assembled
+        ! preconditioner and the operator never disagree about the scaling.
+        if (ankColScaleUnit) then
+            do l = 1, min(nw, size(colScaleUnitFac))
+                rmsL = sqrt(swG(l) / real(max(nTotG, 1), alwaysRealType))
+                if (rmsL > tiny(one)) then
+                    if (colScaleUnitFac(l) > zero) then
+                        colScaleUnitFac(l) = colScaleUnitFac(l) / rmsL
+                    else
+                        colScaleUnitFac(l) = cs(l) / rmsL
+                    end if
+                end if
+            end do
+        end if
 
         if (myid == 0) then
             do l = 1, nw
@@ -5236,7 +5272,7 @@ contains
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
                                   solverStallDiag, solverStallDiagStep, ankCFLMinCap, &
                                   ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted, &
-                                  ankAlgorithm2Damping, ankTransitionGlobalLambda
+                                  ankAlgorithm2Damping, ankTransitionGlobalLambda, ankColScaleUnit
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use inputTimeSpectral, only: nTimeIntervalsSpectral
@@ -5411,7 +5447,8 @@ contains
 
             ! F9 metric: report what the column scaling actually achieves,
             ! at PC-reform cadence so the cost is negligible.
-            if (solverStallDiag .and. ANK_coupled) call reportScaledStateStats(wVec, deltaW)
+            if ((solverStallDiag .or. ankColScaleUnit) .and. ANK_coupled) &
+                call reportScaledStateStats(wVec, deltaW)
 
             ! Record the total residuals when the PC is calculated.
             totalR_pcUpdate = totalR

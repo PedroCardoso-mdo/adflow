@@ -5938,6 +5938,11 @@ class ADFLOW(AeroSolver):
             # PETSc's assumption.
             "MFFDFunctionError": [float, 0.0],
             "MFFDType": [str, "ds"],
+            # VERIF_06 F10: scale EVERY variable to a unit RMS so the single
+            # MFFD h serves them all equally. Measured today, only rho and
+            # rho*E are O(1); the momenta and all turbulence/transition
+            # variables sit 10-70x lower. Leaves PETSc's h mechanism alone.
+            "ANKColScaleUnit": [bool, False],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6367,6 +6372,7 @@ class ADFLOW(AeroSolver):
             "anktransitiongloballambda": ["iter", "anktransitiongloballambda"],
             "mffdfunctionerror": ["iter", "mffdfunctionerror"],
             "mffdtype": ["iter", "mffdtype"],
+            "ankcolscaleunit": ["iter", "ankcolscaleunit"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {

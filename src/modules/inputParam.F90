@@ -529,6 +529,26 @@ module inputIteration
     ! 'wp' (Walker-Pernice). Empty/'ds' leaves PETSc untouched.
     character(len=maxStringLen) :: mffdType = 'ds'
 
+    ! Unit column scaling (VERIF_06 F10).
+    !
+    ! ADflow's column scale is 1 for every mean-flow entry and turbResScale for
+    ! the turbulence entries. Measured on the swept wing (job 1821307), the
+    ! resulting scaled state is:
+    !     rho 0.999 | rho*u 0.071 | rho*v 0.014 | rho*w 0.073 | rho*E 2.505
+    !     nuTilde 0.026 | gamma 0.091 | reTheta 0.090
+    ! so only density and energy are O(1); the three momenta and all three
+    ! turbulence/transition variables sit 10-70x lower. MFFD perturbs every
+    ! component by the SAME h*a_i, so those six get a relative perturbation
+    ! one to two orders away from the one h was chosen for.
+    !
+    ! With this option on, the column scale is chosen so that EVERY variable
+    ! has a scaled RMS of one, leaving PETSc's automatic h mechanism untouched
+    ! -- which is the point: fix the vector, not the differencing rule.
+    !
+    ! The factors are refreshed only when the preconditioner is reformed, so
+    ! the assembled PC and the operator always share one scaling.
+    logical :: ankColScaleUnit = .false.
+
 end module inputIteration
 
 module inputCostFunctions
