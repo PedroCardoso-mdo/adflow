@@ -3,6 +3,51 @@
 **Started 2026-08-13.** Restore point: git tag `pre-solver-fidelity-2026-08-13`
 (working branch `solver-fidelity-2026-08`).
 
+## RESULT (2026-08-15): the binding constraint was the CFL ceiling
+
+**The swept wing converges with matrix dissipation.** Job 1825801, Re 2.0e6,
+crossflow on, `vis4 0.04`, `Vl=Vn=0`:
+
+| variant | iters | wall | relL2Drop | converged |
+|---|---:|---:|---|---|
+| **`cfl8`** (`ANKCFLLimit 1e8`, linear tol left at 0.05) | **534** | **492 s** | 5.47e-09 | **True** |
+| `lin4_cfl10` | 325 | 907 s | 6.28e-10 | True |
+| `lin3_cfl8` | 1237 | 1609 s | 3.23e-10 | True |
+| `cfl10` | 2727 | 3080 s | 2.88e-10 | True |
+| previous best (any recipe) | 9282 | — | 8.47e-05 | False |
+
+Four orders deeper and 17x fewer iterations, and the four agree on `cd` to the
+fifth digit (0.007071–0.007076) — the recipe, not an artefact of one cell.
+
+**Cause.** CFL sat pinned at `1.00E+06` because that was the `ankCFLLimit` the
+runner passed: **saturated at the ceiling, not settling there.** Lifting it
+shrinks the pseudo-transient term `T` and CANK becomes the paper's
+inexact-Newton phase in fact rather than in name — which is exactly the F0
+reframing, arrived at through a knob rather than through new code.
+
+**Two things this retrospectively explains.**
+
+1. Tightening the *linear* tolerance alone (`lin2`/`lin3`/`lin4`) only reached
+   ~1e-5, while `cfl8` converged with the linear tolerance at its 0.05
+   default. **The linear solve was never the constraint.** The "healthy
+   lin res ~0.03" seen throughout was GMRES meeting a slack tolerance and
+   exiting, not evidence of a good operator.
+2. Why F1, F2, F8, the MFFD `h` and unit column scaling all fired exactly as
+   designed and moved nothing. With CFL pinned at the ceiling, `Step` already
+   1.00 and the residual flat, none of them *could* help: the binding
+   constraint was elsewhere. Each was a correct mechanism aimed at a
+   non-binding constraint.
+
+**Standing correction to `CORE_02`:** its "do NOT couple early — CANK at 1e-2
+stagnates" rule does not hold here; `ankCoupledSwitchTol 1e-2` is part of the
+winning recipe on this mesh. That rule was measured on the 175k plain wing
+with the CFL ceiling in place.
+
+**Credit:** the CFL-ceiling question came from the user, as did the linear-
+tolerance one that isolated it by failing.
+
+---
+
 ## Scope and method
 
 **Deliberately limited** (user instruction 2026-08-13: *"auditoria limitada, já
