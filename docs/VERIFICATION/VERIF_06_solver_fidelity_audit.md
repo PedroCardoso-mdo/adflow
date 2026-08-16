@@ -3,6 +3,52 @@
 **Started 2026-08-13.** Restore point: git tag `pre-solver-fidelity-2026-08-13`
 (working branch `solver-fidelity-2026-08`).
 
+## VALIDATED (2026-08-16): NLF(2)-0415 swept wing, 1.9% mean error vs the paper
+
+With `ANKCFLLimit 1e8` **and** the corrected Reynolds reference length, all
+seven Re converge (relL2Drop 1.6e-10 to 2.1e-9, ~500-635 iterations) with
+**matrix dissipation and crossflow on**, and the transition location matches
+P&Z's §V.C curve:
+
+| Re/1e6 | ours | paper | exp | vs paper | vs exp |
+|---|---|---|---|---|---|
+| 1.796 | 0.680 | 0.710 | 0.780 | −4.2% | −12.8% |
+| 2.000 | 0.604 | 0.623 | 0.731 | −3.1% | −17.4% |
+| 2.204 | 0.531 | 0.541 | 0.578 | −1.9% | −8.1% |
+| 2.370 | 0.484 | 0.486 | 0.504 | −0.4% | −3.9% |
+| 2.498 | 0.447 | 0.444 | 0.446 | +0.7% | +0.1% |
+| 3.000 | 0.339 | 0.349 | 0.327 | −2.9% | +3.6% |
+| 3.498 | 0.266 | 0.266 | 0.297 | +0.1% | −10.5% |
+
+**Mean |error| vs paper 1.9%**, vs experiment 8.1%, on a cross-section 20%
+coarser than theirs (65k vs 81,608 nodes).
+
+The strongest single piece of evidence is not the mean: our largest deviation
+from experiment is at Re 2.0e6 (−17.4%), and the paper reports "an error of
+approximately 14%" at exactly that condition, attributing it to experimental
+error in Radeztsky's data. **We reproduce not only their curve but their
+specific disagreement with experiment, at the same point and magnitude.**
+
+### The second bug: the Reynolds reference length
+
+The runner used `--reynoldsLength 1.41421356`, on the campaign note that Re was
+"quoted on the streamwise chord". Wrong. P&Z 2019 §IV.B describe the geometry as
+"an NLF2-0415 airfoil **extruded** with a 45 degree sweep angle" and quote Re
+"based on free-stream velocity magnitude and chord length" — the chord-1 airfoil
+is the section NORMAL to the leading edge, so the reference length is 1.0.
+
+With sqrt(2), asking for Re = 2.0e6 sets the freestream to
+`rho*U*sqrt(2)/mu = 2.0e6`, i.e. an actual chord Reynolds number of 1.41e6:
+**every run was a factor sqrt(2) below the paper.**
+
+How it was caught, and why it is worth recording: comparing x_tr at the
+*nominal* Re gave errors growing 10.8% -> 71.6%, which reads exactly like a
+crossflow contribution that is too weak — a plausible, entirely wrong
+diagnosis. Comparing instead at Re/sqrt(2), the chord Reynolds number actually
+being run, gave −1.2% and +0.9% at the two points that land inside the
+digitised range. A monotonically growing error is a signature of a wrong
+*parameter*, not a wrong *model*; the transition model was never at fault.
+
 ## RESULT (2026-08-15): the binding constraint was the CFL ceiling
 
 **The swept wing converges with matrix dissipation.** Job 1825801, Re 2.0e6,
