@@ -5428,9 +5428,12 @@ contains
             if (firstCall) then
 
                 ! Check if we are above or below the coupled switch tolerance.
-                ! PZ mode: the P&Z solver is fully coupled from iteration 1
-                ! (thesis SS3.1), so force coupling immediately.
-                if ((ANK_pzStepping .or. totalR .le. ANK_coupledSwitchTol * totalR0) &
+                ! PZ mode: the thesis's main solver is fully coupled from
+                ! iteration 1 (set ANKCoupledSwitchTol >= 1 for that), but
+                ! Appendix B also runs decoupled/loosely-coupled variants in
+                ! the approximate-Newton phase (fully coupled in phase 2), so
+                ! PZ mode respects ANKCoupledSwitchTol like standard ADflow.
+                if (totalR .le. ANK_coupledSwitchTol * totalR0 &
                     .and. equations .eq. RANSEquations) then
                     ANK_coupled = .True.
                 else
