@@ -2418,6 +2418,29 @@ module ANKSolver
     real(kind=realType) :: ANK_pcUpdateTol, ANK_pcUpdateTol2
     real(kind=realType) :: ANK_pcUpdateCutoff
     real(kind=realType) :: lambda
+    ! ------------------------------------------------------------------
+    ! P&Z stepping mode (ANKPZStepping): when ON, ADflow's own CFL
+    ! controller, physicality check and unsteady line search are fully
+    ! replaced by the Piotrowski/Zingg (Diablo) system, expressed in CFL
+    ! units instead of dt_ref:
+    !   phase 1 (approximate-Newton, totalR > ANK_secondOrdSwitchTol*totalR0):
+    !     CFL = CFL0 * b^n           (Osusky & Zingg Eq. after (30): dt_ref = a b^n)
+    !     + source-term dt restriction (thesis Eq. 3.14) forced ON
+    !   phase 2 (inexact-Newton analog, CSANK):
+    !     CFL = max(alpha * Rd^-beta, CFL_prev)   (Mulder & van Leer SER)
+    !     alpha anchored at the phase switch for continuity
+    !   rejection (thesis Algs. 2 & 4): failed update => CFL = max(CFL/2, CFLmin)
+    ! ------------------------------------------------------------------
+    logical :: ANK_pzStepping = .False.
+    real(kind=realType) :: ANK_pzCFL0 = 1.0_realType     ! 'a' of a*b^n, in CFL units
+    real(kind=realType) :: ANK_pzGrowth = 1.3_realType   ! 'b' of a*b^n (thesis: 1.3)
+    real(kind=realType) :: ANK_pzBeta = 1.75_realType    ! SER exponent beta (thesis: [1.5, 2.0])
+    real(kind=realType) :: ANK_pzCFLMin = 0.1_realType   ! dt_ref,min analogue, in CFL units
+    real(kind=realType) :: ANK_pzCFLMax = 1.0e10_realType ! numerical ceiling for CFL -> infinity
+    ! PZ internal state (not options)
+    real(kind=realType) :: pz_CFLRef = -one        ! running reference CFL
+    real(kind=realType) :: pz_alphaSER = -one      ! SER alpha; < 0 = not anchored yet
+    logical :: pz_prevAccepted = .False.           ! last outer step was accepted
     logical :: ANK_solverSetup = .False.
     logical :: ANK_CFLReset
     integer(kind=intTYpe) :: ANK_iter
@@ -4741,6 +4764,85 @@ contains
 
     end subroutine physicalityCheckANK
 
+    subroutine pzPhysicsRestriction(lambdaP)
+
+        ! Thesis Algorithm 2 (physics-based restriction), PZ mode only:
+        ! delta_phys = min over all cells with a NEGATIVE density or energy
+        ! update of 0.90*Q/|dQ| (Eq. 3.10). The update applied later is
+        ! -lambdaP*deltaW, so a negative physical update corresponds to
+        ! deltaW > 0. Operates on the column-scaled wVec/deltaW; the ratio is
+        ! scale-invariant because rho and E share one positive scale factor.
+        ! The caller handles delta < 1% (reject + halve reference CFL, or clip
+        ! at the CFL floor).
+
+        use constants
+        use utils, only: EChk
+        use genericISNAN, only: myisnan
+        use communication, only: ADflow_comm_world
+        implicit none
+
+        real(kind=realType), intent(inout) :: lambdaP
+
+        integer(kind=intType) :: ierr, ii, vecSize
+        real(kind=realType), pointer :: wvec_pointer(:)
+        real(kind=realType), pointer :: dvec_pointer(:)
+        real(kind=alwaysRealType) :: deltaL, deltaG, wval, dval
+
+        call VecGetArrayF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call VecGetArrayF90(deltaW, dvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        deltaL = real(lambdaP)
+
+        ! The local state vector is nState entries per cell:
+        ! [rho, mx, my, mz, E, (turb...)] — check rho (offset 0) and E (offset 4).
+        vecSize = size(wvec_pointer)
+        do ii = 1, vecSize, nState
+            ! density
+#ifndef USE_COMPLEX
+            wval = wvec_pointer(ii)
+            dval = dvec_pointer(ii)
+#else
+            wval = real(wvec_pointer(ii))
+            dval = real(dvec_pointer(ii))
+#endif
+            if (dval > eps .and. wval > zero) then
+                deltaL = min(deltaL, 0.90_alwaysRealType * wval / dval)
+            end if
+
+            ! total energy
+#ifndef USE_COMPLEX
+            wval = wvec_pointer(ii + 4)
+            dval = dvec_pointer(ii + 4)
+#else
+            wval = real(wvec_pointer(ii + 4))
+            dval = real(dvec_pointer(ii + 4))
+#endif
+            if (dval > eps .and. wval > zero) then
+                deltaL = min(deltaL, 0.90_alwaysRealType * wval / dval)
+            end if
+        end do
+
+        call VecRestoreArrayF90(wVec, wvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call VecRestoreArrayF90(deltaW, dvec_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        if (myisnan(deltaL)) deltaL = zero
+
+        call mpi_allreduce(deltaL, deltaG, 1_intType, MPI_DOUBLE, &
+                           mpi_min, ADflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+#ifndef USE_COMPLEX
+        lambdaP = deltaG
+#else
+        lambdaP = cmplx(deltaG, 0.0_realType)
+#endif
+
+    end subroutine pzPhysicsRestriction
+
     subroutine physicalityCheckANKTurb(lambdaP)
 
         use constants
@@ -5311,6 +5413,9 @@ contains
         real(kind=alwaysRealType) :: rtol, totalR_dummy, linearRes, norm
         real(kind=alwaysRealType) :: resHist(ANK_maxIter + 1)
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old, rel_pcUpdateTol
+        real(kind=alwaysRealType) :: pzRd, lsTolEff
+        real(kind=realType) :: lsFactorEff
+        integer(kind=intType) :: lsMaxIterEff
         logical :: correctForK, LSFailed, backtrackTriggeredANK
 
         ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
@@ -5322,8 +5427,11 @@ contains
             ! to the correct value.
             if (firstCall) then
 
-                ! Check if we are above or below the coupled switch tolerance
-                if (totalR .le. ANK_coupledSwitchTol * totalR0 .and. equations .eq. RANSEquations) then
+                ! Check if we are above or below the coupled switch tolerance.
+                ! PZ mode: the P&Z solver is fully coupled from iteration 1
+                ! (thesis SS3.1), so force coupling immediately.
+                if ((ANK_pzStepping .or. totalR .le. ANK_coupledSwitchTol * totalR0) &
+                    .and. equations .eq. RANSEquations) then
                     ANK_coupled = .True.
                 else
                     ANK_coupled = .False.
@@ -5376,6 +5484,23 @@ contains
                 linResOld = zero
                 linResOldTurb = zero
                 ANK_iter = 0
+
+                ! PZ mode initialization: the whole P&Z stabilization stack is
+                ! one switch — no hybrid with the ADflow controller. Force the
+                ! pieces of their system that already exist on this branch ON,
+                ! and start the reference CFL at its phase-1 seed.
+                if (ANK_pzStepping) then
+                    transitionSrcDtRestrict = .True.  ! thesis Eq. 3.14 (source-term dt restriction)
+                    ankAlgorithm2Damping = .True.     ! thesis Alg. 3 (per-node gamma/ReTheta damping)
+                    pz_CFLRef = ANK_pzCFL0
+                    pz_alphaSER = -one
+                    pz_prevAccepted = .False.
+                    if (myid == 0) then
+                        print *, 'PZ stepping mode ON: CFL = ', real(ANK_pzCFL0), &
+                            ' * ', real(ANK_pzGrowth), '^n (phase 1), SER beta = ', &
+                            real(ANK_pzBeta), ' (phase 2); ADflow CFL controller disabled.'
+                    end if
+                end if
             end if
         else
             ANK_iter = ANK_iter + 1
@@ -5405,9 +5530,35 @@ contains
             call computeSrcLambda(srcLambdaModeFull)
         end if
 
+        ! ============== PZ reference-CFL law (replaces the ADflow controller) ==============
+        ! Updated EVERY outer iteration (the Diablo dt_ref is), not only at PC
+        ! reforms. Growth is only applied after an ACCEPTED step; a rejected
+        ! step instead halves pz_CFLRef at the bottom of this routine.
+        if (ANK_pzStepping) then
+            if (totalR > ANK_secondOrdSwitchTol * totalR0) then
+                ! Phase 1 (approximate-Newton): geometric ramp, CFL = CFL0 * b^n
+                if (pz_prevAccepted) pz_CFLRef = min(pz_CFLRef * ANK_pzGrowth, ANK_pzCFLMax)
+                ! Not in phase 2 (yet, or anymore): drop the SER anchor so it is
+                ! re-anchored (continuously) on the next phase-2 entry.
+                pz_alphaSER = -one
+            else
+                ! Phase 2 (inexact-Newton analog): Mulder & van Leer SER,
+                ! CFL^(n) = max(alpha * Rd^-beta, CFL^(n-1)), monotone while accepted.
+                pzRd = totalR / totalR0
+                if (pz_alphaSER < zero) pz_alphaSER = pz_CFLRef * pzRd**ANK_pzBeta
+                if (pz_prevAccepted) then
+                    pz_CFLRef = min(max(pz_alphaSER * pzRd**(-ANK_pzBeta), pz_CFLRef), ANK_pzCFLMax)
+                end if
+            end if
+            ANK_CFL = pz_CFLRef
+            ! dt_ref,min analogue: the single floor the rejection logic tests.
+            ANK_CFLMin = ANK_pzCFLMin
+        end if
+
         ! Determine if if we need to form the Preconditioner
         if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol) then
 
+            if (.not. ANK_pzStepping) then
             ! First of all, update the minimum cfl wrt the overall convergence
             ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase * (totalR0 / totalR)**ANK_CFLExponent)
 
@@ -5450,6 +5601,7 @@ contains
                 ANK_CFL = max(ANK_CFL, ANK_CFLMin)
 
             end if
+            end if ! .not. ANK_pzStepping (PZ mode: CFL set by the PZ law above)
 
             ! F9 metric: report what the column scaling actually achieves,
             ! at PC-reform cadence so the cost is negligible.
@@ -5624,9 +5776,25 @@ contains
 
         ! Compute the maximum step that will limit the change in pressure
         ! and energy to some user defined fraction.
-        call physicalityCheckANK(lambda)
-        if (ANK_CFL .gt. ANK_CFLMin .and. lambda .lt. ANK_stepMin) &
-            lambda = zero
+        if (ANK_pzStepping) then
+            ! Thesis Algorithm 2 (physics-based restriction): global
+            ! delta_phys = min over cells with a NEGATIVE rho/E update of
+            ! 0.90*Q/|dQ|. delta < 1% => reject the update and retry with the
+            ! reference CFL halved (done at the bottom of this routine); at the
+            ! CFL floor, clip to 1% and continue.
+            call pzPhysicsRestriction(lambda)
+            if (lambda < 0.01_realType) then
+                if (ANK_CFL > ANK_CFLMin) then
+                    lambda = zero ! reject; pz_CFLRef is halved below
+                else
+                    lambda = 0.01_realType
+                end if
+            end if
+        else
+            call physicalityCheckANK(lambda)
+            if (ANK_CFL .gt. ANK_CFLMin .and. lambda .lt. ANK_stepMin) &
+                lambda = zero
+        end if
 
         ! Take the uodate after the physicality check.
         call VecAXPY(wVec, -lambda, deltaW, ierr)
@@ -5657,7 +5825,21 @@ contains
         stallNBacktrack = 0
         stallLSFailed = .False.
 
-        if ((unsteadyNorm > unsteadyNorm_old * ANK_unstdyLSTol .or. myisnan(unsteadyNorm))) then
+        ! Effective line-search parameters. PZ mode = thesis Algorithm 4:
+        ! accept when R_unst < ||R(Q^n)||_2 (tol 1), back off by 0.90, floor
+        ! at delta_ls = 0.01 by VALUE (checked inside the loop), rejection
+        ! handled by the CFL-halving branch below.
+        if (ANK_pzStepping) then
+            lsTolEff = one
+            lsFactorEff = 0.90_realType
+            lsMaxIterEff = 64
+        else
+            lsTolEff = ANK_unstdyLSTol
+            lsFactorEff = ankUnsteadyLSFactor
+            lsMaxIterEff = ankUnsteadyLSMaxIter
+        end if
+
+        if ((unsteadyNorm > unsteadyNorm_old * lsTolEff .or. myisnan(unsteadyNorm))) then
             ! The unsteady residual is too high or we have a NAN. Do a
             ! backtracking line search until we get a residual that is lower.
 
@@ -5674,9 +5856,9 @@ contains
             ! reproduce ADflow exactly, whose floor 0.7**12 = 0.0138 sits ABOVE
             ! the 0.01 rejection threshold and so can never trigger a cutback.
             ! The thesis's Algorithm 4 geometry is 0.90 with ~44 iterations.
-            lambda = ankUnsteadyLSFactor * lambda
+            lambda = lsFactorEff * lambda
 
-            backtrack: do iter = 1, ankUnsteadyLSMaxIter
+            backtrack: do iter = 1, lsMaxIterEff
 
                 ! Apply the new step
                 call VecAXPY(wVec, -lambda, deltaW, ierr)
@@ -5692,15 +5874,22 @@ contains
                 call VecNorm(rVec, NORM_2, unsteadyNorm, ierr)
                 call EChk(ierr, __FILE__, __LINE__)
 
-                if (unsteadyNorm > unsteadyNorm_old * ANK_unstdyLSTol .or. myisnan(unsteadyNorm)) then
+                if (unsteadyNorm > unsteadyNorm_old * lsTolEff .or. myisnan(unsteadyNorm)) then
 
                     ! Restore back to the original wVec
                     call VecAXPY(wVec, lambda, deltaW, ierr)
                     call EChk(ierr, __FILE__, __LINE__)
 
                     ! Haven't backed off enough yet....keep going
-                    lambda = lambda * ankUnsteadyLSFactor
+                    lambda = lambda * lsFactorEff
                     stallNBacktrack = iter
+
+                    ! PZ mode / thesis Algorithm 4: the floor is on the VALUE of
+                    ! delta_ls, not on an iteration budget. Below 1% the search
+                    ! has failed; leave LSFailed set and let the rejection
+                    ! branch below halve the reference CFL (or take the floored
+                    ! step if the CFL is already at its floor).
+                    if (ANK_pzStepping .and. lambda < 0.01_realType) exit backtrack
                 else
                     ! We have succefssfully reduced the norm
                     LSFailed = .False.
@@ -5713,7 +5902,7 @@ contains
                     ! cutback never fires and the solver limit-cycles. Undo the
                     ! step and fall through to the rejection branch below, which
                     ! already handles restoring the state and cutting the CFL.
-                    if (ankRejectOnLSExhausted .and. &
+                    if ((.not. ANK_pzStepping) .and. ankRejectOnLSExhausted .and. &
                         lambda < ANK_stepMin * ANK_stepFactor) then
                         call VecAXPY(wVec, lambda, deltaW, ierr)
                         call EChk(ierr, __FILE__, __LINE__)
@@ -5889,18 +6078,36 @@ contains
             end if
         end if
 
-        ! Check if the linear solutions are failing.
-        ! If the lin res is above .5 or so, the solver
-        ! might stall, so we might be better off just
-        ! reducing the CFL and keep going. We Modify
-        ! the CFLMin by altering CFLMinBase.
-        if (linResMonitor .gt. ANK_linResMax) then
-            ! This will adjust MinBase such that we can halve the cfl
-            ! based on the current CFL.
-            ANK_CFLMinBase = ANK_CFLCutback * ANK_CFL * ((totalR / totalR0)**ANK_CFLExponent)
-            ! flags to refresh the Jacobian and cut back the CFL
-            ANK_iter = -1
-            lambda = zero
+        ! ============== PZ rejection bookkeeping ==============
+        ! Thesis Algorithms 2 and 4: a rejected update (lambda = 0) halves the
+        ! reference CFL (dt_ref = max(0.5 dt_ref, dt_ref,min)) and re-anchors
+        ! the SER law so phase 2 continues from the halved value. An accepted
+        ! step arms the growth law for the next iteration.
+        if (ANK_pzStepping) then
+            if (lambda == zero) then
+                pz_CFLRef = max(half * pz_CFLRef, ANK_pzCFLMin)
+                pz_alphaSER = -one
+                pz_prevAccepted = .False.
+                ANK_iter = -1 ! reform the PC with the halved CFL
+            else
+                pz_prevAccepted = .True.
+            end if
+        else
+            ! Check if the linear solutions are failing.
+            ! If the lin res is above .5 or so, the solver
+            ! might stall, so we might be better off just
+            ! reducing the CFL and keep going. We Modify
+            ! the CFLMin by altering CFLMinBase.
+            ! (ADflow controller only — the PZ system has no linear-residual
+            ! CFL response; its rejection logic covers this.)
+            if (linResMonitor .gt. ANK_linResMax) then
+                ! This will adjust MinBase such that we can halve the cfl
+                ! based on the current CFL.
+                ANK_CFLMinBase = ANK_CFLCutback * ANK_CFL * ((totalR / totalR0)**ANK_CFLExponent)
+                ! flags to refresh the Jacobian and cut back the CFL
+                ANK_iter = -1
+                lambda = zero
+            end if
         end if
 
         ! Update the approximate iteration counter. The +1 is for the
