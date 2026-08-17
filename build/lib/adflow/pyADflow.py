@@ -5906,6 +5906,43 @@ class ADFLOW(AeroSolver):
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
             "transitionRefLength": [float, -1.0],
+            # Stall diagnostics (VERIF_06): report WHY the ANK/CANK/NK step
+            # controller collapsed the step. Diagnostic only -- does not change
+            # the solution path. solverStallDiagStep limits the reporting to
+            # iterations whose accepted step is below it (1.0 => every iter).
+            "solverStallDiag": [bool, False],
+            "solverStallDiagStep": [float, 1.0],
+            # VERIF_06 F1: absolute ceiling on the convergence-ramped ANK CFL
+            # floor, so the CFL cutback keeps room to act at depth (the
+            # analogue of the thesis's user-specified dt_ref,min).
+            # <= 0 => disabled, floor ramps exactly as before.
+            "ANKCFLMinCap": [float, 0.0],
+            # VERIF_06 F2: unsteady line-search geometry. Defaults reproduce
+            # ADflow's 0.7/12 (floor 0.7**12 = 0.0138, which sits ABOVE the
+            # 0.01 rejection threshold and so can never trigger a CFL cutback).
+            # The thesis's Algorithm 4 geometry is 0.90 with ~44 iterations.
+            "ANKUnsteadyLSFactor": [float, 0.7],
+            "ANKUnsteadyLSMaxIter": [int, 12],
+            "ANKRejectOnLSExhausted": [bool, False],
+            # VERIF_06 F7: Algorithm 2 per-node damping in the coupled path
+            # (previously NK-only, but their inexact-Newton phase is CSANK).
+            "ANKAlgorithm2Damping": [bool, False],
+            # VERIF_06 F8: let Algorithm 2 bound gamma/ReTheta per node instead
+            # of letting them shrink the GLOBAL step. Measured: gamma was the
+            # binding variable in 7143 of ~7200 coupled iterations.
+            "ANKTransitionGlobalLambda": [bool, True],
+            # VERIF_06 F9: PETSc assumes the residual is evaluated to machine
+            # epsilon when choosing the MFFD step h. The SA-GR residual is far
+            # noisier (smoothMinMax, correlations, tanh, clipping), so h comes
+            # out far too small and J*a is cancellation noise. <=0 keeps
+            # PETSc's assumption.
+            "MFFDFunctionError": [float, 0.0],
+            "MFFDType": [str, "ds"],
+            # VERIF_06 F10: scale EVERY variable to a unit RMS so the single
+            # MFFD h serves them all equally. Measured today, only rho and
+            # rho*E are O(1); the momenta and all turbulence/transition
+            # variables sit 10-70x lower. Leaves PETSc's h mechanism alone.
+            "ANKColScaleUnit": [bool, False],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -6062,6 +6099,16 @@ class ADFLOW(AeroSolver):
             "ANKCFLExponent": [float, 0.5],
             "ANKCFLCutback": [float, 0.5],
             "ANKCFLReset": [bool, True],
+            # P&Z stepping mode: one switch that replaces ADflow's CFL
+            # controller, physicality check and unsteady LS with the
+            # Piotrowski/Zingg system (geometric ramp + SER, source-term dt
+            # restriction, Algorithms 2/3/4), expressed in CFL units.
+            "ANKPZStepping": [bool, False],
+            "ANKPZCFL0": [float, 1.0],
+            "ANKPZGrowthFactor": [float, 1.3],
+            "ANKPZSERBeta": [float, 1.75],
+            "ANKPZCFLMin": [float, 0.1],
+            "ANKPZCFLMax": [float, 1e10],
             "ANKStepFactor": [float, 1.0],
             "ANKStepMin": [float, 0.01],
             "ANKConstCFLStep": [float, 0.4],
@@ -6325,6 +6372,17 @@ class ADFLOW(AeroSolver):
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
             "transitionreflength": ["iter", "transitionreflength"],
+            "solverstalldiag": ["iter", "solverstalldiag"],
+            "solverstalldiagstep": ["iter", "solverstalldiagstep"],
+            "ankcflmincap": ["iter", "ankcflmincap"],
+            "ankunsteadylsfactor": ["iter", "ankunsteadylsfactor"],
+            "ankunsteadylsmaxiter": ["iter", "ankunsteadylsmaxiter"],
+            "ankrejectonlsexhausted": ["iter", "ankrejectonlsexhausted"],
+            "ankalgorithm2damping": ["iter", "ankalgorithm2damping"],
+            "anktransitiongloballambda": ["iter", "anktransitiongloballambda"],
+            "mffdfunctionerror": ["iter", "mffdfunctionerror"],
+            "mffdtype": ["iter", "mffdtype"],
+            "ankcolscaleunit": ["iter", "ankcolscaleunit"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {
@@ -6513,6 +6571,12 @@ class ADFLOW(AeroSolver):
             "ankcflexponent": ["ank", "ank_cflexponent"],
             "ankcflcutback": ["ank", "ank_cflcutback"],
             "ankcflreset": ["ank", "ank_cflreset"],
+            "ankpzstepping": ["ank", "ank_pzstepping"],
+            "ankpzcfl0": ["ank", "ank_pzcfl0"],
+            "ankpzgrowthfactor": ["ank", "ank_pzgrowth"],
+            "ankpzserbeta": ["ank", "ank_pzbeta"],
+            "ankpzcflmin": ["ank", "ank_pzcflmin"],
+            "ankpzcflmax": ["ank", "ank_pzcflmax"],
             "ankstepfactor": ["ank", "ank_stepfactor"],
             "ankstepmin": ["ank", "ank_stepmin"],
             "ankconstcflstep": ["ank", "ank_constcflstep"],
