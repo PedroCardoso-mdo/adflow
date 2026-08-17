@@ -2441,6 +2441,12 @@ module ANKSolver
     real(kind=realType) :: pz_CFLRef = -one        ! running reference CFL
     real(kind=realType) :: pz_alphaSER = -one      ! SER alpha; < 0 = not anchored yet
     logical :: pz_prevAccepted = .False.           ! last outer step was accepted
+    ! One-way phase latch: the thesis switches approximate -> inexact Newton
+    ! ONCE at the Rd tolerance and never goes back (only the source-dt
+    ! restriction reactivates on a residual rise, not the phase). Without the
+    ! latch the solver oscillates across the boundary forever (round-4 case I:
+    ! 26k iterations bouncing CANK<->CSANK around rel 1e-5).
+    logical :: pz_phase2 = .False.
     logical :: ANK_solverSetup = .False.
     logical :: ANK_CFLReset
     integer(kind=intTYpe) :: ANK_iter
@@ -2782,7 +2788,9 @@ contains
         tmp = viscPC ! Save what is in viscPC and set to False
         viscPC = .False.
 
-        if (totalR > ANK_secondOrdSwitchTol * totalR0) &
+        ! PZ mode: follow the one-way phase latch instead of the tolerance
+        if ((ANK_pzStepping .and. .not. pz_phase2) .or. &
+            ((.not. ANK_pzStepping) .and. totalR > ANK_secondOrdSwitchTol * totalR0)) &
             approxSA = .True.
 
         ! Create the preconditoner matrix
@@ -3218,7 +3226,9 @@ contains
         tmp = viscPC ! Save what is in viscPC and set to False
         viscPC = .False.
 
-        if (totalR > ANK_secondOrdSwitchTol * totalR0) &
+        ! PZ mode: follow the one-way phase latch instead of the tolerance
+        if ((ANK_pzStepping .and. .not. pz_phase2) .or. &
+            ((.not. ANK_pzStepping) .and. totalR > ANK_secondOrdSwitchTol * totalR0)) &
             approxSA = .True.
 
         ! Create the preconditoner matrix
@@ -5416,7 +5426,7 @@ contains
         real(kind=alwaysRealType) :: pzRd, lsTolEff
         real(kind=realType) :: lsFactorEff
         integer(kind=intType) :: lsMaxIterEff
-        logical :: correctForK, LSFailed, backtrackTriggeredANK
+        logical :: correctForK, LSFailed, backtrackTriggeredANK, useSecondOrd
 
         ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
         if (firstCall .or. &
@@ -5498,6 +5508,7 @@ contains
                     pz_CFLRef = ANK_pzCFL0
                     pz_alphaSER = -one
                     pz_prevAccepted = .False.
+                    pz_phase2 = .False.
                     if (myid == 0) then
                         print *, 'PZ stepping mode ON: CFL = ', real(ANK_pzCFL0), &
                             ' * ', real(ANK_pzGrowth), '^n (phase 1), SER beta = ', &
@@ -5538,24 +5549,41 @@ contains
         ! reforms. Growth is only applied after an ACCEPTED step; a rejected
         ! step instead halves pz_CFLRef at the bottom of this routine.
         if (ANK_pzStepping) then
-            if (totalR > ANK_secondOrdSwitchTol * totalR0) then
-                ! Phase 1 (approximate-Newton): geometric ramp, CFL = CFL0 * b^n
+            ! One-way phase latch (thesis: the approximate -> inexact switch
+            ! happens once; a later residual rise reactivates the source-dt
+            ! restriction, not the phase).
+            if (.not. pz_phase2 .and. totalR .le. ANK_secondOrdSwitchTol * totalR0) &
+                pz_phase2 = .True.
+
+            if (.not. pz_phase2) then
+                ! Phase 1 (approximate-Newton): geometric ramp, CFL = CFL0 * b^n.
+                ! ANKPZCFLMax caps THIS phase only (the open-loop ramp).
                 if (pz_prevAccepted) pz_CFLRef = min(pz_CFLRef * ANK_pzGrowth, ANK_pzCFLMax)
-                ! Not in phase 2 (yet, or anymore): drop the SER anchor so it is
-                ! re-anchored (continuously) on the next phase-2 entry.
                 pz_alphaSER = -one
             else
                 ! Phase 2 (inexact-Newton analog): Mulder & van Leer SER,
-                ! CFL^(n) = max(alpha * Rd^-beta, CFL^(n-1)), monotone while accepted.
+                ! CFL^(n) = max(alpha * Rd^-beta, CFL^(n-1)), monotone while
+                ! accepted, UNCAPPED (the thesis ramps dt_ref to infinity to
+                ! recover Newton; the SER law is residual-fed, and rejection
+                ! still halves the CFL on a failed step).
                 pzRd = totalR / totalR0
                 if (pz_alphaSER < zero) pz_alphaSER = pz_CFLRef * pzRd**ANK_pzBeta
                 if (pz_prevAccepted) then
-                    pz_CFLRef = min(max(pz_alphaSER * pzRd**(-ANK_pzBeta), pz_CFLRef), ANK_pzCFLMax)
+                    pz_CFLRef = min(max(pz_alphaSER * pzRd**(-ANK_pzBeta), pz_CFLRef), 1.0e10_realType)
                 end if
             end if
             ANK_CFL = pz_CFLRef
             ! dt_ref,min analogue: the single floor the rejection logic tests.
             ANK_CFLMin = ANK_pzCFLMin
+        end if
+
+        ! Which Jacobian/flux regime is active this iteration. PZ mode uses the
+        ! one-way latch; standard ADflow re-evaluates the tolerance every
+        ! iteration (and so can oscillate across the boundary).
+        if (ANK_pzStepping) then
+            useSecondOrd = pz_phase2
+        else
+            useSecondOrd = totalR .le. ANK_secondOrdSwitchTol * totalR0
         end if
 
         ! Determine if if we need to form the Preconditioner
@@ -5621,7 +5649,7 @@ contains
             ! Actually form the preconditioner and factorize it.
             call FormJacobianANK()
 
-            if (totalR .le. ANK_secondOrdSwitchTol * totalR0) then
+            if (useSecondOrd) then
                 if (ANK_coupled) then
                     iterType = "  *CSANK"
                 else
@@ -5643,7 +5671,7 @@ contains
             ! This call does not update the time step terms for the AMG PC
             call computeTimeStepMat(usePC=.False.)
 
-            if (totalR .le. ANK_secondOrdSwitchTol * totalR0) then
+            if (useSecondOrd) then
                 if (ANK_coupled) then
                     iterType = "   CSANK"
                 else
@@ -5679,7 +5707,7 @@ contains
         ! for the matrix-free matrix-vector product routines when the KSP solver calls it
         ! Very important to set the variables back to their original values after each
         ! KSP solve because we want actual flux functions when calculating residuals
-        if (totalR > ANK_secondOrdSwitchTol * totalR0) then
+        if (.not. useSecondOrd) then
             ! Setting lumped dissipation to true gives approximate fluxes
             ANK_useDissApprox = .True.
             lumpedDiss = .True.
@@ -5762,7 +5790,7 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
 
         ! Return previously changed variables back to normal, VERY IMPORTANT
-        if (totalR > ANK_secondOrdSwitchTol * totalR0) then
+        if (.not. useSecondOrd) then
             ! Set ANK_useDissApprox back to False to go back to using actual flux routines
             ANK_useDissApprox = .False.
             lumpedDiss = .False.
@@ -5993,7 +6021,7 @@ contains
         linResMonitor = resHist(kspIterations + 1) / resHist(1)
 
         if ((linResMonitor .ge. ANK_rtol .and. &
-             totalR > ANK_secondOrdSwitchTol * totalR0 .and. &
+             (.not. useSecondOrd) .and. &
              linResOld .le. ANK_rtol) &
             !.or. LSFailed) then
             !.or. lambda .le. ANK_stepMin) then
