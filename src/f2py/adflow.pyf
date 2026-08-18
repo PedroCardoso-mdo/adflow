@@ -475,6 +475,7 @@ python module libadflow
          ! P&Z stepping mode (must be declared here or setOption silently
          ! creates a phantom Python attribute -- see the VERIF_06 F4 note)
          logical :: ank_pzstepping
+         logical :: ank_pzendgame
          real(kind=realtype) :: ank_pzcfl0
          real(kind=realtype) :: ank_pzgrowth
          real(kind=realtype) :: ank_pzbeta

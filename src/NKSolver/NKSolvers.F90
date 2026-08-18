@@ -2432,6 +2432,12 @@ module ANKSolver
     !   rejection (thesis Algs. 2 & 4): failed update => CFL = max(CFL/2, CFLmin)
     ! ------------------------------------------------------------------
     logical :: ANK_pzStepping = .False.
+    ! Hybrid endgame mode: ADflow's own controller/physicality/LS run the
+    ! start-up (segregated + coupled) untouched; once totalR drops below
+    ! ANKSecondOrdSwitchTol the PZ phase 2 takes over permanently (one-way
+    ! latch, SER CFL law uncapped, PZ Algs. 2/4, rejection = CFL/2) in place
+    ! of NK. Mutually exclusive with ANK_pzStepping (full PZ system).
+    logical :: ANK_pzEndgame = .False.
     real(kind=realType) :: ANK_pzCFL0 = 1.0_realType     ! 'a' of a*b^n, in CFL units
     real(kind=realType) :: ANK_pzGrowth = 1.3_realType   ! 'b' of a*b^n (thesis: 1.3)
     real(kind=realType) :: ANK_pzBeta = 1.75_realType    ! SER exponent beta (thesis: [1.5, 2.0])
@@ -2789,8 +2795,9 @@ contains
         viscPC = .False.
 
         ! PZ mode: follow the one-way phase latch instead of the tolerance
-        if ((ANK_pzStepping .and. .not. pz_phase2) .or. &
-            ((.not. ANK_pzStepping) .and. totalR > ANK_secondOrdSwitchTol * totalR0)) &
+        if (((ANK_pzStepping .or. ANK_pzEndgame) .and. .not. pz_phase2) .or. &
+            ((.not. (ANK_pzStepping .or. ANK_pzEndgame)) .and. &
+             totalR > ANK_secondOrdSwitchTol * totalR0)) &
             approxSA = .True.
 
         ! Create the preconditoner matrix
@@ -3227,8 +3234,9 @@ contains
         viscPC = .False.
 
         ! PZ mode: follow the one-way phase latch instead of the tolerance
-        if ((ANK_pzStepping .and. .not. pz_phase2) .or. &
-            ((.not. ANK_pzStepping) .and. totalR > ANK_secondOrdSwitchTol * totalR0)) &
+        if (((ANK_pzStepping .or. ANK_pzEndgame) .and. .not. pz_phase2) .or. &
+            ((.not. (ANK_pzStepping .or. ANK_pzEndgame)) .and. &
+             totalR > ANK_secondOrdSwitchTol * totalR0)) &
             approxSA = .True.
 
         ! Create the preconditoner matrix
@@ -5514,7 +5522,7 @@ contains
                 ! one switch — no hybrid with the ADflow controller. Force the
                 ! pieces of their system that already exist on this branch ON,
                 ! and start the reference CFL at its phase-1 seed.
-                if (ANK_pzStepping) then
+                if (ANK_pzStepping .or. ANK_pzEndgame) then
                     transitionSrcDtRestrict = .True.  ! thesis Eq. 3.14 (source-term dt restriction)
                     ankAlgorithm2Damping = .True.     ! thesis Alg. 3 (per-node gamma/ReTheta damping)
                     pz_CFLRef = ANK_pzCFL0
@@ -5560,17 +5568,27 @@ contains
         ! Updated EVERY outer iteration (the Diablo dt_ref is), not only at PC
         ! reforms. Growth is only applied after an ACCEPTED step; a rejected
         ! step instead halves pz_CFLRef at the bottom of this routine.
-        if (ANK_pzStepping) then
+        if (ANK_pzStepping .or. ANK_pzEndgame) then
             ! One-way phase latch (thesis: the approximate -> inexact switch
             ! happens once; a later residual rise reactivates the source-dt
             ! restriction, not the phase).
-            if (.not. pz_phase2 .and. totalR .le. ANK_secondOrdSwitchTol * totalR0) &
+            if (.not. pz_phase2 .and. totalR .le. ANK_secondOrdSwitchTol * totalR0) then
                 pz_phase2 = .True.
+                ! Endgame mode: anchor the SER reference at whatever CFL the
+                ! ADflow controller reached, and take over from here.
+                if (ANK_pzEndgame) then
+                    pz_CFLRef = ANK_CFL
+                    pz_alphaSER = -one
+                    pz_prevAccepted = .False.
+                end if
+            end if
 
             if (.not. pz_phase2) then
-                ! Phase 1 (approximate-Newton): geometric ramp, CFL = CFL0 * b^n.
-                ! ANKPZCFLMax caps THIS phase only (the open-loop ramp).
-                if (pz_prevAccepted) pz_CFLRef = min(pz_CFLRef * ANK_pzGrowth, ANK_pzCFLMax)
+                ! Phase 1. Full PZ mode: geometric ramp, CFL = CFL0 * b^n
+                ! (ANKPZCFLMax caps this open-loop phase only). Endgame mode:
+                ! do nothing here — the ADflow controller owns phase 1.
+                if (ANK_pzStepping .and. pz_prevAccepted) &
+                    pz_CFLRef = min(pz_CFLRef * ANK_pzGrowth, ANK_pzCFLMax)
                 pz_alphaSER = -one
             else
                 ! Phase 2 (inexact-Newton analog): Mulder & van Leer SER,
@@ -5584,15 +5602,19 @@ contains
                     pz_CFLRef = min(max(pz_alphaSER * pzRd**(-ANK_pzBeta), pz_CFLRef), 1.0e10_realType)
                 end if
             end if
-            ANK_CFL = pz_CFLRef
-            ! dt_ref,min analogue: the single floor the rejection logic tests.
-            ANK_CFLMin = ANK_pzCFLMin
+            ! Endgame mode phase 1: leave ANK_CFL/ANK_CFLMin to the ADflow
+            ! controller entirely.
+            if (ANK_pzStepping .or. pz_phase2) then
+                ANK_CFL = pz_CFLRef
+                ! dt_ref,min analogue: the single floor the rejection logic tests.
+                ANK_CFLMin = ANK_pzCFLMin
+            end if
         end if
 
         ! Which Jacobian/flux regime is active this iteration. PZ mode uses the
         ! one-way latch; standard ADflow re-evaluates the tolerance every
         ! iteration (and so can oscillate across the boundary).
-        if (ANK_pzStepping) then
+        if (ANK_pzStepping .or. ANK_pzEndgame) then
             useSecondOrd = pz_phase2
         else
             useSecondOrd = totalR .le. ANK_secondOrdSwitchTol * totalR0
@@ -5601,7 +5623,7 @@ contains
         ! Determine if if we need to form the Preconditioner
         if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol) then
 
-            if (.not. ANK_pzStepping) then
+            if (.not. (ANK_pzStepping .or. (ANK_pzEndgame .and. pz_phase2))) then
             ! First of all, update the minimum cfl wrt the overall convergence
             ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase * (totalR0 / totalR)**ANK_CFLExponent)
 
@@ -5644,7 +5666,7 @@ contains
                 ANK_CFL = max(ANK_CFL, ANK_CFLMin)
 
             end if
-            end if ! .not. ANK_pzStepping (PZ mode: CFL set by the PZ law above)
+            end if ! PZ owns the CFL (full mode always; endgame mode once latched)
 
             ! F9 metric: report what the column scaling actually achieves,
             ! at PC-reform cadence so the cost is negligible.
@@ -5819,7 +5841,7 @@ contains
 
         ! Compute the maximum step that will limit the change in pressure
         ! and energy to some user defined fraction.
-        if (ANK_pzStepping) then
+        if (ANK_pzStepping .or. (ANK_pzEndgame .and. pz_phase2)) then
             ! Thesis Algorithm 2 (physics-based restriction): global
             ! delta_phys = min over cells with a NEGATIVE rho/E update of
             ! 0.90*Q/|dQ|. delta < 1% => reject the update and retry with the
@@ -5872,7 +5894,7 @@ contains
         ! accept when R_unst < ||R(Q^n)||_2 (tol 1), back off by 0.90, floor
         ! at delta_ls = 0.01 by VALUE (checked inside the loop), rejection
         ! handled by the CFL-halving branch below.
-        if (ANK_pzStepping) then
+        if (ANK_pzStepping .or. (ANK_pzEndgame .and. pz_phase2)) then
             lsTolEff = one
             lsFactorEff = 0.90_realType
             lsMaxIterEff = 64
@@ -5932,7 +5954,8 @@ contains
                     ! has failed; leave LSFailed set and let the rejection
                     ! branch below halve the reference CFL (or take the floored
                     ! step if the CFL is already at its floor).
-                    if (ANK_pzStepping .and. lambda < 0.01_realType) exit backtrack
+                    if ((ANK_pzStepping .or. (ANK_pzEndgame .and. pz_phase2)) &
+                        .and. lambda < 0.01_realType) exit backtrack
                 else
                     ! We have succefssfully reduced the norm
                     LSFailed = .False.
@@ -5945,7 +5968,8 @@ contains
                     ! cutback never fires and the solver limit-cycles. Undo the
                     ! step and fall through to the rejection branch below, which
                     ! already handles restoring the state and cutting the CFL.
-                    if ((.not. ANK_pzStepping) .and. ankRejectOnLSExhausted .and. &
+                    if ((.not. (ANK_pzStepping .or. (ANK_pzEndgame .and. pz_phase2))) &
+                        .and. ankRejectOnLSExhausted .and. &
                         lambda < ANK_stepMin * ANK_stepFactor) then
                         call VecAXPY(wVec, lambda, deltaW, ierr)
                         call EChk(ierr, __FILE__, __LINE__)
@@ -6126,7 +6150,7 @@ contains
         ! reference CFL (dt_ref = max(0.5 dt_ref, dt_ref,min)) and re-anchors
         ! the SER law so phase 2 continues from the halved value. An accepted
         ! step arms the growth law for the next iteration.
-        if (ANK_pzStepping) then
+        if (ANK_pzStepping .or. (ANK_pzEndgame .and. pz_phase2)) then
             if (lambda == zero) then
                 pz_CFLRef = max(half * pz_CFLRef, ANK_pzCFLMin)
                 pz_alphaSER = -one

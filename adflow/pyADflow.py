@@ -6104,6 +6104,7 @@ class ADFLOW(AeroSolver):
             # Piotrowski/Zingg system (geometric ramp + SER, source-term dt
             # restriction, Algorithms 2/3/4), expressed in CFL units.
             "ANKPZStepping": [bool, False],
+            "ANKPZEndgame": [bool, False],
             "ANKPZCFL0": [float, 1.0],
             "ANKPZGrowthFactor": [float, 1.3],
             "ANKPZSERBeta": [float, 1.75],
@@ -6572,6 +6573,7 @@ class ADFLOW(AeroSolver):
             "ankcflcutback": ["ank", "ank_cflcutback"],
             "ankcflreset": ["ank", "ank_cflreset"],
             "ankpzstepping": ["ank", "ank_pzstepping"],
+            "ankpzendgame": ["ank", "ank_pzendgame"],
             "ankpzcfl0": ["ank", "ank_pzcfl0"],
             "ankpzgrowthfactor": ["ank", "ank_pzgrowth"],
             "ankpzserbeta": ["ank", "ank_pzbeta"],
