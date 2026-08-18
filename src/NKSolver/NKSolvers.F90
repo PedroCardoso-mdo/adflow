@@ -5454,6 +5454,18 @@ contains
                 ! we may be switching from uncoupled to coupled
             else
                 ANK_coupled = .True.
+
+                ! PZ mode: the coupled system is a NEW nonlinear system (its
+                ! source eigenstructure includes the transition rows for the
+                ! first time). Restart the geometric ramp from its seed rather
+                ! than dropping the fully-ramped segregated CFL onto it —
+                ! round-4 case J (coupled at rel 1e-4 with CFL already at the
+                ! cap) Bad-Blocked within ~30 coupled iterations.
+                if (ANK_pzStepping) then
+                    pz_CFLRef = ANK_pzCFL0
+                    pz_alphaSER = -one
+                    pz_prevAccepted = .False.
+                end if
             end if
 
             ! If we are in here, destroy the solver regardless,
