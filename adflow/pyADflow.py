@@ -6100,6 +6100,17 @@ class ADFLOW(AeroSolver):
             "ANKCFLExponent": [float, 0.5],
             "ANKCFLCutback": [float, 0.5],
             "ANKCFLReset": [bool, True],
+            # P&Z stepping mode: one switch that replaces ADflow's CFL
+            # controller, physicality check and unsteady LS with the
+            # Piotrowski/Zingg system (geometric ramp + SER, source-term dt
+            # restriction, Algorithms 2/3/4), expressed in CFL units.
+            "ANKPZStepping": [bool, False],
+            "ANKPZEndgame": [bool, False],
+            "ANKPZCFL0": [float, 1.0],
+            "ANKPZGrowthFactor": [float, 1.3],
+            "ANKPZSERBeta": [float, 1.75],
+            "ANKPZCFLMin": [float, 0.1],
+            "ANKPZCFLMax": [float, 1e10],
             "ANKStepFactor": [float, 1.0],
             "ANKStepMin": [float, 0.01],
             "ANKConstCFLStep": [float, 0.4],
@@ -6563,6 +6574,13 @@ class ADFLOW(AeroSolver):
             "ankcflexponent": ["ank", "ank_cflexponent"],
             "ankcflcutback": ["ank", "ank_cflcutback"],
             "ankcflreset": ["ank", "ank_cflreset"],
+            "ankpzstepping": ["ank", "ank_pzstepping"],
+            "ankpzendgame": ["ank", "ank_pzendgame"],
+            "ankpzcfl0": ["ank", "ank_pzcfl0"],
+            "ankpzgrowthfactor": ["ank", "ank_pzgrowth"],
+            "ankpzserbeta": ["ank", "ank_pzbeta"],
+            "ankpzcflmin": ["ank", "ank_pzcflmin"],
+            "ankpzcflmax": ["ank", "ank_pzcflmax"],
             "ankstepfactor": ["ank", "ank_stepfactor"],
             "ankstepmin": ["ank", "ank_stepmin"],
             "ankconstcflstep": ["ank", "ank_constcflstep"],

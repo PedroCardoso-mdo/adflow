@@ -472,6 +472,15 @@ python module libadflow
          real(kind=realtype) :: ank_cflexponent
          real(kind=realtype) :: ank_cflcutback
          logical :: ank_cflreset
+         ! P&Z stepping mode (must be declared here or setOption silently
+         ! creates a phantom Python attribute -- see the VERIF_06 F4 note)
+         logical :: ank_pzstepping
+         logical :: ank_pzendgame
+         real(kind=realtype) :: ank_pzcfl0
+         real(kind=realtype) :: ank_pzgrowth
+         real(kind=realtype) :: ank_pzbeta
+         real(kind=realtype) :: ank_pzcflmin
+         real(kind=realtype) :: ank_pzcflmax
          real(kind=realtype) :: ank_stepfactor
          real(kind=realtype) :: ank_stepmin
          real(kind=realtype) :: ank_constcflstep
