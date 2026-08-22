@@ -1061,6 +1061,12 @@ module inputADjoint
     character(maxStringLen) :: adjointPCSide
     character(maxStringLen) :: LocalPCType
 
+    ! fieldSplitType : PCFieldSplit composition ('multiplicative' or
+    !                  'additive') across the physical blocks
+    !                  {flow, SA, transition} when PreCondType is
+    !                  'fieldsplit'. Unused otherwise.
+    character(maxStringLen) :: fieldSplitType
+
     ! FillLevel     : Number of levels of fill for the ILU local PC
     ! Overlap       : Amount of overlap in the ASM PC
     integer(kind=intType) :: fillLevel, overlap

@@ -6186,6 +6186,7 @@ class ADFLOW(AeroSolver):
             "adjointMaxIter": [int, 500],
             "adjointSubspaceSize": [int, 100],
             "adjointLGMRESAugDim": [int, 2],
+            "adjointFieldSplitType": [str, ["multiplicative", "additive"]],
             "GMRESOrthogonalizationType": [
                 str,
                 ["modified Gram-Schmidt", "CGS never refine", "CGS refine if needed", "CGS always refine"],
@@ -6200,7 +6201,7 @@ class ADFLOW(AeroSolver):
                 str,
                 ["RCM", "natural", "nested dissection", "one way dissection", "quotient minimum degree"],
             ],
-            "globalPreconditioner": [str, ["additive Schwarz", "multigrid"]],
+            "globalPreconditioner": [str, ["additive Schwarz", "multigrid", "field split"]],
             "localPreconditioner": [str, ["ILU"]],
             "ILUFill": [int, 2],
             "ILUFillCoarse": [int, 0],
@@ -6675,6 +6676,11 @@ class ADFLOW(AeroSolver):
             "adjointmaxiter": ["adjoint", "adjmaxiter"],
             "adjointsubspacesize": ["adjoint", "adjrestart"],
             "adjointlgmresaugdim": ["adjoint", "adjlgmresaugdim"],
+            "adjointfieldsplittype": {
+                "multiplicative": "multiplicative",
+                "additive": "additive",
+                "location": ["adjoint", "fieldsplittype"],
+            },
             "adjointmonitorstep": ["adjoint", "adjmonstep"],
             "storepsihistory": ["adjoint", "storepsihistory"],
             "psihistorystep": ["adjoint", "psihistorystep"],
@@ -6692,6 +6698,7 @@ class ADFLOW(AeroSolver):
             "globalpreconditioner": {
                 "additive schwarz": "asm",
                 "multigrid": "mg",
+                "field split": "fieldsplit",
                 "location": ["adjoint", "precondtype"],
             },
             "localpreconditioner": {"ilu": "ilu", "location": ["adjoint", "localpctype"]},
