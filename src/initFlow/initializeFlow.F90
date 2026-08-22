@@ -1468,18 +1468,21 @@ contains
         use flowVarRefState, only: wInf
         use communication, only: myID
         use paramTurb, only: rsaCv1
-        use turbUtils, only: reThetaTCorrelation
+        use turbUtils, only: reThetaTCorrelation, rethetacCorrelation
+        use blockPointers, only: d2wall
         use variableReading, only: transGammaAbsentRestart
         use utils, only: setPointers
         implicit none
 
         integer(kind=intType) :: nn, mm, i, j, k, fp
-        real(kind=realType) :: nu, chi, chi3, fv1, tterm2, gam
+        real(kind=realType) :: nu, chi, chi3, fv1, gam
         real(kind=realType) :: fact, velMag, velMag2
         real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
         real(kind=realType) :: uxhat, uyhat, uzhat, dUds
         real(kind=realType) :: reT, thetaBL, lam
-        real(kind=realType), parameter :: bcmC2 = 0.02_realType
+        real(kind=realType) :: sxx, syy, szz, sxy, sxz, syz
+        real(kind=realType) :: strainMag2, strainMag, reS, reThetaC
+        real(kind=realType) :: rTurb, fOnset1, fOnset
         real(kind=realType), parameter :: gamMin = 0.02_realType
         real(kind=realType), parameter :: xminn = 1.0e-10_realType
         real(kind=realType), parameter :: lamMin = -0.1_realType
@@ -1496,15 +1499,9 @@ contains
                     do j = 2, jl
                         do i = 2, il
                             nu = rlv(i, j, k) / w(i, j, k, irho)
-
-                            ! --- gamma: SA-BCM algebraic intermittency,
-                            !     local-turbulence (chi) term ---
                             chi = w(i, j, k, itu1) / nu
                             chi3 = chi**3
                             fv1 = chi3 / (chi3 + rsaCv1**3)
-                            tterm2 = fv1 * chi / bcmC2
-                            gam = one - exp(-sqrt(max(tterm2, zero)))
-                            w(i, j, k, itu2) = min(one, max(gam, gamMin))
 
                             ! --- ReThetaTilde: LOCAL Langtry correlation,
                             !     fixed point in ReTheta (thetaBL and hence
@@ -1562,6 +1559,35 @@ contains
                                       turbIntensityInf * 100.0_realType, lam)
                             end do
                             w(i, j, k, itu3) = reT
+
+                            ! --- gamma: the MODEL'S OWN algebraic gamma from
+                            !     the flow properties -- blend between the
+                            !     source-term fixed points (1/ce2 = 0.02
+                            !     laminar, 1/ce1 = 1 turbulent) weighted by
+                            !     the model's Fonset, with reS/reThetaC/rTurb
+                            !     exactly as in the residual
+                            !     (saGammaRetheta.F90). ---
+                            sxx = two * fact * uux
+                            syy = two * fact * vvy
+                            szz = two * fact * wwz
+                            sxy = fact * (uuy + vvx)
+                            sxz = fact * (uuz + wwx)
+                            syz = fact * (vvz + wwy)
+                            strainMag2 = two * (sxy**2 + sxz**2 + syz**2) &
+                                         + sxx**2 + syy**2 + szz**2
+                            strainMag = sqrt(max(two * strainMag2, xminn))
+
+                            reS = w(i, j, k, irho) * d2wall(i, j, k)**2 &
+                                  * strainMag / rlv(i, j, k)
+                            reThetaC = rethetacCorrelation(reT)
+                            rTurb = fv1 * chi
+                            fOnset1 = sqrt((reS / (2.6_realType * reThetaC))**2 &
+                                           + rTurb**2)
+                            fOnset = (tanh(6.0_realType &
+                                           * (fOnset1 - 1.35_realType)) &
+                                      + one) * half
+                            gam = gamMin + (one - gamMin) * fOnset
+                            w(i, j, k, itu2) = min(one, max(gam, gamMin))
                         end do
                     end do
                 end do
@@ -1570,10 +1596,10 @@ contains
 
         if (myID == 0) then
             print "(a)", "#"
-            print "(a)", "# transitionRestartAlgebraicInit: gamma initialized from the"
-            print "(a)", "# SA-BCM algebraic intermittency (chi term) of the restart"
-            print "(a)", "# field; ReTheta from the LOCAL Langtry correlation (fixed"
-            print "(a)", "# point with lambda_theta from the resolved gradients)."
+            print "(a)", "# transitionRestartAlgebraicInit: ReTheta from the LOCAL"
+            print "(a)", "# Langtry correlation (fixed point, lambda_theta from the"
+            print "(a)", "# resolved gradients); gamma from the MODEL's own Fonset"
+            print "(a)", "# blend between its source fixed points (0.02 / 1)."
             print "(a)", "#"
         end if
 
