@@ -1357,17 +1357,6 @@ contains
             end do
         end do
 
-        ! Optional algebraic warm start of the transition variables when the
-        ! restart file carried no gamma field (plain-SA / SA-BCM solution):
-        ! set gamma from the local eddy-viscosity state instead of 1
-        ! everywhere, so the laminar regions of the restart keep SA
-        ! production suppressed. Placed after computeLamViscosity (needs rlv)
-        ! and before the whalo2 below (which then fills the gamma halos).
-        if (transitionRestartAlgebraicInit .and. &
-            turbModel == spalartallmarasnoft2gammaretheta) then
-            call initTransitionAlgebraicWarmStart
-        end if
-
         ! Exchange the solution on the multigrid start level.
         ! It is possible that the halo values are needed for the boundary
         ! conditions. Viscosities are not exchanged.
@@ -1384,6 +1373,21 @@ contains
         groundLevel = mgStartlevel
 
         call applyAllBC(.true.)
+
+        ! Optional algebraic warm start of the transition variables when the
+        ! restart file carried no gamma field (plain-SA / SA-BCM solution):
+        ! gamma from the local eddy-viscosity state (laminar regions of the
+        ! restart keep SA production suppressed) and ReThetaTilde from the
+        ! LOCAL Langtry correlation (fixed point in ReTheta with lambda_theta
+        ! from the resolved velocity gradients), so both transition equations
+        ! start near their frozen-flow fixed point. Placed AFTER the first
+        ! whalo2/applyAllBC (the gradient stencil needs valid halos); the
+        ! second whalo2 at the end of this routine then fills the itu2/itu3
+        ! halos with the values set here.
+        if (transitionRestartAlgebraicInit .and. &
+            turbModel == spalartallmarasnoft2gammaretheta) then
+            call initTransitionAlgebraicWarmStart
+        end if
 
         ! Loop over the number of spectral solutions and blocks
         ! to compute the eddy viscosities.
@@ -1457,19 +1461,29 @@ contains
         !
         use constants
         use block, only: nDom
-        use blockPointers, only: w, rlv, il, jl, kl
+        use blockPointers, only: w, rlv, il, jl, kl, si, sj, sk, vol
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputIteration, only: mgStartlevel
+        use inputPhysics, only: turbIntensityInf
+        use flowVarRefState, only: wInf
         use communication, only: myID
         use paramTurb, only: rsaCv1
+        use turbUtils, only: reThetaTCorrelation
         use variableReading, only: transGammaAbsentRestart
         use utils, only: setPointers
         implicit none
 
-        integer(kind=intType) :: nn, mm, i, j, k
+        integer(kind=intType) :: nn, mm, i, j, k, fp
         real(kind=realType) :: nu, chi, chi3, fv1, tterm2, gam
+        real(kind=realType) :: fact, velMag, velMag2
+        real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
+        real(kind=realType) :: uxhat, uyhat, uzhat, dUds
+        real(kind=realType) :: reT, thetaBL, lam
         real(kind=realType), parameter :: bcmC2 = 0.02_realType
         real(kind=realType), parameter :: gamMin = 0.02_realType
+        real(kind=realType), parameter :: xminn = 1.0e-10_realType
+        real(kind=realType), parameter :: lamMin = -0.1_realType
+        real(kind=realType), parameter :: lamMax = 0.1_realType
 
         ! Only meaningful when the restart actually lacked the gamma field;
         ! on a normal SA-GR restart the read values must be kept.
@@ -1482,12 +1496,72 @@ contains
                     do j = 2, jl
                         do i = 2, il
                             nu = rlv(i, j, k) / w(i, j, k, irho)
+
+                            ! --- gamma: SA-BCM algebraic intermittency,
+                            !     local-turbulence (chi) term ---
                             chi = w(i, j, k, itu1) / nu
                             chi3 = chi**3
                             fv1 = chi3 / (chi3 + rsaCv1**3)
                             tterm2 = fv1 * chi / bcmC2
                             gam = one - exp(-sqrt(max(tterm2, zero)))
                             w(i, j, k, itu2) = min(one, max(gam, gamMin))
+
+                            ! --- ReThetaTilde: LOCAL Langtry correlation,
+                            !     fixed point in ReTheta (thetaBL and hence
+                            !     lambda_theta depend on ReTheta itself).
+                            !     Same stencil/contraction as the residual's
+                            !     dUds (saGammaRetheta.F90), plain clamps
+                            !     instead of smoothMinMax (init only, no AD).
+                            velMag2 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
+                                      + w(i, j, k, ivz)**2
+                            velMag = sqrt(max(velMag2, xminn))
+                            uxhat = w(i, j, k, ivx) / velMag
+                            uyhat = w(i, j, k, ivy) / velMag
+                            uzhat = w(i, j, k, ivz) / velMag
+
+                            fact = fourth / vol(i, j, k)
+                            uux = w(i + 1, j, k, ivx) * si(i, j, k, 1) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 1) &
+                                  + w(i, j + 1, k, ivx) * sj(i, j, k, 1) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 1) &
+                                  + w(i, j, k + 1, ivx) * sk(i, j, k, 1) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 1)
+                            uuy = w(i + 1, j, k, ivx) * si(i, j, k, 2) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 2) &
+                                  + w(i, j + 1, k, ivx) * sj(i, j, k, 2) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 2) &
+                                  + w(i, j, k + 1, ivx) * sk(i, j, k, 2) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 2)
+                            uuz = w(i + 1, j, k, ivx) * si(i, j, k, 3) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 3) &
+                                  + w(i, j + 1, k, ivx) * sj(i, j, k, 3) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 3) &
+                                  + w(i, j, k + 1, ivx) * sk(i, j, k, 3) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 3)
+                            vvx = w(i + 1, j, k, ivy) * si(i, j, k, 1) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 1) &
+                                  + w(i, j + 1, k, ivy) * sj(i, j, k, 1) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 1) &
+                                  + w(i, j, k + 1, ivy) * sk(i, j, k, 1) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 1)
+                            vvy = w(i + 1, j, k, ivy) * si(i, j, k, 2) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 2) &
+                                  + w(i, j + 1, k, ivy) * sj(i, j, k, 2) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 2) &
+                                  + w(i, j, k + 1, ivy) * sk(i, j, k, 2) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 2)
+                            vvz = w(i + 1, j, k, ivy) * si(i, j, k, 3) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 3) &
+                                  + w(i, j + 1, k, ivy) * sj(i, j, k, 3) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 3) &
+                                  + w(i, j, k + 1, ivy) * sk(i, j, k, 3) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 3)
+                            wwx = w(i + 1, j, k, ivz) * si(i, j, k, 1) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 1) &
+                                  + w(i, j + 1, k, ivz) * sj(i, j, k, 1) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 1) &
+                                  + w(i, j, k + 1, ivz) * sk(i, j, k, 1) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 1)
+                            wwy = w(i + 1, j, k, ivz) * si(i, j, k, 2) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 2) &
+                                  + w(i, j + 1, k, ivz) * sj(i, j, k, 2) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 2) &
+                                  + w(i, j, k + 1, ivz) * sk(i, j, k, 2) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 2)
+                            wwz = w(i + 1, j, k, ivz) * si(i, j, k, 3) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 3) &
+                                  + w(i, j + 1, k, ivz) * sj(i, j, k, 3) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 3) &
+                                  + w(i, j, k + 1, ivz) * sk(i, j, k, 3) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 3)
+
+                            dUds = two * fact &
+                                   * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
+                                      + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
+                                      + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
+
+                            reT = wInf(itu3)
+                            do fp = 1, 5
+                                thetaBL = reT * nu / velMag
+                                lam = (thetaBL**2 / nu) * dUds
+                                lam = min(lamMax, max(lamMin, lam))
+                                reT = reThetaTCorrelation( &
+                                      turbIntensityInf * 100.0_realType, lam)
+                            end do
+                            w(i, j, k, itu3) = reT
                         end do
                     end do
                 end do
@@ -1497,8 +1571,9 @@ contains
         if (myID == 0) then
             print "(a)", "#"
             print "(a)", "# transitionRestartAlgebraicInit: gamma initialized from the"
-            print "(a)", "# SA-BCM algebraic intermittency (chi term) of the restart field;"
-            print "(a)", "# ReTheta kept at the freestream correlation value."
+            print "(a)", "# SA-BCM algebraic intermittency (chi term) of the restart"
+            print "(a)", "# field; ReTheta from the LOCAL Langtry correlation (fixed"
+            print "(a)", "# point with lambda_theta from the resolved gradients)."
             print "(a)", "#"
         end if
 
