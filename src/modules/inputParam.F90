@@ -1069,6 +1069,11 @@ module inputADjoint
     integer(kind=intType) :: adjRestart
     integer(kind=intType) :: adjMonStep
 
+    ! adjLGMRESAugDim : Number of augmented (approximate error) vectors
+    !                   LGMRES carries across GMRES restarts. Only used
+    !                   when ADjointSolverType is 'lgmres'.
+    integer(kind=intType) :: adjLGMRESAugDim
+
     ! storePsiHistory : Whether to buffer intermediate adjoint solution
     !                   estimates during the KSP solve, so their total
     !                   derivatives can be reported after convergence
