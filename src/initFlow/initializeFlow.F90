@@ -547,6 +547,17 @@ contains
 
                 flowDoms(nn, level, sps)%gamma = gammaConstant
 
+                ! Allocate the memory for Tgamma and initialize it to
+                ! the constant gamma value.
+
+                allocate (flowDoms(nn, level, sps)%Tgamma(0:ib, 0:jb, 0:kb), &
+                          stat=ierr)
+                if (ierr /= 0) &
+                    call terminate("allocMemFlovarPart1", &
+                                   "Memory allocation failure for Tgamma.")
+
+                flowDoms(nn, level, sps)%Tgamma = one
+
                 ! The laminar viscosity for viscous computations.
                 ! Always allocate rlv due to reverse mode - Peter Lyu
                 !if( viscous ) then

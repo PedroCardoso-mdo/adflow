@@ -832,16 +832,21 @@ module inputPhysics
     ! cpmin_rho            The rho parameter used with the KS-based cavitation sensor.
     ! cpmin_family         The cpmin for a given surface family that does not use
     !                      KS-aggregation, but rather an exact min computation.
+    ! sepSenMaxRho           The rho parameter used with the KS-based separation sensor.
+    ! sepSenMaxFamily     The maximum sepsensor value for a given surface family that does not use
+    !                      KS-aggregation, but rather an exact max computation.
 
     integer(kind=intType) :: equations, equationMode, flowType
     integer(kind=intType) :: turbModel, cpModel, turbProd
     integer(kind=intType) :: rvfN
     logical :: rvfB
-        logical :: useQCR, useRotationSA, useft2SA
+    logical :: useQCR, useRotationSA, useft2SA, use_SABCM
+    logical :: SABCM_Exp
 
     logical :: wallFunctions, wallDistanceNeeded
 
     real(kind=realType) :: alpha, beta
+    real(kind=realType) :: SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_S0_tanh, SABCM_fsmooth,SABCM_maxsmooth
     integer(kind=intType) :: liftIndex
     real(kind=realType) :: Mach, MachCoef, MachGrid
     real(kind=realType) :: Reynolds, ReynoldsLength
@@ -858,6 +863,8 @@ module inputPhysics
     real(kind=realType) :: cavitationnumber
     real(kind=realType) :: cpmin_rho
     real(kind=realType), dimension(:), allocatable :: cpmin_family
+    real(kind=realType) :: sepSenMaxRho
+    real(kind=realType), dimension(:), allocatable :: sepSenMaxFamily
 
 #ifndef USE_TAPENADE
     real(kind=realType) :: alphad, betad

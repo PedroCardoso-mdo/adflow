@@ -1,0 +1,1946 @@
+
+====================================================================================================
+==== isolated adjoint solve: variant=hard  func=cl  (fresh AP, no prior history) ====
+====================================================================================================
+#
+# ADflow, multiblock structured flow solver
+#
+# This code solves the 3D RANS, laminar NS or Euler equations
+# on multiblock structured hexahedral grids.
+# This is a parallel executable running on 12 processors.
+# It has been compiled with the following options:
+# - Optimized mode.
+# - Size of standard integers: 4 bytes.
+# - Size of standard floating point types: 8 bytes.
+# - With cgns support
+# - With support for signals.
+#
++----------------------------------------+
+|          All ADFLOW Options:           |
++----------------------------------------+
+{'ADPC': False,
+ 'ANKADPC': False,
+ 'ANKAMGLevels': 2,
+ 'ANKAMGNSmooth': 1,
+ 'ANKASMOverlap': 1,
+ 'ANKASMOverlapCoarse': 0,
+ 'ANKCFL0': 5.0,
+ 'ANKCFLCutback': 0.5,
+ 'ANKCFLExponent': 0.5,
+ 'ANKCFLFactor': 10.0,
+ 'ANKCFLLimit': 100000.0,
+ 'ANKCFLMin': 1.0,
+ 'ANKCFLReset': True,
+ 'ANKCharTimeStepType': 'None',
+ 'ANKConstCFLStep': 0.4,
+ 'ANKCoupledSwitchTol': 1e-16,
+ 'ANKGlobalPreconditioner': 'additive Schwarz',
+ 'ANKInnerPreconIts': 1,
+ 'ANKInnerPreconItsCoarse': 1,
+ 'ANKJacobianLag': 10,
+ 'ANKLinResMax': 0.1,
+ 'ANKLinearSolveBuffer': 0.01,
+ 'ANKLinearSolveTol': 0.05,
+ 'ANKMaxIter': 40,
+ 'ANKNSubiterTurb': 1,
+ 'ANKOuterPreconIts': 1,
+ 'ANKPCILUFill': 2,
+ 'ANKPCILUFillCoarse': 0,
+ 'ANKPCUpdateCutoff': 1e-16,
+ 'ANKPCUpdateTol': 0.5,
+ 'ANKPCUpdateTolAfterCutoff': 0.0001,
+ 'ANKPhysicalLSTol': 0.2,
+ 'ANKPhysicalLSTolTurb': 0.99,
+ 'ANKSecondOrdSwitchTol': 1e-16,
+ 'ANKStepFactor': 1.0,
+ 'ANKStepMin': 0.01,
+ 'ANKSubspaceSize': -1,
+ 'ANKSwitchTol': 1000.0,
+ 'ANKTurbCFLScale': 1.0,
+ 'ANKTurbKSPDebug': False,
+ 'ANKUnsteadyLSTol': 1.0,
+ 'ANKUseApproxSA': False,
+ 'ANKUseFullVisc': True,
+ 'ANKUseMatrixFree': True,
+ 'ANKUseTurbDADI': True,
+ 'ASMOverlap': 1,
+ 'ASMOverlapCoarse': 0,
+ 'CFL': 1.7,
+ 'CFLCoarse': 1.0,
+ 'CFLLimit': 1.5,
+ 'GMRESOrthogonalizationType': 'modified Gram-Schmidt',
+ 'ILUFill': 2,
+ 'ILUFillCoarse': 0,
+ 'L2Convergence': 1e-14,
+ 'L2ConvergenceCoarse': 0.01,
+ 'L2ConvergenceRel': 1e-16,
+ 'MGCycle': 'sg',
+ 'MGStartLevel': -1,
+ 'NKADPC': False,
+ 'NKAMGLevels': 2,
+ 'NKAMGNSmooth': 1,
+ 'NKASMOverlap': 1,
+ 'NKASMOverlapCoarse': 0,
+ 'NKFixedStep': 0.25,
+ 'NKGlobalPreconditioner': 'additive Schwarz',
+ 'NKInnerPreconIts': 1,
+ 'NKInnerPreconItsCoarse': 1,
+ 'NKJacobianLag': 20,
+ 'NKLS': 'cubic',
+ 'NKLSRelax': False,
+ 'NKLinearSolveTol': 0.3,
+ 'NKOuterPreconIts': 1,
+ 'NKPCILUFill': 2,
+ 'NKPCILUFillCoarse': 0,
+ 'NKSubspaceSize': 60,
+ 'NKSwitchTol': 1e-05,
+ 'NKUseEW': True,
+ 'NKViscPC': False,
+ 'RKReset': False,
+ 'SABCM_Const1': 0.002,
+ 'SABCM_Const2': 0.02,
+ 'SABCM_Exp': True,
+ 'SABCM_S0_tanh': 0.5,
+ 'SABCM_TU': 0.5,
+ 'SABCM_fsmooth': 0.08,
+ 'SABCM_maxsmooth': 50.0,
+ 'TSStability': False,
+ 'acousticScaleFactor': 0.15,
+ 'adjointAMGLevels': 2,
+ 'adjointAMGNSmooth': 1,
+ 'adjointDivTol': 100000.0,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointL2ConvergenceAbs': 1e-16,
+ 'adjointL2ConvergenceRel': 1e-16,
+ 'adjointMaxIter': 3000,
+ 'adjointMaxL2DeviationFactor': 1.0,
+ 'adjointMonitorStep': 10,
+ 'adjointSolver': 'GMRES',
+ 'adjointSubspaceSize': 100,
+ 'alphaFollowing': True,
+ 'alphaMode': False,
+ 'altitudeMode': False,
+ 'applyAdjointPCSubspaceSize': 20,
+ 'applyPCSubspaceSize': 10,
+ 'approxPC': True,
+ 'backgroundVolScale': 1.0,
+ 'betaMode': False,
+ 'blockSplitting': True,
+ 'cavExponent': 0,
+ 'cavSensorOffset': 0.0,
+ 'cavSensorSharpness': 10.0,
+ 'cavitationNumber': 1.4,
+ 'closedSurfaceFamilies': None,
+ 'coarseDiscretization': 'central plus scalar dissipation',
+ 'computeCavitation': False,
+ 'computeSepSensorKs': False,
+ 'coupledSolution': False,
+ 'cpMinRho': 100.0,
+ 'cutCallback': None,
+ 'debugZipper': False,
+ 'deltaT': 0.01,
+ 'designSurfaceFamily': None,
+ 'discretization': 'central plus scalar dissipation',
+ 'dissContMagnitude': 1.0,
+ 'dissContMidpoint': 3.0,
+ 'dissContSharpness': 3.0,
+ 'dissipationLumpingParameter': 6.0,
+ 'dissipationScalingExponent': 0.67,
+ 'eddyVisInfRatio': 0.009,
+ 'equationMode': 'steady',
+ 'equationType': 'RANS',
+ 'eulerWallTreatment': 'linear pressure extrapolation',
+ 'explicitSurfaceCallback': None,
+ 'firstRun': True,
+ 'flowType': 'external',
+ 'forcesAsTractions': True,
+ 'frozenTurbulence': False,
+ 'globalPreconditioner': 'additive Schwarz',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'gridPrecision': 'double',
+ 'gridPrecisionSurface': 'single',
+ 'infChangeCorrection': True,
+ 'infChangeCorrectionTol': 1e-12,
+ 'infChangeCorrectionType': 'offset',
+ 'innerPreconIts': 1,
+ 'innerPreconItsCoarse': 1,
+ 'isoVariables': [],
+ 'isosurface': {},
+ 'liftIndex': 2,
+ 'limiter': 'van Albada',
+ 'loadBalanceIter': 10,
+ 'loadImbalance': 0.1,
+ 'localPreconditioner': 'ILU',
+ 'lowSpeedPreconditioner': False,
+ 'machMode': False,
+ 'matrixOrdering': 'RCM',
+ 'maxL2DeviationFactor': 1.0,
+ 'meshMaxSkewness': 1.0,
+ 'meshSurfaceFamily': None,
+ 'monitorVariables': ['cpu', 'resrho', 'resturb', 'cl', 'cd'],
+ 'nCycles': 10000,
+ 'nCyclesCoarse': 500,
+ 'nFloodIter': -1,
+ 'nRKReset': 5,
+ 'nRefine': 10,
+ 'nSaveSurface': 1,
+ 'nSaveVolume': 1,
+ 'nSubiter': 1,
+ 'nSubiterTurb': 3,
+ 'nTimeStepsCoarse': 48,
+ 'nTimeStepsFine': 400,
+ 'nearWallDist': 0.1,
+ 'numberSolutions': True,
+ 'outerPreconIts': 3,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'outputSurfaceFamily': 'allSurfaces',
+ 'overlapFactor': 0.9,
+ 'oversetDebugPrint': False,
+ 'oversetLoadBalance': True,
+ 'oversetPriority': {},
+ 'oversetProjTol': 1e-12,
+ 'oversetUpdateMode': 'frozen',
+ 'pMode': False,
+ 'partitionLikeNProc': -1,
+ 'partitionOnly': False,
+ 'preconditionerSide': 'right',
+ 'printAllOptions': True,
+ 'printBadlySkewedCells': False,
+ 'printIntro': True,
+ 'printIterations': True,
+ 'printNegativeVolumes': False,
+ 'printTiming': True,
+ 'printWarnings': True,
+ 'qMode': False,
+ 'rMode': False,
+ 'recomputeOverlapMatrix': True,
+ 'resAveraging': 'alternate',
+ 'restartAdjoint': True,
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'restrictionRelaxation': 0.8,
+ 'selfZipCutoff': 120.0,
+ 'sepSensorKsOffset': 0.0,
+ 'sepSensorKsPhi': 90.0,
+ 'sepSensorKsRho': 1000.0,
+ 'sepSensorKsSharpness': 25.0,
+ 'sepSensorOffset': 0.0,
+ 'sepSensorSharpness': 10.0,
+ 'setMonitor': True,
+ 'skipAfterFailedAdjoint': True,
+ 'smoothParameter': 1.5,
+ 'smoother': 'DADI',
+ 'solutionPrecision': 'double',
+ 'solutionPrecisionSurface': 'single',
+ 'storeConvHist': True,
+ 'storeRindLayer': True,
+ 'surfaceVariables': ['cp', 'vx', 'vy', 'vz', 'mach'],
+ 'timeAccuracy': 2,
+ 'timeIntegrationScheme': 'BDF',
+ 'timeIntervals': 1,
+ 'timeLimit': -1.0,
+ 'turbResScale': 10000.0,
+ 'turbulenceModel': 'SA',
+ 'turbulenceOrder': 'first order',
+ 'turbulenceProduction': 'strain',
+ 'updateWallAssociations': False,
+ 'useALE': True,
+ 'useANKSolver': True,
+ 'useApproxWallDistance': True,
+ 'useBlockettes': True,
+ 'useDiagTSPC': True,
+ 'useDissContinuation': False,
+ 'useExternalDynamicMesh': False,
+ 'useGridMotion': False,
+ 'useLinResMonitor': False,
+ 'useMatrixFreedrdw': True,
+ 'useNKSolver': False,
+ 'useOversetWallScaling': False,
+ 'useQCR': False,
+ 'useRotationSA': False,
+ 'useSkewnessCheck': False,
+ 'useTSInterpolatedGridVelocity': False,
+ 'useWallFunctions': False,
+ 'useZipperMesh': True,
+ 'use_SABCM': True,
+ 'useft2SA': False,
+ 'verifyExtra': True,
+ 'verifySpatial': True,
+ 'verifyState': True,
+ 'vis2': 0.25,
+ 'vis2Coarse': 0.5,
+ 'vis4': 0.0156,
+ 'viscPC': False,
+ 'viscWallTreatment': 'constant pressure extrapolation',
+ 'viscousSurfaceVelocities': True,
+ 'volumeVariables': ['resrho'],
+ 'wallDistCutoff': 1e+20,
+ 'windAxis': False,
+ 'writeSolutionDigits': 3,
+ 'writeSolutionEachIter': False,
+ 'writeSurfaceSolution': True,
+ 'writeTecplotSurfaceSolution': False,
+ 'writeVolumeSolution': True,
+ 'zipperSurfaceFamily': None}
+-> Alpha... 0.000000 
+#
+#                      Warning
+# It is assumed that the grid is given in meters.
+#
+#
+# Specified load imbalance tolerance 0.100 achieved.
+# Continuing with 0.048 load imbalance for the cells and 0.038 for the faces
+#
+#
+# Grid level: 1, Total number of cells: 24192
+#
++--------------------------------------------------+
+  CGNS Surface Families by Boundary Condition Type
++--------------------------------------------------+
+| Wall Types           : wall 
+| Inflow Types         : 
+| Outflow Types        : 
+| Symmetry Types       : sym 
+| Farfield Types       : far 
+| Overset Types        : 
++--------------------------------------------------+
++--------------------------------------------------+
+|
+| Initialization Times:
+|
+| Library Load Time             :      0.018 sec
+| Set Defaults Time             :      0.000 sec
+| Base Class Init Time          :      0.001 sec
+| Introductory Time             :      0.002 sec
+| Partitioning Time             :      0.010 sec
+| Preprocessing Time            :      0.017 sec
+| Family Setup Time             :      0.000 sec
+| Cut Callback Time             :      0.000 sec
+| Explicit Surface Cut Time     :      0.000 sec
+| Overset Preprocessing Time    :      0.000 sec
+| Initialize Flow Time          :      0.001 sec
+|
+| Total Init Time               :      0.050 sec
++--------------------------------------------------+
++----------------------------------------+
+|          All IDWarp Options:           |
++----------------------------------------+
+{'LdefFact': 1.0,
+ 'aExp': 3.0,
+ 'alpha': 0.25,
+ 'bExp': 5.0,
+ 'bucketSize': 8,
+ 'cornerAngle': 30.0,
+ 'errTol': 0.0005,
+ 'evalMode': 'fast',
+ 'fileType': 'CGNS',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'restartFile': None,
+ 'specifiedSurfaces': None,
+ 'symmTol': 1e-06,
+ 'symmetryPlanes': None,
+ 'symmetrySurfaces': None,
+ 'useRotations': True,
+ 'zeroCornerRotations': True}
+  -> Reading CGNS File: /home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns
+    -> Number of Zones:          38
+#------------------------------#
+ Total Volume Nodes :     36650 
+#------------------------------#
++-------------------- Symmetry Planes -------------------+
+|           Point                        Normal          |
+| (  0.000   0.000   0.000)    (  0.000   0.000  -1.000) |
++--------------------------------------------------------+
+#--------------------------------#
+ Unique Surface Nodes :      1031 
+#--------------------------------#
+ Computing Denominator Estimate...
+ Load Balancing...
+ Finished Mesh Initialization.
++----------------------------------------------------------------------+
+|  Switching to Aero Problem: mdo_tutorial_bcm                         |
++----------------------------------------------------------------------+
+
++------------------------------------------------------------------------------+
+| pyADFLOW Warning: 'zipperSurfaceFamily' option was not given. Using all wall |
+| boundary conditions for the zipper mesh.                                     |
++------------------------------------------------------------------------------+
+
+-> Alpha... 1.800000 
++----------------------------------------+
+|      All Modified ADFLOW Options:      |
++----------------------------------------+
+{'L2Convergence': 1e-14,
+ 'SABCM_Exp': True,
+ 'acousticScaleFactor': 0.15,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointMaxIter': 3000,
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'nCycles': 10000,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'solutionPrecision': 'double',
+ 'turbResScale': 10000.0,
+ 'use_SABCM': True,
+ 'useft2SA': False}
+#
+# Found restart file: output_files/mdo_tutorial_bcm_hard_000_vol.cgns
+#
+ SABCM_Exp = T
+-> Alpha... 1.800000 
+Solving adjoint: cl
+-> Alpha... 1.800000 
+Solving ADjoint Transpose with PETSc...
+   0 KSP Residual norm 3.2204220432E+00
+  10 KSP Residual norm 2.5344804045E+00
+  20 KSP Residual norm 2.3762753581E+00
+  30 KSP Residual norm 2.1917017222E+00
+  40 KSP Residual norm 1.9684846198E+00
+  50 KSP Residual norm 1.3292503567E+00
+  60 KSP Residual norm 6.1554724412E-01
+  70 KSP Residual norm 2.2236980164E-01
+  80 KSP Residual norm 8.6986604593E-02
+  90 KSP Residual norm 4.1986329873E-02
+ 100 KSP Residual norm 1.9767746694E-02
+ 110 KSP Residual norm 1.1092521064E-02
+ 120 KSP Residual norm 6.4905336208E-03
+ 130 KSP Residual norm 3.4825102281E-03
+ 140 KSP Residual norm 1.4289084679E-03
+ 150 KSP Residual norm 5.5652545942E-04
+ 160 KSP Residual norm 2.4507367627E-04
+ 170 KSP Residual norm 1.4549523297E-04
+ 180 KSP Residual norm 8.4535172801E-05
+ 190 KSP Residual norm 3.9095195137E-05
+ 200 KSP Residual norm 1.7271449595E-05
+ 210 KSP Residual norm 1.2149876776E-05
+ 220 KSP Residual norm 7.6941853337E-06
+ 230 KSP Residual norm 5.3024104613E-06
+ 240 KSP Residual norm 3.3191039451E-06
+ 250 KSP Residual norm 1.7506542937E-06
+ 260 KSP Residual norm 1.0191215992E-06
+ 270 KSP Residual norm 6.4689096166E-07
+ 280 KSP Residual norm 3.7938089295E-07
+ 290 KSP Residual norm 2.1404037205E-07
+ 300 KSP Residual norm 1.2516044999E-07
+ 310 KSP Residual norm 9.7429927406E-08
+ 320 KSP Residual norm 6.8065751369E-08
+ 330 KSP Residual norm 4.4402940109E-08
+ 340 KSP Residual norm 3.0136317390E-08
+ 350 KSP Residual norm 1.9659384060E-08
+ 360 KSP Residual norm 1.1060463371E-08
+ 370 KSP Residual norm 6.3435079404E-09
+ 380 KSP Residual norm 3.9529912740E-09
+ 390 KSP Residual norm 2.3435389135E-09
+ 400 KSP Residual norm 1.2545452934E-09
+ 410 KSP Residual norm 8.9820549360E-10
+ 420 KSP Residual norm 6.6931184339E-10
+ 430 KSP Residual norm 4.8015795025E-10
+ 440 KSP Residual norm 2.9241101508E-10
+ 450 KSP Residual norm 1.6517258435E-10
+ 460 KSP Residual norm 1.0901848264E-10
+ 470 KSP Residual norm 6.9740134209E-11
+ 480 KSP Residual norm 3.9883133651E-11
+ 490 KSP Residual norm 2.3774538465E-11
+ 500 KSP Residual norm 1.4295963150E-11
+ 510 KSP Residual norm 1.0964949316E-11
+ 520 KSP Residual norm 7.6388466913E-12
+ 530 KSP Residual norm 4.5615876309E-12
+ 540 KSP Residual norm 2.6520809596E-12
+ 550 KSP Residual norm 1.6562202400E-12
+ 560 KSP Residual norm 1.0853399197E-12
+ 570 KSP Residual norm 7.1496993544E-13
+ 580 KSP Residual norm 4.5954808542E-13
+ 590 KSP Residual norm 2.9995460428E-13
+ 600 KSP Residual norm 1.2710084481E-12
+ 610 KSP Residual norm 1.3887499098E-13
+ 620 KSP Residual norm 9.5954042131E-14
+ 630 KSP Residual norm 5.5721390730E-14
+ 640 KSP Residual norm 3.4861349872E-14
+Solving ADjoint Transpose with PETSc time (s) =    16.68
+ Norm of error = 1.0451E-12    Iterations =  643
+ ------------------------------------------------
+ PETSc solver converged after   643 iterations.
+ ------------------------------------------------
++--------------------------------------------------+
+|
+| Adjoint Times:
+|
+| Adjoint Solve Time - cl       :     16.768 sec
+| Total Sensitivity Time - cl   :      0.050 sec
+|
+| Complete Sensitivity Time     :     16.818 sec
++--------------------------------------------------+
+-> Alpha... 1.800000 
+
+---- cl: adjoint fail flag = False ----
+  dcl/dalpha_mdo_tutorial_bcm  8.4813250793e-02
+  dcl/dbeta_mdo_tutorial_bcm  9.9207523475e-05
+  dcl/dmach_mdo_tutorial_bcm  1.2543398874e-01
+  dcl/dP_mdo_tutorial_bcm   -8.4578736989e-08
+  dcl/dT_mdo_tutorial_bcm   -1.7664705937e-06
+  dcl/dxRef_mdo_tutorial_bcm  0.0000000000e+00
+  dcl/dyRef_mdo_tutorial_bcm  0.0000000000e+00
+  dcl/dzRef_mdo_tutorial_bcm  0.0000000000e+00
+  dcl/dspan[0]               3.1481240029e-02
+  dcl/dshape[0]              1.1245326400e-02
+  dcl/dshape[71]              1.7385582142e-01
+
+====================================================================================================
+==== isolated adjoint solve: variant=hard  func=cd  (fresh AP, no prior history) ====
+====================================================================================================
+#
+# ADflow, multiblock structured flow solver
+#
+# This code solves the 3D RANS, laminar NS or Euler equations
+# on multiblock structured hexahedral grids.
+# This is a parallel executable running on 12 processors.
+# It has been compiled with the following options:
+# - Optimized mode.
+# - Size of standard integers: 4 bytes.
+# - Size of standard floating point types: 8 bytes.
+# - With cgns support
+# - With support for signals.
+#
++----------------------------------------+
+|          All ADFLOW Options:           |
++----------------------------------------+
+{'ADPC': False,
+ 'ANKADPC': False,
+ 'ANKAMGLevels': 2,
+ 'ANKAMGNSmooth': 1,
+ 'ANKASMOverlap': 1,
+ 'ANKASMOverlapCoarse': 0,
+ 'ANKCFL0': 5.0,
+ 'ANKCFLCutback': 0.5,
+ 'ANKCFLExponent': 0.5,
+ 'ANKCFLFactor': 10.0,
+ 'ANKCFLLimit': 100000.0,
+ 'ANKCFLMin': 1.0,
+ 'ANKCFLReset': True,
+ 'ANKCharTimeStepType': 'None',
+ 'ANKConstCFLStep': 0.4,
+ 'ANKCoupledSwitchTol': 1e-16,
+ 'ANKGlobalPreconditioner': 'additive Schwarz',
+ 'ANKInnerPreconIts': 1,
+ 'ANKInnerPreconItsCoarse': 1,
+ 'ANKJacobianLag': 10,
+ 'ANKLinResMax': 0.1,
+ 'ANKLinearSolveBuffer': 0.01,
+ 'ANKLinearSolveTol': 0.05,
+ 'ANKMaxIter': 40,
+ 'ANKNSubiterTurb': 1,
+ 'ANKOuterPreconIts': 1,
+ 'ANKPCILUFill': 2,
+ 'ANKPCILUFillCoarse': 0,
+ 'ANKPCUpdateCutoff': 1e-16,
+ 'ANKPCUpdateTol': 0.5,
+ 'ANKPCUpdateTolAfterCutoff': 0.0001,
+ 'ANKPhysicalLSTol': 0.2,
+ 'ANKPhysicalLSTolTurb': 0.99,
+ 'ANKSecondOrdSwitchTol': 1e-16,
+ 'ANKStepFactor': 1.0,
+ 'ANKStepMin': 0.01,
+ 'ANKSubspaceSize': -1,
+ 'ANKSwitchTol': 1000.0,
+ 'ANKTurbCFLScale': 1.0,
+ 'ANKTurbKSPDebug': False,
+ 'ANKUnsteadyLSTol': 1.0,
+ 'ANKUseApproxSA': False,
+ 'ANKUseFullVisc': True,
+ 'ANKUseMatrixFree': True,
+ 'ANKUseTurbDADI': True,
+ 'ASMOverlap': 1,
+ 'ASMOverlapCoarse': 0,
+ 'CFL': 1.7,
+ 'CFLCoarse': 1.0,
+ 'CFLLimit': 1.5,
+ 'GMRESOrthogonalizationType': 'modified Gram-Schmidt',
+ 'ILUFill': 2,
+ 'ILUFillCoarse': 0,
+ 'L2Convergence': 1e-14,
+ 'L2ConvergenceCoarse': 0.01,
+ 'L2ConvergenceRel': 1e-16,
+ 'MGCycle': 'sg',
+ 'MGStartLevel': -1,
+ 'NKADPC': False,
+ 'NKAMGLevels': 2,
+ 'NKAMGNSmooth': 1,
+ 'NKASMOverlap': 1,
+ 'NKASMOverlapCoarse': 0,
+ 'NKFixedStep': 0.25,
+ 'NKGlobalPreconditioner': 'additive Schwarz',
+ 'NKInnerPreconIts': 1,
+ 'NKInnerPreconItsCoarse': 1,
+ 'NKJacobianLag': 20,
+ 'NKLS': 'cubic',
+ 'NKLSRelax': False,
+ 'NKLinearSolveTol': 0.3,
+ 'NKOuterPreconIts': 1,
+ 'NKPCILUFill': 2,
+ 'NKPCILUFillCoarse': 0,
+ 'NKSubspaceSize': 60,
+ 'NKSwitchTol': 1e-05,
+ 'NKUseEW': True,
+ 'NKViscPC': False,
+ 'RKReset': False,
+ 'SABCM_Const1': 0.002,
+ 'SABCM_Const2': 0.02,
+ 'SABCM_Exp': True,
+ 'SABCM_S0_tanh': 0.5,
+ 'SABCM_TU': 0.5,
+ 'SABCM_fsmooth': 0.08,
+ 'SABCM_maxsmooth': 50.0,
+ 'TSStability': False,
+ 'acousticScaleFactor': 0.15,
+ 'adjointAMGLevels': 2,
+ 'adjointAMGNSmooth': 1,
+ 'adjointDivTol': 100000.0,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointL2ConvergenceAbs': 1e-16,
+ 'adjointL2ConvergenceRel': 1e-16,
+ 'adjointMaxIter': 3000,
+ 'adjointMaxL2DeviationFactor': 1.0,
+ 'adjointMonitorStep': 10,
+ 'adjointSolver': 'GMRES',
+ 'adjointSubspaceSize': 100,
+ 'alphaFollowing': True,
+ 'alphaMode': False,
+ 'altitudeMode': False,
+ 'applyAdjointPCSubspaceSize': 20,
+ 'applyPCSubspaceSize': 10,
+ 'approxPC': True,
+ 'backgroundVolScale': 1.0,
+ 'betaMode': False,
+ 'blockSplitting': True,
+ 'cavExponent': 0,
+ 'cavSensorOffset': 0.0,
+ 'cavSensorSharpness': 10.0,
+ 'cavitationNumber': 1.4,
+ 'closedSurfaceFamilies': None,
+ 'coarseDiscretization': 'central plus scalar dissipation',
+ 'computeCavitation': False,
+ 'computeSepSensorKs': False,
+ 'coupledSolution': False,
+ 'cpMinRho': 100.0,
+ 'cutCallback': None,
+ 'debugZipper': False,
+ 'deltaT': 0.01,
+ 'designSurfaceFamily': None,
+ 'discretization': 'central plus scalar dissipation',
+ 'dissContMagnitude': 1.0,
+ 'dissContMidpoint': 3.0,
+ 'dissContSharpness': 3.0,
+ 'dissipationLumpingParameter': 6.0,
+ 'dissipationScalingExponent': 0.67,
+ 'eddyVisInfRatio': 0.009,
+ 'equationMode': 'steady',
+ 'equationType': 'RANS',
+ 'eulerWallTreatment': 'linear pressure extrapolation',
+ 'explicitSurfaceCallback': None,
+ 'firstRun': True,
+ 'flowType': 'external',
+ 'forcesAsTractions': True,
+ 'frozenTurbulence': False,
+ 'globalPreconditioner': 'additive Schwarz',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'gridPrecision': 'double',
+ 'gridPrecisionSurface': 'single',
+ 'infChangeCorrection': True,
+ 'infChangeCorrectionTol': 1e-12,
+ 'infChangeCorrectionType': 'offset',
+ 'innerPreconIts': 1,
+ 'innerPreconItsCoarse': 1,
+ 'isoVariables': [],
+ 'isosurface': {},
+ 'liftIndex': 2,
+ 'limiter': 'van Albada',
+ 'loadBalanceIter': 10,
+ 'loadImbalance': 0.1,
+ 'localPreconditioner': 'ILU',
+ 'lowSpeedPreconditioner': False,
+ 'machMode': False,
+ 'matrixOrdering': 'RCM',
+ 'maxL2DeviationFactor': 1.0,
+ 'meshMaxSkewness': 1.0,
+ 'meshSurfaceFamily': None,
+ 'monitorVariables': ['cpu', 'resrho', 'resturb', 'cl', 'cd'],
+ 'nCycles': 10000,
+ 'nCyclesCoarse': 500,
+ 'nFloodIter': -1,
+ 'nRKReset': 5,
+ 'nRefine': 10,
+ 'nSaveSurface': 1,
+ 'nSaveVolume': 1,
+ 'nSubiter': 1,
+ 'nSubiterTurb': 3,
+ 'nTimeStepsCoarse': 48,
+ 'nTimeStepsFine': 400,
+ 'nearWallDist': 0.1,
+ 'numberSolutions': True,
+ 'outerPreconIts': 3,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'outputSurfaceFamily': 'allSurfaces',
+ 'overlapFactor': 0.9,
+ 'oversetDebugPrint': False,
+ 'oversetLoadBalance': True,
+ 'oversetPriority': {},
+ 'oversetProjTol': 1e-12,
+ 'oversetUpdateMode': 'frozen',
+ 'pMode': False,
+ 'partitionLikeNProc': -1,
+ 'partitionOnly': False,
+ 'preconditionerSide': 'right',
+ 'printAllOptions': True,
+ 'printBadlySkewedCells': False,
+ 'printIntro': True,
+ 'printIterations': True,
+ 'printNegativeVolumes': False,
+ 'printTiming': True,
+ 'printWarnings': True,
+ 'qMode': False,
+ 'rMode': False,
+ 'recomputeOverlapMatrix': True,
+ 'resAveraging': 'alternate',
+ 'restartAdjoint': True,
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'restrictionRelaxation': 0.8,
+ 'selfZipCutoff': 120.0,
+ 'sepSensorKsOffset': 0.0,
+ 'sepSensorKsPhi': 90.0,
+ 'sepSensorKsRho': 1000.0,
+ 'sepSensorKsSharpness': 25.0,
+ 'sepSensorOffset': 0.0,
+ 'sepSensorSharpness': 10.0,
+ 'setMonitor': True,
+ 'skipAfterFailedAdjoint': True,
+ 'smoothParameter': 1.5,
+ 'smoother': 'DADI',
+ 'solutionPrecision': 'double',
+ 'solutionPrecisionSurface': 'single',
+ 'storeConvHist': True,
+ 'storeRindLayer': True,
+ 'surfaceVariables': ['cp', 'vx', 'vy', 'vz', 'mach'],
+ 'timeAccuracy': 2,
+ 'timeIntegrationScheme': 'BDF',
+ 'timeIntervals': 1,
+ 'timeLimit': -1.0,
+ 'turbResScale': 10000.0,
+ 'turbulenceModel': 'SA',
+ 'turbulenceOrder': 'first order',
+ 'turbulenceProduction': 'strain',
+ 'updateWallAssociations': False,
+ 'useALE': True,
+ 'useANKSolver': True,
+ 'useApproxWallDistance': True,
+ 'useBlockettes': True,
+ 'useDiagTSPC': True,
+ 'useDissContinuation': False,
+ 'useExternalDynamicMesh': False,
+ 'useGridMotion': False,
+ 'useLinResMonitor': False,
+ 'useMatrixFreedrdw': True,
+ 'useNKSolver': False,
+ 'useOversetWallScaling': False,
+ 'useQCR': False,
+ 'useRotationSA': False,
+ 'useSkewnessCheck': False,
+ 'useTSInterpolatedGridVelocity': False,
+ 'useWallFunctions': False,
+ 'useZipperMesh': True,
+ 'use_SABCM': True,
+ 'useft2SA': False,
+ 'verifyExtra': True,
+ 'verifySpatial': True,
+ 'verifyState': True,
+ 'vis2': 0.25,
+ 'vis2Coarse': 0.5,
+ 'vis4': 0.0156,
+ 'viscPC': False,
+ 'viscWallTreatment': 'constant pressure extrapolation',
+ 'viscousSurfaceVelocities': True,
+ 'volumeVariables': ['resrho'],
+ 'wallDistCutoff': 1e+20,
+ 'windAxis': False,
+ 'writeSolutionDigits': 3,
+ 'writeSolutionEachIter': False,
+ 'writeSurfaceSolution': True,
+ 'writeTecplotSurfaceSolution': False,
+ 'writeVolumeSolution': True,
+ 'zipperSurfaceFamily': None}
+-> Alpha... 0.000000 
+#
+#                      Warning
+# It is assumed that the grid is given in meters.
+#
+#
+# Specified load imbalance tolerance 0.100 achieved.
+# Continuing with 0.048 load imbalance for the cells and 0.038 for the faces
+#
+#
+# Grid level: 1, Total number of cells: 24192
+#
++--------------------------------------------------+
+  CGNS Surface Families by Boundary Condition Type
++--------------------------------------------------+
+| Wall Types           : wall 
+| Inflow Types         : 
+| Outflow Types        : 
+| Symmetry Types       : sym 
+| Farfield Types       : far 
+| Overset Types        : 
++--------------------------------------------------+
++--------------------------------------------------+
+|
+| Initialization Times:
+|
+| Library Load Time             :      0.011 sec
+| Set Defaults Time             :      0.000 sec
+| Base Class Init Time          :      0.001 sec
+| Introductory Time             :      0.001 sec
+| Partitioning Time             :      0.010 sec
+| Preprocessing Time            :      0.017 sec
+| Family Setup Time             :      0.000 sec
+| Cut Callback Time             :      0.000 sec
+| Explicit Surface Cut Time     :      0.000 sec
+| Overset Preprocessing Time    :      0.000 sec
+| Initialize Flow Time          :      0.001 sec
+|
+| Total Init Time               :      0.041 sec
++--------------------------------------------------+
++----------------------------------------+
+|          All IDWarp Options:           |
++----------------------------------------+
+{'LdefFact': 1.0,
+ 'aExp': 3.0,
+ 'alpha': 0.25,
+ 'bExp': 5.0,
+ 'bucketSize': 8,
+ 'cornerAngle': 30.0,
+ 'errTol': 0.0005,
+ 'evalMode': 'fast',
+ 'fileType': 'CGNS',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'restartFile': None,
+ 'specifiedSurfaces': None,
+ 'symmTol': 1e-06,
+ 'symmetryPlanes': None,
+ 'symmetrySurfaces': None,
+ 'useRotations': True,
+ 'zeroCornerRotations': True}
+  -> Reading CGNS File: /home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns
+    -> Number of Zones:          38
+#------------------------------#
+ Total Volume Nodes :     36650 
+#------------------------------#
++-------------------- Symmetry Planes -------------------+
+|           Point                        Normal          |
+| (  0.000   0.000   0.000)    (  0.000   0.000  -1.000) |
++--------------------------------------------------------+
+#--------------------------------#
+ Unique Surface Nodes :      1031 
+#--------------------------------#
+ Computing Denominator Estimate...
+ Load Balancing...
+ Finished Mesh Initialization.
++----------------------------------------------------------------------+
+|  Switching to Aero Problem: mdo_tutorial_bcm                         |
++----------------------------------------------------------------------+
+
++------------------------------------------------------------------------------+
+| pyADFLOW Warning: 'zipperSurfaceFamily' option was not given. Using all wall |
+| boundary conditions for the zipper mesh.                                     |
++------------------------------------------------------------------------------+
+
+-> Alpha... 1.800000 
++----------------------------------------+
+|      All Modified ADFLOW Options:      |
++----------------------------------------+
+{'L2Convergence': 1e-14,
+ 'SABCM_Exp': True,
+ 'acousticScaleFactor': 0.15,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointMaxIter': 3000,
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'nCycles': 10000,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'solutionPrecision': 'double',
+ 'turbResScale': 10000.0,
+ 'use_SABCM': True,
+ 'useft2SA': False}
+#
+# Found restart file: output_files/mdo_tutorial_bcm_hard_000_vol.cgns
+#
+ SABCM_Exp = T
+-> Alpha... 1.800000 
+Solving adjoint: cd
+-> Alpha... 1.800000 
+Solving ADjoint Transpose with PETSc...
+   0 KSP Residual norm 3.9827625888E-01
+  10 KSP Residual norm 2.3453510788E-01
+  20 KSP Residual norm 1.7966715783E-01
+  30 KSP Residual norm 1.5477787691E-01
+  40 KSP Residual norm 1.2075538201E-01
+  50 KSP Residual norm 7.9687990328E-02
+  60 KSP Residual norm 3.5455421351E-02
+  70 KSP Residual norm 1.2355850616E-02
+  80 KSP Residual norm 3.9489037298E-03
+  90 KSP Residual norm 1.2341636185E-03
+ 100 KSP Residual norm 3.7214477206E-04
+ 110 KSP Residual norm 2.4628406719E-04
+ 120 KSP Residual norm 1.8925170833E-04
+ 130 KSP Residual norm 1.4531847932E-04
+ 140 KSP Residual norm 1.0179815824E-04
+ 150 KSP Residual norm 5.6599032813E-05
+ 160 KSP Residual norm 2.4369828153E-05
+ 170 KSP Residual norm 1.0695373288E-05
+ 180 KSP Residual norm 6.4489185278E-06
+ 190 KSP Residual norm 4.3398817618E-06
+ 200 KSP Residual norm 2.2375884633E-06
+ 210 KSP Residual norm 1.7004315879E-06
+ 220 KSP Residual norm 1.2275059798E-06
+ 230 KSP Residual norm 7.9398659529E-07
+ 240 KSP Residual norm 4.4820760636E-07
+ 250 KSP Residual norm 2.6013469354E-07
+ 260 KSP Residual norm 1.6628688806E-07
+ 270 KSP Residual norm 9.9697609011E-08
+ 280 KSP Residual norm 5.9145962867E-08
+ 290 KSP Residual norm 3.9563291376E-08
+ 300 KSP Residual norm 2.4699766297E-08
+ 310 KSP Residual norm 1.8731808559E-08
+ 320 KSP Residual norm 1.3117769004E-08
+ 330 KSP Residual norm 9.2293582461E-09
+ 340 KSP Residual norm 5.5463756848E-09
+ 350 KSP Residual norm 3.1310655416E-09
+ 360 KSP Residual norm 2.1263317286E-09
+ 370 KSP Residual norm 1.3382574778E-09
+ 380 KSP Residual norm 8.3567968470E-10
+ 390 KSP Residual norm 5.3071948494E-10
+ 400 KSP Residual norm 2.7778516520E-10
+ 410 KSP Residual norm 2.0457095326E-10
+ 420 KSP Residual norm 1.4824443414E-10
+ 430 KSP Residual norm 1.0329936456E-10
+ 440 KSP Residual norm 6.3775083097E-11
+ 450 KSP Residual norm 3.4213158615E-11
+ 460 KSP Residual norm 2.1314529855E-11
+ 470 KSP Residual norm 1.3306519884E-11
+ 480 KSP Residual norm 8.1185587177E-12
+ 490 KSP Residual norm 4.5610560866E-12
+ 500 KSP Residual norm 2.5967592861E-12
+ 510 KSP Residual norm 1.9148596409E-12
+ 520 KSP Residual norm 1.3549145664E-12
+ 530 KSP Residual norm 8.9941655541E-13
+ 540 KSP Residual norm 5.6067447464E-13
+ 550 KSP Residual norm 3.3392631776E-13
+ 560 KSP Residual norm 2.1035787361E-13
+ 570 KSP Residual norm 1.3723528131E-13
+ 580 KSP Residual norm 8.4354737891E-14
+ 590 KSP Residual norm 5.1221465009E-14
+ 600 KSP Residual norm 1.0657624556E-13
+ 610 KSP Residual norm 2.6865851595E-14
+ 620 KSP Residual norm 1.7158331472E-14
+ 630 KSP Residual norm 1.1448437531E-14
+ 640 KSP Residual norm 7.6192981587E-15
+ 650 KSP Residual norm 4.9058305895E-15
+Solving ADjoint Transpose with PETSc time (s) =    17.73
+ Norm of error = 1.0021E-13    Iterations =  654
+ ------------------------------------------------
+ PETSc solver converged after   654 iterations.
+ ------------------------------------------------
++--------------------------------------------------+
+|
+| Adjoint Times:
+|
+| Adjoint Solve Time - cd       :     17.817 sec
+| Total Sensitivity Time - cd   :      0.052 sec
+|
+| Complete Sensitivity Time     :     17.870 sec
++--------------------------------------------------+
+-> Alpha... 1.800000 
+
+---- cd: adjoint fail flag = False ----
+  dcd/dalpha_mdo_tutorial_bcm  2.5468182344e-03
+  dcd/dbeta_mdo_tutorial_bcm -9.9009337767e-05
+  dcd/dmach_mdo_tutorial_bcm -3.4352046917e-02
+  dcd/dP_mdo_tutorial_bcm    1.3865828491e-08
+  dcd/dT_mdo_tutorial_bcm    1.9410683813e-07
+  dcd/dxRef_mdo_tutorial_bcm  0.0000000000e+00
+  dcd/dyRef_mdo_tutorial_bcm  0.0000000000e+00
+  dcd/dzRef_mdo_tutorial_bcm  0.0000000000e+00
+  dcd/dspan[0]               9.2987105785e-04
+  dcd/dshape[0]              1.3779477849e-03
+  dcd/dshape[71]              5.1836804436e-03
+
+====================================================================================================
+==== isolated adjoint solve: variant=hard  func=cmz  (fresh AP, no prior history) ====
+====================================================================================================
+#
+# ADflow, multiblock structured flow solver
+#
+# This code solves the 3D RANS, laminar NS or Euler equations
+# on multiblock structured hexahedral grids.
+# This is a parallel executable running on 12 processors.
+# It has been compiled with the following options:
+# - Optimized mode.
+# - Size of standard integers: 4 bytes.
+# - Size of standard floating point types: 8 bytes.
+# - With cgns support
+# - With support for signals.
+#
++----------------------------------------+
+|          All ADFLOW Options:           |
++----------------------------------------+
+{'ADPC': False,
+ 'ANKADPC': False,
+ 'ANKAMGLevels': 2,
+ 'ANKAMGNSmooth': 1,
+ 'ANKASMOverlap': 1,
+ 'ANKASMOverlapCoarse': 0,
+ 'ANKCFL0': 5.0,
+ 'ANKCFLCutback': 0.5,
+ 'ANKCFLExponent': 0.5,
+ 'ANKCFLFactor': 10.0,
+ 'ANKCFLLimit': 100000.0,
+ 'ANKCFLMin': 1.0,
+ 'ANKCFLReset': True,
+ 'ANKCharTimeStepType': 'None',
+ 'ANKConstCFLStep': 0.4,
+ 'ANKCoupledSwitchTol': 1e-16,
+ 'ANKGlobalPreconditioner': 'additive Schwarz',
+ 'ANKInnerPreconIts': 1,
+ 'ANKInnerPreconItsCoarse': 1,
+ 'ANKJacobianLag': 10,
+ 'ANKLinResMax': 0.1,
+ 'ANKLinearSolveBuffer': 0.01,
+ 'ANKLinearSolveTol': 0.05,
+ 'ANKMaxIter': 40,
+ 'ANKNSubiterTurb': 1,
+ 'ANKOuterPreconIts': 1,
+ 'ANKPCILUFill': 2,
+ 'ANKPCILUFillCoarse': 0,
+ 'ANKPCUpdateCutoff': 1e-16,
+ 'ANKPCUpdateTol': 0.5,
+ 'ANKPCUpdateTolAfterCutoff': 0.0001,
+ 'ANKPhysicalLSTol': 0.2,
+ 'ANKPhysicalLSTolTurb': 0.99,
+ 'ANKSecondOrdSwitchTol': 1e-16,
+ 'ANKStepFactor': 1.0,
+ 'ANKStepMin': 0.01,
+ 'ANKSubspaceSize': -1,
+ 'ANKSwitchTol': 1000.0,
+ 'ANKTurbCFLScale': 1.0,
+ 'ANKTurbKSPDebug': False,
+ 'ANKUnsteadyLSTol': 1.0,
+ 'ANKUseApproxSA': False,
+ 'ANKUseFullVisc': True,
+ 'ANKUseMatrixFree': True,
+ 'ANKUseTurbDADI': True,
+ 'ASMOverlap': 1,
+ 'ASMOverlapCoarse': 0,
+ 'CFL': 1.7,
+ 'CFLCoarse': 1.0,
+ 'CFLLimit': 1.5,
+ 'GMRESOrthogonalizationType': 'modified Gram-Schmidt',
+ 'ILUFill': 2,
+ 'ILUFillCoarse': 0,
+ 'L2Convergence': 1e-14,
+ 'L2ConvergenceCoarse': 0.01,
+ 'L2ConvergenceRel': 1e-16,
+ 'MGCycle': 'sg',
+ 'MGStartLevel': -1,
+ 'NKADPC': False,
+ 'NKAMGLevels': 2,
+ 'NKAMGNSmooth': 1,
+ 'NKASMOverlap': 1,
+ 'NKASMOverlapCoarse': 0,
+ 'NKFixedStep': 0.25,
+ 'NKGlobalPreconditioner': 'additive Schwarz',
+ 'NKInnerPreconIts': 1,
+ 'NKInnerPreconItsCoarse': 1,
+ 'NKJacobianLag': 20,
+ 'NKLS': 'cubic',
+ 'NKLSRelax': False,
+ 'NKLinearSolveTol': 0.3,
+ 'NKOuterPreconIts': 1,
+ 'NKPCILUFill': 2,
+ 'NKPCILUFillCoarse': 0,
+ 'NKSubspaceSize': 60,
+ 'NKSwitchTol': 1e-05,
+ 'NKUseEW': True,
+ 'NKViscPC': False,
+ 'RKReset': False,
+ 'SABCM_Const1': 0.002,
+ 'SABCM_Const2': 0.02,
+ 'SABCM_Exp': True,
+ 'SABCM_S0_tanh': 0.5,
+ 'SABCM_TU': 0.5,
+ 'SABCM_fsmooth': 0.08,
+ 'SABCM_maxsmooth': 50.0,
+ 'TSStability': False,
+ 'acousticScaleFactor': 0.15,
+ 'adjointAMGLevels': 2,
+ 'adjointAMGNSmooth': 1,
+ 'adjointDivTol': 100000.0,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointL2ConvergenceAbs': 1e-16,
+ 'adjointL2ConvergenceRel': 1e-16,
+ 'adjointMaxIter': 3000,
+ 'adjointMaxL2DeviationFactor': 1.0,
+ 'adjointMonitorStep': 10,
+ 'adjointSolver': 'GMRES',
+ 'adjointSubspaceSize': 100,
+ 'alphaFollowing': True,
+ 'alphaMode': False,
+ 'altitudeMode': False,
+ 'applyAdjointPCSubspaceSize': 20,
+ 'applyPCSubspaceSize': 10,
+ 'approxPC': True,
+ 'backgroundVolScale': 1.0,
+ 'betaMode': False,
+ 'blockSplitting': True,
+ 'cavExponent': 0,
+ 'cavSensorOffset': 0.0,
+ 'cavSensorSharpness': 10.0,
+ 'cavitationNumber': 1.4,
+ 'closedSurfaceFamilies': None,
+ 'coarseDiscretization': 'central plus scalar dissipation',
+ 'computeCavitation': False,
+ 'computeSepSensorKs': False,
+ 'coupledSolution': False,
+ 'cpMinRho': 100.0,
+ 'cutCallback': None,
+ 'debugZipper': False,
+ 'deltaT': 0.01,
+ 'designSurfaceFamily': None,
+ 'discretization': 'central plus scalar dissipation',
+ 'dissContMagnitude': 1.0,
+ 'dissContMidpoint': 3.0,
+ 'dissContSharpness': 3.0,
+ 'dissipationLumpingParameter': 6.0,
+ 'dissipationScalingExponent': 0.67,
+ 'eddyVisInfRatio': 0.009,
+ 'equationMode': 'steady',
+ 'equationType': 'RANS',
+ 'eulerWallTreatment': 'linear pressure extrapolation',
+ 'explicitSurfaceCallback': None,
+ 'firstRun': True,
+ 'flowType': 'external',
+ 'forcesAsTractions': True,
+ 'frozenTurbulence': False,
+ 'globalPreconditioner': 'additive Schwarz',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'gridPrecision': 'double',
+ 'gridPrecisionSurface': 'single',
+ 'infChangeCorrection': True,
+ 'infChangeCorrectionTol': 1e-12,
+ 'infChangeCorrectionType': 'offset',
+ 'innerPreconIts': 1,
+ 'innerPreconItsCoarse': 1,
+ 'isoVariables': [],
+ 'isosurface': {},
+ 'liftIndex': 2,
+ 'limiter': 'van Albada',
+ 'loadBalanceIter': 10,
+ 'loadImbalance': 0.1,
+ 'localPreconditioner': 'ILU',
+ 'lowSpeedPreconditioner': False,
+ 'machMode': False,
+ 'matrixOrdering': 'RCM',
+ 'maxL2DeviationFactor': 1.0,
+ 'meshMaxSkewness': 1.0,
+ 'meshSurfaceFamily': None,
+ 'monitorVariables': ['cpu', 'resrho', 'resturb', 'cl', 'cd'],
+ 'nCycles': 10000,
+ 'nCyclesCoarse': 500,
+ 'nFloodIter': -1,
+ 'nRKReset': 5,
+ 'nRefine': 10,
+ 'nSaveSurface': 1,
+ 'nSaveVolume': 1,
+ 'nSubiter': 1,
+ 'nSubiterTurb': 3,
+ 'nTimeStepsCoarse': 48,
+ 'nTimeStepsFine': 400,
+ 'nearWallDist': 0.1,
+ 'numberSolutions': True,
+ 'outerPreconIts': 3,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'outputSurfaceFamily': 'allSurfaces',
+ 'overlapFactor': 0.9,
+ 'oversetDebugPrint': False,
+ 'oversetLoadBalance': True,
+ 'oversetPriority': {},
+ 'oversetProjTol': 1e-12,
+ 'oversetUpdateMode': 'frozen',
+ 'pMode': False,
+ 'partitionLikeNProc': -1,
+ 'partitionOnly': False,
+ 'preconditionerSide': 'right',
+ 'printAllOptions': True,
+ 'printBadlySkewedCells': False,
+ 'printIntro': True,
+ 'printIterations': True,
+ 'printNegativeVolumes': False,
+ 'printTiming': True,
+ 'printWarnings': True,
+ 'qMode': False,
+ 'rMode': False,
+ 'recomputeOverlapMatrix': True,
+ 'resAveraging': 'alternate',
+ 'restartAdjoint': True,
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'restrictionRelaxation': 0.8,
+ 'selfZipCutoff': 120.0,
+ 'sepSensorKsOffset': 0.0,
+ 'sepSensorKsPhi': 90.0,
+ 'sepSensorKsRho': 1000.0,
+ 'sepSensorKsSharpness': 25.0,
+ 'sepSensorOffset': 0.0,
+ 'sepSensorSharpness': 10.0,
+ 'setMonitor': True,
+ 'skipAfterFailedAdjoint': True,
+ 'smoothParameter': 1.5,
+ 'smoother': 'DADI',
+ 'solutionPrecision': 'double',
+ 'solutionPrecisionSurface': 'single',
+ 'storeConvHist': True,
+ 'storeRindLayer': True,
+ 'surfaceVariables': ['cp', 'vx', 'vy', 'vz', 'mach'],
+ 'timeAccuracy': 2,
+ 'timeIntegrationScheme': 'BDF',
+ 'timeIntervals': 1,
+ 'timeLimit': -1.0,
+ 'turbResScale': 10000.0,
+ 'turbulenceModel': 'SA',
+ 'turbulenceOrder': 'first order',
+ 'turbulenceProduction': 'strain',
+ 'updateWallAssociations': False,
+ 'useALE': True,
+ 'useANKSolver': True,
+ 'useApproxWallDistance': True,
+ 'useBlockettes': True,
+ 'useDiagTSPC': True,
+ 'useDissContinuation': False,
+ 'useExternalDynamicMesh': False,
+ 'useGridMotion': False,
+ 'useLinResMonitor': False,
+ 'useMatrixFreedrdw': True,
+ 'useNKSolver': False,
+ 'useOversetWallScaling': False,
+ 'useQCR': False,
+ 'useRotationSA': False,
+ 'useSkewnessCheck': False,
+ 'useTSInterpolatedGridVelocity': False,
+ 'useWallFunctions': False,
+ 'useZipperMesh': True,
+ 'use_SABCM': True,
+ 'useft2SA': False,
+ 'verifyExtra': True,
+ 'verifySpatial': True,
+ 'verifyState': True,
+ 'vis2': 0.25,
+ 'vis2Coarse': 0.5,
+ 'vis4': 0.0156,
+ 'viscPC': False,
+ 'viscWallTreatment': 'constant pressure extrapolation',
+ 'viscousSurfaceVelocities': True,
+ 'volumeVariables': ['resrho'],
+ 'wallDistCutoff': 1e+20,
+ 'windAxis': False,
+ 'writeSolutionDigits': 3,
+ 'writeSolutionEachIter': False,
+ 'writeSurfaceSolution': True,
+ 'writeTecplotSurfaceSolution': False,
+ 'writeVolumeSolution': True,
+ 'zipperSurfaceFamily': None}
+-> Alpha... 0.000000 
+#
+#                      Warning
+# It is assumed that the grid is given in meters.
+#
+#
+# Specified load imbalance tolerance 0.100 achieved.
+# Continuing with 0.048 load imbalance for the cells and 0.038 for the faces
+#
+#
+# Grid level: 1, Total number of cells: 24192
+#
++--------------------------------------------------+
+  CGNS Surface Families by Boundary Condition Type
++--------------------------------------------------+
+| Wall Types           : wall 
+| Inflow Types         : 
+| Outflow Types        : 
+| Symmetry Types       : sym 
+| Farfield Types       : far 
+| Overset Types        : 
++--------------------------------------------------+
++--------------------------------------------------+
+|
+| Initialization Times:
+|
+| Library Load Time             :      0.010 sec
+| Set Defaults Time             :      0.000 sec
+| Base Class Init Time          :      0.001 sec
+| Introductory Time             :      0.001 sec
+| Partitioning Time             :      0.009 sec
+| Preprocessing Time            :      0.017 sec
+| Family Setup Time             :      0.000 sec
+| Cut Callback Time             :      0.000 sec
+| Explicit Surface Cut Time     :      0.000 sec
+| Overset Preprocessing Time    :      0.000 sec
+| Initialize Flow Time          :      0.001 sec
+|
+| Total Init Time               :      0.041 sec
++--------------------------------------------------+
++----------------------------------------+
+|          All IDWarp Options:           |
++----------------------------------------+
+{'LdefFact': 1.0,
+ 'aExp': 3.0,
+ 'alpha': 0.25,
+ 'bExp': 5.0,
+ 'bucketSize': 8,
+ 'cornerAngle': 30.0,
+ 'errTol': 0.0005,
+ 'evalMode': 'fast',
+ 'fileType': 'CGNS',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'restartFile': None,
+ 'specifiedSurfaces': None,
+ 'symmTol': 1e-06,
+ 'symmetryPlanes': None,
+ 'symmetrySurfaces': None,
+ 'useRotations': True,
+ 'zeroCornerRotations': True}
+  -> Reading CGNS File: /home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns
+    -> Number of Zones:          38
+#------------------------------#
+ Total Volume Nodes :     36650 
+#------------------------------#
++-------------------- Symmetry Planes -------------------+
+|           Point                        Normal          |
+| (  0.000   0.000   0.000)    (  0.000   0.000  -1.000) |
++--------------------------------------------------------+
+#--------------------------------#
+ Unique Surface Nodes :      1031 
+#--------------------------------#
+ Computing Denominator Estimate...
+ Load Balancing...
+ Finished Mesh Initialization.
++----------------------------------------------------------------------+
+|  Switching to Aero Problem: mdo_tutorial_bcm                         |
++----------------------------------------------------------------------+
+
++------------------------------------------------------------------------------+
+| pyADFLOW Warning: 'zipperSurfaceFamily' option was not given. Using all wall |
+| boundary conditions for the zipper mesh.                                     |
++------------------------------------------------------------------------------+
+
+-> Alpha... 1.800000 
++----------------------------------------+
+|      All Modified ADFLOW Options:      |
++----------------------------------------+
+{'L2Convergence': 1e-14,
+ 'SABCM_Exp': True,
+ 'acousticScaleFactor': 0.15,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointMaxIter': 3000,
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'nCycles': 10000,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'solutionPrecision': 'double',
+ 'turbResScale': 10000.0,
+ 'use_SABCM': True,
+ 'useft2SA': False}
+#
+# Found restart file: output_files/mdo_tutorial_bcm_hard_000_vol.cgns
+#
+ SABCM_Exp = T
+-> Alpha... 1.800000 
+Solving adjoint: cmz
+-> Alpha... 1.800000 
+Solving ADjoint Transpose with PETSc...
+   0 KSP Residual norm 4.8287081516E+00
+  10 KSP Residual norm 3.7455002736E+00
+  20 KSP Residual norm 3.5231716891E+00
+  30 KSP Residual norm 3.2214718354E+00
+  40 KSP Residual norm 2.7820242857E+00
+  50 KSP Residual norm 1.8080709698E+00
+  60 KSP Residual norm 8.3958526067E-01
+  70 KSP Residual norm 3.0529834279E-01
+  80 KSP Residual norm 1.2183021019E-01
+  90 KSP Residual norm 5.9813060285E-02
+ 100 KSP Residual norm 2.7585402143E-02
+ 110 KSP Residual norm 1.5788396923E-02
+ 120 KSP Residual norm 9.4399981770E-03
+ 130 KSP Residual norm 5.0104686040E-03
+ 140 KSP Residual norm 2.0218627675E-03
+ 150 KSP Residual norm 8.1845657223E-04
+ 160 KSP Residual norm 3.8697883875E-04
+ 170 KSP Residual norm 2.1746156089E-04
+ 180 KSP Residual norm 1.2010848203E-04
+ 190 KSP Residual norm 5.6113401730E-05
+ 200 KSP Residual norm 2.6191225594E-05
+ 210 KSP Residual norm 1.8209409975E-05
+ 220 KSP Residual norm 1.2081722585E-05
+ 230 KSP Residual norm 8.4287144569E-06
+ 240 KSP Residual norm 4.7034225530E-06
+ 250 KSP Residual norm 2.4452133778E-06
+ 260 KSP Residual norm 1.4534565651E-06
+ 270 KSP Residual norm 9.1542061318E-07
+ 280 KSP Residual norm 5.1486087279E-07
+ 290 KSP Residual norm 2.9399668365E-07
+ 300 KSP Residual norm 1.8506362567E-07
+ 310 KSP Residual norm 1.4870463619E-07
+ 320 KSP Residual norm 1.0231505231E-07
+ 330 KSP Residual norm 6.7749158634E-08
+ 340 KSP Residual norm 4.5786947681E-08
+ 350 KSP Residual norm 2.6975696353E-08
+ 360 KSP Residual norm 1.4613884900E-08
+ 370 KSP Residual norm 8.8110070847E-09
+ 380 KSP Residual norm 5.6598275778E-09
+ 390 KSP Residual norm 2.9922992478E-09
+ 400 KSP Residual norm 1.4876251282E-09
+ 410 KSP Residual norm 1.0943621042E-09
+ 420 KSP Residual norm 7.5133989937E-10
+ 430 KSP Residual norm 5.0655723622E-10
+ 440 KSP Residual norm 3.1139106643E-10
+ 450 KSP Residual norm 1.8835569435E-10
+ 460 KSP Residual norm 1.2798293385E-10
+ 470 KSP Residual norm 8.3111636971E-11
+ 480 KSP Residual norm 4.8727713937E-11
+ 490 KSP Residual norm 2.7790202494E-11
+ 500 KSP Residual norm 1.6457821141E-11
+ 510 KSP Residual norm 1.2462778688E-11
+ 520 KSP Residual norm 8.4479251503E-12
+ 530 KSP Residual norm 4.7078638674E-12
+ 540 KSP Residual norm 2.7203818867E-12
+ 550 KSP Residual norm 1.6758546983E-12
+ 560 KSP Residual norm 1.1399857662E-12
+ 570 KSP Residual norm 7.6241066633E-13
+ 580 KSP Residual norm 4.9203832239E-13
+ 590 KSP Residual norm 3.1331463741E-13
+Solving ADjoint Transpose with PETSc time (s) =    16.79
+ Norm of error = 2.8398E-12    Iterations =  600
+ ------------------------------------------------
+ PETSc solver converged after   600 iterations.
+ ------------------------------------------------
+
++------------------------------------------------------------------------------+
+| pyADFLOW Warning: Current adjoint failed to converge, so the remaining       |
+| adjoints will be skipped. Use the checkAdjointFailure method to get the      |
+| correct fail flag for sensitivity evaluations. Finally, if you want to solve |
+| the remaining adjoints regardless of the current failure, set                |
+| skipAfterFailedAdjoint to False.                                             |
++------------------------------------------------------------------------------+
+
++--------------------------------------------------+
+|
+| Adjoint Times:
+|
+| Adjoint Solve Time - cmz      :     16.883 sec
+| Total Sensitivity Time - cmz  :      0.057 sec
+|
+| Complete Sensitivity Time     :     16.941 sec
++--------------------------------------------------+
+-> Alpha... 1.800000 
+
+---- cmz: adjoint fail flag = True ----
+  dcmz/dalpha_mdo_tutorial_bcm  0.0000000000e+00
+  dcmz/dbeta_mdo_tutorial_bcm  0.0000000000e+00
+  dcmz/dmach_mdo_tutorial_bcm -6.7740144353e+00
+  dcmz/dP_mdo_tutorial_bcm   -6.4590975928e-10
+  dcmz/dT_mdo_tutorial_bcm    4.9299964508e-22
+  dcmz/dxRef_mdo_tutorial_bcm -1.0393749893e-01
+  dcmz/dyRef_mdo_tutorial_bcm  9.8748247559e-04
+  dcmz/dzRef_mdo_tutorial_bcm  0.0000000000e+00
+  dcmz/dspan[0]               3.6155063431e-02
+  dcmz/dshape[0]             -7.6387997827e-04
+  dcmz/dshape[71]              2.1037597424e-04
+
+====================================================================================================
+==== isolated adjoint solve: variant=hard  func=drag  (fresh AP, no prior history) ====
+====================================================================================================
+#
+# ADflow, multiblock structured flow solver
+#
+# This code solves the 3D RANS, laminar NS or Euler equations
+# on multiblock structured hexahedral grids.
+# This is a parallel executable running on 12 processors.
+# It has been compiled with the following options:
+# - Optimized mode.
+# - Size of standard integers: 4 bytes.
+# - Size of standard floating point types: 8 bytes.
+# - With cgns support
+# - With support for signals.
+#
++----------------------------------------+
+|          All ADFLOW Options:           |
++----------------------------------------+
+{'ADPC': False,
+ 'ANKADPC': False,
+ 'ANKAMGLevels': 2,
+ 'ANKAMGNSmooth': 1,
+ 'ANKASMOverlap': 1,
+ 'ANKASMOverlapCoarse': 0,
+ 'ANKCFL0': 5.0,
+ 'ANKCFLCutback': 0.5,
+ 'ANKCFLExponent': 0.5,
+ 'ANKCFLFactor': 10.0,
+ 'ANKCFLLimit': 100000.0,
+ 'ANKCFLMin': 1.0,
+ 'ANKCFLReset': True,
+ 'ANKCharTimeStepType': 'None',
+ 'ANKConstCFLStep': 0.4,
+ 'ANKCoupledSwitchTol': 1e-16,
+ 'ANKGlobalPreconditioner': 'additive Schwarz',
+ 'ANKInnerPreconIts': 1,
+ 'ANKInnerPreconItsCoarse': 1,
+ 'ANKJacobianLag': 10,
+ 'ANKLinResMax': 0.1,
+ 'ANKLinearSolveBuffer': 0.01,
+ 'ANKLinearSolveTol': 0.05,
+ 'ANKMaxIter': 40,
+ 'ANKNSubiterTurb': 1,
+ 'ANKOuterPreconIts': 1,
+ 'ANKPCILUFill': 2,
+ 'ANKPCILUFillCoarse': 0,
+ 'ANKPCUpdateCutoff': 1e-16,
+ 'ANKPCUpdateTol': 0.5,
+ 'ANKPCUpdateTolAfterCutoff': 0.0001,
+ 'ANKPhysicalLSTol': 0.2,
+ 'ANKPhysicalLSTolTurb': 0.99,
+ 'ANKSecondOrdSwitchTol': 1e-16,
+ 'ANKStepFactor': 1.0,
+ 'ANKStepMin': 0.01,
+ 'ANKSubspaceSize': -1,
+ 'ANKSwitchTol': 1000.0,
+ 'ANKTurbCFLScale': 1.0,
+ 'ANKTurbKSPDebug': False,
+ 'ANKUnsteadyLSTol': 1.0,
+ 'ANKUseApproxSA': False,
+ 'ANKUseFullVisc': True,
+ 'ANKUseMatrixFree': True,
+ 'ANKUseTurbDADI': True,
+ 'ASMOverlap': 1,
+ 'ASMOverlapCoarse': 0,
+ 'CFL': 1.7,
+ 'CFLCoarse': 1.0,
+ 'CFLLimit': 1.5,
+ 'GMRESOrthogonalizationType': 'modified Gram-Schmidt',
+ 'ILUFill': 2,
+ 'ILUFillCoarse': 0,
+ 'L2Convergence': 1e-14,
+ 'L2ConvergenceCoarse': 0.01,
+ 'L2ConvergenceRel': 1e-16,
+ 'MGCycle': 'sg',
+ 'MGStartLevel': -1,
+ 'NKADPC': False,
+ 'NKAMGLevels': 2,
+ 'NKAMGNSmooth': 1,
+ 'NKASMOverlap': 1,
+ 'NKASMOverlapCoarse': 0,
+ 'NKFixedStep': 0.25,
+ 'NKGlobalPreconditioner': 'additive Schwarz',
+ 'NKInnerPreconIts': 1,
+ 'NKInnerPreconItsCoarse': 1,
+ 'NKJacobianLag': 20,
+ 'NKLS': 'cubic',
+ 'NKLSRelax': False,
+ 'NKLinearSolveTol': 0.3,
+ 'NKOuterPreconIts': 1,
+ 'NKPCILUFill': 2,
+ 'NKPCILUFillCoarse': 0,
+ 'NKSubspaceSize': 60,
+ 'NKSwitchTol': 1e-05,
+ 'NKUseEW': True,
+ 'NKViscPC': False,
+ 'RKReset': False,
+ 'SABCM_Const1': 0.002,
+ 'SABCM_Const2': 0.02,
+ 'SABCM_Exp': True,
+ 'SABCM_S0_tanh': 0.5,
+ 'SABCM_TU': 0.5,
+ 'SABCM_fsmooth': 0.08,
+ 'SABCM_maxsmooth': 50.0,
+ 'TSStability': False,
+ 'acousticScaleFactor': 0.15,
+ 'adjointAMGLevels': 2,
+ 'adjointAMGNSmooth': 1,
+ 'adjointDivTol': 100000.0,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointL2ConvergenceAbs': 1e-16,
+ 'adjointL2ConvergenceRel': 1e-16,
+ 'adjointMaxIter': 3000,
+ 'adjointMaxL2DeviationFactor': 1.0,
+ 'adjointMonitorStep': 10,
+ 'adjointSolver': 'GMRES',
+ 'adjointSubspaceSize': 100,
+ 'alphaFollowing': True,
+ 'alphaMode': False,
+ 'altitudeMode': False,
+ 'applyAdjointPCSubspaceSize': 20,
+ 'applyPCSubspaceSize': 10,
+ 'approxPC': True,
+ 'backgroundVolScale': 1.0,
+ 'betaMode': False,
+ 'blockSplitting': True,
+ 'cavExponent': 0,
+ 'cavSensorOffset': 0.0,
+ 'cavSensorSharpness': 10.0,
+ 'cavitationNumber': 1.4,
+ 'closedSurfaceFamilies': None,
+ 'coarseDiscretization': 'central plus scalar dissipation',
+ 'computeCavitation': False,
+ 'computeSepSensorKs': False,
+ 'coupledSolution': False,
+ 'cpMinRho': 100.0,
+ 'cutCallback': None,
+ 'debugZipper': False,
+ 'deltaT': 0.01,
+ 'designSurfaceFamily': None,
+ 'discretization': 'central plus scalar dissipation',
+ 'dissContMagnitude': 1.0,
+ 'dissContMidpoint': 3.0,
+ 'dissContSharpness': 3.0,
+ 'dissipationLumpingParameter': 6.0,
+ 'dissipationScalingExponent': 0.67,
+ 'eddyVisInfRatio': 0.009,
+ 'equationMode': 'steady',
+ 'equationType': 'RANS',
+ 'eulerWallTreatment': 'linear pressure extrapolation',
+ 'explicitSurfaceCallback': None,
+ 'firstRun': True,
+ 'flowType': 'external',
+ 'forcesAsTractions': True,
+ 'frozenTurbulence': False,
+ 'globalPreconditioner': 'additive Schwarz',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'gridPrecision': 'double',
+ 'gridPrecisionSurface': 'single',
+ 'infChangeCorrection': True,
+ 'infChangeCorrectionTol': 1e-12,
+ 'infChangeCorrectionType': 'offset',
+ 'innerPreconIts': 1,
+ 'innerPreconItsCoarse': 1,
+ 'isoVariables': [],
+ 'isosurface': {},
+ 'liftIndex': 2,
+ 'limiter': 'van Albada',
+ 'loadBalanceIter': 10,
+ 'loadImbalance': 0.1,
+ 'localPreconditioner': 'ILU',
+ 'lowSpeedPreconditioner': False,
+ 'machMode': False,
+ 'matrixOrdering': 'RCM',
+ 'maxL2DeviationFactor': 1.0,
+ 'meshMaxSkewness': 1.0,
+ 'meshSurfaceFamily': None,
+ 'monitorVariables': ['cpu', 'resrho', 'resturb', 'cl', 'cd'],
+ 'nCycles': 10000,
+ 'nCyclesCoarse': 500,
+ 'nFloodIter': -1,
+ 'nRKReset': 5,
+ 'nRefine': 10,
+ 'nSaveSurface': 1,
+ 'nSaveVolume': 1,
+ 'nSubiter': 1,
+ 'nSubiterTurb': 3,
+ 'nTimeStepsCoarse': 48,
+ 'nTimeStepsFine': 400,
+ 'nearWallDist': 0.1,
+ 'numberSolutions': True,
+ 'outerPreconIts': 3,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'outputSurfaceFamily': 'allSurfaces',
+ 'overlapFactor': 0.9,
+ 'oversetDebugPrint': False,
+ 'oversetLoadBalance': True,
+ 'oversetPriority': {},
+ 'oversetProjTol': 1e-12,
+ 'oversetUpdateMode': 'frozen',
+ 'pMode': False,
+ 'partitionLikeNProc': -1,
+ 'partitionOnly': False,
+ 'preconditionerSide': 'right',
+ 'printAllOptions': True,
+ 'printBadlySkewedCells': False,
+ 'printIntro': True,
+ 'printIterations': True,
+ 'printNegativeVolumes': False,
+ 'printTiming': True,
+ 'printWarnings': True,
+ 'qMode': False,
+ 'rMode': False,
+ 'recomputeOverlapMatrix': True,
+ 'resAveraging': 'alternate',
+ 'restartAdjoint': True,
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'restrictionRelaxation': 0.8,
+ 'selfZipCutoff': 120.0,
+ 'sepSensorKsOffset': 0.0,
+ 'sepSensorKsPhi': 90.0,
+ 'sepSensorKsRho': 1000.0,
+ 'sepSensorKsSharpness': 25.0,
+ 'sepSensorOffset': 0.0,
+ 'sepSensorSharpness': 10.0,
+ 'setMonitor': True,
+ 'skipAfterFailedAdjoint': True,
+ 'smoothParameter': 1.5,
+ 'smoother': 'DADI',
+ 'solutionPrecision': 'double',
+ 'solutionPrecisionSurface': 'single',
+ 'storeConvHist': True,
+ 'storeRindLayer': True,
+ 'surfaceVariables': ['cp', 'vx', 'vy', 'vz', 'mach'],
+ 'timeAccuracy': 2,
+ 'timeIntegrationScheme': 'BDF',
+ 'timeIntervals': 1,
+ 'timeLimit': -1.0,
+ 'turbResScale': 10000.0,
+ 'turbulenceModel': 'SA',
+ 'turbulenceOrder': 'first order',
+ 'turbulenceProduction': 'strain',
+ 'updateWallAssociations': False,
+ 'useALE': True,
+ 'useANKSolver': True,
+ 'useApproxWallDistance': True,
+ 'useBlockettes': True,
+ 'useDiagTSPC': True,
+ 'useDissContinuation': False,
+ 'useExternalDynamicMesh': False,
+ 'useGridMotion': False,
+ 'useLinResMonitor': False,
+ 'useMatrixFreedrdw': True,
+ 'useNKSolver': False,
+ 'useOversetWallScaling': False,
+ 'useQCR': False,
+ 'useRotationSA': False,
+ 'useSkewnessCheck': False,
+ 'useTSInterpolatedGridVelocity': False,
+ 'useWallFunctions': False,
+ 'useZipperMesh': True,
+ 'use_SABCM': True,
+ 'useft2SA': False,
+ 'verifyExtra': True,
+ 'verifySpatial': True,
+ 'verifyState': True,
+ 'vis2': 0.25,
+ 'vis2Coarse': 0.5,
+ 'vis4': 0.0156,
+ 'viscPC': False,
+ 'viscWallTreatment': 'constant pressure extrapolation',
+ 'viscousSurfaceVelocities': True,
+ 'volumeVariables': ['resrho'],
+ 'wallDistCutoff': 1e+20,
+ 'windAxis': False,
+ 'writeSolutionDigits': 3,
+ 'writeSolutionEachIter': False,
+ 'writeSurfaceSolution': True,
+ 'writeTecplotSurfaceSolution': False,
+ 'writeVolumeSolution': True,
+ 'zipperSurfaceFamily': None}
+-> Alpha... 0.000000 
+#
+#                      Warning
+# It is assumed that the grid is given in meters.
+#
+#
+# Specified load imbalance tolerance 0.100 achieved.
+# Continuing with 0.048 load imbalance for the cells and 0.038 for the faces
+#
+#
+# Grid level: 1, Total number of cells: 24192
+#
++--------------------------------------------------+
+  CGNS Surface Families by Boundary Condition Type
++--------------------------------------------------+
+| Wall Types           : wall 
+| Inflow Types         : 
+| Outflow Types        : 
+| Symmetry Types       : sym 
+| Farfield Types       : far 
+| Overset Types        : 
++--------------------------------------------------+
++--------------------------------------------------+
+|
+| Initialization Times:
+|
+| Library Load Time             :      0.011 sec
+| Set Defaults Time             :      0.000 sec
+| Base Class Init Time          :      0.001 sec
+| Introductory Time             :      0.001 sec
+| Partitioning Time             :      0.009 sec
+| Preprocessing Time            :      0.017 sec
+| Family Setup Time             :      0.000 sec
+| Cut Callback Time             :      0.000 sec
+| Explicit Surface Cut Time     :      0.000 sec
+| Overset Preprocessing Time    :      0.000 sec
+| Initialize Flow Time          :      0.001 sec
+|
+| Total Init Time               :      0.041 sec
++--------------------------------------------------+
++----------------------------------------+
+|          All IDWarp Options:           |
++----------------------------------------+
+{'LdefFact': 1.0,
+ 'aExp': 3.0,
+ 'alpha': 0.25,
+ 'bExp': 5.0,
+ 'bucketSize': 8,
+ 'cornerAngle': 30.0,
+ 'errTol': 0.0005,
+ 'evalMode': 'fast',
+ 'fileType': 'CGNS',
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'restartFile': None,
+ 'specifiedSurfaces': None,
+ 'symmTol': 1e-06,
+ 'symmetryPlanes': None,
+ 'symmetrySurfaces': None,
+ 'useRotations': True,
+ 'zeroCornerRotations': True}
+  -> Reading CGNS File: /home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns
+    -> Number of Zones:          38
+#------------------------------#
+ Total Volume Nodes :     36650 
+#------------------------------#
++-------------------- Symmetry Planes -------------------+
+|           Point                        Normal          |
+| (  0.000   0.000   0.000)    (  0.000   0.000  -1.000) |
++--------------------------------------------------------+
+#--------------------------------#
+ Unique Surface Nodes :      1031 
+#--------------------------------#
+ Computing Denominator Estimate...
+ Load Balancing...
+ Finished Mesh Initialization.
++----------------------------------------------------------------------+
+|  Switching to Aero Problem: mdo_tutorial_bcm                         |
++----------------------------------------------------------------------+
+
++------------------------------------------------------------------------------+
+| pyADFLOW Warning: 'zipperSurfaceFamily' option was not given. Using all wall |
+| boundary conditions for the zipper mesh.                                     |
++------------------------------------------------------------------------------+
+
+-> Alpha... 1.800000 
++----------------------------------------+
+|      All Modified ADFLOW Options:      |
++----------------------------------------+
+{'L2Convergence': 1e-14,
+ 'SABCM_Exp': True,
+ 'acousticScaleFactor': 0.15,
+ 'adjointL2Convergence': 1e-14,
+ 'adjointMaxIter': 3000,
+ 'gridFile': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../../input_files/mdo_tutorial_rans_scalar_jst.cgns',
+ 'nCycles': 10000,
+ 'outputDirectory': '/home/mdo/MDOLab_3_v2/adflow_sabcm/tests/reg_tests/../output_files',
+ 'restartFile': 'output_files/mdo_tutorial_bcm_hard_000_vol.cgns',
+ 'solutionPrecision': 'double',
+ 'turbResScale': 10000.0,
+ 'use_SABCM': True,
+ 'useft2SA': False}
+#
+# Found restart file: output_files/mdo_tutorial_bcm_hard_000_vol.cgns
+#
+ SABCM_Exp = T
+-> Alpha... 1.800000 
+Solving adjoint: drag
+-> Alpha... 1.800000 
+Solving ADjoint Transpose with PETSc...
+   0 KSP Residual norm 5.7082944804E+03
+  10 KSP Residual norm 3.3614744337E+03
+  20 KSP Residual norm 2.5750795396E+03
+  30 KSP Residual norm 2.2183539209E+03
+  40 KSP Residual norm 1.7307265127E+03
+  50 KSP Residual norm 1.1421281214E+03
+  60 KSP Residual norm 5.0816482651E+02
+  70 KSP Residual norm 1.7709022896E+02
+  80 KSP Residual norm 5.6597662707E+01
+  90 KSP Residual norm 1.7688650061E+01
+ 100 KSP Residual norm 5.3337649456E+00
+ 110 KSP Residual norm 3.5298663932E+00
+ 120 KSP Residual norm 2.7124501098E+00
+ 130 KSP Residual norm 2.0827771049E+00
+ 140 KSP Residual norm 1.4590221030E+00
+ 150 KSP Residual norm 8.1120563780E-01
+ 160 KSP Residual norm 3.4928056201E-01
+ 170 KSP Residual norm 1.5329143766E-01
+ 180 KSP Residual norm 9.2429124800E-02
+ 190 KSP Residual norm 6.2201355351E-02
+ 200 KSP Residual norm 3.2070236679E-02
+ 210 KSP Residual norm 2.4371435767E-02
+ 220 KSP Residual norm 1.7593229485E-02
+ 230 KSP Residual norm 1.1379812876E-02
+ 240 KSP Residual norm 6.4239355138E-03
+ 250 KSP Residual norm 3.7283804979E-03
+ 260 KSP Residual norm 2.3833068268E-03
+ 270 KSP Residual norm 1.4289159820E-03
+ 280 KSP Residual norm 8.4770951274E-04
+ 290 KSP Residual norm 5.6704087388E-04
+ 300 KSP Residual norm 3.5400933491E-04
+ 310 KSP Residual norm 2.6847361548E-04
+ 320 KSP Residual norm 1.8801041830E-04
+ 330 KSP Residual norm 1.3227978022E-04
+ 340 KSP Residual norm 7.9493439046E-05
+ 350 KSP Residual norm 4.4875996830E-05
+ 360 KSP Residual norm 3.0475648909E-05
+ 370 KSP Residual norm 1.9180574080E-05
+ 380 KSP Residual norm 1.1977377734E-05
+ 390 KSP Residual norm 7.6065352510E-06
+ 400 KSP Residual norm 3.9813620817E-06
+ 410 KSP Residual norm 2.9320187193E-06
+ 420 KSP Residual norm 2.1247471277E-06
+ 430 KSP Residual norm 1.4805341349E-06
+ 440 KSP Residual norm 9.1407133412E-07
+ 450 KSP Residual norm 4.9036026681E-07
+ 460 KSP Residual norm 3.0548866558E-07
+ 470 KSP Residual norm 1.9071650331E-07
+ 480 KSP Residual norm 1.1635901594E-07
+ 490 KSP Residual norm 6.5371055341E-08
+ 500 KSP Residual norm 3.7234367833E-08
+ 510 KSP Residual norm 2.7454431260E-08
+ 520 KSP Residual norm 1.9469208092E-08
+ 530 KSP Residual norm 1.2916053384E-08
+ 540 KSP Residual norm 8.0380651980E-09
+ 550 KSP Residual norm 4.7888780537E-09
+ 560 KSP Residual norm 3.0126753654E-09
+ 570 KSP Residual norm 1.9673443270E-09
+ 580 KSP Residual norm 1.2091203983E-09
+ 590 KSP Residual norm 7.3405364933E-10
+ 600 KSP Residual norm 1.7397563661E-09
+ 610 KSP Residual norm 3.8132517035E-10
+ 620 KSP Residual norm 2.4529217127E-10
+ 630 KSP Residual norm 1.6474251104E-10
+ 640 KSP Residual norm 1.1002572287E-10
+ 650 KSP Residual norm 7.0341361503E-11
+Solving ADjoint Transpose with PETSc time (s) =    18.92
+ Norm of error = 1.6226E-09    Iterations =  654
+ ------------------------------------------------
+ PETSc solver converged after   654 iterations.
+ ------------------------------------------------
++--------------------------------------------------+
+|
+| Adjoint Times:
+|
+| Adjoint Solve Time - drag     :     19.016 sec
+| Total Sensitivity Time - drag :      0.052 sec
+|
+| Complete Sensitivity Time     :     19.069 sec
++--------------------------------------------------+
+-> Alpha... 1.800000 
+
+---- drag: adjoint fail flag = False ----
+  ddrag/dalpha_mdo_tutorial_bcm  3.6502272344e+01
+  ddrag/dbeta_mdo_tutorial_bcm -1.4190513335e+00
+  ddrag/dmach_mdo_tutorial_bcm  2.1483055092e+03
+  ddrag/dP_mdo_tutorial_bcm    1.0101192818e-02
+  ddrag/dT_mdo_tutorial_bcm    2.7820362574e-03
+  ddrag/dxRef_mdo_tutorial_bcm  0.0000000000e+00
+  ddrag/dyRef_mdo_tutorial_bcm  0.0000000000e+00
+  ddrag/dzRef_mdo_tutorial_bcm  0.0000000000e+00
+  ddrag/dspan[0]               1.3327376937e+01
+  ddrag/dshape[0]              1.9749436628e+01
+  ddrag/dshape[71]              7.4295099958e+01

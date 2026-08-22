@@ -1,0 +1,124 @@
+
+AMDuProfPcm Report
+
+Processor Name:,AMD Ryzen 9 7950X 16-Core Processor            
+System:,Family(0x19) Model(0x61) Stepping(0x2)
+Operating System:,Linux 6.8.0-60-generic
+Number of Sockets :,1
+Number of Core Complexes(CCX) :,2
+Number of Cores :,8
+Number of Threads :,16
+SMT Enabled in HW:,True
+SMT Enabled by OS :,True
+
+CPU Topology:
+Socket, CCX, Core(s)
+0,0, 0 1 2 3 4 5 6 7
+0,1, 8 9 10 11 12 13 14 15
+
+Socket-UMC Topology:
+Socket, UMC(s)
+0,0 1 
+
+Core P0 state frequency (MHz):,4501.000000
+Multiplex interval for core (ms):,1
+Multiplex interval for l3 (ms):,1
+Multiplex interval for df (ms):,1
+Multiplex interval for umc (ms):,1
+Data Collection Driver:,Linux Perf Driver
+NMI Watchdog Enabled:,1
+Version:,5.2.606.0 (PUBLIC)
+
+Hypervisor Info:
+Hypervisor Enabled:,False
+Command:,"AMDuProfPcm -a -A system -C -o /home/mdo/MDOLab_3_v2/adflow- 2.12.2 dev 128/Run/results_bs_sweep/bs_16/results_smt_off_pure_mpi/np_4_omp_1/mem_np4_omp1.csv -- mpirun --bind-to core --report-bindings -np 4 /home/mdo/packages_v2/mach/bin/python /home/mdo/MDOLab_3_v2/adflow- 2.12.2 dev 128/Run/analysis.py"
+
+Abbreviation :
+IPC    : Instructions Per CPU Cycle
+CPI    : CPU Cycles Per Instructions
+pti    : Per Thousand Instructions
+ptc    : Per Thousand CPU Cycles
+pto    : Per Thousand Operations
+Topdown metrics are reported in "% slots"
+
+Warnings:
+L1 cache misses does not count the misses for which cache lines have already been requested due to an earlier miss.
+
+Profile Time: 2026/03/21 23:31:26:493
+CORE METRICS
+Metric,System (Aggregated)
+Utilization (%),27.07
+System time (%),5.54
+User time (%),93.14
+System instructions (%),1.86
+User instructions (%),98.14
+Eff Freq (MHz),5403.39
+IPC (Sys + User),1.42
+IPC (Sys),0.47
+IPC (User),1.48
+CPI (Sys + User),0.70
+CPI (Sys),2.13
+CPI (User),0.68
+Giga Instructions Per Sec,32.82
+Locked Instructions (pti),0.00
+Retired Branches (pti),78.67
+Retired Branches Mispredicted (pti),0.61
+Retired SSE/AVX Flops(GFLOPs),14.91
+FP Dispatch Faults (pti),0.00
+Retired Ops (pti),1013.88
+SSE/AVX Instructions Retired (pti),554.15
+MMX Instructions Retired (pti),0.00
+x87 Instructions Retired (pti),0.06
+Packed 512-bit FP Ops Retired (pto),19.09
+Packed 256-bit FP Ops Retired (pto),18.72
+Packed 128-bit FP Ops Retired (pto),253.41
+Scalar FP Ops Retired (pto),268.44
+MMX FP Ops Retired (pto),0.49
+x87 FP Ops Retired (pto),0.19
+Packed 512-bit FP Ops Retired (%),3.41
+Packed 256-bit FP Ops Retired (%),3.34
+Packed 128-bit FP Ops Retired (%),45.21
+MMX/x87 FP Ops Retired (%),48.05
+All DC Fills (pti),33.06
+DC Fills From Same CCX (pti),29.86
+DC Fills From different CCX in same node (pti),0.00
+DC Fills From Local Memory (pti),3.19
+DC Fills From Remote CCX Cache (pti),0.00
+DC Fills From Remote Memory (pti),0.00
+Remote DRAM Reads %,0.00
+L1 DC Miss (pti),33.19
+L2 Data Read Miss (pti),19.63
+L1 IC Miss (pti),1.07
+L2 Code Read Miss (pti),0.20
+Total_Dispatch_Slots,192563643696348.00
+SMT_Disp_contention,0.00
+Frontend_Bound,6.79
+Bad_Speculation,0.54
+Backend_Bound,68.59
+Retiring,24.00
+Frontend_Bound.Latency,4.83
+Frontend_Bound.BW,1.96
+Bad_Speculation.Mispredicts,0.51
+Bad_Speculation.Pipeline_Restarts,0.03
+Backend_Bound.Memory,53.81
+Backend_Bound.CPU,14.78
+Retiring.Fastpath,23.37
+Retiring.Microcode,0.63
+
+L3 METRICS
+Metric,System (Aggregated)
+L3 Access,256127348303.00
+L3 Miss,151096387035.00
+L3 Access (pti),22.49
+L3 Miss (pti),13.27
+L3 Miss %,58.99
+L3 Hit %,41.01
+Ave L3 Miss Latency (ns),183.07
+L3 Miss Latency From Local Memory or I/O (%),100.10
+L3 Miss Latency From Remote Memory or I/O (%),0.00
+L3 Miss Latency From another CCX in same node (%),0.04
+L3 Miss Latency From another CCX in remote node (%),0.00
+L3 Miss Latency From Local Extension Memory (CXL) (%),0.00
+L3 Miss Latency From Remote Extension Memory (CXL) (%),0.00
+
+

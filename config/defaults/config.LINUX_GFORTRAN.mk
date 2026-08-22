@@ -31,7 +31,7 @@ COMPLEXIFY_INCLUDE_FLAGS=-I$(COMPLEXIFY_DIR)/include
 COMPLEXIFY_LINKER_FLAGS=-L$(COMPLEXIFY_DIR)/lib -lcomplexify
 
 # ------- Define Compiler Flags ----------------------------------------
-FF77_FLAGS = -fPIC -fdefault-real-8 -fdefault-double-8 -march=native
+FF77_FLAGS = -fPIC -fdefault-real-8 -fdefault-double-8 -march=native -fopenmp
 FF90_FLAGS = $(FF77_FLAGS) -std=f2008
 FFXX_OPT_FLAGS = -O3 -ffast-math
 C_FLAGS   = -fPIC -O
@@ -42,7 +42,7 @@ AR_FLAGS = -rvs
 
 # ------- Define Linker Flags ------------------------------------------
 LINKER       = $(FF90)
-LINKER_FLAGS =
+LINKER_FLAGS = -fopenmp
 
 # ------- Define Petsc Info --- Should not need to modify this -----
 include ${PETSC_DIR}/lib/petsc/conf/variables # PETSc 3.6

@@ -273,6 +273,7 @@ contains
         if (volWriteGC) nVolSolvar = nVolSolvar + 1
         if (volWriteStatus) nVolSolvar = nVolSolvar + 1
         if (volWriteIntermittency) nVolDiscrVar = nVolDiscrVar + 1
+        if (volWriteTgamma) nVolDiscrVar = nVolDiscrVar + 1
         if (volWriteFonset) nVolSolvar = nVolSolvar + 1
         if (volWriteFlength) nVolSolvar = nVolSolvar + 1
         if (volWriteRturb) nVolSolvar = nVolSolvar + 1
@@ -682,6 +683,11 @@ contains
         if (volWriteIntermittency) then
             nn = nn + 1
             solNames(nn) = cgnsIntermittency
+        end if
+
+        if (volWriteTgamma) then
+            nn = nn + 1
+            solNames(nn) = cgnsTgamma
         end if
 
         if (volWriteFonset) then
@@ -1640,6 +1646,21 @@ contains
                         else
                             wIO(i, j, k, 1) = 0
                         end if
+                    end do
+                end do
+            end do
+
+        case (cgnstgamma)
+            ! SA-BCM algebraic intermittency, plain volume output like any
+            ! other transition diagnostic (refactor 2026-08-22: replaces the
+            ! old always-on write + near-wall surface columns).
+            do k = kBeg, kEnd
+                kk = max(2_intType, k); kk = min(kl, kk)
+                do j = jBeg, jEnd
+                    jj = max(2_intType, j); jj = min(jl, jj)
+                    do i = iBeg, iEnd
+                        ii = max(2_intType, i); ii = min(il, ii)
+                        wIO(i, j, k, 1) = Tgamma(ii, jj, kk)
                     end do
                 end do
             end do
@@ -2846,6 +2867,43 @@ contains
             !       (half*(rhoInfDim)*(uInfDim2 + rot_speed2))
             !       The local velocity term includes the rotational components!
         end subroutine computeCoeffPressure
+
+        real(kind=realType) function getTgammaAtSurfaceOffset(faceI, faceJ, cellOffset)
+            implicit none
+
+            integer(kind=intType), intent(in) :: faceI, faceJ, cellOffset
+
+            integer(kind=intType) :: iCell, jCell, kCell
+
+            select case (faceID)
+            case (iMin)
+                iCell = min(max(1_intType + cellOffset, 2_intType), il)
+                jCell = faceI
+                kCell = faceJ
+            case (iMax)
+                iCell = max(min(il - cellOffset + 1_intType, il), 2_intType)
+                jCell = faceI
+                kCell = faceJ
+            case (jMin)
+                iCell = faceI
+                jCell = min(max(1_intType + cellOffset, 2_intType), jl)
+                kCell = faceJ
+            case (jMax)
+                iCell = faceI
+                jCell = max(min(jl - cellOffset + 1_intType, jl), 2_intType)
+                kCell = faceJ
+            case (kMin)
+                iCell = faceI
+                jCell = faceJ
+                kCell = min(max(1_intType + cellOffset, 2_intType), kl)
+            case (kMax)
+                iCell = faceI
+                jCell = faceJ
+                kCell = max(min(kl - cellOffset + 1_intType, kl), 2_intType)
+            end select
+
+            getTgammaAtSurfaceOffset = Tgamma(iCell, jCell, kCell)
+        end function getTgammaAtSurfaceOffset
 
     end subroutine storeSurfsolInBuffer
 

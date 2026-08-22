@@ -579,6 +579,14 @@ contains
         integer(kind=intType) :: nVar, mm
         integer(kind=intType) :: i, j, k, ii, jj
         integer(kind=intType) :: d1, i1, j1, k1, d2, i2, j2, k2
+        real(kind=alwaysRealType) :: tPack, tPost, tLocal, tUnpack, tRecv, tSend, tStage
+
+        tPack = 0.0_alwaysRealType
+        tPost = 0.0_alwaysRealType
+        tLocal = 0.0_alwaysRealType
+        tUnpack = 0.0_alwaysRealType
+        tRecv = 0.0_alwaysRealType
+        tSend = 0.0_alwaysRealType
 
         ! Send the variables. The data is first copied into
         ! the send buffer after which the buffer is sent asap.
@@ -715,6 +723,7 @@ contains
         do i = 1, commPattern(level)%nProcSend
             call mpi_waitany(size, sendRequests, index, mpiStatus, ierr)
         end do
+
 
     end subroutine whalo1to1RealGeneric
 

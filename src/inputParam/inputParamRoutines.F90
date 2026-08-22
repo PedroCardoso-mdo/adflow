@@ -762,6 +762,7 @@ contains
         volWriteResRho = .true.
         volWriteResMom = .false.
         volWriteResRhoe = .false.
+        volWriteTgamma = .false.
 
         ! Set the values which depend on the equations to be solved.
 
@@ -2862,6 +2863,7 @@ contains
         volWriteTransQQ33 = .false.
         volWriteTransDScf = .false.; volWriteTransReScf = .false.
         volWriteTransHcf = .false.
+        volWriteTgamma = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -3211,6 +3213,10 @@ contains
 
             case ("hcf")
                 volWriteTransHcf = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("tgamma")
+                volWriteTgamma = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default
@@ -3869,6 +3875,18 @@ contains
             wallDistanceNeeded = .false.
             updateWallDistanceUnsteady = .false.
 
+        end if
+
+        ! SABCM introduces an additional wall-distance sensitivity path in SA
+        ! through Re_theta. In the current adjoint implementation this path
+        ! is propagated through the approximate wall-distance reverse routine.
+        if (equations == RANSEquations .and. turbModel == spalartAllmaras .and. &
+            use_SABCM .and. .not. useApproxWallDistance) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "SABCM requires useApproxWallDistance=.true. for consistent wall-distance adjoint sensitivities")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
         end if
         !
         !       Parallelization parameters. Set the minimum load imbalance to
@@ -4560,7 +4578,7 @@ contains
         timeSpectralGridsNotWritten = .true.
 
         ! Additional Paramters Requiring Defaults
-        printIterations = .True.
+        printIterations = .True. 
         routineFailed = .False.
         fatalFail = .False.
         lumpedDiss = .False.

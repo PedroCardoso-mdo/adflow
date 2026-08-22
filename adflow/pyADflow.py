@@ -5950,6 +5950,14 @@ class ADFLOW(AeroSolver):
             "useQCR": [bool, False],
             "useRotationSA": [bool, False],
             "useft2SA": [bool, True],
+            "use_SABCM": [bool, False],
+            "SABCM_Exp": [bool, False],
+            "SABCM_Const1": [float, 0.002],
+            "SABCM_Const2": [float, 0.02],
+            "SABCM_TU": [float, 0.5],
+            "SABCM_S0_tanh": [float, 0.5],
+            "SABCM_fsmooth": [float, 0.08],
+            "SABCM_maxsmooth": [float, 50.0],
             "eddyVisInfRatio": [float, 0.009],
             "turbIntensityInf": [float, 0.001],
             "useWallFunctions": [bool, False],
@@ -6069,6 +6077,14 @@ class ADFLOW(AeroSolver):
             "NKAMGNSmooth": [int, 1],
             "NKLS": [str, ["cubic", "none", "non-monotone"]],
             "NKFixedStep": [float, 0.25],
+            # NK line-search relaxation: off by default (alpha=1e-2, turb-blowup
+            # pre-limit factor=2.0, ADflow's original values). When True, LSCubic
+            # uses alpha=1e-3 and factor=3.0 instead -- a generic Newton-globalization
+            # relaxation (not tied to any specific turbulence model) found to help when
+            # NK's Armijo step gets pinned at minlambda for many consecutive iterations
+            # on a stiff production term (e.g. SA-BCM's intermittency blend near the
+            # transition front). See src/NKSolver/NKSolvers.F90:LSCubic.
+            "NKLSRelax": [bool, False],
             "RKReset": [bool, False],
             "nRKReset": [int, 5],
             # Approximate Newton-Krylov Parameters
@@ -6398,6 +6414,14 @@ class ADFLOW(AeroSolver):
             "useqcr": ["physics", "useqcr"],
             "userotationsa": ["physics", "userotationsa"],
             "useft2sa": ["physics", "useft2sa"],
+            "use_sabcm": ["physics", "use_sabcm"],
+            "sabcm_exp": ["physics", "sabcm_exp"],
+            "sabcm_const1": ["physics", "sabcm_const1"],
+            "sabcm_const2": ["physics", "sabcm_const2"],
+            "sabcm_tu": ["physics", "sabcm_tu"],
+            "sabcm_s0_tanh": ["physics", "sabcm_s0_tanh"],
+            "sabcm_fsmooth": ["physics", "sabcm_fsmooth"],
+            "sabcm_maxsmooth": ["physics", "sabcm_maxsmooth"],
             "eddyvisinfratio": ["physics", "eddyvisinfratio"],
             "turbintensityinf": ["physics", "turbintensityinf"],
             "usewallfunctions": ["physics", "wallfunctions"],
@@ -6535,6 +6559,7 @@ class ADFLOW(AeroSolver):
                 "location": ["nk", "nk_ls"],
             },
             "nkfixedstep": ["nk", "nk_fixedstep"],
+            "nklsrelax": ["nk", "nk_lsrelax"],
             "rkreset": ["iter", "rkreset"],
             "nrkreset": ["iter", "miniternum"],
             # Approximate Newton-Krylov Parameters

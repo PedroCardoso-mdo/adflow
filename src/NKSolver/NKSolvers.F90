@@ -58,6 +58,10 @@ module NKSolver
     real(kind=realType) :: NK_rtolInit
     real(kind=realType) :: NK_divTol = 10
     real(kind=realType) :: NK_fixedStep
+    ! NK_LSRelax: off by default, matches ADflow's original LSCubic tuning
+    ! (alpha=1e-2, turb-blowup pre-limit factor=2.0). When True, LSCubic uses
+    ! alpha=1e-3 and factor=3.0 instead -- see LSCubic for the rationale.
+    logical :: NK_LSRelax = .False.
 
     ! Misc variables
     logical :: NK_solverSetup = .False.
@@ -868,6 +872,7 @@ contains
         real(kind=alwaysRealType) :: rellength
         integer(kind=intType) :: ierr, iter
         real(kind=alwaysRealType) :: turbRes1, turbRes2, flowRes1, flowRes2, totalRes1, totalRes2
+        real(kind=alwaysRealType) :: turbBlowupFactor
         logical :: hadANan
         ! Call to get the split norms
         call setRVec(g, flowRes1, turbRes1, totalRes1)
@@ -2460,6 +2465,7 @@ module ANKSolver
     real(kind=alwaysRealType) :: totalR_old, totalR_pcUpdate ! for recording the previous residual
     real(kind=alwaysRealType) :: rtolLast, linResOld ! for recording the previous relativel tolerance for Eisenstat-Walker
     logical :: ANK_useDissApprox
+    logical :: ankInsideKSPSolve = .False.
 
     ! Turb KSP related modifications
     logical :: ANK_coupled = .False.
@@ -2560,6 +2566,7 @@ contains
         ! Make sure we don't have memory for the approximate and exact
         ! Newton solvers kicking around at the same time.
         call destroyNKSolver()
+
 
         if (.not. ANK_solverSetup) then
 
@@ -2778,6 +2785,11 @@ contains
         real(kind=realType), dimension(:, :), allocatable :: blk
         logical :: useCoarseMats
         PC shellPC
+        real(kind=alwaysRealType) :: tStart, tResidualStart, tPCSetupStart, commTime
+        real(kind=alwaysRealType) :: tFormJacResTotal, tFormJacResComm
+
+
+        commTime = 0.0_alwaysRealType
 
         if (ANK_precondType == 'mg') then
             useCoarseMats = .True.
@@ -2802,7 +2814,8 @@ contains
 
         ! Create the preconditoner matrix
         call setupStateResidualMatrix(dRdwPre, useAD, usePC, useTranspose, &
-                                      useObjective, frozenTurb, 1_intType, useCoarseMats=useCoarseMats)
+                                      useObjective, frozenTurb, 1_intType, useCoarseMats=useCoarseMats, &
+                                      totalTimeOut=tFormJacResTotal, commTimeOut=tFormJacResComm)
 
         ! Reset saved value
         viscPC = tmp
@@ -2871,6 +2884,7 @@ contains
         call KSPGMRESSetCGSRefinementType(ANK_KSP, KSP_GMRES_CGS_REFINE_NEVER, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
+
     end subroutine FormJacobianANK
 
     subroutine computeTimeStepMat(usePC)
@@ -2896,6 +2910,10 @@ contains
         integer(kind=intType), dimension(2:10) :: coarseRows
         real(kind=realType), dimension(nState, nState) :: timeStepBlock
         logical :: useCoarseMats
+        real(kind=alwaysRealType) :: tStart, tCommStart, totalTime, commTime
+
+        totalTime = 0.0_alwaysRealType
+        commTime = 0.0_alwaysRealType
 
         if (ANK_precondType == 'mg') then
             useCoarseMats = .True.
@@ -3412,6 +3430,8 @@ contains
         real(kind=realType), pointer :: invec_pointer(:)
         real(kind=realType), pointer :: wvec_pointer(:)
         logical :: useViscApprox
+        real(kind=alwaysRealType) :: tStart, totalTime, commTime
+        real(kind=alwaysRealType) :: tVecOps, tMatAdd, tTmp
 
         ! get the input vector (column-scaled state, see getFullColScale)
         call setWANKScaled(inVec, 1, nState)
@@ -3419,11 +3439,13 @@ contains
         ! determine if we want the approximate viscous fluxes
         useViscApprox = (.not. ANK_useFullVisc) .and. ANK_useDissApprox
 
-        ! Determine if we want the turb residuals
+        ! Set context for blocketteRes attribution
+
+        ! Residual call blocketteRes(...)
         call blocketteRes(useDissApprox=ANK_useDissApprox, useViscApprox=useViscApprox, &
                           useTurbRes=ANK_coupled, useStoreWall=.False.)
 
-        ! Copy the residuals to rVec in petsc
+        ! setRVec / setRVecANK
         if (ANK_coupled) then
             call setRVec(rVec)
         else
@@ -3442,7 +3464,7 @@ contains
         call VecGetArrayReadF90(wVec, wvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
-        ! Multiply the perturbed state by the time step terms and add it to the residual
+        ! MatMultAdd(timeStepMat, inVec, rVec)
         call MatMultAdd(timeStepMat, inVec, rVec, rVec, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
@@ -3457,6 +3479,7 @@ contains
 
         ! We don't check an error here, so just pass back zero
         ierr = 0
+
 
     end subroutine FormFunction_mf
 
@@ -3554,7 +3577,7 @@ contains
 
     end subroutine FormFunction_mf_turb
 
-    subroutine computeUnsteadyResANK(omega)
+    subroutine computeUnsteadyResANK(omega, totalTimeOut, commTimeOut)
 
         ! This routine calculates the unsteady residual in a given iteration.
         ! It needs the following variables/vectors:
@@ -3586,6 +3609,7 @@ contains
         implicit none
 
         real(kind=realType), intent(in) :: omega
+        real(kind=alwaysRealType), intent(out), optional :: totalTimeOut, commTimeOut
 
         real(kind=realType) :: dtinv, rho, uu, vv, ww
         integer(kind=intType) :: ierr, nn, sps, i, j, k, l, ii, iiRho
@@ -3594,9 +3618,15 @@ contains
 
         real(kind=realType), dimension(nState, nState) :: timeStepMatrix
         real(kind=realType), dimension(nState) :: wPrev
+        real(kind=alwaysRealType) :: tStart, totalTime, commTime
+        real(kind=alwaysRealType) :: tVecOps, tMatMult, tTmp
 
         ! Allocate a PETSc vector like deltaW for intermediate computations
         Vec unsteadyVec
+
+        commTime = 0.0_alwaysRealType
+        tVecOps = 0.0_alwaysRealType
+        tMatMult = 0.0_alwaysRealType
 
         call VecDuplicate(deltaW, unsteadyVec, ierr)
         call EChk(ierr, __FILE__, __LINE__)
@@ -3642,6 +3672,10 @@ contains
 
         ! We don't check an error here, so just pass back zero
         ierr = 0
+
+
+        if (present(totalTimeOut)) totalTimeOut = totalTime
+        if (present(commTimeOut)) commTimeOut = commTime
 
     end subroutine computeUnsteadyResANK
 
@@ -3749,6 +3783,7 @@ contains
         use amg, only: destroyAMG
         implicit none
         integer(kind=intType) :: ierr
+
 
         if (ANK_SolverSetup) then
 
@@ -5436,6 +5471,7 @@ contains
         integer(kind=intType) :: lsMaxIterEff
         logical :: correctForK, LSFailed, backtrackTriggeredANK, useSecondOrd
 
+
         ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
         if (firstCall .or. &
             ((totalR .le. ANK_coupledSwitchTol * totalR0) .and. (.not. ANK_coupled) &
@@ -5805,7 +5841,11 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
 
         ! Actually do the Linear Krylov Solve
+
+        ankInsideKSPSolve = .True.
         call KSPSolve(ANK_KSP, rVec, deltaW, ierr)
+        ankInsideKSPSolve = .False.
+
 
         ! DON'T just check the error. We want to catch error code 72
         ! which is a floating point error. This is ok, we just reset and
@@ -5908,6 +5948,7 @@ contains
             ! The unsteady residual is too high or we have a NAN. Do a
             ! backtracking line search until we get a residual that is lower.
 
+
             LSFailed = .True.
             backtrackTriggeredANK = .True.
 
@@ -6005,6 +6046,7 @@ contains
                 feval = feval + 1
             else
             end if
+
         end if
 
         ! ============== Turb Update =============
@@ -6017,6 +6059,7 @@ contains
             else
                 call ANKTurbSolveKSP
             end if
+
         end if
 
         ! ===== Algorithm 2 per-node damping, coupled path (VERIF_06 F0/F7) =====
@@ -6180,6 +6223,7 @@ contains
         ! Update the approximate iteration counter. The +1 is for the
         ! residual evaluations.
         approxTotalIts = approxTotalIts + feval + kspIterations
+
 
     end subroutine ANKStep
 end module ANKSolver

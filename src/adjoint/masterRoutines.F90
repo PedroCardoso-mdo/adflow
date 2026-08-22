@@ -1272,6 +1272,10 @@ contains
         integer(kind=intType) :: ierr, mm, i, j, k, l, fSize, ii, jj, iRegion
         real(kind=realType) :: pLocal
         logical :: dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall
+        integer(kind=intType) :: callContext
+        real(kind=alwaysRealType) :: tStart, totalTime
+
+        callContext = -1_intType
 
         flowRes = .True.
         if (present(useFlowRes)) then
@@ -1310,6 +1314,7 @@ contains
             call sourceTerms_block(nn, .True., iRegion, pLocal)
         end do
         call resscale
+
 
     end subroutine block_res_state
 #ifndef USE_COMPLEX

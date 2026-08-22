@@ -74,6 +74,7 @@ module extraOutput
     logical :: surfWriteTransReThetaTilde, surfWriteTransVortLim
     logical :: surfWriteTransQQ11, surfWriteTransQQ22, surfWriteTransQQ33
     logical :: surfWriteTransDScf, surfWriteTransReScf, surfWriteTransHcf
+    logical :: volWriteTgamma
 !
 !       The logical variables, which define the isosurface variables
 !       to be written.

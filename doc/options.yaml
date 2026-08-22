@@ -1374,6 +1374,7 @@ volumeVariables:
       * ``resrhoe`` (total energy residual)
       * ``resturb`` (turbulence residuals)
       * ``blank`` (cell iblank values used for visualization or other post-processing)
+      * ``tgamma`` (transition intermittency factor from the SA-BCM model)
 
 forcesAsTractions:
   desc: >

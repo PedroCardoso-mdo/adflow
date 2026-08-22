@@ -70,7 +70,25 @@ module amg
 
     logical :: amgSetup = .False.
     integer :: bs
+    real(kind=alwaysRealType) :: amgPCApplyAccum = 0.0_alwaysRealType
+    integer(kind=intType) :: amgPCApplyCalls = 0_intType
 contains
+
+    subroutine amgProfResetPCApply()
+        implicit none
+
+        amgPCApplyAccum = 0.0_alwaysRealType
+        amgPCApplyCalls = 0_intType
+    end subroutine amgProfResetPCApply
+
+    subroutine amgProfGetPCApply(totalTime, nCalls)
+        implicit none
+        real(kind=alwaysRealType), intent(out) :: totalTime
+        integer(kind=intType), intent(out) :: nCalls
+
+        totalTime = amgPCApplyAccum
+        nCalls = amgPCApplyCalls
+    end subroutine amgProfGetPCApply
 
     subroutine setupAMG(inputMat, nCell, blockSize, levels, nSmooth)
 
@@ -473,6 +491,10 @@ contains
 
         ! Working
         integer(kind=intType) :: i
+        real(kind=alwaysRealType) :: tApply
+
+
+        tApply = 0.0_alwaysRealType
 
         if (amgLevels > 1) then
 
@@ -485,11 +507,10 @@ contains
             call EChk(ierr, __FILE__, __LINE__)
 
             if (amgOuterIts == 1) then
+                ! Time MGPreCon
                 call MGPreCon(rhs(1), y, 1) ! y is the new approximate solution
             else
-
                 do i = 1, amgOuterIts
-
                     call MGPreCon(rhs(1), sol(1), 1) ! The solution update is stored in sol(1)
 
                     ! Update the solution
@@ -504,15 +525,20 @@ contains
                         call VecAYPX(rhs(1), -one, x, ierr)
                         call EChk(ierr, __FILE__, __LINE__)
                     end if
-
                 end do
             end if
+
         else
             ! Solve the fine level
             ! This is equivalent to not using multigrid
             call KSPSolve(kspLevels(1), x, y, ierr)
             call EChk(ierr, __FILE__, __LINE__)
         end if
+
+    !$omp critical(amg_pcapply_accum)
+        amgPCApplyAccum = amgPCApplyAccum + tApply
+        amgPCApplyCalls = amgPCApplyCalls + 1_intType
+    !$omp end critical(amg_pcapply_accum)
 
     end subroutine ApplyShellPC
 
