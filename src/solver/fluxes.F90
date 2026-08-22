@@ -426,7 +426,7 @@ contains
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
         real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
+        real(kind=realType), parameter :: epsShear = 0.0_realType   ! Vl=0: match the SA-sLM2015 final-series matrix scheme (was 0.025)
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !
@@ -4364,7 +4364,7 @@ contains
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
         real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
+        real(kind=realType), parameter :: epsShear = 0.0_realType   ! Vl=0: match the SA-sLM2015 final-series matrix scheme (was 0.025)
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !
@@ -5225,7 +5225,7 @@ contains
         !      Local parameters.
         !
         real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
+        real(kind=realType), parameter :: epsShear = 0.0_realType   ! Vl=0: match the SA-sLM2015 final-series matrix scheme (was 0.025)
         !
         !      Local variables.
         !
