@@ -5,6 +5,12 @@ module variableReading
     ! halosRead:Determines if the halos where read or not.
     logical :: halosRead
 
+    ! transGammaAbsentRestart: set by readTurbSaGammaRetheta when the restart
+    ! file had no gamma (Intermittency) field -- i.e. the restart came from a
+    ! model without transition variables (plain SA / SA-BCM). Consumed by
+    ! initDepvarAndHalos for the optional algebraic warm-start init.
+    logical :: transGammaAbsentRestart = .false.
+
     ! cgnsInd:  File index of the CGNS file.
     ! cgnsBase: Base of the CGNS file, always set to 1.
     ! cgnsZone: Zone ID in the CGNS file.
@@ -1191,6 +1197,10 @@ contains
             end if
 
         end do varLoop
+
+        ! Flag a gamma-less restart for the optional algebraic warm-start
+        ! init (transitionRestartAlgebraicInit) applied in initDepvarAndHalos.
+        if (.not. varPresent(1)) transGammaAbsentRestart = .true.
 
         ! Print warning in same style as other restart turbulence routines.
         if ((myID == 0) .and. (nbkLocal == 1)) then

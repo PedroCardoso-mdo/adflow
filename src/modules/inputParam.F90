@@ -403,6 +403,13 @@ module inputIteration
     integer(kind=intType) :: transitionDampMaxIter = 10000
     ! Use approxSA simplification in SA-gamma-rethetha (default true for stability)
     logical :: transitionUseApproxSA = .true.
+    ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
+    ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
+    ! gamma from the local eddy-viscosity state via the SA-BCM algebraic
+    ! intermittency's turbulence term, so laminar regions of the restart field
+    ! keep suppressed SA production. ReTheta stays at the freestream
+    ! correlation value. Only acts when the restart file lacks the gamma field.
+    logical :: transitionRestartAlgebraicInit = .false.
     ! Reference length l [grid units] in the vorticity limiter (P&Z Eqs. 52-53);
     ! the paper uses the root chord. Negative => auto: use lengthRef
     ! (the AeroProblem chordRef).

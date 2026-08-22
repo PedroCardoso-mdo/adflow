@@ -1346,6 +1346,17 @@ contains
             end do
         end do
 
+        ! Optional algebraic warm start of the transition variables when the
+        ! restart file carried no gamma field (plain-SA / SA-BCM solution):
+        ! set gamma from the local eddy-viscosity state instead of 1
+        ! everywhere, so the laminar regions of the restart keep SA
+        ! production suppressed. Placed after computeLamViscosity (needs rlv)
+        ! and before the whalo2 below (which then fills the gamma halos).
+        if (transitionRestartAlgebraicInit .and. &
+            turbModel == spalartallmarasnoft2gammaretheta) then
+            call initTransitionAlgebraicWarmStart
+        end if
+
         ! Exchange the solution on the multigrid start level.
         ! It is possible that the halo values are needed for the boundary
         ! conditions. Viscosities are not exchanged.
@@ -1415,6 +1426,72 @@ contains
                     .true.)
 
     end subroutine initDepvarAndHalos
+
+    subroutine initTransitionAlgebraicWarmStart
+        !
+        !       Algebraic warm-start init of gamma for a restart that had no
+        !       transition fields (transitionRestartAlgebraicInit). Uses the
+        !       local-turbulence term of the SA-BCM algebraic intermittency,
+        !       gamma_BC = 1 - exp(-sqrt(fv1*chi / c2)),   c2 = 0.02,
+        !       (Cakmakcioglu et al.; term2 of the user's SA-BCM sa.F90) so a
+        !       converged eddy-viscosity field maps to gamma ~ 1 in turbulent
+        !       regions and gamma ~ 0 in laminar ones. The vorticity-based
+        !       term1 of the full expression is deliberately dropped: velocity
+        !       gradients are not available at init time, and on an already
+        !       CONVERGED restart field the chi term alone separates
+        !       laminar/turbulent regions. gamma is clipped to [0.02, 1]
+        !       (LM2015's own lower clip); ReTheta keeps the freestream
+        !       correlation value the reader already set. Runs once, owned
+        !       cells only -- the caller's whalo2 fills the halos.
+        !
+        use constants
+        use block, only: nDom
+        use blockPointers, only: w, rlv, il, jl, kl
+        use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use inputIteration, only: mgStartlevel
+        use communication, only: myID
+        use paramTurb, only: rsaCv1
+        use variableReading, only: transGammaAbsentRestart
+        use utils, only: setPointers
+        implicit none
+
+        integer(kind=intType) :: nn, mm, i, j, k
+        real(kind=realType) :: nu, chi, chi3, fv1, tterm2, gam
+        real(kind=realType), parameter :: bcmC2 = 0.02_realType
+        real(kind=realType), parameter :: gamMin = 0.02_realType
+
+        ! Only meaningful when the restart actually lacked the gamma field;
+        ! on a normal SA-GR restart the read values must be kept.
+        if (.not. transGammaAbsentRestart) return
+
+        do mm = 1, nTimeIntervalsSpectral
+            do nn = 1, nDom
+                call setPointers(nn, mgStartlevel, mm)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            nu = rlv(i, j, k) / w(i, j, k, irho)
+                            chi = w(i, j, k, itu1) / nu
+                            chi3 = chi**3
+                            fv1 = chi3 / (chi3 + rsaCv1**3)
+                            tterm2 = fv1 * chi / bcmC2
+                            gam = one - exp(-sqrt(max(tterm2, zero)))
+                            w(i, j, k, itu2) = min(one, max(gam, gamMin))
+                        end do
+                    end do
+                end do
+            end do
+        end do
+
+        if (myID == 0) then
+            print "(a)", "#"
+            print "(a)", "# transitionRestartAlgebraicInit: gamma initialized from the"
+            print "(a)", "# SA-BCM algebraic intermittency (chi term) of the restart field;"
+            print "(a)", "# ReTheta kept at the freestream correlation value."
+            print "(a)", "#"
+        end if
+
+    end subroutine initTransitionAlgebraicWarmStart
 
     subroutine initFlowRestart
         !

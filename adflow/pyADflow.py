@@ -5903,6 +5903,7 @@ class ADFLOW(AeroSolver):
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 10000],
             "transitionUseApproxSA": [bool, True],
+            "transitionRestartAlgebraicInit": [bool, False],
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
             "transitionRefLength": [float, -1.0],
@@ -6361,6 +6362,7 @@ class ADFLOW(AeroSolver):
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
+            "transitionrestartalgebraicinit": ["iter", "transitionrestartalgebraicinit"],
             "transitionreflength": ["iter", "transitionreflength"],
             "solverstalldiag": ["iter", "solverstalldiag"],
             "solverstalldiagstep": ["iter", "solverstalldiagstep"],
