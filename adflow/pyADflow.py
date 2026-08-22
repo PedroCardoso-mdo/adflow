@@ -6166,9 +6166,10 @@ class ADFLOW(AeroSolver):
             "viscPC": [bool, False],
             "useDiagTSPC": [bool, True],
             "restartAdjoint": [bool, True],
-            "adjointSolver": [str, ["GMRES", "TFQMR", "Richardson", "BCGS", "IBCGS"]],
+            "adjointSolver": [str, ["GMRES", "LGMRES", "TFQMR", "Richardson", "BCGS", "IBCGS"]],
             "adjointMaxIter": [int, 500],
             "adjointSubspaceSize": [int, 100],
+            "adjointLGMRESAugDim": [int, 2],
             "GMRESOrthogonalizationType": [
                 str,
                 ["modified Gram-Schmidt", "CGS never refine", "CGS refine if needed", "CGS always refine"],
@@ -6632,6 +6633,7 @@ class ADFLOW(AeroSolver):
             "usediagtspc": ["adjoint", "usediagtspc"],
             "adjointsolver": {
                 "gmres": "gmres",
+                "lgmres": "lgmres",
                 "tfqmr": "tfqmr",
                 "richardson": "richardson",
                 "bcgs": "bcgs",
@@ -6647,6 +6649,7 @@ class ADFLOW(AeroSolver):
             },
             "adjointmaxiter": ["adjoint", "adjmaxiter"],
             "adjointsubspacesize": ["adjoint", "adjrestart"],
+            "adjointlgmresaugdim": ["adjoint", "adjlgmresaugdim"],
             "adjointmonitorstep": ["adjoint", "adjmonstep"],
             "storepsihistory": ["adjoint", "storepsihistory"],
             "psihistorystep": ["adjoint", "psihistorystep"],

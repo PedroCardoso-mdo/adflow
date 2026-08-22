@@ -1441,7 +1441,7 @@ contains
         ! and if localPreConIts=1 then subKSP is set to preOnly.
         use constants
         use utils, only: ECHk
-        use inputADjoint, only: GMRESOrthogType
+        use inputADjoint, only: GMRESOrthogType, adjLGMRESAugDim
 #include <petsc/finclude/petsc.h>
         use petsc
         implicit none
@@ -1458,6 +1458,7 @@ contains
         PC master_PC, globalPC, subpc
         KSP master_PC_KSP, subksp
         integer(kind=intType) :: nlocal, first, ierr
+        character(len=16) :: augDimStr
 
         ! First, KSPSetFromOptions MUST be called
         call KSPSetFromOptions(kspObject, ierr)
@@ -1470,6 +1471,20 @@ contains
         ! If we're using GMRES set the possible gmres restart
         call KSPGMRESSetRestart(kspObject, gmresRestart, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! LGMRES: number of augmented error-approximation vectors kept
+        ! across restarts (Krylov recycling within a solve). PETSc ships no
+        ! Fortran binding for KSPLGMRESSetAugDim, so it goes through the
+        ! options database; the extra KSPSetFromOptions is needed because the
+        ! first one ran before the type was set to lgmres.
+        if (trim(kspObjectType) == 'lgmres') then
+            write (augDimStr, '(I0)') adjLGMRESAugDim
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, '-ksp_lgmres_augment', &
+                                      trim(augDimStr), ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call KSPSetFromOptions(kspObject, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end if
 
         ! Set the orthogonalization method for GMRES
         select case (GMRESOrthogType)

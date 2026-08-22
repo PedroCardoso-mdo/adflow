@@ -1275,6 +1275,7 @@ python module libadflow
          integer(kind=inttype) :: filllevel
          integer(kind=inttype) :: adjmaxiter
          integer(kind=inttype) :: adjrestart
+         integer(kind=inttype) :: adjlgmresaugdim
          integer(kind=inttype) :: innerpreconits
          integer(kind=inttype) :: outerpreconits
          integer(kind=inttype) :: adjamglevels
