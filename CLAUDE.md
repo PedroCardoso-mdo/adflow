@@ -141,8 +141,8 @@ part of this KB — don't rely on them for transition-model facts.
 | Block array     | `src/modules/block.F90` (`transitionDebug`)            |
 | BCs             | `src/turbulence/turbBCRoutines.F90`                    |
 | Init            | `src/initFlow/initializeFlow.F90`                      |
-| Output dispatch | locate via `grep -rn "case ('eddy')" src/`             |
-| Python wrapper  | `python/pyADflow.py`                                   |
+| Output dispatch | locate via `grep -rn 'case ("eddy")' src/`             |
+| Python wrapper  | `adflow/pyADflow.py`                                   |
 | AD generated    | `src/adjoint/output{Forward,Reverse,ReverseFast}/`     |
 
 ## AD-Relevant Code (Triggers `TAPENADE NEEDED`)
