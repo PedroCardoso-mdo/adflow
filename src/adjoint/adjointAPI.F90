@@ -933,11 +933,17 @@ contains
             call EChk(ierr, __FILE__, __LINE__)
         end if
 
-        if (PreCondType == 'asm') then
-            ! Run the super-dee-duper function to setup the ksp object:
-
+        if (PreCondType == 'asm' .or. (PreCondType == 'fieldsplit' .and. frozenTurbulence)) then
+            ! Run the super-dee-duper function to setup the ksp object.
+            ! Field split degenerates to a single block under frozen
+            ! turbulence (no turbulence rows in the system) — fall back to
+            ! the monolithic ASM setup instead of erroring out.
+            if (PreCondType == 'fieldsplit' .and. frozenTurbulence .and. myid == 0) then
+                print *, 'Warning: field split preconditioner has no turbulence block under', &
+                    ' frozenTurbulence — falling back to additive Schwarz.'
+            end if
             call setupStandardKSP(adjointKSP, ADjointSolverType, adjRestart, adjointpcside, &
-                                  PreCondType, overlap, outerPreConIts, localPCType, &
+                                  'asm', overlap, outerPreConIts, localPCType, &
                                   matrixOrdering, FillLevel, innerPreConIts)
         else if (PreCondType == 'mg') then
 

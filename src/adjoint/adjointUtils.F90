@@ -1749,11 +1749,6 @@ contains
 
         ! ------------------ Field-split preconditioner ------------------
 
-        if (nw == nwf) then
-            call terminate("setupFieldSplitKSP", &
-                           "'field split' preconditioner needs turbulence/transition state &
-                           &(nw > nwf); use 'additive Schwarz' for frozen turbulence")
-        end if
 
         ! Define the splits as zero-based offsets inside each cell block.
         splitName(1) = 'flow'
@@ -1761,8 +1756,11 @@ contains
         splitHi(1) = nwf - 1
         splitName(2) = 'sa'
         splitLo(2) = itu1 - 1
-        splitHi(2) = itu1 - 1
+        ! Cover every turbulence variable: models without the SA-GR
+        ! transition pair (plain SA, SST, ...) put all of nwf..nw-1 here.
+        splitHi(2) = nw - 1
         if (nw >= itu3) then
+            splitHi(2) = itu1 - 1
             if (fieldSplitBlocks == 4) then
                 ! Maximum scale separation: gamma and ReThetaTilde each get
                 ! their own split; their source coupling goes to the Krylov.
