@@ -373,7 +373,11 @@ ASM do job 1844046 (T1).
    reiniciado não converge neste sistema. Precisa do subspace grande ⇒ não
    serve para o regime memory-constrained (c376-class); aí fica o T1.
 4. additive sempre ≥ multiplicative em tempo — descartar.
-5. Candidato a merge no `transition-models`: ganho real onde ss400 cabe,
+5. Split a 4 {flow}{ν̃}{γ}{Re̅θt} (`adjointFieldSplitBlocks=4`, commit
+   `f3116cc5`, job 1844845): empate com o split a 3 a ss400 (±2-3%) e o
+   mesmo stall a ss≤200 — a escala γ↔Re̅θt não é o fator limitante; o que
+   custa é cortar flow↔turbulência/transição. Default fica 3.
+6. Candidato a merge no `transition-models`: ganho real onde ss400 cabe,
    opt-in, default intacto ('additive Schwarz').
 
 **Onde confirmar.** `.../02_adjoint_checks/fieldsplit_2d_naca0012/`
