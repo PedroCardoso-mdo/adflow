@@ -350,3 +350,32 @@ Testado com o PC de produção (ADPC, ILU(3), ASM(3)) em:
 - Armadilha de instalação: `build/lib` está tracked no repo; num clone novo
   `pip install .` empacota o pyADflow VELHO com banner novo — `rm -rf build`
   antes de instalar.
+
+
+## T2. G1 (parcial): precondicionador field-split por bloco físico no adjunto  [2026-08-23]
+
+**O que se fez.** `globalPreconditioner="field split"` +
+`adjointFieldSplitType` (multiplicative default / additive) — PCFIELDSPLIT
+sobre {flow ρ..ρE}, {ν̃}, {γ, Re̅θt}, cada split com ASM+ILU via options
+database; matriz do PC passa a AIJ (os IS por variável cortam os blocos
+8×8 da BAIJ). 5 ficheiros, commit `2a446a74`, branch `fieldsplit-adjoint-pc`
+(a partir de `transition-models`); PC-only, zero Tapenade. Testado no 2D
+NACA0012 v2 L1 (caso da opt 2D), jobs Deucalion 1844744+1844755, baseline
+ASM do job 1844046 (T1).
+
+**Conclusões.**
+1. Correção verificada: a ss400 sensibilidades iguais ao baseline (~1e-8 rel).
+2. **fsmult+LGMRES(4) @ ss400: −29% no tempo dos adjuntos cl+cd (603 vs
+   851 s)**; fsmult+GMRES −19%. ~10× mais iterações KSP, mas aplicação do
+   PC muito mais barata que o ILU(3)/ASM(3) monolítico inner4/outer10.
+3. A ss≤200 o field-split estagna SEMPRE (mesmo com LGMRES — que no
+   monolítico curava o ss50): sem o acoplamento inter-bloco no PC, o GMRES
+   reiniciado não converge neste sistema. Precisa do subspace grande ⇒ não
+   serve para o regime memory-constrained (c376-class); aí fica o T1.
+4. additive sempre ≥ multiplicative em tempo — descartar.
+5. Candidato a merge no `transition-models`: ganho real onde ss400 cabe,
+   opt-in, default intacto ('additive Schwarz').
+
+**Onde confirmar.** `.../02_adjoint_checks/fieldsplit_2d_naca0012/`
+(PURPOSE.md, logs, result_*.json; espelho HPC
+`.../TransitionModel/fieldsplit_2d_naca0012/`). Código: `git show 2a446a74`.
