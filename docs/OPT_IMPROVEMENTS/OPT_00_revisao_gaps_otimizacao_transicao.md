@@ -304,6 +304,24 @@ O ponto que faltava: adaptar malha redistribui o custo, mas não o elimina. O ob
 
 ---
 
+# IDEIAS POR TENTAR (fila curta, mantida pela sessão de implementação)
+
+## F1. Opt 2D com adjunto de transição congelada (frozen-transition)
+
+Análogo do frozen-turbulence adjoint, mas congelando SÓ γ e Re̅θt na
+linearização (SA continua exato): correr a otimização 2D de produção
+(NACA0012) com esse gradiente aproximado e ver no que dá — onde converge,
+quanto perde no ótimo vs adjunto exato, e qual o ângulo entre o gradiente
+congelado e o verdadeiro (métrica do G4/5.2, que só nós conseguimos medir
+por termos o adjunto exato verificado). Interesse: se o gradiente
+frozen-transition for "suficientemente descendente", é um adjunto muito mais
+barato e robusto (remove as linhas/colunas stiff da transição do sistema
+adjunto) para as fases iniciais da opt — homotopia natural com o 5.3.
+Implementação provável: máscara no dRdw/dRdwPre análoga ao `frozenTurbulence`
+existente mas por-variável (7–8), + opção runtime.
+
+---
+
 # REGISTO DE IDEIAS TENTADAS (mantido pela sessão de implementação)
 
 Cada entrada: ideia → o que se fez → conclusão concisa → onde confirmar.
