@@ -111,6 +111,23 @@ class ADFLOW(AeroSolver):
 
         self.possibleAeroDVs, self.possibleBCDvs, self.basicCostFunctions = self._getObjectivesAndDVs()
 
+        # Conditional adjoint-PC default (2026-08 A/Bs, 02_adjoint_checks/
+        # fieldsplit_*): the field-split PC wins only for the transition
+        # model (2D -29%, 3D 5.1x vs monolithic ASM); for other models ASM
+        # is best. Apply field split as the default only when the user did
+        # not set globalPreconditioner themselves and the turbulence model
+        # is SA-Gamma-Retheta.
+        if options is not None:
+            userKeys = {k.lower() for k in options}
+            if "globalpreconditioner" not in userKeys:
+                turbModel = ""
+                for k, v in options.items():
+                    if k.lower() == "turbulencemodel":
+                        turbModel = str(v).lower()
+                if "gamma" in turbModel and "retheta" in turbModel:
+                    options = dict(options)
+                    options["globalPreconditioner"] = "field split"
+
         # Now add the group for each of the "basic" cost functions:
         self.adflowCostFunctions = OrderedDict()
         for key in self.basicCostFunctions:
@@ -6213,11 +6230,11 @@ class ADFLOW(AeroSolver):
                 str,
                 ["RCM", "natural", "nested dissection", "one way dissection", "quotient minimum degree"],
             ],
-            "globalPreconditioner": [str, ["field split", "additive Schwarz", "multigrid"]],
+            "globalPreconditioner": [str, ["additive Schwarz", "field split", "multigrid"]],
             "localPreconditioner": [str, ["ILU"]],
-            "ILUFill": [int, 2],
+            "ILUFill": [int, 3],
             "ILUFillCoarse": [int, 0],
-            "ASMOverlap": [int, 1],
+            "ASMOverlap": [int, 3],
             "ASMOverlapCoarse": [int, 0],
             "innerPreconIts": [int, 1],
             "innerPreconItsCoarse": [int, 1],
