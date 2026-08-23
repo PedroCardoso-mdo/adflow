@@ -1311,11 +1311,19 @@ contains
     end subroutine setup_BF_coloring
 
     subroutine myMatCreate(matrix, blockSize, m, n, nnzDiagonal, nnzOffDiag, &
-                           file, line)
+                           file, line, forceAIJ)
         ! Function to create petsc matrix to make stuff a little cleaner in
         ! the code above. Also, PETSc always thinks is a good idea to
         ! RANDOMLY change syntax between versions so this way there is only
         ! one place to make a change based on petsc version.
+        !
+        ! forceAIJ: create a scalar AIJ matrix (with the block size still
+        ! attached via MatSetBlockSize so blocked insertion keeps working)
+        ! instead of BAIJ. Needed by PCFIELDSPLIT, whose per-variable index
+        ! sets are not aligned with the nw x nw cell blocks and therefore
+        ! cannot be extracted from a BAIJ matrix. The BAIJ nnz counts are
+        ! per block row in block units; the AIJ ones are per scalar row in
+        ! scalar units, hence the expansion below.
 
         use constants
         use communication, only: adflow_comm_world
@@ -1329,16 +1337,36 @@ contains
         integer(kind=intType), intent(in), dimension(*) :: nnzDiagonal, nnzOffDiag
         character(len=*) :: file
         integer(kind=intType) :: ierr, line
-        ! if (blockSize > 1) then
-        call MatCreateBAIJ(ADFLOW_COMM_WORLD, blockSize, &
-                           m, n, PETSC_DETERMINE, PETSC_DETERMINE, &
-                           0, nnzDiagonal, 0, nnzOffDiag, matrix, ierr)
-        ! else
-        ! call MatCreateAIJ(ADFLOW_COMM_WORLD,&
-        ! m, n, PETSC_DETERMINE, PETSC_DETERMINE, &
-        ! 0, nnzDiagonal, 0, nnzOffDiag, matrix, ierr)
-        call EChk(ierr, file, line)
-        ! end if
+        logical, intent(in), optional :: forceAIJ
+
+        integer(kind=intType), dimension(:), allocatable :: nnzDiagScalar, nnzOffScalar
+        integer(kind=intType) :: iRow, iBlk
+        logical :: useAIJ
+
+        useAIJ = .False.
+        if (present(forceAIJ)) useAIJ = forceAIJ
+
+        if (useAIJ) then
+            allocate (nnzDiagScalar(m), nnzOffScalar(m))
+            do iRow = 1, m
+                iBlk = (iRow - 1) / blockSize + 1
+                nnzDiagScalar(iRow) = nnzDiagonal(iBlk) * blockSize
+                nnzOffScalar(iRow) = nnzOffDiag(iBlk) * blockSize
+            end do
+            call MatCreateAIJ(ADFLOW_COMM_WORLD, &
+                              m, n, PETSC_DETERMINE, PETSC_DETERMINE, &
+                              0, nnzDiagScalar, 0, nnzOffScalar, matrix, ierr)
+            call EChk(ierr, file, line)
+            deallocate (nnzDiagScalar, nnzOffScalar)
+
+            call MatSetBlockSize(matrix, blockSize, ierr)
+            call EChk(ierr, file, line)
+        else
+            call MatCreateBAIJ(ADFLOW_COMM_WORLD, blockSize, &
+                               m, n, PETSC_DETERMINE, PETSC_DETERMINE, &
+                               0, nnzDiagonal, 0, nnzOffDiag, matrix, ierr)
+            call EChk(ierr, file, line)
+        end if
 
         ! Warning: The array values is logically two-dimensional,
         ! containing the values that are to be inserted. By default the
@@ -1632,6 +1660,207 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
 
     end subroutine setupStandardKSP
+
+    subroutine setupFieldSplitKSP(kspObject, kspObjectType, gmresRestart, preConSide, &
+                                  ASMOverlap, localPCType, localMatrixOrdering, localFillLevel)
+
+        ! Field-split variant of setupStandardKSP (G1): the global
+        ! preconditioner is PCFIELDSPLIT over the physical blocks
+        !   'flow'  : rho, rho*u, rho*v, rho*w, rho*E   (offsets 0..nwf-1)
+        !   'sa'    : nu_tilde                          (offset itu1-1)
+        !   'trans' : gamma, ReThetaTilde               (offsets itu2-1, itu3-1)
+        ! composed additively or multiplicatively (fieldSplitType), each
+        ! split preconditioned by ASM+ILU with the usual adjoint options.
+        ! The per-split solvers are configured through the options database
+        ! (prefix 'fieldsplit_<name>_'), following the LGMRES precedent,
+        ! because PCFieldSplitGetSubKSP has fragile Fortran bindings. The
+        ! preconditioner matrix must be AIJ (myMatCreate forceAIJ): the
+        ! per-variable index sets cut through the nw x nw cell blocks.
+
+        use constants
+        use utils, only: ECHk, terminate
+        use communication, only: adflow_comm_world
+        use flowVarRefState, only: nw, nwf
+        use inputADjoint, only: GMRESOrthogType, adjLGMRESAugDim, fieldSplitType, fieldSplitBlocks
+#include <petsc/finclude/petsc.h>
+        use petsc
+        implicit none
+
+        ! Input Params
+        KSP kspObject
+        character(len=*), intent(in) :: kspObjectType, preConSide
+        character(len=*), intent(in) :: localPCType, localMatrixOrdering
+        integer(kind=intType), intent(in) :: ASMOverlap, localFillLevel, gmresRestart
+
+        ! Working Variables
+        Mat Amat, Pmat
+        PC globalPC
+        IS isSplit
+        integer(kind=intType) :: ierr, rStart, rEnd, nCellsLoc, iCell, iVar, cnt, iSplit
+        integer(kind=intType), dimension(:), allocatable :: idx
+        integer(kind=intType) :: splitLo(4), splitHi(4), nSplits
+        character(len=8) :: splitName(4)
+        character(len=64) :: optName
+        character(len=16) :: valStr
+
+        ! First, KSPSetFromOptions MUST be called
+        call KSPSetFromOptions(kspObject, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call KSPSetType(kspObject, kspObjectType, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call KSPGMRESSetRestart(kspObject, gmresRestart, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        ! Same LGMRES options-database handling as setupStandardKSP.
+        if (trim(kspObjectType) == 'lgmres') then
+            write (valStr, '(I0)') adjLGMRESAugDim
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, '-ksp_lgmres_augment', &
+                                      trim(valStr), ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call KSPSetFromOptions(kspObject, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end if
+
+        select case (GMRESOrthogType)
+        case ('modified_gram_schmidt')
+            call KSPGMRESSetOrthogonalization(kspObject, KSPGMRESModifiedGramSchmidtOrthogonalization, ierr)
+        case ('cgs_never_refine')
+            call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_NEVER, ierr)
+        case ('cgs_refine_if_needed')
+            call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_IFNEEDED, ierr)
+        case ('cgs_always_refine')
+            call KSPGMRESSetCGSRefinementType(kspObject, KSP_GMRES_CGS_REFINE_ALWAYS, ierr)
+        end select
+        call EChk(ierr, __FILE__, __LINE__)
+
+        if (trim(preConSide) == 'right') then
+            call KSPSetPCSide(kspObject, PC_RIGHT, ierr)
+        else
+            call KSPSetPCSide(kspObject, PC_LEFT, ierr)
+        end if
+        call EChk(ierr, __FILE__, __LINE__)
+
+        if (trim(kspObjectType) == 'richardson') then
+            call KSPSetPCSide(kspObject, PC_LEFT, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end if
+
+        ! ------------------ Field-split preconditioner ------------------
+
+
+        ! Define the splits as zero-based offsets inside each cell block.
+        splitName(1) = 'flow'
+        splitLo(1) = 0
+        splitHi(1) = nwf - 1
+        splitName(2) = 'sa'
+        splitLo(2) = itu1 - 1
+        ! Cover every turbulence variable: models without the SA-GR
+        ! transition pair (plain SA, SST, ...) put all of nwf..nw-1 here.
+        splitHi(2) = nw - 1
+        if (nw >= itu3) then
+            splitHi(2) = itu1 - 1
+            if (fieldSplitBlocks == 4) then
+                ! Maximum scale separation: gamma and ReThetaTilde each get
+                ! their own split; their source coupling goes to the Krylov.
+                nSplits = 4
+                splitName(3) = 'gamma'
+                splitLo(3) = itu2 - 1
+                splitHi(3) = itu2 - 1
+                splitName(4) = 'ret'
+                splitLo(4) = itu3 - 1
+                splitHi(4) = nw - 1
+            else
+                ! SA-gamma-ReThetaTilde: third split holds the transition pair.
+                nSplits = 3
+                splitName(3) = 'trans'
+                splitLo(3) = itu2 - 1
+                splitHi(3) = nw - 1
+            end if
+        else
+            nSplits = 2
+        end if
+
+        call KSPGetPC(kspObject, globalPC, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call PCSetType(globalPC, 'fieldsplit', ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        if (trim(fieldSplitType) == 'additive') then
+            call PCFieldSplitSetType(globalPC, PC_COMPOSITE_ADDITIVE, ierr)
+        else
+            call PCFieldSplitSetType(globalPC, PC_COMPOSITE_MULTIPLICATIVE, ierr)
+        end if
+        call EChk(ierr, __FILE__, __LINE__)
+
+        ! Build one index set per split from the locally owned rows of the
+        ! preconditioner matrix (interlaced state: cell block of size nw).
+        call KSPGetOperators(kspObject, Amat, Pmat, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        call MatGetOwnershipRange(Pmat, rStart, rEnd, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        nCellsLoc = (rEnd - rStart) / nw
+
+        do iSplit = 1, nSplits
+            cnt = nCellsLoc * (splitHi(iSplit) - splitLo(iSplit) + 1)
+            allocate (idx(cnt))
+            cnt = 0
+            do iCell = 0, nCellsLoc - 1
+                do iVar = splitLo(iSplit), splitHi(iSplit)
+                    cnt = cnt + 1
+                    idx(cnt) = rStart + iCell * nw + iVar
+                end do
+            end do
+            call ISCreateGeneral(ADFLOW_COMM_WORLD, cnt, idx, PETSC_COPY_VALUES, &
+                                 isSplit, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            call PCFieldSplitSetIS(globalPC, trim(splitName(iSplit)), isSplit, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            call ISDestroy(isSplit, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            deallocate (idx)
+
+            ! Per-split inner solver: single ASM+ILU application, set via
+            ! the options database; picked up when PCSetUp creates the
+            ! split sub-KSPs (they call KSPSetFromOptions internally).
+            optName = '-fieldsplit_' // trim(splitName(iSplit)) // '_ksp_type'
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, trim(optName), 'preonly', ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            optName = '-fieldsplit_' // trim(splitName(iSplit)) // '_pc_type'
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, trim(optName), 'asm', ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            write (valStr, '(I0)') ASMOverlap
+            optName = '-fieldsplit_' // trim(splitName(iSplit)) // '_pc_asm_overlap'
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, trim(optName), trim(valStr), ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            optName = '-fieldsplit_' // trim(splitName(iSplit)) // '_sub_pc_type'
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, trim(optName), trim(localPCType), ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            write (valStr, '(I0)') localFillLevel
+            optName = '-fieldsplit_' // trim(splitName(iSplit)) // '_sub_pc_factor_levels'
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, trim(optName), trim(valStr), ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+
+            optName = '-fieldsplit_' // trim(splitName(iSplit)) // '_sub_pc_factor_mat_ordering_type'
+            call PetscOptionsSetValue(PETSC_NULL_OPTIONS, trim(optName), &
+                                      trim(localMatrixOrdering), ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end do
+
+        call KSPSetUp(kspObject, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+    end subroutine setupFieldSplitKSP
 
     subroutine setupStandardMultigrid(kspObject, kspObjectType, gmresRestart, preConSide, &
                                       ASMOverlap, outerPreconIts, localMatrixOrdering, fillLevel, localPreConIts, &

@@ -4302,6 +4302,17 @@ class ADFLOW(AeroSolver):
                             "Current adjoint failed to converge. The partially converged solution will be used to compute the total derivatives. It is up to the user to check for adjoint failures and pass the correct failure flag to the optimizer using the checkAdjointFailure method."
                         )
                     self.curAP.adflowData.adjoints[objective] = psi
+
+                if self.comm.rank == 0 and self.getOption("globalPreconditioner").lower() == "field split":
+                    ADFLOWWarning(
+                        "The adjoint used the 'field split' preconditioner (the default). If the KSP "
+                        "stalled, increase adjointSubspaceSize (field split needs a large subspace, "
+                        "e.g. 400) or set globalPreconditioner='additive Schwarz' to revert to the "
+                        "monolithic PC — and test whether adjointSolver='LGMRES' or 'GMRES' converges "
+                        "better for this case. If instead the run dies out-of-memory, reduce "
+                        "adjointSubspaceSize, set globalPreconditioner='additive Schwarz' and keep "
+                        "adjointSolver='LGMRES' (recycling compensates the smaller subspace)."
+                    )
             else:
                 self.curAP.adflowData.adjoints[objective] = psi
                 self.curAP.adjointFailed = False
@@ -6182,10 +6193,12 @@ class ADFLOW(AeroSolver):
             "viscPC": [bool, False],
             "useDiagTSPC": [bool, True],
             "restartAdjoint": [bool, True],
-            "adjointSolver": [str, ["GMRES", "LGMRES", "TFQMR", "Richardson", "BCGS", "IBCGS"]],
+            "adjointSolver": [str, ["LGMRES", "GMRES", "TFQMR", "Richardson", "BCGS", "IBCGS"]],
             "adjointMaxIter": [int, 500],
             "adjointSubspaceSize": [int, 100],
             "adjointLGMRESAugDim": [int, 2],
+            "adjointFieldSplitType": [str, ["multiplicative", "additive"]],
+            "adjointFieldSplitBlocks": [int, 3],
             "GMRESOrthogonalizationType": [
                 str,
                 ["modified Gram-Schmidt", "CGS never refine", "CGS refine if needed", "CGS always refine"],
@@ -6200,7 +6213,7 @@ class ADFLOW(AeroSolver):
                 str,
                 ["RCM", "natural", "nested dissection", "one way dissection", "quotient minimum degree"],
             ],
-            "globalPreconditioner": [str, ["additive Schwarz", "multigrid"]],
+            "globalPreconditioner": [str, ["field split", "additive Schwarz", "multigrid"]],
             "localPreconditioner": [str, ["ILU"]],
             "ILUFill": [int, 2],
             "ILUFillCoarse": [int, 0],
@@ -6675,6 +6688,12 @@ class ADFLOW(AeroSolver):
             "adjointmaxiter": ["adjoint", "adjmaxiter"],
             "adjointsubspacesize": ["adjoint", "adjrestart"],
             "adjointlgmresaugdim": ["adjoint", "adjlgmresaugdim"],
+            "adjointfieldsplittype": {
+                "multiplicative": "multiplicative",
+                "additive": "additive",
+                "location": ["adjoint", "fieldsplittype"],
+            },
+            "adjointfieldsplitblocks": ["adjoint", "fieldsplitblocks"],
             "adjointmonitorstep": ["adjoint", "adjmonstep"],
             "storepsihistory": ["adjoint", "storepsihistory"],
             "psihistorystep": ["adjoint", "psihistorystep"],
@@ -6692,6 +6711,7 @@ class ADFLOW(AeroSolver):
             "globalpreconditioner": {
                 "additive schwarz": "asm",
                 "multigrid": "mg",
+                "field split": "fieldsplit",
                 "location": ["adjoint", "precondtype"],
             },
             "localpreconditioner": {"ilu": "ilu", "location": ["adjoint", "localpctype"]},

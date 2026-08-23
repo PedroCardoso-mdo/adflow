@@ -891,7 +891,8 @@ contains
         use inputADjoint
         use utils, only: ECHk, terminate
         use adjointUtils, only: mykspmonitor
-        use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP, setupStandardMultigrid
+        use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP, setupStandardMultigrid, &
+                                setupFieldSplitKSP
         use communication
         use amg, only: setupShellPC, destroyShellPC, applyShellPC
 #include <petsc/finclude/petsc.h>
@@ -932,17 +933,27 @@ contains
             call EChk(ierr, __FILE__, __LINE__)
         end if
 
-        if (PreCondType == 'asm') then
-            ! Run the super-dee-duper function to setup the ksp object:
-
+        if (PreCondType == 'asm' .or. (PreCondType == 'fieldsplit' .and. frozenTurbulence)) then
+            ! Run the super-dee-duper function to setup the ksp object.
+            ! Field split degenerates to a single block under frozen
+            ! turbulence (no turbulence rows in the system) — fall back to
+            ! the monolithic ASM setup instead of erroring out.
+            if (PreCondType == 'fieldsplit' .and. frozenTurbulence .and. myid == 0) then
+                print *, 'Warning: field split preconditioner has no turbulence block under', &
+                    ' frozenTurbulence — falling back to additive Schwarz.'
+            end if
             call setupStandardKSP(adjointKSP, ADjointSolverType, adjRestart, adjointpcside, &
-                                  PreCondType, overlap, outerPreConIts, localPCType, &
+                                  'asm', overlap, outerPreConIts, localPCType, &
                                   matrixOrdering, FillLevel, innerPreConIts)
         else if (PreCondType == 'mg') then
 
             call setupStandardMultigrid(adjointKSP, ADjointSolverType, adjRestart, adjointPCSide, &
                                         overlap, outerPreconIts, matrixOrdering, fillLevel, innerPreConIts, &
                                         overlapCoarse, fillLevelCoarse, innerPreConItsCoarse)
+        else if (PreCondType == 'fieldsplit') then
+
+            call setupFieldSplitKSP(adjointKSP, ADjointSolverType, adjRestart, adjointpcside, &
+                                    overlap, localPCType, matrixOrdering, FillLevel)
         end if
 
         ! Setup monitor if necessary. Also needed (independent of
@@ -1162,7 +1173,8 @@ contains
         use communication, only: adflow_comm_world, myid
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use flowVarRefState, only: nwf, nw, viscous
-        use inputADjoint, only: approxPC, frozenTurbulence, useMatrixFreedRdw, viscPC, adjAMGLevels, adjAMGNSmooth
+        use inputADjoint, only: approxPC, frozenTurbulence, useMatrixFreedRdw, viscPC, adjAMGLevels, adjAMGNSmooth, &
+                                preCondType
         use stencils, only: N_visc_drdw, n_euler_drdw, visc_drdw_stencil, euler_drdw_stencil, &
                             visc_drdw_stencil, visc_pc_stencil, N_visc_PC, N_euler_PC, euler_PC_stencil
         use utils, only: EChk, setPointers
@@ -1214,7 +1226,7 @@ contains
             call statePreAllocation(nnzDiagonal, nnzOffDiag, nDimW / nState, stencil, n_stencil, &
                                     level, .true.)
             call myMatCreate(dRdwT, nState, nDimW, nDimW, nnzDiagonal, nnzOffDiag, &
-                             __FILE__, __LINE__)
+                             __FILE__, __LINE__, forceAIJ=(preCondType == 'fieldsplit'))
 
             call matSetOption(dRdwT, MAT_STRUCTURALLY_SYMMETRIC, PETSC_TRUE, ierr)
             call EChk(ierr, __FILE__, __LINE__)
@@ -1257,7 +1269,7 @@ contains
             call statePreAllocation(nnzDiagonal, nnzOffDiag, nDimW / nState, stencil, n_stencil, &
                                     level, .true.)
             call myMatCreate(dRdwPreT, nState, nDimW, nDimW, nnzDiagonal, nnzOffDiag, &
-                             __FILE__, __LINE__)
+                             __FILE__, __LINE__, forceAIJ=(preCondType == 'fieldsplit'))
 
             call matSetOption(dRdwPreT, MAT_STRUCTURALLY_SYMMETRIC, PETSC_TRUE, ierr)
             call EChk(ierr, __FILE__, __LINE__)
