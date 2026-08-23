@@ -5751,6 +5751,14 @@ contains
             print *, '---------------------------------------------------------------------------'
             print errorCodeFormat, "PETSc or MPI Error. Error Code ", errorcode, ". Detected on Proc ", myid
             print errorLineFormat, "Error at line: ", line, " in file: ", file
+            ! PETSC_ERR_MEM = 55: out of memory. The adjoint Krylov basis is
+            ! usually the biggest knob — print the recipe before aborting.
+            if (errorcode == 55) then
+                print *, 'OUT OF MEMORY: if this happened during the adjoint, reduce'
+                print *, 'adjointSubspaceSize, set globalPreconditioner=''additive Schwarz'''
+                print *, '(field split needs a large subspace) and keep adjointSolver=''LGMRES'''
+                print *, '(recycling compensates the smaller subspace).'
+            end if
             print *, '---------------------------------------------------------------------------'
             call MPI_Abort(adflow_comm_world, errorcode, ierr)
             stop ! Just in case
