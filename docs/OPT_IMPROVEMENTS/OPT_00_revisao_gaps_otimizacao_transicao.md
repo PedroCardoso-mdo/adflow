@@ -320,6 +320,21 @@ adjunto) para as fases iniciais da opt — homotopia natural com o 5.3.
 Implementação provável: máscara no dRdw/dRdwPre análoga ao `frozenTurbulence`
 existente mas por-variável (7–8), + opção runtime.
 
+## F2. Convergir em modo transiente quando o estacionário estagna
+
+Testar se os casos SA-GR que estagnam em steady (plateaus profundos, NK
+wall) convergem em modo time-accurate (unsteady/BDF do ADflow): as bolhas
+de separação laminar na zona de transição podem mover-se — a solução não é
+necessariamente estacionária, e nesse caso o stall do solver steady é
+físico, não numérico. O que medir: (i) um caso que estagna em steady,
+corrido em transiente até regime — oscila (frequência/amplitude da bolha e
+da frente) ou assenta num fixed point?; (ii) se assenta: o transiente serve
+de continuação para reentrar no steady/NK (warm start); (iii) se oscila: o
+plateau steady corresponde à média temporal? Implicações para a opt: se o
+escoamento é genuinamente instacionário, o adjunto steady está mal posto
+nesses pontos — liga ao 6.5 (harmonic balance) e explica estagnações da
+otimização que nenhum melhoramento de solver steady resolve.
+
 ---
 
 # REGISTO DE IDEIAS TENTADAS (mantido pela sessão de implementação)
