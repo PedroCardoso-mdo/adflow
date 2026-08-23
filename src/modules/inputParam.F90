@@ -1067,6 +1067,12 @@ module inputADjoint
     !                  'fieldsplit'. Unused otherwise.
     character(maxStringLen) :: fieldSplitType
 
+    ! fieldSplitBlocks : 3 = {flow, SA, gamma+ReThetaTilde} (transition pair
+    !                    kept coupled inside one split); 4 = {flow, SA,
+    !                    gamma, ReThetaTilde} (maximum scale separation,
+    !                    gamma-ReThetaTilde coupling left to the Krylov).
+    integer(kind=intType) :: fieldSplitBlocks
+
     ! FillLevel     : Number of levels of fill for the ILU local PC
     ! Overlap       : Amount of overlap in the ASM PC
     integer(kind=intType) :: fillLevel, overlap

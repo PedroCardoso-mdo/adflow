@@ -1681,7 +1681,7 @@ contains
         use utils, only: ECHk, terminate
         use communication, only: adflow_comm_world
         use flowVarRefState, only: nw, nwf
-        use inputADjoint, only: GMRESOrthogType, adjLGMRESAugDim, fieldSplitType
+        use inputADjoint, only: GMRESOrthogType, adjLGMRESAugDim, fieldSplitType, fieldSplitBlocks
 #include <petsc/finclude/petsc.h>
         use petsc
         implicit none
@@ -1698,8 +1698,8 @@ contains
         IS isSplit
         integer(kind=intType) :: ierr, rStart, rEnd, nCellsLoc, iCell, iVar, cnt, iSplit
         integer(kind=intType), dimension(:), allocatable :: idx
-        integer(kind=intType) :: splitLo(3), splitHi(3), nSplits
-        character(len=8) :: splitName(3)
+        integer(kind=intType) :: splitLo(4), splitHi(4), nSplits
+        character(len=8) :: splitName(4)
         character(len=64) :: optName
         character(len=16) :: valStr
 
@@ -1763,11 +1763,23 @@ contains
         splitLo(2) = itu1 - 1
         splitHi(2) = itu1 - 1
         if (nw >= itu3) then
-            ! SA-gamma-ReThetaTilde: third split holds the transition pair.
-            nSplits = 3
-            splitName(3) = 'trans'
-            splitLo(3) = itu2 - 1
-            splitHi(3) = nw - 1
+            if (fieldSplitBlocks == 4) then
+                ! Maximum scale separation: gamma and ReThetaTilde each get
+                ! their own split; their source coupling goes to the Krylov.
+                nSplits = 4
+                splitName(3) = 'gamma'
+                splitLo(3) = itu2 - 1
+                splitHi(3) = itu2 - 1
+                splitName(4) = 'ret'
+                splitLo(4) = itu3 - 1
+                splitHi(4) = nw - 1
+            else
+                ! SA-gamma-ReThetaTilde: third split holds the transition pair.
+                nSplits = 3
+                splitName(3) = 'trans'
+                splitLo(3) = itu2 - 1
+                splitHi(3) = nw - 1
+            end if
         else
             nSplits = 2
         end if

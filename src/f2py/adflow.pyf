@@ -1276,6 +1276,7 @@ python module libadflow
          character(len=maxstringlen) :: localpctype
          character(len=maxstringlen) :: precondtype
          character(len=maxstringlen) :: fieldsplittype
+         integer(kind=inttype) :: fieldsplitblocks
          real(kind=alwaysrealtype) :: adjabstol
          real(kind=alwaysrealtype) :: adjdivtol
          real(kind=alwaysrealtype) :: adjreltol

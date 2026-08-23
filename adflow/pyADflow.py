@@ -6187,6 +6187,7 @@ class ADFLOW(AeroSolver):
             "adjointSubspaceSize": [int, 100],
             "adjointLGMRESAugDim": [int, 2],
             "adjointFieldSplitType": [str, ["multiplicative", "additive"]],
+            "adjointFieldSplitBlocks": [int, 3],
             "GMRESOrthogonalizationType": [
                 str,
                 ["modified Gram-Schmidt", "CGS never refine", "CGS refine if needed", "CGS always refine"],
@@ -6681,6 +6682,7 @@ class ADFLOW(AeroSolver):
                 "additive": "additive",
                 "location": ["adjoint", "fieldsplittype"],
             },
+            "adjointfieldsplitblocks": ["adjoint", "fieldsplitblocks"],
             "adjointmonitorstep": ["adjoint", "adjmonstep"],
             "storepsihistory": ["adjoint", "storepsihistory"],
             "psihistorystep": ["adjoint", "psihistorystep"],
