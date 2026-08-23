@@ -6195,7 +6195,7 @@ class ADFLOW(AeroSolver):
             "restartAdjoint": [bool, True],
             "adjointSolver": [str, ["LGMRES", "GMRES", "TFQMR", "Richardson", "BCGS", "IBCGS"]],
             "adjointMaxIter": [int, 500],
-            "adjointSubspaceSize": [int, 100],
+            "adjointSubspaceSize": [int, 400],
             "adjointLGMRESAugDim": [int, 2],
             "adjointFieldSplitType": [str, ["multiplicative", "additive"]],
             "adjointFieldSplitBlocks": [int, 3],
