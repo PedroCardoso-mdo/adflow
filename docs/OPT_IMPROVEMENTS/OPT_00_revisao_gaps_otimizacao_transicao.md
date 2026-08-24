@@ -406,12 +406,19 @@ ASM do job 1844046 (T1).
    reiniciado não converge neste sistema. Precisa do subspace grande ⇒ não
    serve para o regime memory-constrained (c376-class); aí fica o T1.
 4. additive sempre ≥ multiplicative em tempo — descartar.
-5. Split a 4 {flow}{ν̃}{γ}{Re̅θt} (`adjointFieldSplitBlocks=4`, commit
+5. **3D (AR5 L2, 1.48M células, jobs 1844953/55/69/73): field-split = 5.0–5.7×
+   mais rápido** que ASM (1150–1315 s vs 6582 s), sensibilidades iguais; o
+   ganho é TODO do field-split (ASM+LGMRES = ASM+GMRES em 3D); fsadd≈fsmult.
+   Defaults antigos out-of-the-box FALHAVAM o adjunto neste caso.
+6. A/B SA puro 2D (job 1844954): field-split NÃO ganha sem transição (ASM+
+   LGMRES+ILU3 vence, 179 s); ILU(2)/ASM(1) falha @ ss400 até em SA.
+   ⇒ Defaults finais (`9d9733c7`): LGMRES + ss400 + ILU3/ASM3 globais;
+   field split condicional a turbulenceModel=SA-Gamma-Retheta.
+7. Split a 4 {flow}{ν̃}{γ}{Re̅θt} (`adjointFieldSplitBlocks=4`, commit
    `f3116cc5`, job 1844845): empate com o split a 3 a ss400 (±2-3%) e o
    mesmo stall a ss≤200 — a escala γ↔Re̅θt não é o fator limitante; o que
    custa é cortar flow↔turbulência/transição. Default fica 3.
-6. Candidato a merge no `transition-models`: ganho real onde ss400 cabe,
-   opt-in, default intacto ('additive Schwarz').
+8. Merged no `transition-models` (28937644 + defaults 9d9733c7).
 
 **Onde confirmar.** `.../02_adjoint_checks/fieldsplit_2d_naca0012/`
 (PURPOSE.md, logs, result_*.json; espelho HPC
