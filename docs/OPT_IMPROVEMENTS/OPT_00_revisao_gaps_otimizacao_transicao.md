@@ -418,7 +418,15 @@ ASM do job 1844046 (T1).
    `f3116cc5`, job 1844845): empate com o split a 3 a ss400 (±2-3%) e o
    mesmo stall a ss≤200 — a escala γ↔Re̅θt não é o fator limitante; o que
    custa é cortar flow↔turbulência/transição. Default fica 3.
-8. Merged no `transition-models` (28937644 + defaults 9d9733c7).
+8. **c376 (o caso memory-bound da opt 3D, job 1848946):** par de adjuntos
+   cl+cd no design baseline, mesmo layout 4 nós×32 ranks da opt —
+   **3.8× @1e-3** (6381 vs 24 268 s) e **5.1× @1e-7** (13 187 vs 66 896 s),
+   ambos convergidos. Custo: **+53% de RSS médio** (7.45 vs 4.86 GB/rank,
+   AIJ+sub-blocos) → ~238 dos 242 GB/nó; só cabe porque a opt já reservava
+   4 nós. O receio "field-split não serve o regime memory-constrained"
+   caiu: serve, desde que a folga de RAM exista. Ver
+   `02_adjoint_checks/fieldsplit_3d_c376/PURPOSE.md`.
+9. Merged no `transition-models` (28937644 + defaults 9d9733c7 + docs).
 
 **Onde confirmar.** `.../02_adjoint_checks/fieldsplit_2d_naca0012/`
 (PURPOSE.md, logs, result_*.json; espelho HPC
