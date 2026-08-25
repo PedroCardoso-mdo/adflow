@@ -650,7 +650,7 @@ contains
                                 machd, machGridd, rgasdimd, equationMode, turbModel, wallDistanceNeeded
         use inputDiscretization, only: lowSpeedPreconditioner, lumpedDiss, spaceDiscr, useAPproxWallDistance
         use inputTimeSpectral, only: nTimeIntervalsSpectral
-        use inputAdjoint, only: frozenTurbulence
+        use inputAdjoint, only: frozenTurbulence, frozenTransition
         use utils, only: isWallType, setPointers_b, EChk
         use adjointPETSc, only: x_like
         use haloExchange, only: whalo2_b, exchangeCoor_b, exchangeCoor, whalo2
@@ -707,9 +707,14 @@ contains
         real(kind=realType), dimension(:), allocatable :: extraLocalBar, bcDataValuesdLocal
         real(kind=realType) :: dummyReal, dummyReald
         logical :: resetToRans
+        logical :: freezeTrans
         real(kind=realType), dimension(nSections) :: time
         logical :: useOldCoor ! for solverutils_b() functions
         useOldCoor = .FALSE.
+
+        ! Frozen-transition adjoint: drop the transition states (gamma,
+        ! ReThetaTilde) from all reverse-mode products.
+        freezeTrans = frozenTransition .and. turbModel == spalartAllmarasNoft2GammaRetheta
 
         ! extraLocalBar accumulates the seeds onto the extra variables
         allocate (extraLocalBar(size(extrabar)))
@@ -740,6 +745,12 @@ contains
                         end do
                     end do
                 end do
+
+                ! Frozen transition: the transition adjoint components carry
+                ! no residual seed.
+                if (freezeTrans) then
+                    dwd(2:il, 2:jl, 2:kl, itu2:itu3) = zero
+                end if
             end do
         end do
 
@@ -1016,6 +1027,11 @@ contains
                             do l = 1, nState
                                 ii = ii + 1
                                 wbar(ii) = wd(i, j, k, l)
+                                ! Frozen transition: no sensitivity w.r.t.
+                                ! gamma / ReThetaTilde states.
+                                if (freezeTrans .and. l >= itu2) then
+                                    wbar(ii) = zero
+                                end if
                             end do
                         end do
                     end do
@@ -1064,6 +1080,7 @@ contains
         use inputPhysics, only: equationMode, turbModel, equations
         use inputDiscretization, only: lowSpeedPreconditioner, spaceDiscr
         use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use inputAdjoint, only: frozenTransition
         use utils, only: setPointers_d
         use haloExchange, only: whalo2_b
         use flowUtils, only: fixAllNodalGradientsFromAD
@@ -1100,6 +1117,11 @@ contains
         ! Working Variables
         integer(kind=intType) :: ierr, nn, sps, mm, i, j, k, l, fSize, ii, jj, level, iRegion
         real(kind=realType) :: dummyReal
+        logical :: freezeTrans
+
+        ! Frozen-transition adjoint: transition rows become identity and
+        ! transition seeds are dropped, so the system reduces to flow + SA.
+        freezeTrans = frozenTransition .and. turbModel == spalartAllmarasNoft2GammaRetheta
 
         ! Set the residual seeds.
         ii = 0
@@ -1116,6 +1138,9 @@ contains
                         end do
                     end do
                 end do
+                if (freezeTrans) then
+                    dwd(2:il, 2:jl, 2:kl, itu2:itu3) = zero
+                end if
             end do
         end do
 
@@ -1234,6 +1259,11 @@ contains
                             do l = 1, nState
                                 ii = ii + 1
                                 wbar(ii) = wd(i, j, k, l)!*max(real(iblank(i,j,k)), zero)
+                                ! Frozen transition: identity rows for the
+                                ! transition states keep the system nonsingular.
+                                if (freezeTrans .and. l >= itu2) then
+                                    wbar(ii) = dwbar(ii)
+                                end if
                             end do
                         end do
                     end do

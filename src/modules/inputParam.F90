@@ -1050,6 +1050,13 @@ module inputADjoint
     logical :: setMonitor, ApproxPC, useDiagTSPC
     logical :: frozenTurbulence, viscPC, ADPC
 
+    ! frozenTransition: Freeze only the transition states (gamma, ReThetaTilde)
+    !                   in the adjoint: their adjoint seeds are zeroed and their
+    !                   Jacobian rows replaced by identity, so the adjoint is
+    !                   solved over flow + SA only. Only active for the
+    !                   SA-noft2-gammaRetheta model; default off.
+    logical :: frozenTransition
+
     ! ADjointSolverType: Type of linear solver for the ADjoint
     ! PreCondType      : Type of Preconditioner to use
     ! Matrix Ordering  : Type of matrix ordering to use

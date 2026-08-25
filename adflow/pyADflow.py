@@ -4259,6 +4259,13 @@ class ADFLOW(AeroSolver):
                 "Turbulence is frozen!!! DERIVATIVES WILL BE WRONG!!! " "USE AT OWN RISK!!!"
             )
 
+        # Remind the user the transition states are frozen in the adjoint.
+        if self.getOption("frozenTransition") and self.myid == 0:
+            ADFLOWWarning(
+                "Transition states (gamma, ReThetaTilde) are frozen in the adjoint. "
+                "Derivatives neglect transition sensitivities."
+            )
+
         # May be switching aeroProblems here
         self.setAeroProblem(aeroProblem)
 
@@ -6243,6 +6250,7 @@ class ADFLOW(AeroSolver):
             "adjointAMGNSmooth": [int, 1],
             "applyAdjointPCSubspaceSize": [int, 20],
             "frozenTurbulence": [bool, False],
+            "frozenTransition": [bool, False],
             "useMatrixFreedrdw": [bool, True],
             "skipAfterFailedAdjoint": [bool, True],
             # ADjoint debugger
@@ -6685,6 +6693,7 @@ class ADFLOW(AeroSolver):
             "adpc": ["adjoint", "adpc"],
             "viscpc": ["adjoint", "viscpc"],
             "frozenturbulence": ["adjoint", "frozenturbulence"],
+            "frozentransition": ["adjoint", "frozentransition"],
             "usediagtspc": ["adjoint", "usediagtspc"],
             "adjointsolver": {
                 "gmres": "gmres",
