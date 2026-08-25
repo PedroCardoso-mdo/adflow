@@ -385,7 +385,12 @@ Testado com o PC de produção (ADPC, ILU(3), ASM(3)) em:
   antes de instalar.
 
 
-## T2. G1 (parcial): precondicionador field-split por bloco físico no adjunto  [2026-08-23]
+## T2. G1 (parcial): precondicionador field-split por bloco físico no adjunto  [2026-08-23 → 2026-08-25]
+
+**ESTADO: TESTADA E IMPLEMENTADA — SUCESSO.** Merged no `transition-models`
+com defaults condicionais (`9d9733c7`); validada em 2D (−29%), 3D AR5 (5.7×
+out-of-the-box) e no caso memory-bound c376 (3.8× @1e-3, 5.1× @1e-7, +53%
+RSS médio). Próxima ideia da fila (F1/F2) → nova sessão.
 
 **O que se fez.** `globalPreconditioner="field split"` +
 `adjointFieldSplitType` (multiplicative default / additive) — PCFIELDSPLIT
