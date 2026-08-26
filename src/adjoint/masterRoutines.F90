@@ -1259,10 +1259,12 @@ contains
                             do l = 1, nState
                                 ii = ii + 1
                                 wbar(ii) = wd(i, j, k, l)!*max(real(iblank(i,j,k)), zero)
-                                ! Frozen transition: identity rows for the
-                                ! transition states keep the system nonsingular.
+                                ! Frozen transition: transition rows of the
+                                ! frozen operator are identity, so the transposed
+                                ! product keeps the flow->transition coupling
+                                ! already accumulated in wd and ADDS the seed.
                                 if (freezeTrans .and. l >= itu2) then
-                                    wbar(ii) = dwbar(ii)
+                                    wbar(ii) = wd(i, j, k, l) + dwbar(ii)
                                 end if
                             end do
                         end do
