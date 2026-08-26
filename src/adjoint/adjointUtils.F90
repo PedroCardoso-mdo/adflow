@@ -61,6 +61,8 @@ contains
         integer(kind=intType) :: ierr, nn, sps, sps2, i, j, k, l, ll, ii, jj, kk
         integer(kind=intType) :: nColor, iColor, jColor, irow, icol, fmDim, frow
         integer(kind=intType) :: nTransfer, nState, lStart, lEnd, tmp, icount, cols(8), nCol
+        logical :: frozenTrans
+        integer(kind=intType) :: iDiag
         integer(kind=intType) :: n_stencil, i_stencil, m, iFringe, fInd, lvl, orderturbsave
         integer(kind=intType), dimension(:, :), pointer :: stencil
         real(kind=alwaysRealType) :: delta_x, one_over_dx
@@ -110,6 +112,15 @@ contains
                 nState = nw
             end if
         end if
+
+        ! Frozen-transition PC: the matrix-free operator (master_state_b)
+        ! replaces the gamma/ReThetaTilde rows with identity, so the PC has to
+        ! describe the SAME system or the Krylov solve stagnates (it did:
+        ! 96/96 adjoints failed, flat residual, job 1851209). Zero those rows
+        ! here and restore their unit diagonal after assembly.
+        frozenTrans = frozenTransition .and. .not. turbOnly .and. .not. frozenTurb &
+                      .and. turbModel == spalartAllmarasNoft2GammaRetheta &
+                      .and. nState == nw
 
         ! Generic block to use while setting values
         allocate (blk(nState, nState))
@@ -615,6 +626,38 @@ contains
             end do
         end if
 
+        ! Frozen transition: put the unit diagonal back on the gamma /
+        ! ReThetaTilde rows, completing the identity row started in setBlock.
+        ! Done once here rather than inside setBlock so the ADD_VALUES assembly
+        ! cannot accumulate it more than once. A diagonal entry is the same
+        ! position transposed, so this is correct for either useTranspose.
+        if (frozenTrans) then
+            do nn = 1, nDom
+                do sps = 1, nTimeIntervalsSpectral
+                    do k = 2, flowDoms(nn, level, sps)%kl
+                        do j = 2, flowDoms(nn, level, sps)%jl
+                            do i = 2, flowDoms(nn, level, sps)%il
+                                iDiag = flowDoms(nn, level, sps)%globalCell(i, j, k)
+                                if (iDiag >= 0) then
+                                    do l = itu2, itu3
+                                        tmp = iDiag * nState + l - 1
+                                        call MatSetValues(matrix, 1, tmp, 1, tmp, one, &
+                                                          INSERT_VALUES, ierr)
+                                        call EChk(ierr, __FILE__, __LINE__)
+                                    end do
+                                end if
+                            end do
+                        end do
+                    end do
+                end do
+            end do
+
+            call MatAssemblyBegin(matrix, MAT_FINAL_ASSEMBLY, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call MatAssemblyEnd(matrix, MAT_FINAL_ASSEMBLY, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end if
+
         call MatSetOption(matrix, MAT_NEW_NONZERO_LOCATIONS, PETSC_FALSE, ierr)
         call EChk(ierr, __FILE__, __LINE__)
 
@@ -642,6 +685,13 @@ contains
             integer(kind=intType) :: i, j, tmp, iRowSet, iColSet
             logical :: zeroFlag
             zeroFlag = .False.
+
+            ! Frozen transition: drop every contribution to the gamma /
+            ! ReThetaTilde residual rows. Their unit diagonal is restored once,
+            ! after assembly, so ADD_VALUES cannot accumulate it twice.
+            if (frozenTrans) then
+                blk(itu2:itu3, :) = zero
+            end if
 
 #ifndef USE_COMPLEX
             ! Check if the blk is all zeros
