@@ -4170,7 +4170,7 @@ contains
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputIteration, only: transitionDampTheta, transitionDampMaxIter, solverStallDiag
         use flowVarRefState, only: nw, nt1
-        use communication, only: myid
+        use communication, only: myid, adflow_comm_world
         use utils, only: EChk
         implicit none
 
@@ -4179,6 +4179,8 @@ contains
         integer(kind=intType) :: ierr, jj, nCells, mm
         integer(kind=intType) :: nDampCapGamma, nDampCapReTheta
         integer(kind=intType) :: nSoftDampGamma, nSoftDampReTheta
+        integer(kind=intType) :: dampCountsLoc(2), dampCounts(2)
+        real(kind=realType) :: dampFactorsLoc(2), dampFactors(2)
         real(kind=realType) :: minDampFactorGamma, minDampFactorReTheta
         real(kind=realType), pointer :: wPtr(:), dPtr(:)
         real(kind=realType) :: cs(1:nw)
@@ -4263,10 +4265,29 @@ contains
         ! Hand the soft-damping activity to the stall diagnostics rather than
         ! printing per-proc lines: it is reported on the single STALLDIAG ANK
         ! line so stall/oscillation causes stay readable in one place.
-        stallSoftDampG = nSoftDampGamma
-        stallSoftDampR = nSoftDampReTheta
-        stallMinDampG = minDampFactorGamma
-        stallMinDampR = minDampFactorReTheta
+        !
+        ! The counters MUST be reduced across ranks first: STALLDIAG prints on
+        ! the root proc only, and the transition front lives on a few ranks
+        ! that are usually not rank 0 -- without the reduction the printed
+        ! "damp=" pair read 0 0 on every 64-rank sickle run (2026-08-31) while
+        ! the damping was in fact firing on the front-owning ranks, which
+        ! wrongly suggested Algorithm 2 was inert. Counts are summed; the
+        ! worst (minimum) damping factor is min-reduced.
+        dampCountsLoc(1) = nSoftDampGamma
+        dampCountsLoc(2) = nSoftDampReTheta
+        call mpi_allreduce(dampCountsLoc, dampCounts, 2, adflow_integer, &
+                           mpi_sum, adflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        dampFactorsLoc(1) = minDampFactorGamma
+        dampFactorsLoc(2) = minDampFactorReTheta
+        call mpi_allreduce(dampFactorsLoc, dampFactors, 2, adflow_real, &
+                           mpi_min, adflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        stallSoftDampG = dampCounts(1)
+        stallSoftDampR = dampCounts(2)
+        stallMinDampG = dampFactors(1)
+        stallMinDampR = dampFactors(2)
 
     end subroutine applyANKAlgorithm2Damping
 
