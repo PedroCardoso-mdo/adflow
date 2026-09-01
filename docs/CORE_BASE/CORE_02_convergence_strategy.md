@@ -73,6 +73,31 @@ Operational note: `scancel --signal=USR2` writes the state and ends the current
 *solve*, not the job. A runner that issues several staged `CFDSolver(ap)` calls
 will simply proceed to the next one; follow with a plain `scancel`.
 
+## Crossflow cases: the plateau can be the front, not the solver (2026-09-01)
+
+Measured on the sickle wing, paper authors' MEDIUM grid (4.40M cells,
+crossflow ON, from freestream — job 1861854, `07_sickle_wing/
+mesh_paper_authors/PURPOSE.md`): totalRes sat flat at ~178 (4.77 orders) for
+**15 h / ~5800 iterations** with every health indicator clean (Step 1.00,
+rise=0, lin res ~0.05), then fell 20× in 80 iterations, entered CSANK and
+went to 6.25 orders. The plateau was the crossflow transition front
+physically settling into position — not a solver stall. **Before killing a
+crossflow run on a flat totalRes, check whether gamma/reTheta are still
+evolving (they were); patience beat every ladder/option permutation tried
+that day (v1–v13).** Conversely, without crossflow the same mesh stalls
+genuinely at ~5.2 orders on a handful of gamma cells pinned at their bound
+(updates deleted by Algorithm-2 damping — `damp=`/`wf=` on STALLDIAG, MPI-
+reduced since 36b01134).
+
+Minor mechanism note, small measured effect: the §IV.B.3 source-dt
+deactivation (`srcDtDeactivateIters`, default 5) never reactivates on a
+*flat* floor (reactivation needs a backtrack or a residual RISE), so the
+Eq. 59 protection is off exactly where the bound-pinning happens. Keeping it
+active (`srcDtDeactivateIters 100000`, v13) was the only lever that moved the
+pinned-gamma residual — but only slightly; it did not break the floor. On
+the crossflow-ON run the restriction stayed active by itself (startup
+backtracks keep resetting the counter), so the flag changed nothing there.
+
 ## Known limits / do NOT
 
 - Do NOT couple early: CANK at rel 1e-2 stagnates (with or without the LS
