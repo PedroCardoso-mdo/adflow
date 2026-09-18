@@ -33,6 +33,7 @@ Master index for all project documentation.
 | `current-task.md` | The ONE active task, overwritten each session. |
 | `TODO.md` | Deferred, decided-not-urgent items, each linking to its `audits/design-decisions.md` entry. |
 | `task-log/README.md` | Index of finished tasks + template. |
+| `studies/21_c2_branch_campaign/README.md` | 2026-09-11/12 C2 optimizer campaign: SA-BCM multi-branch diagnosis (line/chain/Tu-ramp tests), every optimizer strategy tried (B1…B11, HOP), cold-verified results at Tu 0.1/0.25/0.5 %, Cf figure, scripts. |
 | `audits/design-decisions.md` | Consolidated, topic-organized log of resolved audit questions. Explicitly non-normative. |
 
 ## Papers were replaced 2026-07-24

@@ -71,7 +71,7 @@ def buildOptions(variant, outputDir):
             "turbulencemodel": "SA",
             "useft2sa": False,  # decided: off for both SA-BCM and plain-SA baseline
             "useblockettes": True,  # decided: kept True -- see reg_bcm.py module docstring
-            "eddyvisinfratio": 1e-10,
+            "eddyvisinfratio": 1e-7,
             # ---- SA-BCM ----
             "use_sabcm": variant != "sa",  # variant="sa" -> plain SA baseline, SABCM off
             "sabcm_exp": variant == "hard",  # False=smooth (tanh), True=hard (exp-sqrt)

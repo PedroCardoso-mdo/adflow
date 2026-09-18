@@ -38,15 +38,15 @@ from run_bcm_case import buildOptions  # noqa: E402  (canonical SA-BCM option di
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--variant", choices=["smooth", "hard"], required=True)
+    parser.add_argument("--variant", choices=["smooth", "hard", "sa"], required=True)
     parser.add_argument(
         "--gridFile",
         default=os.path.join(baseDir, "../../input_files/mdo_tutorial_rans_scalar_jst.cgns"),
         help="grid to converge (default: the standard ADflow tutorial-wing case, same as SA-GR's)",
     )
     parser.add_argument("--output", default=None, help="default: input_files/mdo_tutorial_bcm_<variant>_dp.cgns")
-    parser.add_argument("--mach", type=float, default=0.15, help="matches ap_bcm_tut_wing")
-    parser.add_argument("--alpha", type=float, default=1.8, help="matches ap_bcm_tut_wing")
+    parser.add_argument("--mach", type=float, default=None, help="default: ap_bcm_tut_wing.mach")
+    parser.add_argument("--alpha", type=float, default=None, help="default: ap_bcm_tut_wing.alpha")
     parser.add_argument(
         "--tu",
         type=float,
@@ -55,6 +55,7 @@ def main():
         "not the SA-GR-repo-only 'turbintensityinf' option (doesn't exist in this repo).",
     )
     parser.add_argument("--l2", type=float, default=1e-14)
+    parser.add_argument("--opt", action="append", default=[], help="extra ADflow option key=value (python literal), repeatable")
     parser.add_argument("--ncycles", type=int, default=10000)
     parser.add_argument(
         "--restartfile",
@@ -88,25 +89,27 @@ def main():
     options["sabcm_tu"] = args.tu
     options["l2convergence"] = args.l2
     options["ncycles"] = args.ncycles
+    import ast
+    for kv in args.opt:
+        k, v = kv.split("=", 1)
+        try:
+            v = ast.literal_eval(v)
+        except Exception:
+            pass
+        options[k.lower()] = v
     if args.nk:
         options["useanksolver"] = False
         options["usenksolver"] = True
 
-    ap = AeroProblem(
-        name="mdo_tutorial_bcm",
-        alpha=args.alpha,
-        mach=args.mach,
-        P=20000.0,
-        T=220.0,
-        R=287.87,
-        areaRef=45.5,
-        chordRef=3.25,
-        beta=0.0,
-        xRef=0.0,
-        yRef=0.0,
-        zRef=0.0,
-        evalFuncs=["cl", "cd", "cmz", "drag"],
-    )
+    # Flow condition comes from reg_bcm.ap_bcm_tut_wing (single source of truth); --mach/--alpha
+    # override it only when given explicitly.
+    from reg_bcm import ap_bcm_tut_wing
+    import copy as _copy
+    ap = _copy.deepcopy(ap_bcm_tut_wing)
+    if args.mach is not None:
+        ap.mach = args.mach
+    if args.alpha is not None:
+        ap.alpha = args.alpha
 
     CFDSolver = ADFLOW(options=options)
     CFDSolver(ap)
@@ -136,9 +139,9 @@ def main():
         if not funcs["fail"]:
             print(
                 "Now confirm in tests/reg_tests/reg_bcm.py: bcmRestartFile%s points at this "
-                "file, and ap_bcm_tut_wing matches mach=%g, alpha=%g, P=20000, T=220, "
-                "chordRef=3.25, areaRef=45.5 with SABCM_TU=%g."
-                % (args.variant.capitalize(), args.mach, args.alpha, args.tu)
+                "file, and ap_bcm_tut_wing matches mach=%g, alpha=%g "
+                "P=%g, T=%g with SABCM_TU=%g."
+                % (args.variant.capitalize(), ap.mach, ap.alpha, ap.P, ap.T, args.tu)
             )
 
 

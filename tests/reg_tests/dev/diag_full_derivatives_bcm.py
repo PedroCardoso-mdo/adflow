@@ -125,7 +125,8 @@ def getDVGeo(ffdFile, isComplex):
     return DVGeo
 
 
-def buildSolver(variant, complex_build, ncycles=None, l2=None, restartfile=None, nkswitchtol=None):
+def buildSolver(variant, complex_build, ncycles=None, l2=None, restartfile=None, nkswitchtol=None, extra=None,
+                csSolver="dadi", csCFL=6.0):
     """Mirror test_adjoint_bcm.py setUp. Returns (solver, ap, nShape).
 
     restartfile (when given) overrides bcmBaseOptionsSmooth/Hard's default (the formal
@@ -168,6 +169,22 @@ def buildSolver(variant, complex_build, ncycles=None, l2=None, restartfile=None,
         options["ankadpc"] = False
         options["nkadpc"] = False
         options["ankcoupledswitchtol"] = 1e-16
+        if csSolver == "dadi":
+            # ANK and NK are NOT complex-step safe in this build. Without AD their matrix-free
+            # Jacobian-vector products and their step / line-search logic run on residual NORMS,
+            # which are not holomorphic, so the imaginary channel is destroyed. Measured on the
+            # 2D NLF0416 case (docs/studies/18_fsmooth_cs_vs_adjoint/PURPOSE.md), restarting from
+            # the converged state and seeding alpha with 1e-40j:
+            #   ANK+NK : Im(R) grows ~4 orders/iteration -> NaN, "derivatives" of order 1e13...1e23
+            #   ANK    : real residual leaves the converged state (limit cycle), dcl/dalpha -7.9 %
+            #   DADI   : Im(R) decays with Re(R); CFL 6 / 60k cycles -> dcl/dalpha to 1.6e-5
+            # DADI updates cell-locally with no norm and no Krylov space, so it is the safe path.
+            # csSolver="anknk" restores the old (unsafe) behaviour for reproducing earlier runs.
+            options["useanksolver"] = False
+            options["usenksolver"] = False
+            options["cfl"] = csCFL
+    for k, v in (extra or {}).items():
+        options[k.lower()] = v
 
     mesh_options = copy.copy(IDWarpDefOpts)
     mesh_options.update({"gridFile": options["gridfile"]})
@@ -255,9 +272,23 @@ def print_table(rows):
         rprint("(%d row(s) had no reference value)" % n_noref)
 
 
+def parse_opts(lst):
+    """--opt key=value (python literal) -> dict"""
+    import ast
+    out = {}
+    for kv in lst or []:
+        k, v = kv.split("=", 1)
+        try:
+            v = ast.literal_eval(v)
+        except Exception:
+            pass
+        out[k] = v
+    return out
+
+
 # --------------------------------------------------------------------- modes
 def run_adjoint(args):
-    solver, ap, nShape = buildSolver(args.variant, complex_build=False, ncycles=args.ncycles, l2=args.l2, restartfile=args.restartfile, nkswitchtol=args.nkswitchtol)
+    solver, ap, nShape = buildSolver(args.variant, complex_build=False, ncycles=args.ncycles, l2=args.l2, restartfile=args.restartfile, nkswitchtol=args.nkswitchtol, extra=parse_opts(args.opt))
     shape_idx = resolve_indices(args.shape, nShape)
     rprint(
         "\n==== ADJOINT MODE (real build, variant=%s) — nShape(local)=%d, printing %d shape comp ===="
@@ -299,7 +330,7 @@ def run_adjoint(args):
 
 def run_cs(args):
     h = 1e-40
-    solver, ap, nShape = buildSolver(args.variant, complex_build=True, ncycles=args.ncycles, l2=args.l2, restartfile=args.restartfile, nkswitchtol=args.nkswitchtol)
+    solver, ap, nShape = buildSolver(args.variant, complex_build=True, ncycles=args.ncycles, l2=args.l2, restartfile=args.restartfile, nkswitchtol=args.nkswitchtol, extra=parse_opts(args.opt), csSolver=args.csSolver, csCFL=args.csCFL)
     ref = loadRef(args.ref, ap.name)
     shape_idx = resolve_indices(args.shape, nShape)
     twist_idx = resolve_indices(args.twist, NTWIST)
@@ -385,6 +416,15 @@ def main():
     p.add_argument("--l2", type=float, default=1e-20)
     p.add_argument("--nkswitchtol", type=float, default=None, help="force ANK->NK handoff at this totalR (default: ADflow's adaptive default)")
     p.add_argument("--aero", default="", help="comma list of aero DVs to sweep (default: alpha,mach,P,T)")
+    p.add_argument("--opt", action="append", default=[], help="extra ADflow option key=value (python literal), repeatable -- e.g. the ANK-only recipe the `hard` variant needs")
+    p.add_argument("--csSolver", choices=["dadi", "anknk"], default="dadi",
+                   help="cs mode solver path. 'dadi' (default) is the only complex-step safe one: "
+                        "ANK/NK matrix-free products and line searches use non-holomorphic residual "
+                        "norms and destroy the imaginary channel. 'anknk' restores the pre-2026-08-28 "
+                        "behaviour and is for reproducing earlier (suspect) runs only.")
+    p.add_argument("--csCFL", type=float, default=6.0,
+                   help="DADI CFL for the CS re-converge (csSolver=dadi). 6.0 reaches in ~7k cycles "
+                        "the tangent level CFL 1.7 needs ~18k for.")
     p.add_argument("--skip-aero", action="store_true")
     p.add_argument("--skip-geom", action="store_true")
     p.add_argument("--skip-span", action="store_true")

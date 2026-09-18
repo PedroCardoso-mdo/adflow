@@ -48,19 +48,23 @@ bcmGridFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_rans_scalar_
 # One restart per SABCM_Exp variant -- written by generate_bcm_restart.py.
 bcmRestartFileSmooth = os.path.join(baseDir, "../../input_files/mdo_tutorial_bcm_smooth_dp.cgns")
 bcmRestartFileHard = os.path.join(baseDir, "../../input_files/mdo_tutorial_bcm_hard_dp.cgns")
+bcmRestartFileSA = os.path.join(baseDir, "../../input_files/mdo_tutorial_bcm_sa_dp.cgns")
 # backward-compat default (smooth variant) for any code that still imports the singular name
 bcmRestartFile = bcmRestartFileSmooth
 # same stock ADflow tutorial-wing FFD the SA-GR/SA adjoint tests use -- wraps this mesh
 bcmFFDFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_ffd.fmt")
 
-# Tutorial-wing AeroProblem -- MUST match the conditions generate_bcm_restart.py converged
-# (mach=0.15, alpha=1.8; same as ap_sagr_tut_wing in the sibling SA-GR repo).
+# Tutorial-wing AeroProblem -- generate_bcm_restart.py reads this object, so it is the single source
+# of the flow condition. mach=0.15/alpha=1.8 as ap_sagr_tut_wing; P lowered 20 kPa -> 15 kPa
+# (Re_c ~2.4e6 on chordRef) on 2026-08-25 so the wing carries a clear laminar + turbulent region:
+# dev/sweep_condition_bcm.py showed cf-based transition at ~0.6c upper / ~0.55c lower (smooth) and
+# ~0.45c (hard) at 15 kPa, vs ~0.3c at 20 kPa and a fully laminar upper surface below ~12 kPa.
 ap_bcm_tut_wing = AeroProblem(
     name="mdo_tutorial_bcm",
     alpha=1.8,
     beta=0.0,
     mach=0.15,
-    P=20000.0,
+    P=15000.0,
     T=220.0,
     R=287.87,
     areaRef=45.5,
@@ -110,7 +114,7 @@ bcmBaseOptions = {
     "mgcycle": "sg",
     "smoother": "DADI",
     "infchangecorrection": True,
-    "eddyvisinfratio": 1e-10,
+    "eddyvisinfratio": 1e-7,
     # ANK/NK solver options -- pyADflow's own default for useNKSolver is False (pyADflow.py:5788),
     # so without setting it explicitly here every run in this file was ANK-only, never reaching
     # NK, silently diverging from dev/run_bcm_case.py's option dict (the one that generated the
@@ -142,10 +146,12 @@ bcmBaseOptionsHard["sabcm_exp"] = True  # exp-sqrt blend (Mura & Cakmakcioglu or
 bcmBaseOptionsHard["restartfile"] = bcmRestartFileHard
 
 # Same case, plain SA (use_SABCM off) -- the "before" reference for the direct term comparison
-# in assert_bcm_vs_plain_sa_wdot_allclose. Uses the smooth-variant restart (arbitrary -- plain SA
-# doesn't care which SABCM_Exp the restart was generated under, only that use_sabcm=False here).
+# in assert_bcm_vs_plain_sa_wdot_allclose. Uses its OWN converged plain-SA restart
+# (generate_bcm_restart.py --variant sa): the adjoint scripts do not re-solve the primal, so the
+# restart must be the converged state of the variant being differentiated.
 bcmPlainSAOptions = dict(bcmBaseOptionsSmooth)
 bcmPlainSAOptions["use_sabcm"] = False
+bcmPlainSAOptions["restartfile"] = bcmRestartFileSA
 
 
 # --------------------------------------------------------------------------
@@ -269,6 +275,6 @@ def assert_bcm_xdvdot_allclose(handler, CFDSolver, ap, seed=1.0, mode=None, h=No
         if key not in bcmAeroDVs:
             continue
         resDot = CFDSolver.computeJacobianVectorProductFwd(xDvDot={key: seed}, residualDeriv=True, **extraArgs)
-        name = "||dR/d%s||" % key
+        name = "||dR/d%s|| (bcm rows)" % key
         handler.root_print(name)
         handler.par_add_norm(name, resDot, rtol=rtol, atol=atol)

@@ -87,8 +87,6 @@ contains
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
-    real(kind=realtype) :: max2
-    real(kind=realtype) :: max2d
     real(kind=realtype) :: temp
     real(kind=realtype) :: tempd
     real(kind=realtype) :: temp0
@@ -283,34 +281,22 @@ contains
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
           tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
-          stransition = sabcm_maxsmooth*tterm1
-          if (stransition .lt. xminn) then
-            call pushcontrol1b(0)
-            k_max = xminn
-          else
-            k_max = stransition
-            call pushcontrol1b(1)
-          end if
-          tterm1 = (k_max+log(exp(stransition-k_max)+exp(-k_max)))/&
-&           sabcm_maxsmooth
-! choose between tanh (current) and reference exp-sqrt formula
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
-              max1 = zero
-              call pushcontrol1b(1)
-            else
-              max1 = tterm1
+              tterm1 = zero
               call pushcontrol1b(0)
+            else
+              call pushcontrol1b(1)
+              tterm1 = tterm1
             end if
             if (tterm2 .lt. zero) then
-              max2 = zero
+              max1 = zero
               call pushcontrol1b(0)
             else
-              max2 = tterm2
+              max1 = tterm2
               call pushcontrol1b(1)
             end if
-! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-            arg_gamma = sqrt(max1) + sqrt(max2)
+            arg_gamma = sqrt(tterm1) + sqrt(max1)
             ttgamma = one - exp(-arg_gamma)
             if (ttgamma .lt. zero) then
               x1 = zero
@@ -327,6 +313,17 @@ contains
               call pushcontrol2b(1)
             end if
           else
+! differentiable reformulation: ks-smoothed max in term1, tanh intermittency
+            stransition = sabcm_maxsmooth*tterm1
+            if (stransition .lt. xminn) then
+              call pushcontrol1b(0)
+              k_max = xminn
+            else
+              k_max = stransition
+              call pushcontrol1b(1)
+            end if
+            tterm1 = (k_max+log(exp(stransition-k_max)+exp(-k_max)))/&
+&             sabcm_maxsmooth
 ! current tanh-based formula
             arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
             ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
@@ -375,6 +372,15 @@ contains
             arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*ttgammad
             tterm1d = arg_tanhd/sabcm_fsmooth
             tterm2d = arg_tanhd/sabcm_fsmooth
+            tempd1 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
+&             sabcm_maxsmooth)
+            tempd0 = exp(stransition-k_max)*tempd1
+            k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd1 - &
+&             tempd0
+            stransitiond = tempd0
+            call popcontrol1b(branch)
+            if (branch .ne. 0) stransitiond = stransitiond + k_maxd
+            tterm1d = sabcm_maxsmooth*stransitiond
             goto 100
           else
             x1d = ttgammad
@@ -400,37 +406,25 @@ contains
           ttgammad = x1d
         end if
         arg_gammad = exp(-arg_gamma)*ttgammad
+        if (tterm1 .eq. 0.0_8) then
+          tterm1d = 0.0_8
+        else
+          tterm1d = arg_gammad/(2.0*sqrt(tterm1))
+        end if
         if (max1 .eq. 0.0_8) then
           max1d = 0.0_8
         else
           max1d = arg_gammad/(2.0*sqrt(max1))
         end if
-        if (max2 .eq. 0.0_8) then
-          max2d = 0.0_8
-        else
-          max2d = arg_gammad/(2.0*sqrt(max2))
-        end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
           tterm2d = 0.0_8
         else
-          tterm2d = max2d
+          tterm2d = max1d
         end if
         call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          tterm1d = max1d
-        else
-          tterm1d = 0.0_8
-        end if
- 100    tempd1 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
-&         sabcm_maxsmooth)
-        tempd0 = exp(stransition-k_max)*tempd1
-        k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd1 - tempd0
-        stransitiond = tempd0
-        call popcontrol1b(branch)
-        if (branch .ne. 0) stransitiond = stransitiond + k_maxd
-        tterm1d = sabcm_maxsmooth*stransitiond
-        re_thetad = tterm1d/(re_theta_c*sabcm_const1)
+        if (branch .eq. 0) tterm1d = 0.0_8
+ 100    re_thetad = tterm1d/(re_theta_c*sabcm_const1)
         re_vortyd = re_thetad/2.193_realtype
         temp0 = sqrtvort/rlv(i, j, k)
         temp = d2wall(i, j, k)
@@ -731,7 +725,6 @@ contains
     real(kind=realtype) :: x1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
-    real(kind=realtype) :: max2
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -900,28 +893,18 @@ contains
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
           tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
-          stransition = sabcm_maxsmooth*tterm1
-          if (stransition .lt. xminn) then
-            k_max = xminn
-          else
-            k_max = stransition
-          end if
-          tterm1 = (k_max+log(exp(stransition-k_max)+exp(-k_max)))/&
-&           sabcm_maxsmooth
-! choose between tanh (current) and reference exp-sqrt formula
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
-              max1 = zero
+              tterm1 = zero
             else
-              max1 = tterm1
+              tterm1 = tterm1
             end if
             if (tterm2 .lt. zero) then
-              max2 = zero
+              max1 = zero
             else
-              max2 = tterm2
+              max1 = tterm2
             end if
-! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-            arg_gamma = sqrt(max1) + sqrt(max2)
+            arg_gamma = sqrt(tterm1) + sqrt(max1)
             ttgamma = one - exp(-arg_gamma)
             if (ttgamma .lt. zero) then
               x1 = zero
@@ -934,6 +917,15 @@ contains
               ttgamma = x1
             end if
           else
+! differentiable reformulation: ks-smoothed max in term1, tanh intermittency
+            stransition = sabcm_maxsmooth*tterm1
+            if (stransition .lt. xminn) then
+              k_max = xminn
+            else
+              k_max = stransition
+            end if
+            tterm1 = (k_max+log(exp(stransition-k_max)+exp(-k_max)))/&
+&             sabcm_maxsmooth
 ! current tanh-based formula
             arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
             ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))

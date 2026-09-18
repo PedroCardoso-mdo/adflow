@@ -764,7 +764,8 @@ contains
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
     real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
+! vl=0: match the sa-slm2015 final-series matrix scheme (was 0.025)
+    real(kind=realtype), parameter :: epsshear=0.0_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -2814,7 +2815,8 @@ contains
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
     real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
+! vl=0: match the sa-slm2015 final-series matrix scheme (was 0.025)
+    real(kind=realtype), parameter :: epsshear=0.0_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -13822,7 +13824,8 @@ contains
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
     real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
+! vl=0: match the sa-slm2015 final-series matrix scheme (was 0.025)
+    real(kind=realtype), parameter :: epsshear=0.0_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -15714,7 +15717,8 @@ contains
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
     real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
+! vl=0: match the sa-slm2015 final-series matrix scheme (was 0.025)
+    real(kind=realtype), parameter :: epsshear=0.0_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !

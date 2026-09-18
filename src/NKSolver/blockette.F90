@@ -1216,20 +1216,18 @@ contains
                         tterm1 = (Re_theta - Re_theta_c) / (Re_theta_c * SABCM_Const1)
 
 
-                        stransition =  SABCM_maxsmooth* tterm1
-                        ! Store k_max in external module not seen by Tapenade
-                        ! This breaks the derivative chain
-
-                        k_max = max(stransition, xminn)
-                        tterm1 = ((k_max + log(exp(stransition - k_max) + exp(- k_max))) / SABCM_maxsmooth)   
-
-                        ! Choose between tanh (current) and reference exp-sqrt formula
                         if (SABCM_Exp) then
-                            ! Reference formula: gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2)))
-                            arg_gamma = sqrt(max(tterm1, zero)) + sqrt(max(tterm2, zero))
+                            ! Original BCM (Mura & Cakmakcioglu 2020, Eq. 4): hard max in Term1,
+                            ! gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2)))
+                            tterm1 = max(tterm1, zero)
+                            arg_gamma = sqrt(tterm1) + sqrt(max(tterm2, zero))
                             tTgamma = one - exp(-arg_gamma)
                             tTgamma = min(max(tTgamma, zero), one)
                         else
+                            ! Differentiable reformulation: KS-smoothed max in Term1, tanh intermittency
+                            stransition =  SABCM_maxsmooth* tterm1
+                            k_max = max(stransition, xminn)
+                            tterm1 = ((k_max + log(exp(stransition - k_max) + exp(- k_max))) / SABCM_maxsmooth)
                             ! Current tanh-based formula
                             arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
                             tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
