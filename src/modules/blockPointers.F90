@@ -122,6 +122,7 @@ module blockPointers
 
     real(kind=realType), dimension(:, :, :), pointer :: p, gamma, aa
     real(kind=realType), dimension(:, :, :), pointer :: Tgamma
+    real(kind=realType), dimension(:, :, :), pointer :: bcmLambda, bcmFlam
     real(kind=realType), dimension(:, :, :), pointer :: shockSensor
     real(kind=realType), dimension(:, :, :), pointer :: rlv, rev
     real(kind=realType), dimension(:, :, :, :), pointer :: s
@@ -153,6 +154,7 @@ module blockPointers
     real(kind=realType), dimension(:, :, :), pointer :: radI, radJ, radK
 
     real(kind=realType), dimension(:, :, :), pointer :: d2Wall
+    real(kind=realType), dimension(:, :, :, :), pointer :: nWall
     real(kind=realType), dimension(:, :, :), pointer :: intermittency
     real(kind=realType), dimension(:, :, :), pointer :: filterDES  ! eran-des
     real(kind=realType), dimension(:, :, :, :), pointer :: bmti1
@@ -241,6 +243,7 @@ module blockPointers
     REAL(kind=realtype), DIMENSION(:, :, :), POINTER :: bvtk1d, bvtk2d
 
     REAL(kind=realtype), DIMENSION(:, :, :), POINTER :: d2walld
+    REAL(kind=realtype), DIMENSION(:, :, :, :), POINTER :: nwalld
 
     real(kind=realType), dimension(:, :, :, :), pointer :: w_offTimeInstanced
     real(kind=realType), dimension(:, :, :), pointer :: vol_offTimeInstanced

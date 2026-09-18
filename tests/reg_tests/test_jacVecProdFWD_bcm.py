@@ -13,7 +13,7 @@ import reg_test_utils as utils
 from baseclasses.testing import getTol
 
 import reg_test_classes
-from reg_bcm import ap_bcm_tut_wing, bcmBaseOptionsSmooth, bcmBaseOptionsHard, bcmAeroDVs
+from reg_bcm import ap_bcm_tut_wing, bcmBaseOptionsSmooth, bcmBaseOptionsHard, bcmBaseOptionsPG, bcmAeroDVs
 import reg_bcm
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +30,13 @@ test_params = [
         "name": "bcm_hard_tut_wing",
         "options": copy.deepcopy(bcmBaseOptionsHard),
         "ref_file": "jacvecfwd_bcm_hard_tut_wing.json",
+        "aero_prob": copy.deepcopy(ap_bcm_tut_wing),
+        "N_PROCS": 2,
+    },
+    {
+        "name": "bcm_pg_tut_wing",
+        "options": copy.deepcopy(bcmBaseOptionsPG),
+        "ref_file": "jacvecfwd_bcm_pg_tut_wing.json",
         "aero_prob": copy.deepcopy(ap_bcm_tut_wing),
         "N_PROCS": 2,
     },

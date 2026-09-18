@@ -513,6 +513,8 @@ module block
         real(kind=realType), dimension(:, :, :), pointer :: p, gamma, aa
         real(kind=realType), dimension(:, :, :), pointer :: rlv, rev
         real(kind=realType), dimension(:, :, :), pointer :: Tgamma
+        ! SA-BCM pressure-gradient diagnostics (lambda_thetaL and F(lambda)), level 1 only
+        real(kind=realType), dimension(:, :, :), pointer :: bcmLambda, bcmFlam
         real(kind=realType), dimension(:, :, :, :), pointer :: s
         real(kind=realType), dimension(:, :, :), pointer :: shockSensor
 
@@ -662,6 +664,10 @@ module block
         ! intermittency( )       - Function defining the transition location
 
         real(kind=realType), dimension(:, :, :), pointer :: d2Wall, filterDES
+        ! nWall(3,2:il,2:jl,2:kl) - unit vector from the nearest wall point to
+        !                          the cell centre (approx. wall-distance path
+        !                          only; zero where no association / exact path)
+        real(kind=realType), dimension(:, :, :, :), pointer :: nWall
         real(kind=realType), dimension(:, :, :), pointer :: intermittency
 
         ! bmti1(je,ke,nt1:nt2,nt1:nt2): Matrix used for the implicit

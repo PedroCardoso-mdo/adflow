@@ -35,9 +35,9 @@ unmodified terms with `use_SABCM=False` — see `tests/reg_tests/reg_bcm.py`.
 
 ### Runtime options
 
-From `adflow/pyADflow.py:5685-5692` (defaults) and `pyADflow.py:6094-6101` (namelist mapping),
-`src/modules/inputParam.F90:587-592` (Fortran declarations), `src/f2py/adflow.pyf:1177-1184`
-(f2py exposure):
+From `adflow/pyADflow.py` (`SABCM_*` defaults dict and the `["physics", "sabcm_*"]` namelist mapping —
+grep `SABCM_maxsmooth`), `src/modules/inputParam.F90` (Fortran declarations, `SABCM_*` in
+`inputPhysics`), `src/f2py/adflow.pyf` (f2py exposure):
 
 | Python option | Fortran variable | Default | Role |
 |---|---|---|---|
@@ -49,6 +49,12 @@ From `adflow/pyADflow.py:5685-5692` (defaults) and `pyADflow.py:6094-6101` (name
 | `SABCM_S0_tanh` | `SABCM_S0_tanh` | `0.5` | S₀ — "smooth" (tanh) variant's blend centering value. Not from either paper (see `SABCM_Exp` row) — part of the deliberate user smoothing, calibrated, do not retune casually (CLAUDE.md rule 5). |
 | `SABCM_fsmooth` | `SABCM_fsmooth` | `0.08` | f_smooth — "smooth" (tanh) variant's blend width. Same caveat as `SABCM_S0_tanh`. |
 | `SABCM_maxsmooth` | `SABCM_maxsmooth` | `50.0` | KS-function (log-sum-exp) aggregation parameter replacing the paper's `max(Term1, 0)` kink — the other deliberate smoothing, applies to **both** `SABCM_Exp` variants (unlike S0_tanh/fsmooth, which are tanh-variant-only). |
+| `SABCM_PG` | `SABCM_PG` (logical) | `False` | **Pressure-gradient sensor (2026-09-18, branch `sa-bcm-pg`, `docs/studies/22_bcm_pressure_gradient`)**: `Re_theta_c ← Re_theta_c · F(λ)` with Menter-2015 `λ_θL = -coef·(d²/ν)·nᵀ∇u n + off` (n = exact unit wall-normal `nWall` from `updateWallDistancesQuickly`), `λ = smooth clip(gain·λ_θL, ±lamMax)`, `F` = Langtry–Menter F(λ_θ) in the Piotrowski–Zingg smooth form (Eqs. 54–57, `bcmFlambda` in `turbUtils.F90`). Off ⇒ bit-identical to the plain SA-BCM path. Requires `use_SABCM` and `useApproxWallDistance`. |
+| `SABCM_PG_coef` | `SABCM_PG_coef` | `7.57e-3` | Menter's λ_θL coefficient. |
+| `SABCM_PG_off` | `SABCM_PG_off` | `0.0128` | λ_θL offset. Menter's value leaves λ_θL = −0.0034 for Blasius at the Re_v peak (F ≈ 0.96, not neutral); the Falkner–Skan-calibrated value **0.01623** zeroes it — runs pass it explicitly. |
+| `SABCM_PG_gain` | `SABCM_PG_gain` | `1.0` | Linear map λ_θ ≈ gain·(λ_θL+off). Falkner–Skan LS over |λ_θ| ≤ 0.1 gives **2.0** (adverse-only 1.4, favourable-only 3.0) — runs pass it explicitly; swept on the cross-model set. |
+| `SABCM_PG_lamMax` | `SABCM_PG_lamMax` | `0.1` | Clip of λ (LM2009 validity window ±0.1, as the SA-GR `rsaGRclampLambdaTheta`). |
+| `SABCM_PG_p` | `SABCM_PG_p` | `300.0` | `smoothMinMax` sharpness for the clip and for the F2/F blends. |
 | `NKLSRelax` | `NK_LSRelax` (logical, `NKSolver` module) | `False` | **Not SA-BCM-specific** — generic NK line-search relaxation (`LSCubic`'s Armijo `alpha` 1e-2→1e-3, turb-blowup pre-limit factor 2.0→3.0). Added 2026-07-24 from a sibling repo's NK-convergence-mods review as the one idea that transfers without needing new transported-state machinery. Off by default: NK has no per-node physicality check, so only turn on if a run is observed pinned at `minlambda` for 100+ consecutive iterations. |
 
 **Hard constraint**: `src/inputParam/inputParamRoutines.F90:3413-3423` — SA-BCM with plain SA
@@ -77,7 +83,8 @@ numbers without re-checking against `docs/papers/` directly.
 | S0 | tanh blend center | `SABCM_S0_tanh` |
 | f_smooth | tanh blend width | `SABCM_fsmooth` |
 | ρ (KS aggregation) | KS-function sharpness for `max(f,0)` | `SABCM_maxsmooth` |
-| k_max | KS anchor, treated as constant under AD | computed inline, `∂k_max/∂f = 0` enforced by construction |
+| k_max | KS anchor `max(stransition, xminn)` | computed inline; **differentiated by Tapenade like any other `max`** (`sa_b.f90` carries the `pushcontrol` branch) — the older "not seen by Tapenade" note was stale |
+| λ_θL, F(λ) | pressure-gradient sensor and Langtry factor (`SABCM_PG`) | `lamL`, `Flam` in `saSource`; volume CGNS `BCM_lambda`, `BCM_Flambda` (`volumeVariables: bcmlambda, bcmflam`) |
 
 ## 2. Diagnostics
 

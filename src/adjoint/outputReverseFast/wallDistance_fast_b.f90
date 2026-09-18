@@ -17,7 +17,7 @@ contains
 ! pointers are already set.
     use constants
     use blockpointers, only : nx, ny, nz, il, jl, kl, x, flowdoms&
-&   , d2wall
+&   , d2wall, nwall
     implicit none
 ! subroutine arguments
     integer(kind=inttype) :: nn, level, sps
@@ -36,6 +36,9 @@ contains
 ! this node is too far away and has no
 ! association. set the distance to a large constant.
         d2wall(i, j, k) = large
+        nwall(1, i, j, k) = zero
+        nwall(2, i, j, k) = zero
+        nwall(3, i, j, k) = zero
       else
 ! extract elemid and u-v position for the association of
 ! this cell:
@@ -61,6 +64,11 @@ contains
 ! distance between them
         d2wall(i, j, k) = sqrt((xc(1)-xp(1))**2 + (xc(2)-xp(2))**2 + (xc&
 &         (3)-xp(3))**2)
+! unit wall-normal (nearest wall point -> cell centre), used by
+! the sa-bcm pressure-gradient sensor. d2wall > 0 for any cell centre.
+        nwall(1, i, j, k) = (xc(1)-xp(1))/d2wall(i, j, k)
+        nwall(2, i, j, k) = (xc(2)-xp(2))/d2wall(i, j, k)
+        nwall(3, i, j, k) = (xc(3)-xp(3))/d2wall(i, j, k)
       end if
     end do
   end subroutine updatewalldistancesquickly

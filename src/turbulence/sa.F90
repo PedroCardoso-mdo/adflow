@@ -99,6 +99,7 @@ contains
         use inputPhysics
         use inputDiscretization, only: approxSA
         use flowVarRefState
+        use turbUtils
         implicit none
 
         ! Local parameters
@@ -116,8 +117,11 @@ contains
         real(kind=realType) :: vortx, vorty, vortz
         real(kind=realType) :: omegax, omegay, omegaz
         real(kind=realType) :: strainMag2, strainProd, vortProd 
-        real(kind=realType) :: tterm2, Re_theta_c, Re_vorty, Re_theta, tterm1, tTgamma
+        ! NOTE: no local may end in _c: Tapenade names its derivative <name>_cd/_cb and the
+        ! autoEdit scripts strip those suffixes (=> duplicate declaration). Hence ReThetaCrit.
+        real(kind=realType) :: tterm2, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
         real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma
+        real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
         real(kind=realType), parameter :: xminn = 1.e-10_realType
 
         ! Set model constants
@@ -317,14 +321,43 @@ contains
                             tterm2 = fv1*chi / SABCM_Const2
                             
                             ! Re_theta critical
-                            Re_theta_c = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
+                            ReThetaCrit = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
+
+                            ! Pressure-gradient sensor (Menter 2015 lambda_thetaL with the
+                            ! wall normal n = nWall, Langtry F(lambda) as in the SA-gamma-Retheta
+                            ! model). Off => Flam = 1 and nothing below touches ReThetaCrit.
+                            Flam = one
+                            lamL = zero
+                            if (SABCM_PG) then
+                                nwx = nWall(1, i, j, k)
+                                nwy = nWall(2, i, j, k)
+                                nwz = nWall(3, i, j, k)
+                                ! n . grad(u) . n ; true gradient = two*fact*(uu.), fact = fourth/vol
+                                Snn = two * fact * (nwx * (nwx * uux + nwy * uuy + nwz * uuz) &
+                                                    + nwy * (nwx * vvx + nwy * vvy + nwz * vvz) &
+                                                    + nwz * (nwx * wwx + nwy * wwy + nwz * wwz))
+                                ! No Reynolds factor: nu = rlv/rho is non-dimensional with
+                                ! L_ref = 1 m, same convention as Re_vorty below.
+                                lamL = -SABCM_PG_coef * (d2wall(i, j, k)**2 / nu) * Snn + SABCM_PG_off
+                                ! Smooth clip of gain*lamL to [-lamMax, lamMax] (distinct
+                                ! targets, not in place: keeps the fast-reverse AD exact).
+                                ! Module variables are copied to locals before being passed to the
+                                ! differentiated helpers (Tapenade otherwise emits a seed for them).
+                                mlamMax = -SABCM_PG_lamMax
+                                plamMax = SABCM_PG_lamMax
+                                mp = -SABCM_PG_p
+                                lamLo = smoothMinMax(SABCM_PG_gain * lamL, mlamMax, SABCM_PG_p)
+                                lam = smoothMinMax(lamLo, plamMax, mp)
+                                Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
+                                ReThetaCrit = ReThetaCrit * Flam
+                            end if
 
                             ! Re_theta actual
                             Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
                             Re_theta = Re_vorty / 2.193_realType
 
                             ! tterm1 (can be huge ~1e5)
-                            tterm1 = (Re_theta - Re_theta_c) / (Re_theta_c * SABCM_Const1)
+                            tterm1 = (Re_theta - ReThetaCrit) / (ReThetaCrit * SABCM_Const1)
 
 
                             if (SABCM_Exp) then
@@ -345,6 +378,8 @@ contains
                             end if
                                                                               
                             Tgamma(i, j, k) = tTgamma
+                            bcmLambda(i, j, k) = lamL
+                            bcmFlam(i, j, k) = Flam
                             ft2 = zero
                         end if
 

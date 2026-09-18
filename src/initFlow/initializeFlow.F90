@@ -533,6 +533,16 @@ contains
 
                 flowDoms(nn, level, sps)%Tgamma = one
 
+                ! SA-BCM pressure-gradient diagnostics (lambda_thetaL, F(lambda)).
+                allocate (flowDoms(nn, level, sps)%bcmLambda(0:ib, 0:jb, 0:kb), &
+                          flowDoms(nn, level, sps)%bcmFlam(0:ib, 0:jb, 0:kb), &
+                          stat=ierr)
+                if (ierr /= 0) &
+                    call terminate("allocMemFlovarPart1", &
+                                   "Memory allocation failure for bcmLambda/bcmFlam.")
+                flowDoms(nn, level, sps)%bcmLambda = zero
+                flowDoms(nn, level, sps)%bcmFlam = one
+
                 ! The laminar viscosity for viscous computations.
                 ! Always allocate rlv due to reverse mode - Peter Lyu
                 !if( viscous ) then

@@ -2141,4 +2141,88 @@ contains
 
     end subroutine kwCDterm
 #endif
+
+    ! ------------------------------------------------------------------
+    !  SA-BCM pressure-gradient sensor helpers (outside USE_TAPENADE guard:
+    !  both are on the differentiated path of saSource).
+    !  NOTE: bare `use constants` on purpose -- smoothMinMax branches, so the
+    !  fast-reverse autoEdit rewrites pushControl into myIntPtr/myIntStack,
+    !  which live in `constants`; an `only:` list is propagated verbatim by
+    !  Tapenade and breaks the *_fast_b compile.
+    ! ------------------------------------------------------------------
+
+    function smoothMinMax(g1, g2, p) result(phi)
+        !
+        !  Smooth max (p > 0) or min (p < 0) of two variables.
+        !  Algorithm 1, Piotrowski & Zingg (AIAA J. 2020,
+        !  doi:10.2514/1.J059784), Eqs. 43-45.
+        !
+        !       Phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+        !                     = b + log(1 + exp(p*(a-b))) / p   [min]
+        !  where a = max(g1,g2), b = min(g1,g2).
+        !
+        !  Proximity switch (Eq. 45): when |a-b| > lambda_switch
+        !  the smooth correction is below machine epsilon, so the
+        !  bare max/min is returned directly.
+        !
+        use constants
+        implicit none
+
+        real(kind=realType), intent(in) :: g1, g2, p
+        real(kind=realType) :: phi
+
+        real(kind=realType), parameter :: p_switch = 1.0e-15_realType
+        real(kind=realType) :: a, b, lambda_switch
+
+        a = max(g1, g2)
+        b = min(g1, g2)
+        lambda_switch = log(abs(p) * p_switch) / abs(p)
+
+        if (p > 0.0_realType) then
+            if ((a - b) > -lambda_switch) then
+                phi = a
+            else
+                phi = a + log(one + exp(p * (b - a))) / p
+            end if
+        else
+            if ((a - b) > -lambda_switch) then
+                phi = b
+            else
+                phi = b + log(one + exp(p * (a - b))) / p
+            end if
+        end if
+
+    end function smoothMinMax
+
+    function bcmFlambda(Tu, lam, p) result(Flam)
+        !
+        !  Langtry-Menter pressure-gradient factor F(lambda_theta) in the
+        !  smooth form of Piotrowski & Zingg Eqs. 54-57:
+        !     F1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-Tu/0.5)
+        !     F2 = smoothMax(F1, 1)
+        !     F3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(Tu/1.5)^1.5)
+        !     F  = smoothMin(F2, F3)
+        !  Tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
+        !  F(0) = 1 exactly (F1 = F3 = 1).
+        !
+        use constants
+        implicit none
+
+        real(kind=realType), intent(in) :: Tu, lam, p
+        real(kind=realType) :: Flam
+
+        real(kind=realType) :: F1val, F2val, F3val, mp
+
+        F1val = one + 0.275_realType * (one - exp(-35.0_realType * lam)) &
+                * exp(-Tu / 0.5_realType)
+        F2val = smoothMinMax(F1val, one, p)
+        F3val = one - (-12.986_realType * lam &
+                       - 123.66_realType * lam**2 &
+                       - 405.689_realType * lam**3) &
+                * exp(-(Tu / 1.5_realType)**1.5_realType)
+        mp = -p
+        Flam = smoothMinMax(F2val, F3val, mp)
+
+    end function bcmFlambda
+
 end module turbUtils

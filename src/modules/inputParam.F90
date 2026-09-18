@@ -585,11 +585,14 @@ module inputPhysics
     integer(kind=intType) :: rvfN
     logical :: rvfB
     logical :: useQCR, useRotationSA, useft2SA, use_SABCM
-    logical :: SABCM_Exp
+    logical :: SABCM_Exp, SABCM_PG
     logical :: wallFunctions, wallDistanceNeeded
 
     real(kind=realType) :: alpha, beta
     real(kind=realType) :: SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_S0_tanh, SABCM_fsmooth,SABCM_maxsmooth
+    ! SA-BCM pressure-gradient sensor (Menter 2015 lambda_thetaL + Langtry F(lambda)):
+    ! lamL = -coef*(d^2/nu)*n.grad(u).n + off ; lam = clip(gain*lamL, +-lamMax) ; Re_theta_c *= F(lam)
+    real(kind=realType) :: SABCM_PG_coef, SABCM_PG_off, SABCM_PG_gain, SABCM_PG_lamMax, SABCM_PG_p
     integer(kind=intType) :: liftIndex
     real(kind=realType) :: Mach, MachCoef, MachGrid
     real(kind=realType) :: Reynolds, ReynoldsLength

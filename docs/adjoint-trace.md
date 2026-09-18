@@ -1,6 +1,20 @@
 # Adjoint / AD trace — SA-BCM
 
-## Current sync status (as of commit `85f40a0b`, branch `sa-bcm`)
+## Current sync status (branch `sa-bcm-pg`, 2026-09-18)
+
+- Tapenade rerun (`AD_I.sh`: ad_forward, ad_reverse, ad_reverse_fast) on 2026-09-18 for the
+  pressure-gradient sensor (`SABCM_PG`, `docs/studies/22_bcm_pressure_gradient`). New independent
+  `nWall` in both heads (`Makefile_tapenade`: `wallDistance%updateWallDistancesQuickly(x, xSurf,
+  d2wall, nWall) > (x, xSurf, d2wall, nWall)` and `sa%saSource(..., d2wall, nWall) > (..., scratch)`);
+  the state-only head is unchanged (`nWall` passive there, like `d2wall`). Its seed `nwalld`
+  (`blockPointers.F90`, `flowDomsd%nWall` in `adjointUtils.F90`) flows into `xd`/`xsurfd` through the
+  existing `updateWallDistancesQuickly_b` call in `masterRoutines.F90` — no hand-written change
+  there. New differentiated helpers `smoothMinMax`, `bcmFlambda` (`turbUtils.F90`, bare
+  `use constants` because of the fast-reverse `myIntPtr` rewrite).
+- Earlier rerun (2026-08-25, baseline commit `ae1a7dbb`): the fsmooth restructure (KS max moved into
+  the smooth branch, hard `max` in the `SABCM_Exp` branch).
+
+## Previous sync status (as of commit `85f40a0b`, branch `sa-bcm`) — historical
 
 - `git diff b8a27a25 HEAD -- src/turbulence/sa.F90` → empty.
 - `git diff b8a27a25 HEAD -- src/adjoint/outputForward/sa_d.f90 src/adjoint/outputReverse/sa_b.f90 src/adjoint/outputReverseFast/sa_fast_b.f90` → empty.

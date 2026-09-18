@@ -9,10 +9,11 @@ module walldistance_d
 
 contains
 !  differentiation of updatewalldistancesquickly in forward (tangent) mode (with options i4 dr8 r8):
-!   variations   of useful results: *d2wall
-!   with respect to varying inputs: *x *d2wall *xsurf
-!   rw status of diff variables: *x:in *d2wall:in-out *xsurf:in
-!   plus diff mem management of: x:in d2wall:in xsurf:in
+!   variations   of useful results: *nwall *d2wall
+!   with respect to varying inputs: *nwall *x *d2wall *xsurf
+!   rw status of diff variables: *nwall:in-out *x:in *d2wall:in-out
+!                *xsurf:in
+!   plus diff mem management of: nwall:in x:in d2wall:in xsurf:in
   subroutine updatewalldistancesquickly_d(nn, level, sps)
 ! this is the actual update routine that uses xsurf. it is done on
 ! block-level-sps basis.  this is the used to update the wall
@@ -22,7 +23,7 @@ contains
 ! pointers are already set.
     use constants
     use blockpointers, only : nx, ny, nz, il, jl, kl, x, xd, flowdoms,&
-&   flowdomsd, d2wall, d2walld
+&   flowdomsd, d2wall, d2walld, nwall, nwalld
     implicit none
 ! subroutine arguments
     integer(kind=inttype) :: nn, level, sps
@@ -44,6 +45,12 @@ contains
 ! association. set the distance to a large constant.
             d2walld(i, j, k) = 0.0_8
             d2wall(i, j, k) = large
+            nwalld(1, i, j, k) = 0.0_8
+            nwall(1, i, j, k) = zero
+            nwalld(2, i, j, k) = 0.0_8
+            nwall(2, i, j, k) = zero
+            nwalld(3, i, j, k) = 0.0_8
+            nwall(3, i, j, k) = zero
           else
 ! extract elemid and u-v position for the association of
 ! this cell:
@@ -91,6 +98,20 @@ contains
               d2walld(i, j, k) = arg1d/(2.0*temp)
             end if
             d2wall(i, j, k) = temp
+! unit wall-normal (nearest wall point -> cell centre), used by
+! the sa-bcm pressure-gradient sensor. d2wall > 0 for any cell centre.
+            temp = (xc(1)-xp(1))/d2wall(i, j, k)
+            nwalld(1, i, j, k) = (xcd(1)-xpd(1)-temp*d2walld(i, j, k))/&
+&             d2wall(i, j, k)
+            nwall(1, i, j, k) = temp
+            temp = (xc(2)-xp(2))/d2wall(i, j, k)
+            nwalld(2, i, j, k) = (xcd(2)-xpd(2)-temp*d2walld(i, j, k))/&
+&             d2wall(i, j, k)
+            nwall(2, i, j, k) = temp
+            temp = (xc(3)-xp(3))/d2wall(i, j, k)
+            nwalld(3, i, j, k) = (xcd(3)-xpd(3)-temp*d2walld(i, j, k))/&
+&             d2wall(i, j, k)
+            nwall(3, i, j, k) = temp
           end if
         end do
       end do
@@ -106,7 +127,7 @@ contains
 ! pointers are already set.
     use constants
     use blockpointers, only : nx, ny, nz, il, jl, kl, x, flowdoms, &
-&   d2wall
+&   d2wall, nwall
     implicit none
 ! subroutine arguments
     integer(kind=inttype) :: nn, level, sps
@@ -123,6 +144,9 @@ contains
 ! this node is too far away and has no
 ! association. set the distance to a large constant.
             d2wall(i, j, k) = large
+            nwall(1, i, j, k) = zero
+            nwall(2, i, j, k) = zero
+            nwall(3, i, j, k) = zero
           else
 ! extract elemid and u-v position for the association of
 ! this cell:
@@ -150,6 +174,11 @@ contains
             arg1 = (xc(1)-xp(1))**2 + (xc(2)-xp(2))**2 + (xc(3)-xp(3))**&
 &             2
             d2wall(i, j, k) = sqrt(arg1)
+! unit wall-normal (nearest wall point -> cell centre), used by
+! the sa-bcm pressure-gradient sensor. d2wall > 0 for any cell centre.
+            nwall(1, i, j, k) = (xc(1)-xp(1))/d2wall(i, j, k)
+            nwall(2, i, j, k) = (xc(2)-xp(2))/d2wall(i, j, k)
+            nwall(3, i, j, k) = (xc(3)-xp(3))/d2wall(i, j, k)
           end if
         end do
       end do

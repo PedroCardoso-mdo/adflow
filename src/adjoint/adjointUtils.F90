@@ -794,6 +794,11 @@ contains
                     allocate (flowDoms(nn, 1, sps)%d2wall(2:il, 2:jl, 2:kl))
                     call EChk(ierr, __FILE__, __LINE__)
                 end if
+                if (.not. associated(flowDoms(nn, 1, sps)%nWall)) then
+                    allocate (flowDoms(nn, 1, sps)%nWall(3, 2:il, 2:jl, 2:kl))
+                    call EChk(ierr, __FILE__, __LINE__)
+                    flowDoms(nn, 1, sps)%nWall = zero
+                end if
 
                 ! Now allocate all valus that have a differentiable
                 ! dependence.
@@ -849,6 +854,7 @@ contains
                     flowDomsd(nn, level, sps)%bvtk1(ie, je, nt1:nt2), &
                     flowDomsd(nn, level, sps)%bvtk2(ie, je, nt1:nt2), &
                     flowDomsd(nn, level, sps)%d2Wall(2:il, 2:jl, 2:kl), &
+                    flowDomsd(nn, level, sps)%nWall(3, 2:il, 2:jl, 2:kl), &
                     stat=ierr)
                 call EChk(ierr, __FILE__, __LINE__)
 
@@ -958,6 +964,7 @@ contains
         integer(kind=intType) :: mm, i, iDom
         integer(kind=intType) :: iBoco, iData, iDirichlet
         flowDomsd(nn, level, sps)%d2wall = zero
+        flowDomsd(nn, level, sps)%nWall = zero
         flowDomsd(nn, level, sps)%x = zero
         flowDomsd(nn, level, sps)%si = zero
         flowDomsd(nn, level, sps)%sj = zero

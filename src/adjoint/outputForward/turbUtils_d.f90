@@ -2103,11 +2103,253 @@ nadvloopspectral:do ii=1,nadv
 !$ad checkpoint-end
 
   end subroutine turbadvection
+
+!  differentiation of smoothminmax in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: phi
+!   with respect to varying inputs: g1 g2
 ! ----------------------------------------------------------------------
 !                                                                      |
 !                    no tapenade routine below this line               |
 !                                                                      |
 ! ----------------------------------------------------------------------
+! ------------------------------------------------------------------
+!  sa-bcm pressure-gradient sensor helpers (outside 1 guard:
+!  both are on the differentiated path of sasource).
+!  note: bare `use constants` on purpose -- smoothminmax branches, so the
+!  fast-reverse autoedit rewrites pushcontrol into myintptr/myintstack,
+!  which live in `constants`; an `only:` list is propagated verbatim by
+!  tapenade and breaks the *_fast_b compile.
+! ------------------------------------------------------------------
+  real(kind=realtype) function smoothminmax_d(g1, g1d, g2, g2d, p, phi) &
+& result (phid)
+!
+!  smooth max (p > 0) or min (p < 0) of two variables.
+!  algorithm 1, piotrowski & zingg (aiaa j. 2020,
+!  doi:10.2514/1.j059784), eqs. 43-45.
+!
+!       phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+!                     = b + log(1 + exp(p*(a-b))) / p   [min]
+!  where a = max(g1,g2), b = min(g1,g2).
+!
+!  proximity switch (eq. 45): when |a-b| > lambda_switch
+!  the smooth correction is below machine epsilon, so the
+!  bare max/min is returned directly.
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: g1, g2, p
+    real(kind=realtype), intent(in) :: g1d, g2d
+    real(kind=realtype), intent(out) :: phi
+    real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
+    real(kind=realtype) :: a, b, lambda_switch
+    real(kind=realtype) :: ad, bd
+    intrinsic max
+    intrinsic min
+    intrinsic abs
+    intrinsic log
+    intrinsic exp
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
+    real(kind=realtype) :: arg2
+    real(kind=realtype) :: arg2d
+    if (g1 .lt. g2) then
+      ad = g2d
+      a = g2
+    else
+      ad = g1d
+      a = g1
+    end if
+    if (g1 .gt. g2) then
+      bd = g2d
+      b = g2
+    else
+      bd = g1d
+      b = g1
+    end if
+    if (p .ge. 0.) then
+      abs0 = p
+    else
+      abs0 = -p
+    end if
+    if (p .ge. 0.) then
+      abs1 = p
+    else
+      abs1 = -p
+    end if
+    lambda_switch = log(abs0*p_switch)/abs1
+    if (p .gt. 0.0_realtype) then
+      if (a - b .gt. -lambda_switch) then
+        phid = ad
+        phi = a
+      else
+        arg1d = p*(bd-ad)
+        arg1 = p*(b-a)
+        arg2d = exp(arg1)*arg1d
+        arg2 = one + exp(arg1)
+        phid = ad + arg2d/(p*arg2)
+        phi = a + log(arg2)/p
+      end if
+    else if (a - b .gt. -lambda_switch) then
+      phid = bd
+      phi = b
+    else
+      arg1d = p*(ad-bd)
+      arg1 = p*(a-b)
+      arg2d = exp(arg1)*arg1d
+      arg2 = one + exp(arg1)
+      phid = bd + arg2d/(p*arg2)
+      phi = b + log(arg2)/p
+    end if
+  end function smoothminmax_d
+
+! ----------------------------------------------------------------------
+!                                                                      |
+!                    no tapenade routine below this line               |
+!                                                                      |
+! ----------------------------------------------------------------------
+! ------------------------------------------------------------------
+!  sa-bcm pressure-gradient sensor helpers (outside 1 guard:
+!  both are on the differentiated path of sasource).
+!  note: bare `use constants` on purpose -- smoothminmax branches, so the
+!  fast-reverse autoedit rewrites pushcontrol into myintptr/myintstack,
+!  which live in `constants`; an `only:` list is propagated verbatim by
+!  tapenade and breaks the *_fast_b compile.
+! ------------------------------------------------------------------
+  function smoothminmax(g1, g2, p) result (phi)
+!
+!  smooth max (p > 0) or min (p < 0) of two variables.
+!  algorithm 1, piotrowski & zingg (aiaa j. 2020,
+!  doi:10.2514/1.j059784), eqs. 43-45.
+!
+!       phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+!                     = b + log(1 + exp(p*(a-b))) / p   [min]
+!  where a = max(g1,g2), b = min(g1,g2).
+!
+!  proximity switch (eq. 45): when |a-b| > lambda_switch
+!  the smooth correction is below machine epsilon, so the
+!  bare max/min is returned directly.
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: g1, g2, p
+    real(kind=realtype) :: phi
+    real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
+    real(kind=realtype) :: a, b, lambda_switch
+    intrinsic max
+    intrinsic min
+    intrinsic abs
+    intrinsic log
+    intrinsic exp
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg2
+    if (g1 .lt. g2) then
+      a = g2
+    else
+      a = g1
+    end if
+    if (g1 .gt. g2) then
+      b = g2
+    else
+      b = g1
+    end if
+    if (p .ge. 0.) then
+      abs0 = p
+    else
+      abs0 = -p
+    end if
+    if (p .ge. 0.) then
+      abs1 = p
+    else
+      abs1 = -p
+    end if
+    lambda_switch = log(abs0*p_switch)/abs1
+    if (p .gt. 0.0_realtype) then
+      if (a - b .gt. -lambda_switch) then
+        phi = a
+      else
+        arg1 = p*(b-a)
+        arg2 = one + exp(arg1)
+        phi = a + log(arg2)/p
+      end if
+    else if (a - b .gt. -lambda_switch) then
+      phi = b
+    else
+      arg1 = p*(a-b)
+      arg2 = one + exp(arg1)
+      phi = b + log(arg2)/p
+    end if
+  end function smoothminmax
+
+!  differentiation of bcmflambda in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: flam
+!   with respect to varying inputs: lam
+  real(kind=realtype) function bcmflambda_d(tu, lam, lamd, p, flam) &
+& result (flamd)
+!
+!  langtry-menter pressure-gradient factor f(lambda_theta) in the
+!  smooth form of piotrowski & zingg eqs. 54-57:
+!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)
+!     f2 = smoothmax(f1, 1)
+!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)
+!     f  = smoothmin(f2, f3)
+!  tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
+!  f(0) = 1 exactly (f1 = f3 = 1).
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lam, p
+    real(kind=realtype), intent(in) :: lamd
+    real(kind=realtype), intent(out) :: flam
+    real(kind=realtype) :: f1val, f2val, f3val, mp
+    real(kind=realtype) :: f1vald, f2vald, f3vald
+    intrinsic exp
+    real(kind=realtype) :: arg1
+    real(kind=8) :: temp
+    temp = 0.275_realtype*exp(-(tu/0.5_realtype))
+    f1vald = temp*exp(-(35.0_realtype*lam))*35.0_realtype*lamd
+    f1val = one + temp*(one-exp(-(35.0_realtype*lam)))
+    f2vald = smoothminmax_d(f1val, f1vald, one, 0.0_8, p, f2val)
+    arg1 = -((tu/1.5_realtype)**1.5_realtype)
+    temp = exp(arg1)
+    f3vald = temp*(123.66_realtype*2*lam+405.689_realtype*3*lam**2+&
+&     12.986_realtype)*lamd
+    f3val = one - temp*(-(12.986_realtype*lam)-123.66_realtype*(lam*lam)&
+&     -405.689_realtype*(lam*lam*lam))
+    mp = -p
+    flamd = smoothminmax_d(f2val, f2vald, f3val, f3vald, mp, flam)
+  end function bcmflambda_d
+
+  function bcmflambda(tu, lam, p) result (flam)
+!
+!  langtry-menter pressure-gradient factor f(lambda_theta) in the
+!  smooth form of piotrowski & zingg eqs. 54-57:
+!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)
+!     f2 = smoothmax(f1, 1)
+!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)
+!     f  = smoothmin(f2, f3)
+!  tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
+!  f(0) = 1 exactly (f1 = f3 = 1).
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lam, p
+    real(kind=realtype) :: flam
+    real(kind=realtype) :: f1val, f2val, f3val, mp
+    intrinsic exp
+    real(kind=realtype) :: arg1
+    f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lam)))*exp(-(&
+&     tu/0.5_realtype))
+    f2val = smoothminmax(f1val, one, p)
+    arg1 = -((tu/1.5_realtype)**1.5_realtype)
+    f3val = one - (-(12.986_realtype*lam)-123.66_realtype*lam**2-&
+&     405.689_realtype*lam**3)*exp(arg1)
+    mp = -p
+    flam = smoothminmax(f2val, f3val, mp)
+  end function bcmflambda
 
 end module turbutils_d
 

@@ -12,7 +12,7 @@ from reg_default_options import adflowDefOpts, defaultAeroDVs
 import reg_test_utils as utils
 import reg_test_classes
 import reg_bcm
-from reg_bcm import ap_bcm_tut_wing, bcmBaseOptionsSmooth, bcmBaseOptionsHard
+from reg_bcm import ap_bcm_tut_wing, bcmBaseOptionsSmooth, bcmBaseOptionsHard, bcmBaseOptionsPG
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
 
@@ -28,6 +28,13 @@ test_params = [
         "name": "bcm_hard_tut_wing",
         "options": copy.deepcopy(bcmBaseOptionsHard),
         "ref_file": "jacvecbwd_bcm_hard_tut_wing.json",
+        "aero_prob": copy.deepcopy(ap_bcm_tut_wing),
+        "N_PROCS": 2,
+    },
+    {
+        "name": "bcm_pg_tut_wing",
+        "options": copy.deepcopy(bcmBaseOptionsPG),
+        "ref_file": "jacvecbwd_bcm_pg_tut_wing.json",
         "aero_prob": copy.deepcopy(ap_bcm_tut_wing),
         "N_PROCS": 2,
     },

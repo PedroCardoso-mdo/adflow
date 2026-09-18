@@ -743,6 +743,8 @@ contains
         volWriteResMom = .false.
         volWriteResRhoe = .false.
         volWriteTgamma = .true.
+        volWriteBcmLambda = .false.
+        volWriteBcmFlam = .false.
 
         ! Set the values which depend on the equations to be solved.
 
@@ -2609,6 +2611,8 @@ contains
         volWriteStatus = .false.
         volWriteIntermittency = .false.
         volWriteTgamma = .true.
+        volWriteBcmLambda = .false.
+        volWriteBcmFlam = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -2762,6 +2766,14 @@ contains
 
             case ("tgamma")
                 volWriteTgamma = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("bcmlambda")
+                volWriteBcmLambda = .true.
+                nVarSpecified = nVarSpecified + 1
+
+            case ("bcmflam")
+                volWriteBcmFlam = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default
@@ -3418,6 +3430,17 @@ contains
             if (myID == 0) then
                 call terminate("checkInputParam", &
                                "SABCM requires useApproxWallDistance=.true. for consistent wall-distance adjoint sensitivities")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
+        end if
+
+        ! The SA-BCM pressure-gradient sensor reads the wall-normal vector
+        ! nWall, which only the approximate wall-distance path
+        ! (updateWallDistancesQuickly) produces.
+        if (SABCM_PG .and. .not. (use_SABCM .and. useApproxWallDistance)) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "SABCM_PG requires use_SABCM=.true. and useApproxWallDistance=.true.")
             end if
             call mpi_barrier(ADflow_comm_world, ierr)
         end if

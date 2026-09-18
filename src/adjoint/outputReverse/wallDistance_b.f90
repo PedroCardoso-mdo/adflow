@@ -9,10 +9,11 @@ module walldistance_b
 
 contains
 !  differentiation of updatewalldistancesquickly in reverse (adjoint) mode (with options noisize i4 dr8 r8):
-!   gradient     of useful results: *x *d2wall *xsurf
-!   with respect to varying inputs: *x *d2wall *xsurf
-!   rw status of diff variables: *x:incr *d2wall:in-out *xsurf:incr
-!   plus diff mem management of: x:in d2wall:in xsurf:in
+!   gradient     of useful results: *nwall *x *d2wall *xsurf
+!   with respect to varying inputs: *nwall *x *d2wall *xsurf
+!   rw status of diff variables: *nwall:in-out *x:incr *d2wall:in-out
+!                *xsurf:incr
+!   plus diff mem management of: nwall:in x:in d2wall:in xsurf:in
   subroutine updatewalldistancesquickly_b(nn, level, sps)
 ! this is the actual update routine that uses xsurf. it is done on
 ! block-level-sps basis.  this is the used to update the wall
@@ -22,7 +23,7 @@ contains
 ! pointers are already set.
     use constants
     use blockpointers, only : nx, ny, nz, il, jl, kl, x, xd, flowdoms,&
-&   flowdomsd, d2wall, d2walld
+&   flowdomsd, d2wall, d2walld, nwall, nwalld
     implicit none
 ! subroutine arguments
     integer(kind=inttype) :: nn, level, sps
@@ -44,6 +45,9 @@ contains
       k = ii/(nx*ny) + 2
       if (flowdoms(nn, level, sps)%surfnodeindices(1, i, j, k) .eq. 0) &
 &     then
+        nwalld(3, i, j, k) = 0.0_8
+        nwalld(2, i, j, k) = 0.0_8
+        nwalld(1, i, j, k) = 0.0_8
         d2walld(i, j, k) = 0.0_8
       else
 ! extract elemid and u-v position for the association of
@@ -68,7 +72,27 @@ contains
 &         1, j, k, 3)+x(i, j, k, 3))
 ! now we have the two points...just take the norm of the
 ! distance between them
+        d2wall(i, j, k) = sqrt((xc(1)-xp(1))**2 + (xc(2)-xp(2))**2 + (xc&
+&         (3)-xp(3))**2)
+! unit wall-normal (nearest wall point -> cell centre), used by
+! the sa-bcm pressure-gradient sensor. d2wall > 0 for any cell centre.
         xpd = 0.0_8
+        tempd2 = nwalld(3, i, j, k)/d2wall(i, j, k)
+        nwalld(3, i, j, k) = 0.0_8
+        xcd(3) = xcd(3) + tempd2
+        xpd(3) = xpd(3) - tempd2
+        d2walld(i, j, k) = d2walld(i, j, k) - (xc(3)-xp(3))*tempd2/&
+&         d2wall(i, j, k)
+        tempd2 = nwalld(2, i, j, k)/d2wall(i, j, k)
+        nwalld(2, i, j, k) = 0.0_8
+        xcd(2) = xcd(2) + tempd2
+        xpd(2) = xpd(2) - tempd2
+        d2walld(i, j, k) = d2walld(i, j, k) - (xc(2)-xp(2))*tempd2/&
+&         d2wall(i, j, k)
+        tempd2 = nwalld(1, i, j, k)/d2wall(i, j, k)
+        nwalld(1, i, j, k) = 0.0_8
+        d2walld(i, j, k) = d2walld(i, j, k) - (xc(1)-xp(1))*tempd2/&
+&         d2wall(i, j, k)
         if ((xc(1)-xp(1))**2 + (xc(2)-xp(2))**2 + (xc(3)-xp(3))**2 .eq. &
 &           0.0_8) then
           tempd = 0.0_8
@@ -78,14 +102,14 @@ contains
         end if
         d2walld(i, j, k) = 0.0_8
         tempd0 = 2*(xc(1)-xp(1))*tempd
+        xcd(1) = xcd(1) + tempd2 + tempd0
+        xpd(1) = xpd(1) - tempd2 - tempd0
         tempd1 = 2*(xc(2)-xp(2))*tempd
         tempd2 = 2*(xc(3)-xp(3))*tempd
         xcd(3) = xcd(3) + tempd2
         xpd(3) = xpd(3) - tempd2
         xcd(2) = xcd(2) + tempd1
         xpd(2) = xpd(2) - tempd1
-        xcd(1) = xcd(1) + tempd0
-        xpd(1) = xpd(1) - tempd0
         tempd = eighth*xcd(3)
         xcd(3) = 0.0_8
         xd(i-1, j-1, k-1, 3) = xd(i-1, j-1, k-1, 3) + tempd
@@ -137,7 +161,7 @@ contains
 ! pointers are already set.
     use constants
     use blockpointers, only : nx, ny, nz, il, jl, kl, x, flowdoms, &
-&   d2wall
+&   d2wall, nwall
     implicit none
 ! subroutine arguments
     integer(kind=inttype) :: nn, level, sps
@@ -156,6 +180,9 @@ contains
 ! this node is too far away and has no
 ! association. set the distance to a large constant.
         d2wall(i, j, k) = large
+        nwall(1, i, j, k) = zero
+        nwall(2, i, j, k) = zero
+        nwall(3, i, j, k) = zero
       else
 ! extract elemid and u-v position for the association of
 ! this cell:
@@ -181,6 +208,11 @@ contains
 ! distance between them
         d2wall(i, j, k) = sqrt((xc(1)-xp(1))**2 + (xc(2)-xp(2))**2 + (xc&
 &         (3)-xp(3))**2)
+! unit wall-normal (nearest wall point -> cell centre), used by
+! the sa-bcm pressure-gradient sensor. d2wall > 0 for any cell centre.
+        nwall(1, i, j, k) = (xc(1)-xp(1))/d2wall(i, j, k)
+        nwall(2, i, j, k) = (xc(2)-xp(2))/d2wall(i, j, k)
+        nwall(3, i, j, k) = (xc(3)-xp(3))/d2wall(i, j, k)
       end if
     end do
   end subroutine updatewalldistancesquickly

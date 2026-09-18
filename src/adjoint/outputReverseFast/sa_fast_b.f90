@@ -32,6 +32,7 @@ contains
     use inputphysics
     use inputdiscretization, only : approxsa
     use flowvarrefstate
+    use turbutils_fast_b
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -56,14 +57,20 @@ contains
     real(kind=realtype) :: omegax, omegay, omegaz
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype) :: strainmag2d, strainprodd, vortprodd
-    real(kind=realtype) :: tterm2, re_theta_c, re_vorty, re_theta, &
+! note: no local may end in _c: tapenade names its derivative <name>_cd/ and the
+! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
+    real(kind=realtype) :: tterm2, rethetacrit, re_vorty, re_theta, &
 &   tterm1, ttgamma
-    real(kind=realtype) :: tterm2d, re_vortyd, re_thetad, tterm1d, &
-&   ttgammad
+    real(kind=realtype) :: tterm2d, rethetacritd, re_vortyd, re_thetad, &
+&   tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma
     real(kind=realtype) :: sqrtvortd, stransitiond, k_maxd, arg_tanhd, &
 &   arg_gammad
+    real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
+&   mlammax, plammax, mp
+    real(kind=realtype) :: snnd, lamld, lamd, lamlod, flamd, mlammaxd, &
+&   plammaxd
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic mod
     intrinsic sqrt
@@ -80,10 +87,15 @@ contains
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
     real(kind=realtype) :: temp
     real(kind=realtype) :: tempd
     real(kind=realtype) :: temp0
     real(kind=realtype) :: tempd0
+    real(kind=realtype) :: temp1
+    real(kind=realtype) :: tempd1
+    real(kind=realtype) :: tempd2
     integer :: branch
 ! set model constants
     cv13 = rsacv1**3
@@ -270,14 +282,46 @@ myIntPtr = myIntPtr + 1
 ! tterm2 (small values ~0.01)
           tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
-          re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
+          rethetacrit = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
 &           1.027_realtype)
+! pressure-gradient sensor (menter 2015 lambda_thetal with the
+! wall normal n = nwall, langtry f(lambda) as in the sa-gamma-retheta
+! model). off => flam = 1 and nothing below touches rethetacrit.
+          if (sabcm_pg) then
+            nwx = nwall(1, i, j, k)
+            nwy = nwall(2, i, j, k)
+            nwz = nwall(3, i, j, k)
+! n . grad(u) . n ; true gradient = two*fact*(uu.), fact = fourth/vol
+            snn = two*fact*(nwx*(nwx*uux+nwy*uuy+nwz*uuz)+nwy*(nwx*vvx+&
+&             nwy*vvy+nwz*vvz)+nwz*(nwx*wwx+nwy*wwy+nwz*wwz))
+! no reynolds factor: nu = rlv/rho is non-dimensional with
+! l_ref = 1 m, same convention as re_vorty below.
+            laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
+&             sabcm_pg_off
+! smooth clip of gain*laml to [-lammax, lammax] (distinct
+! targets, not in place: keeps the fast-reverse ad exact).
+! module variables are copied to locals before being passed to the
+! differentiated helpers (tapenade otherwise emits a seed for them).
+            mlammax = -sabcm_pg_lammax
+            plammax = sabcm_pg_lammax
+            mp = -sabcm_pg_p
+            arg1 = sabcm_pg_gain*laml
+            lamlo = smoothminmax(arg1, mlammax, sabcm_pg_p)
+            lam = smoothminmax(lamlo, plammax, mp)
+            flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+            rethetacrit = rethetacrit*flam
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+          else
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+          end if
 ! re_theta actual
           re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
 &           , k)**2
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
-          tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+          tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
               tterm1 = zero
@@ -351,26 +395,26 @@ myIntPtr = myIntPtr + 1
         end if
         term2 = dist2inv*(kar2inv*ttgamma*rsacb1*((one-ft2)*fv2+ft2)-&
 &         rsacw1*fwsa)
-        temp = w(i, j, k, itu1)
-        tempd0 = w(i, j, k, itu1)*scratchd(i, j, k, idvt)
-        wd(i, j, k, itu1) = wd(i, j, k, itu1) + (term1+term2*temp)*&
-&         scratchd(i, j, k, idvt) + term2*tempd0
+        temp1 = w(i, j, k, itu1)
+        tempd2 = w(i, j, k, itu1)*scratchd(i, j, k, idvt)
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + (term1+term2*temp1)*&
+&         scratchd(i, j, k, idvt) + term2*tempd2
         scratchd(i, j, k, idvt) = 0.0_8
-        term1d = tempd0
-        term2d = temp*tempd0
-        tempd0 = kar2inv*rsacb1*dist2inv*term2d
+        term1d = tempd2
+        term2d = temp1*tempd2
+        tempd2 = kar2inv*rsacb1*dist2inv*term2d
         fwsad = -(rsacw1*dist2inv*term2d)
-        ttgammad = ((one-ft2)*fv2+ft2)*tempd0
-        tempd = ttgamma*tempd0
-        ft2d = (1.0-fv2)*tempd
-        fv2d = (one-ft2)*tempd
+        ttgammad = ((one-ft2)*fv2+ft2)*tempd2
+        tempd1 = ttgamma*tempd2
+        ft2d = (1.0-fv2)*tempd1
+        fv2d = (one-ft2)*tempd1
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .ne. 0) then
           ft2d = ft2d - ttgamma*ss*rsacb1*term1d
-          tempd0 = (one-ft2)*rsacb1*term1d
-          ttgammad = ttgammad + ss*tempd0
-          ssd = ssd + ttgamma*tempd0
+          tempd2 = (one-ft2)*rsacb1*term1d
+          ttgammad = ttgammad + ss*tempd2
+          ssd = ssd + ttgamma*tempd2
         end if
         call popcontrol2b(branch)
         if (branch .lt. 2) then
@@ -378,12 +422,12 @@ branch = myIntStack(myIntPtr)
             arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*ttgammad
             tterm1d = arg_tanhd/sabcm_fsmooth
             tterm2d = arg_tanhd/sabcm_fsmooth
-            tempd0 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
+            tempd2 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
 &             sabcm_maxsmooth)
-            tempd = exp(stransition-k_max)*tempd0
-            k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd0 - &
-&             tempd
-            stransitiond = tempd
+            tempd1 = exp(stransition-k_max)*tempd2
+            k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd2 - &
+&             tempd1
+            stransitiond = tempd1
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
             if (branch .ne. 0) stransitiond = stransitiond + k_maxd
@@ -395,12 +439,16 @@ branch = myIntStack(myIntPtr)
         else if (branch .eq. 2) then
           x1d = 0.0_8
         else
+          nud = 0.0_8
           fv1d = 0.0_8
           wwxd = 0.0_8
           chid = 0.0_8
           wwyd = 0.0_8
+          wwzd = 0.0_8
           vvxd = 0.0_8
+          vvyd = 0.0_8
           vvzd = 0.0_8
+          uuxd = 0.0_8
           uuyd = 0.0_8
           uuzd = 0.0_8
           goto 110
@@ -433,14 +481,55 @@ branch = myIntStack(myIntPtr)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) tterm1d = 0.0_8
- 100    re_thetad = tterm1d/(re_theta_c*sabcm_const1)
+ 100    tempd2 = tterm1d/(sabcm_const1*rethetacrit)
+        re_thetad = tempd2
+        rethetacritd = -(((re_theta-rethetacrit)/rethetacrit+1.0)*tempd2&
+&         )
         re_vortyd = re_thetad/2.193_realtype
-        temp = sqrtvort/rlv(i, j, k)
-        tempd0 = d2wall(i, j, k)**2*re_vortyd
-        wd(i, j, k, irho) = wd(i, j, k, irho) + temp*tempd0
-        tempd = w(i, j, k, irho)*tempd0/rlv(i, j, k)
-        sqrtvortd = tempd
-        rlvd(i, j, k) = rlvd(i, j, k) - temp*tempd
+        temp1 = sqrtvort/rlv(i, j, k)
+        tempd2 = d2wall(i, j, k)**2*re_vortyd
+        wd(i, j, k, irho) = wd(i, j, k, irho) + temp1*tempd2
+        tempd1 = w(i, j, k, irho)*tempd2/rlv(i, j, k)
+        sqrtvortd = tempd1
+        rlvd(i, j, k) = rlvd(i, j, k) - temp1*tempd1
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+        if (branch .eq. 0) then
+          flamd = rethetacrit*rethetacritd
+          call bcmflambda_fast_b(sabcm_tu, lam, lamd, sabcm_pg_p, flamd)
+          call smoothminmax_fast_b(lamlo, lamlod, plammax, plammaxd, mp&
+&                            , lamd)
+          call smoothminmax_fast_b(arg1, arg1d, mlammax, mlammaxd, &
+&                            sabcm_pg_p, lamlod)
+          lamld = sabcm_pg_gain*arg1d
+          tempd2 = -(sabcm_pg_coef*d2wall(i, j, k)**2*lamld/nu)
+          snnd = tempd2
+          nud = -(snn*tempd2/nu)
+          tempd0 = two*fact*snnd
+          tempd = nwx*tempd0
+          tempd1 = nwy*tempd0
+          tempd2 = nwz*tempd0
+          wwxd = nwx*tempd2
+          wwyd = nwy*tempd2
+          wwzd = nwz*tempd2
+          vvxd = nwx*tempd1
+          vvyd = nwy*tempd1
+          vvzd = nwz*tempd1
+          uuxd = nwx*tempd
+          uuyd = nwy*tempd
+          uuzd = nwz*tempd
+        else
+          nud = 0.0_8
+          wwxd = 0.0_8
+          wwyd = 0.0_8
+          wwzd = 0.0_8
+          vvxd = 0.0_8
+          vvyd = 0.0_8
+          vvzd = 0.0_8
+          uuxd = 0.0_8
+          uuyd = 0.0_8
+          uuzd = 0.0_8
+        end if
         fv1d = chi*tterm2d/sabcm_const2
         chid = fv1*tterm2d/sabcm_const2
         if (vortprod .eq. 0.0_8) then
@@ -452,14 +541,14 @@ branch = myIntStack(myIntPtr)
         vortyd = 2*vorty*vortprodd
         vortzd = 2*vortz*vortprodd
         tempd0 = two*fact*vortzd
-        vvxd = tempd0
-        uuyd = -tempd0
+        vvxd = vvxd + tempd0
+        uuyd = uuyd - tempd0
         tempd0 = two*fact*vortyd
-        uuzd = tempd0
-        wwxd = -tempd0
+        uuzd = uuzd + tempd0
+        wwxd = wwxd - tempd0
         tempd0 = two*fact*vortxd
-        wwyd = tempd0
-        vvzd = -tempd0
+        wwyd = wwyd + tempd0
+        vvzd = vvzd - tempd0
         ft2d = 0.0_8
  110    termfwd = gg*fwsad
         temp0 = (one+cw36)/(cw36+gg6)
@@ -514,7 +603,7 @@ branch = myIntStack(myIntPtr)
         chi2d = chi2d + chi*chi3d
         chid = chid + fv1*tempd0 + chi2*chi3d + 2*chi*chi2d
         wd(i, j, k, itu1) = wd(i, j, k, itu1) + chid/nu
-        nud = -(w(i, j, k, itu1)*chid/nu**2)
+        nud = nud - w(i, j, k, itu1)*chid/nu**2
         temp = w(i, j, k, irho)
         rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
         wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
@@ -541,39 +630,34 @@ branch = myIntStack(myIntPtr)
           wwxd = wwxd + fact*sxzd
           uuyd = uuyd + fact*sxyd
           vvxd = vvxd + fact*sxyd
-          wwzd = two*fact*szzd
-          vvyd = two*fact*syyd
-          uuxd = two*fact*sxxd
+          wwzd = wwzd + two*fact*szzd
+          vvyd = vvyd + two*fact*syyd
+          uuxd = uuxd + two*fact*sxxd
           strainmag2d = 0.0_8
           ssd = 0.0_8
-        else
-          if (branch .eq. 1) then
-            vortx = two*fact*(wwy-vvz) - two*omegax
-            vorty = two*fact*(uuz-wwx) - two*omegay
-            vortz = two*fact*(vvx-uuy) - two*omegaz
-            vortprod = vortx**2 + vorty**2 + vortz**2
-            if (vortprod .eq. 0.0_8) then
-              vortprodd = 0.0_8
-            else
-              vortprodd = ssd/(2.0*sqrt(vortprod))
-            end if
-            vortxd = 2*vortx*vortprodd
-            vortyd = 2*vorty*vortprodd
-            vortzd = 2*vortz*vortprodd
-            tempd = two*fact*vortzd
-            vvxd = vvxd + tempd
-            uuyd = uuyd - tempd
-            tempd = two*fact*vortyd
-            uuzd = uuzd + tempd
-            wwxd = wwxd - tempd
-            tempd = two*fact*vortxd
-            wwyd = wwyd + tempd
-            vvzd = vvzd - tempd
-            ssd = 0.0_8
+        else if (branch .eq. 1) then
+          vortx = two*fact*(wwy-vvz) - two*omegax
+          vorty = two*fact*(uuz-wwx) - two*omegay
+          vortz = two*fact*(vvx-uuy) - two*omegaz
+          vortprod = vortx**2 + vorty**2 + vortz**2
+          if (vortprod .eq. 0.0_8) then
+            vortprodd = 0.0_8
+          else
+            vortprodd = ssd/(2.0*sqrt(vortprod))
           end if
-          wwzd = 0.0_8
-          vvyd = 0.0_8
-          uuxd = 0.0_8
+          vortxd = 2*vortx*vortprodd
+          vortyd = 2*vorty*vortprodd
+          vortzd = 2*vortz*vortprodd
+          tempd = two*fact*vortzd
+          vvxd = vvxd + tempd
+          uuyd = uuyd - tempd
+          tempd = two*fact*vortyd
+          uuzd = uuzd + tempd
+          wwxd = wwxd - tempd
+          tempd = two*fact*vortxd
+          wwyd = wwyd + tempd
+          vvzd = vvzd - tempd
+          ssd = 0.0_8
         end if
         wd(i, j, k-1, ivz) = wd(i, j, k-1, ivz) - sk(i, j, k-1, 3)*wwzd &
 &         - sk(i, j, k-1, 2)*wwyd - sk(i, j, k-1, 1)*wwxd
@@ -628,6 +712,7 @@ branch = myIntStack(myIntPtr)
     use inputphysics
     use inputdiscretization, only : approxsa
     use flowvarrefstate
+    use turbutils_fast_b
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -643,10 +728,14 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: vortx, vorty, vortz
     real(kind=realtype) :: omegax, omegay, omegaz
     real(kind=realtype) :: strainmag2, strainprod, vortprod
-    real(kind=realtype) :: tterm2, re_theta_c, re_vorty, re_theta, &
+! note: no local may end in _c: tapenade names its derivative <name>_cd/ and the
+! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
+    real(kind=realtype) :: tterm2, rethetacrit, re_vorty, re_theta, &
 &   tterm1, ttgamma
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma
+    real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
+&   mlammax, plammax, mp
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic mod
     intrinsic sqrt
@@ -659,6 +748,7 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: x1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
+    real(kind=realtype) :: arg1
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -819,14 +909,43 @@ branch = myIntStack(myIntPtr)
 ! tterm2 (small values ~0.01)
           tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
-          re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
+          rethetacrit = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
 &           1.027_realtype)
+! pressure-gradient sensor (menter 2015 lambda_thetal with the
+! wall normal n = nwall, langtry f(lambda) as in the sa-gamma-retheta
+! model). off => flam = 1 and nothing below touches rethetacrit.
+          flam = one
+          laml = zero
+          if (sabcm_pg) then
+            nwx = nwall(1, i, j, k)
+            nwy = nwall(2, i, j, k)
+            nwz = nwall(3, i, j, k)
+! n . grad(u) . n ; true gradient = two*fact*(uu.), fact = fourth/vol
+            snn = two*fact*(nwx*(nwx*uux+nwy*uuy+nwz*uuz)+nwy*(nwx*vvx+&
+&             nwy*vvy+nwz*vvz)+nwz*(nwx*wwx+nwy*wwy+nwz*wwz))
+! no reynolds factor: nu = rlv/rho is non-dimensional with
+! l_ref = 1 m, same convention as re_vorty below.
+            laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
+&             sabcm_pg_off
+! smooth clip of gain*laml to [-lammax, lammax] (distinct
+! targets, not in place: keeps the fast-reverse ad exact).
+! module variables are copied to locals before being passed to the
+! differentiated helpers (tapenade otherwise emits a seed for them).
+            mlammax = -sabcm_pg_lammax
+            plammax = sabcm_pg_lammax
+            mp = -sabcm_pg_p
+            arg1 = sabcm_pg_gain*laml
+            lamlo = smoothminmax(arg1, mlammax, sabcm_pg_p)
+            lam = smoothminmax(lamlo, plammax, mp)
+            flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+            rethetacrit = rethetacrit*flam
+          end if
 ! re_theta actual
           re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
 &           , k)**2
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
-          tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+          tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
               tterm1 = zero
@@ -865,6 +984,8 @@ branch = myIntStack(myIntPtr)
             ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
           end if
           tgamma(i, j, k) = ttgamma
+          bcmlambda(i, j, k) = laml
+          bcmflam(i, j, k) = flam
           ft2 = zero
         end if
 ! compute the source term; some terms are saved for the

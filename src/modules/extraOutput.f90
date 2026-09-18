@@ -39,6 +39,7 @@ module extraOutput
     logical :: volWriteShock, volWriteFilteredShock, volWriteGC, volWriteStatus
     logical :: volWriteIntermittency
     logical :: volWriteTgamma
+    logical :: volWriteBcmLambda, volWriteBcmFlam
 !
 !       The logical variables, which define the isosurface variables
 !       to be written.

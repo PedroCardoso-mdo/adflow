@@ -2726,6 +2726,7 @@ contains
         nullify (flowDoms(nn, level, sps)%radK)
 
         nullify (flowDoms(nn, level, sps)%d2Wall)
+        nullify (flowDoms(nn, level, sps)%nWall)
 
         nullify (flowDoms(nn, level, sps)%bmti1)
         nullify (flowDoms(nn, level, sps)%bmti2)
@@ -3479,8 +3480,11 @@ contains
         ! Wall distance for the turbulence models.
 
         d2Wall => flowDoms(nn, mm, ll)%d2Wall
+        nWall => flowDoms(nn, mm, ll)%nWall
         intermittency => flowDoms(nn, mm, ll)%intermittency
         Tgamma => flowDoms(nn, mm, ll)%Tgamma
+        bcmLambda => flowDoms(nn, mm, ll)%bcmLambda
+        bcmFlam => flowDoms(nn, mm, ll)%bcmFlam
         filterDES => flowDoms(nn, mm, ll)%filterDES  ! eran-des
 
         ! Arrays used for the implicit treatment of the turbulent wall
@@ -3641,6 +3645,7 @@ contains
         radKd => flowDomsd(nn, 1, sps)%radK
 
         d2Walld => flowDomsd(nn, 1, sps)%d2Wall
+        nWalld => flowDomsd(nn, 1, sps)%nWall
 
         ! Arrays used for the implicit treatment of the turbulent wasps
         ! boundary conditions. As these variables are only aspocated for
@@ -4668,6 +4673,7 @@ contains
                     flowDomsd(nn, level, sps)%bvtk1, &
                     flowDomsd(nn, level, sps)%bvtk2, &
                     flowDomsd(nn, level, sps)%d2Wall, &
+                    flowDomsd(nn, level, sps)%nWall, &
                     stat=ierr)
                 call EChk(ierr, __FILE__, __LINE__)
 
@@ -5455,6 +5461,10 @@ contains
 
         if (associated(flowDoms(nn, level, sps)%d2Wall)) &
             deallocate (flowDoms(nn, level, sps)%d2Wall, stat=ierr)
+        if (ierr /= 0) deallocationFailure = .true.
+
+        if (associated(flowDoms(nn, level, sps)%nWall)) &
+            deallocate (flowDoms(nn, level, sps)%nWall, stat=ierr)
         if (ierr /= 0) deallocationFailure = .true.
 
         if (associated(flowDoms(nn, level, sps)%bmti1)) &

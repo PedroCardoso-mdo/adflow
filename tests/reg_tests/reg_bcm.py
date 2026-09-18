@@ -145,6 +145,14 @@ bcmBaseOptionsHard = dict(bcmBaseOptions)
 bcmBaseOptionsHard["sabcm_exp"] = True  # exp-sqrt blend (Mura & Cakmakcioglu original)
 bcmBaseOptionsHard["restartfile"] = bcmRestartFileHard
 
+# Smooth variant + the pressure-gradient sensor (SABCM_PG: Menter lambda_thetaL x Langtry F(lambda)
+# on Re_theta_c; gain/offset from docs/studies/22_bcm_pressure_gradient/falkner_skan_gain.py).
+# Reuses the smooth restart: the AD consistency checks are state-agnostic, and the adjoint
+# ref file for this variant is trained from that state.
+bcmBaseOptionsPG = dict(bcmBaseOptionsSmooth)
+bcmBaseOptionsPG.update({"sabcm_pg": True, "sabcm_pg_gain": 2.0, "sabcm_pg_off": 0.01623,
+                         "sabcm_pg_coef": 7.57e-3, "sabcm_pg_lammax": 0.1, "sabcm_pg_p": 300.0})
+
 # Same case, plain SA (use_SABCM off) -- the "before" reference for the direct term comparison
 # in assert_bcm_vs_plain_sa_wdot_allclose. Uses its OWN converged plain-SA restart
 # (generate_bcm_restart.py --variant sa): the adjoint scripts do not re-solve the primal, so the

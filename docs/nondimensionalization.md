@@ -7,8 +7,13 @@ touching any of them.
 - **Units are p-ρ non-dimensional, not velocity-based.** Velocity normalizes to `M·√γ` (freestream
   Mach times √(ratio of specific heats)), **not** to 1.
 - **Viscosities are ratios to μ∞** (`rlv`, `rev` in the code), not absolute values.
-- **`1/Re` is NOT absorbed into viscosity** — it appears explicitly wherever a viscous term is
-  formed.
+- **`1/Re` does not appear explicitly in the SA-BCM terms.** `muRef = sqrt(pRef·rhoRef)` with the
+  reference length 1 m (`flowVarRefState.F90`, `initializeFlow.F90`), so `rlv`/`rho` is a
+  non-dimensional kinematic viscosity that already carries the Reynolds scaling: `Re_v = ρ Ω d²/μ`
+  (`sa.F90`) and the pressure-gradient sensor `λ_θL = -c (d²/ν) ∂V/∂y + off` are written **without**
+  any `Reynolds` factor (the sibling SA-GR model does the same, `saGammaRetheta.F90` "No explicit
+  Reynolds factor here"). The earlier statement here that "1/Re appears explicitly wherever a
+  viscous term is formed" was wrong for this purpose (corrected 2026-09-18).
 
 ## Where this matters in SA-BCM
 

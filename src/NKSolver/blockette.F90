@@ -33,6 +33,7 @@ module blockette
 
     ! No halos
     real(kind=realType), dimension(2:bbil, 2:bbjl, 2:bbkl) :: volRef, d2wall
+    real(kind=realType), dimension(3, 2:bbil, 2:bbjl, 2:bbkl) :: nWall
     integer(kind=intType), dimension(2:bbil, 2:bbjl, 2:bbkl) :: iblank
 
     ! Face Porosities
@@ -64,6 +65,7 @@ module blockette
     !$OMP THREADPRIVATE(nx, ny, nz, il, jl, kl, ie, je, ke, ib, jb, kb)
     !$OMP THREADPRIVATE(w, p, gamma, ss, x, rlv, rev, vol, aa, radI, radJ, radK)
     !$OMP THREADPRIVATE(dss, volRef, d2wall, iblank, porI, porJ, porK, fw, dw)
+    !$OMP THREADPRIVATE(nWall)
     !$OMP THREADPRIVATE(sI, sJ, sK, ux, uy, uz, vx, vy, vz, wx, wy, wz, qx, qy, qz)
 contains
 
@@ -327,6 +329,7 @@ contains
             bwx => wx, bwy => wy, bwz => wz, &
             bqx => qx, bqy => qy, bqz => qz, &
             bx => x, brlv => rlv, brev => rev, bvol => vol, bVolRef => volRef, bd2wall => d2wall, &
+            bnWall => nWall, &
             biblank => iblank, bPorI => porI, bPorJ => porJ, bPorK => porK, bdw => dw, bfw => fw, &
             bShockSensor => shockSensor, &
             bsi => si, bsj => sj, bsk => sk, &
@@ -557,8 +560,12 @@ contains
                         do j = 2, jl
                             do i = 2, il
                                 iblank(i, j, k) = biblank(i + ii - 2, j + jj - 2, k + kk - 2)
-                                if (equations .eq. ransequations) &
+                                if (equations .eq. ransequations) then
                                     d2wall(i, j, k) = bd2wall(i + ii - 2, j + jj - 2, k + kk - 2)
+                                    nWall(1, i, j, k) = bnWall(1, i + ii - 2, j + jj - 2, k + kk - 2)
+                                    nWall(2, i, j, k) = bnWall(2, i + ii - 2, j + jj - 2, k + kk - 2)
+                                    nWall(3, i, j, k) = bnWall(3, i + ii - 2, j + jj - 2, k + kk - 2)
+                                end if
                                 volRef(i, j, k) = bvolRef(i + ii - 2, j + jj - 2, k + kk - 2)
                             end do
                         end do
@@ -998,12 +1005,14 @@ contains
 
         use constants
         use paramTurb
-        use blockPointers, only: sectionID, Tgamma
+        use blockPointers, only: sectionID, Tgamma, bcmLambda, bcmFlam
         use communication, only: myID
         use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, &
                     SABCM_Const1, SABCM_Const2, SABCM_TU, &
                     SABCM_S0_tanh, SABCM_fsmooth, SABCM_maxsmooth, &
-                    use_SABCM, SABCM_Exp
+                    use_SABCM, SABCM_Exp, &
+                    SABCM_PG, SABCM_PG_coef, SABCM_PG_off, SABCM_PG_gain, SABCM_PG_lamMax, SABCM_PG_p
+        use turbUtils, only: smoothMinMax, bcmFlambda
         use inputDiscretization, only: approxSA
         use section, only: sections
         use sa, only: cv13, kar2Inv, cw36, cb3Inv
@@ -1021,8 +1030,9 @@ contains
         real(kind=realType) :: vortx, vorty, vortz
         real(kind=realType) :: omegax, omegay, omegaz
         real(kind=realType) :: strainMag2, prod
-        real(kind=realType) :: tterm2, Re_theta_c, Re_vorty, Re_theta, tterm1, tTgamma
+        real(kind=realType) :: tterm2, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
         real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma, vortProd
+        real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
         real(kind=realType), parameter :: xminn = 1.e-10_realType
         real(kind=realType), parameter :: f23 = two * third
         integer(kind=intType) :: i, j, k
@@ -1206,14 +1216,43 @@ contains
                         tterm2 = fv1*chi / SABCM_Const2
                         
                         ! Re_theta critical
-                        Re_theta_c = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
+                        ReThetaCrit = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
+
+                        ! Pressure-gradient sensor (Menter 2015 lambda_thetaL with the
+                        ! wall normal n = nWall, Langtry F(lambda) as in the SA-gamma-Retheta
+                        ! model). Off => Flam = 1 and nothing below touches ReThetaCrit.
+                        Flam = one
+                        lamL = zero
+                        if (SABCM_PG) then
+                            nwx = nWall(1, i, j, k)
+                            nwy = nWall(2, i, j, k)
+                            nwz = nWall(3, i, j, k)
+                            ! n . grad(u) . n ; true gradient = two*fact*(uu.), fact = fourth/vol
+                            Snn = two * fact * (nwx * (nwx * uux + nwy * uuy + nwz * uuz) &
+                                                + nwy * (nwx * vvx + nwy * vvy + nwz * vvz) &
+                                                + nwz * (nwx * wwx + nwy * wwy + nwz * wwz))
+                            ! No Reynolds factor: nu = rlv/rho is non-dimensional with
+                            ! L_ref = 1 m, same convention as Re_vorty below.
+                            lamL = -SABCM_PG_coef * (d2wall(i, j, k)**2 / nu) * Snn + SABCM_PG_off
+                            ! Smooth clip of gain*lamL to [-lamMax, lamMax] (distinct
+                            ! targets, not in place: keeps the fast-reverse AD exact).
+                            ! Module variables are copied to locals before being passed to the
+                            ! differentiated helpers (Tapenade otherwise emits a seed for them).
+                            mlamMax = -SABCM_PG_lamMax
+                            plamMax = SABCM_PG_lamMax
+                            mp = -SABCM_PG_p
+                            lamLo = smoothMinMax(SABCM_PG_gain * lamL, mlamMax, SABCM_PG_p)
+                            lam = smoothMinMax(lamLo, plamMax, mp)
+                            Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
+                            ReThetaCrit = ReThetaCrit * Flam
+                        end if
 
                         ! Re_theta actual
                         Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
                         Re_theta = Re_vorty / 2.193_realType
 
                         ! tterm1 (can be huge ~1e5)
-                        tterm1 = (Re_theta - Re_theta_c) / (Re_theta_c * SABCM_Const1)
+                        tterm1 = (Re_theta - ReThetaCrit) / (ReThetaCrit * SABCM_Const1)
 
 
                         if (SABCM_Exp) then
@@ -1233,7 +1272,10 @@ contains
                             tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
                         end if
                                                                             
-                        Tgamma(i, j, k) = tTgamma
+                        ! block-array write: the blockette (i,j,k) is offset by (ii,jj,kk)
+                        Tgamma(i + ii - 2, j + jj - 2, k + kk - 2) = tTgamma
+                        bcmLambda(i + ii - 2, j + jj - 2, k + kk - 2) = lamL
+                        bcmFlam(i + ii - 2, j + jj - 2, k + kk - 2) = Flam
                         ft2 = zero
                     end if
 

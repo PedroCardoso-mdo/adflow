@@ -230,6 +230,8 @@ contains
         if (volWriteStatus) nVolSolvar = nVolSolvar + 1
         if (volWriteIntermittency) nVolDiscrVar = nVolDiscrVar + 1
         if (volWriteTgamma) nVolDiscrVar = nVolDiscrVar + 1
+        if (volWriteBcmLambda) nVolDiscrVar = nVolDiscrVar + 1
+        if (volWriteBcmFlam) nVolDiscrVar = nVolDiscrVar + 1
 
         ! Check the discrete variables.
 
@@ -579,6 +581,16 @@ contains
         if (volWriteTgamma) then
             nn = nn + 1
             solNames(nn) = cgnsTgamma
+        end if
+
+        if (volWriteBcmLambda) then
+            nn = nn + 1
+            solNames(nn) = cgnsBcmLambda
+        end if
+
+        if (volWriteBcmFlam) then
+            nn = nn + 1
+            solNames(nn) = cgnsBcmFlam
         end if
 
     end subroutine volSolNames
@@ -1363,6 +1375,30 @@ contains
                     do i = iBeg, iEnd
                         ii = max(2_intType, i); ii = min(il, ii)
                         wIO(i, j, k, 1) = Tgamma(ii, jj, kk)
+                    end do
+                end do
+            end do
+
+        case (cgnsBcmLambda)
+            do k = kBeg, kEnd
+                kk = max(2_intType, k); kk = min(kl, kk)
+                do j = jBeg, jEnd
+                    jj = max(2_intType, j); jj = min(jl, jj)
+                    do i = iBeg, iEnd
+                        ii = max(2_intType, i); ii = min(il, ii)
+                        wIO(i, j, k, 1) = bcmLambda(ii, jj, kk)
+                    end do
+                end do
+            end do
+
+        case (cgnsBcmFlam)
+            do k = kBeg, kEnd
+                kk = max(2_intType, k); kk = min(kl, kk)
+                do j = jBeg, jEnd
+                    jj = max(2_intType, j); jj = min(jl, jj)
+                    do i = iBeg, iEnd
+                        ii = max(2_intType, i); ii = min(il, ii)
+                        wIO(i, j, k, 1) = bcmFlam(ii, jj, kk)
                     end do
                 end do
             end do

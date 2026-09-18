@@ -16,12 +16,13 @@ module sa_d
 contains
 !  differentiation of sasource in forward (tangent) mode (with options i4 dr8 r8):
 !   variations   of useful results: *scratch
-!   with respect to varying inputs: timeref *w *rlv *vol *d2wall
-!                *si *sj *sk
-!   rw status of diff variables: timeref:in *w:in *rlv:in *scratch:out
-!                *vol:in *d2wall:in *si:in *sj:in *sk:in
-!   plus diff mem management of: w:in rlv:in scratch:in vol:in
-!                d2wall:in si:in sj:in sk:in
+!   with respect to varying inputs: timeref *nwall *w *rlv *vol
+!                *d2wall *si *sj *sk
+!   rw status of diff variables: timeref:in *nwall:in *w:in *rlv:in
+!                *scratch:out *vol:in *d2wall:in *si:in *sj:in
+!                *sk:in
+!   plus diff mem management of: nwall:in w:in rlv:in scratch:in
+!                vol:in d2wall:in si:in sj:in sk:in
   subroutine sasource_d()
 !
 !  source terms.
@@ -35,6 +36,7 @@ contains
     use inputphysics
     use inputdiscretization, only : approxsa
     use flowvarrefstate
+    use turbutils_d
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -61,14 +63,20 @@ contains
     real(kind=realtype) :: omegaxd, omegayd, omegazd
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype) :: strainmag2d, strainprodd, vortprodd
-    real(kind=realtype) :: tterm2, re_theta_c, re_vorty, re_theta, &
+! note: no local may end in _c: tapenade names its derivative <name>/_cb and the
+! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
+    real(kind=realtype) :: tterm2, rethetacrit, re_vorty, re_theta, &
 &   tterm1, ttgamma
-    real(kind=realtype) :: tterm2d, re_vortyd, re_thetad, tterm1d, &
-&   ttgammad
+    real(kind=realtype) :: tterm2d, rethetacritd, re_vortyd, re_thetad, &
+&   tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma
     real(kind=realtype) :: sqrtvortd, stransitiond, k_maxd, arg_tanhd, &
 &   arg_gammad
+    real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
+&   mlammax, plammax, mp
+    real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
+&   flamd, mlammaxd, plammaxd
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic sqrt
     intrinsic exp
@@ -501,8 +509,59 @@ contains
               tterm2d = (chi*fv1d+fv1*chid)/sabcm_const2
               tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
-              re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(&
-&               -1.027_realtype)
+              rethetacrit = 803.73_realtype*(sabcm_tu+0.6067_realtype)**&
+&               (-1.027_realtype)
+! pressure-gradient sensor (menter 2015 lambda_thetal with the
+! wall normal n = nwall, langtry f(lambda) as in the sa-gamma-retheta
+! model). off => flam = 1 and nothing below touches rethetacrit.
+              flam = one
+              laml = zero
+              if (sabcm_pg) then
+                nwxd = nwalld(1, i, j, k)
+                nwx = nwall(1, i, j, k)
+                nwyd = nwalld(2, i, j, k)
+                nwy = nwall(2, i, j, k)
+                nwzd = nwalld(3, i, j, k)
+                nwz = nwall(3, i, j, k)
+! n . grad(u) . n ; true gradient = two*fact*(uu.), fact = fourth/vol
+                temp10 = nwx*wwx + nwy*wwy + nwz*wwz
+                temp9 = nwx*vvx + nwy*vvy + nwz*vvz
+                temp8 = nwx*uux + nwy*uuy + nwz*uuz
+                temp7 = nwx*temp8 + nwy*temp9 + nwz*temp10
+                snnd = two*(temp7*factd+fact*(temp8*nwxd+nwx*(uux*nwxd+&
+&                 nwx*uuxd+uuy*nwyd+nwy*uuyd+uuz*nwzd+nwz*uuzd)+temp9*&
+&                 nwyd+nwy*(vvx*nwxd+nwx*vvxd+vvy*nwyd+nwy*vvyd+vvz*nwzd&
+&                 +nwz*vvzd)+temp10*nwzd+nwz*(wwx*nwxd+nwx*wwxd+wwy*nwyd&
+&                 +nwy*wwyd+wwz*nwzd+nwz*wwzd)))
+                snn = two*(fact*temp7)
+! no reynolds factor: nu = rlv/rho is non-dimensional with
+! l_ref = 1 m, same convention as re_vorty below.
+                temp10 = snn/nu
+                temp9 = d2wall(i, j, k)
+                lamld = -(sabcm_pg_coef*(temp10*2*temp9*d2walld(i, j, k)&
+&                 +temp9**2*(snnd-temp10*nud)/nu))
+                laml = sabcm_pg_off - sabcm_pg_coef*(temp9*temp9*temp10)
+! smooth clip of gain*laml to [-lammax, lammax] (distinct
+! targets, not in place: keeps the fast-reverse ad exact).
+! module variables are copied to locals before being passed to the
+! differentiated helpers (tapenade otherwise emits a seed for them).
+                mlammax = -sabcm_pg_lammax
+                plammax = sabcm_pg_lammax
+                mp = -sabcm_pg_p
+                mlammaxd = 0.0_8
+                lamlod = smoothminmax_d(sabcm_pg_gain*laml, &
+&                 sabcm_pg_gain*lamld, mlammax, mlammaxd, sabcm_pg_p, &
+&                 lamlo)
+                plammaxd = 0.0_8
+                lamd = smoothminmax_d(lamlo, lamlod, plammax, plammaxd, &
+&                 mp, lam)
+                flamd = bcmflambda_d(sabcm_tu, lam, lamd, sabcm_pg_p, &
+&                 flam)
+                rethetacritd = rethetacrit*flamd
+                rethetacrit = rethetacrit*flam
+              else
+                rethetacritd = 0.0_8
+              end if
 ! re_theta actual
               temp10 = sqrtvort/rlv(i, j, k)
               temp9 = d2wall(i, j, k)
@@ -515,8 +574,10 @@ contains
               re_thetad = re_vortyd/2.193_realtype
               re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
-              tterm1d = re_thetad/(re_theta_c*sabcm_const1)
-              tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+              temp10 = (re_theta-rethetacrit)/(sabcm_const1*rethetacrit)
+              tterm1d = (re_thetad-(temp10*sabcm_const1+1.0)*&
+&               rethetacritd)/(sabcm_const1*rethetacrit)
+              tterm1 = temp10
               if (sabcm_exp) then
                 if (tterm1 .lt. zero) then
                   tterm1 = zero
@@ -587,6 +648,8 @@ contains
                 ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
               end if
               tgamma(i, j, k) = ttgamma
+              bcmlambda(i, j, k) = laml
+              bcmflam(i, j, k) = flam
               ft2 = zero
               ft2d = 0.0_8
             else
@@ -632,6 +695,7 @@ contains
     use inputphysics
     use inputdiscretization, only : approxsa
     use flowvarrefstate
+    use turbutils_d
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -647,10 +711,14 @@ contains
     real(kind=realtype) :: vortx, vorty, vortz
     real(kind=realtype) :: omegax, omegay, omegaz
     real(kind=realtype) :: strainmag2, strainprod, vortprod
-    real(kind=realtype) :: tterm2, re_theta_c, re_vorty, re_theta, &
+! note: no local may end in _c: tapenade names its derivative <name>/_cb and the
+! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
+    real(kind=realtype) :: tterm2, rethetacrit, re_vorty, re_theta, &
 &   tterm1, ttgamma
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma
+    real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
+&   mlammax, plammax, mp
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic sqrt
     intrinsic exp
@@ -823,14 +891,43 @@ contains
 ! tterm2 (small values ~0.01)
               tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
-              re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(&
-&               -1.027_realtype)
+              rethetacrit = 803.73_realtype*(sabcm_tu+0.6067_realtype)**&
+&               (-1.027_realtype)
+! pressure-gradient sensor (menter 2015 lambda_thetal with the
+! wall normal n = nwall, langtry f(lambda) as in the sa-gamma-retheta
+! model). off => flam = 1 and nothing below touches rethetacrit.
+              flam = one
+              laml = zero
+              if (sabcm_pg) then
+                nwx = nwall(1, i, j, k)
+                nwy = nwall(2, i, j, k)
+                nwz = nwall(3, i, j, k)
+! n . grad(u) . n ; true gradient = two*fact*(uu.), fact = fourth/vol
+                snn = two*fact*(nwx*(nwx*uux+nwy*uuy+nwz*uuz)+nwy*(nwx*&
+&                 vvx+nwy*vvy+nwz*vvz)+nwz*(nwx*wwx+nwy*wwy+nwz*wwz))
+! no reynolds factor: nu = rlv/rho is non-dimensional with
+! l_ref = 1 m, same convention as re_vorty below.
+                laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
+&                 sabcm_pg_off
+! smooth clip of gain*laml to [-lammax, lammax] (distinct
+! targets, not in place: keeps the fast-reverse ad exact).
+! module variables are copied to locals before being passed to the
+! differentiated helpers (tapenade otherwise emits a seed for them).
+                mlammax = -sabcm_pg_lammax
+                plammax = sabcm_pg_lammax
+                mp = -sabcm_pg_p
+                lamlo = smoothminmax(sabcm_pg_gain*laml, mlammax, &
+&                 sabcm_pg_p)
+                lam = smoothminmax(lamlo, plammax, mp)
+                flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+                rethetacrit = rethetacrit*flam
+              end if
 ! re_theta actual
               re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i&
 &               , j, k)**2
               re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
-              tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
+              tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
               if (sabcm_exp) then
                 if (tterm1 .lt. zero) then
                   tterm1 = zero
@@ -871,6 +968,8 @@ contains
                 ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
               end if
               tgamma(i, j, k) = ttgamma
+              bcmlambda(i, j, k) = laml
+              bcmflam(i, j, k) = flam
               ft2 = zero
             end if
 ! compute the source term; some terms are saved for the

@@ -184,6 +184,10 @@ module cgnsNames
         cgnsTgamma5 = "Tgamma_5CellsAboveWall"
     character(len=maxCGNSNameLen), parameter :: &
         cgnsTgamma10 = "Tgamma_10CellsAboveWall"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsBcmLambda = "BCM_lambda"
+    character(len=maxCGNSNameLen), parameter :: &
+        cgnsBcmFlam = "BCM_Flambda"
 
 !
 !       Residual names.

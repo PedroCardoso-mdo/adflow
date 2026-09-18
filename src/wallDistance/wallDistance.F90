@@ -43,7 +43,7 @@ contains
         ! pointers are already set.
 
         use constants
-        use blockPointers, only: nx, ny, nz, il, jl, kl, x, flowDoms, d2wall
+        use blockPointers, only: nx, ny, nz, il, jl, kl, x, flowDoms, d2wall, nWall
         implicit none
 
         ! Subroutine arguments
@@ -69,6 +69,9 @@ contains
                             ! This node is too far away and has no
                             ! association. Set the distance to a large constant.
                             d2wall(i, j, k) = large
+                            nWall(1, i, j, k) = zero
+                            nWall(2, i, j, k) = zero
+                            nWall(3, i, j, k) = zero
                             cycle
                         end if
 
@@ -109,6 +112,12 @@ contains
 
                         d2wall(i, j, k) = sqrt( &
                                           (xc(1) - xp(1))**2 + (xc(2) - xp(2))**2 + (xc(3) - xp(3))**2)
+
+                        ! Unit wall-normal (nearest wall point -> cell centre), used by
+                        ! the SA-BCM pressure-gradient sensor. d2wall > 0 for any cell centre.
+                        nWall(1, i, j, k) = (xc(1) - xp(1)) / d2wall(i, j, k)
+                        nWall(2, i, j, k) = (xc(2) - xp(2)) / d2wall(i, j, k)
+                        nWall(3, i, j, k) = (xc(3) - xp(3)) / d2wall(i, j, k)
 #ifdef TAPENADE_REVERSE
                     end do
 #else
@@ -501,15 +510,18 @@ contains
                 kl = flowDoms(nn, level, sps)%kl
 
                 allocate (flowDoms(nn, level, sps)%d2Wall(2:il, 2:jl, 2:kl), &
+                          flowDoms(nn, level, sps)%nWall(3, 2:il, 2:jl, 2:kl), &
                           stat=ierr)
                 if (ierr /= 0) &
                     call terminate("initWallDistance", &
-                                   "Memory allocation failure for d2Wall")
+                                   "Memory allocation failure for d2Wall/nWall")
             end if
 
-            ! Initialize the wall distances to a large value.
+            ! Initialize the wall distances to a large value and the
+            ! wall normals to zero (only the approximate path fills them).
 
             flowDoms(nn, level, sps)%d2Wall = large
+            flowDoms(nn, level, sps)%nWall = zero
 
         end do domain
 
