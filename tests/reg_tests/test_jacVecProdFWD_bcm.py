@@ -42,6 +42,11 @@ test_params = [
     },
 ]
 
+# BCM_VARIANTS=smooth,hard,pg (env) restricts the parameterisation, e.g. to train only the pg refs
+_V = os.environ.get("BCM_VARIANTS")
+if _V:
+    test_params = [t for t in test_params if t["name"].split("_")[1] in _V.split(",")]
+
 
 @parameterized_class(test_params)
 class TestJacVecFwdBCM(reg_test_classes.RegTest):
