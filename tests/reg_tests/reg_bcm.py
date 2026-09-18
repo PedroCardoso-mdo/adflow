@@ -150,8 +150,8 @@ bcmBaseOptionsHard["restartfile"] = bcmRestartFileHard
 # Reuses the smooth restart: the AD consistency checks are state-agnostic, and the adjoint
 # ref file for this variant is trained from that state.
 bcmBaseOptionsPG = dict(bcmBaseOptionsSmooth)
-bcmBaseOptionsPG.update({"sabcm_pg": True, "sabcm_pg_gain": 2.0, "sabcm_pg_off": 0.01623,
-                         "sabcm_pg_coef": 7.57e-3, "sabcm_pg_lammax": 0.1, "sabcm_pg_p": 300.0})
+bcmBaseOptionsPG.update({"sabcm_pg": True, "sabcm_pg_sensor": 2, "sabcm_pg_k": 0.05064,
+                         "sabcm_pg_lammax": 0.1, "sabcm_pg_p": 300.0})
 
 # Same case, plain SA (use_SABCM off) -- the "before" reference for the direct term comparison
 # in assert_bcm_vs_plain_sa_wdot_allclose. Uses its OWN converged plain-SA restart

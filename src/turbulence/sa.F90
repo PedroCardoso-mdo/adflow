@@ -122,6 +122,22 @@ contains
         real(kind=realType) :: tterm2, ReThetaBase, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
         real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma
         real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
+                            real(kind=realType) :: uMap, uMapLo, vAdv, vFav, wMap, lamMapped
+                            real(kind=realType) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, ppy, ppz
+                            real(kind=realType) :: velMagPG, uxh, uyh, uzh, dpds, ue2, ue2c, ue, dUeds, ue2min
+                            ! floor of the Bernoulli edge velocity (stagnation region), fraction of U_inf
+                            real(kind=realType), parameter :: pgUeMinFrac = 0.05_realType
+                            ! Falkner-Skan similarity map lambda_thetaL(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
+                            ! falkner_skan_map.py): adverse -A tanh(-u/B), favourable C (exp(u/D) - 1), blended over eps; u clipped
+                            ! to +-uClip before the exponential (u is O(1e3) outside the boundary layer).
+                            ! one parameter per line (Tapenade wraps long declarations mid-token)
+                            real(kind=realType), parameter :: pgMapA = 0.06913_realType
+                            real(kind=realType), parameter :: pgMapB = 0.03255_realType
+                            real(kind=realType), parameter :: pgMapC = 0.09912_realType
+                            real(kind=realType), parameter :: pgMapD = 0.04229_realType
+                            real(kind=realType), parameter :: pgMapEps = 0.003_realType
+                            real(kind=realType), parameter :: pgUClip = 0.2_realType
+                            real(kind=realType), parameter :: pgUClipNeg = -0.2_realType
         real(kind=realType), parameter :: xminn = 1.e-10_realType
 
         ! Set model constants
@@ -338,7 +354,50 @@ contains
                                                     + nwz * (nwx * wwx + nwy * wwy + nwz * wwz))
                                 ! No Reynolds factor: nu = rlv/rho is non-dimensional with
                                 ! L_ref = 1 m, same convention as Re_vorty below.
-                                lamL = -SABCM_PG_coef * (d2wall(i, j, k)**2 / nu) * Snn + SABCM_PG_off
+                                if (SABCM_PG_sensor == 2) then
+                                    ! Wall-pressure-gradient sensor: lambda = K (d^2/nu) dU_e/ds with U_e from Bernoulli and the
+                                    ! LOCAL pressure (p ~ p_wall across the layer), s = velocity direction, p from w (constant cp).
+                                    ! K = (thetahat/eta*)^2 of the Blasius profile = 0.05064: lambda_theta of Falkner-Skan to +-5 %,
+                                    ! no offset (U_e' = 0 for Blasius), no gain. Independent of the velocity profile => no
+                                    ! transition/sensor feedback (docs/studies/22_bcm_pressure_gradient/falkner_skan_psensor.py).
+                                    gm1 = gammaConstant - one
+                                    pc  = gm1 * (w(i, j, k, irhoE) - half * w(i, j, k, irho) &
+                                          * (w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2))
+                                    pip = gm1 * (w(i + 1, j, k, irhoE) - half * w(i + 1, j, k, irho) &
+                                          * (w(i + 1, j, k, ivx)**2 + w(i + 1, j, k, ivy)**2 + w(i + 1, j, k, ivz)**2))
+                                    pim = gm1 * (w(i - 1, j, k, irhoE) - half * w(i - 1, j, k, irho) &
+                                          * (w(i - 1, j, k, ivx)**2 + w(i - 1, j, k, ivy)**2 + w(i - 1, j, k, ivz)**2))
+                                    pjp = gm1 * (w(i, j + 1, k, irhoE) - half * w(i, j + 1, k, irho) &
+                                          * (w(i, j + 1, k, ivx)**2 + w(i, j + 1, k, ivy)**2 + w(i, j + 1, k, ivz)**2))
+                                    pjm = gm1 * (w(i, j - 1, k, irhoE) - half * w(i, j - 1, k, irho) &
+                                          * (w(i, j - 1, k, ivx)**2 + w(i, j - 1, k, ivy)**2 + w(i, j - 1, k, ivz)**2))
+                                    pkp = gm1 * (w(i, j, k + 1, irhoE) - half * w(i, j, k + 1, irho) &
+                                          * (w(i, j, k + 1, ivx)**2 + w(i, j, k + 1, ivy)**2 + w(i, j, k + 1, ivz)**2))
+                                    pkm = gm1 * (w(i, j, k - 1, irhoE) - half * w(i, j, k - 1, irho) &
+                                          * (w(i, j, k - 1, ivx)**2 + w(i, j, k - 1, ivy)**2 + w(i, j, k - 1, ivz)**2))
+                                    ppx = pip * si(i, j, k, 1) - pim * si(i - 1, j, k, 1) &
+                                          + pjp * sj(i, j, k, 1) - pjm * sj(i, j - 1, k, 1) &
+                                          + pkp * sk(i, j, k, 1) - pkm * sk(i, j, k - 1, 1)
+                                    ppy = pip * si(i, j, k, 2) - pim * si(i - 1, j, k, 2) &
+                                          + pjp * sj(i, j, k, 2) - pjm * sj(i, j - 1, k, 2) &
+                                          + pkp * sk(i, j, k, 2) - pkm * sk(i, j, k - 1, 2)
+                                    ppz = pip * si(i, j, k, 3) - pim * si(i - 1, j, k, 3) &
+                                          + pjp * sj(i, j, k, 3) - pjm * sj(i, j - 1, k, 3) &
+                                          + pkp * sk(i, j, k, 3) - pkm * sk(i, j, k - 1, 3)
+                                    velMagPG = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                                    uxh = w(i, j, k, ivx) / max(velMagPG, xminn)
+                                    uyh = w(i, j, k, ivy) / max(velMagPG, xminn)
+                                    uzh = w(i, j, k, ivz) / max(velMagPG, xminn)
+                                    dpds = two * fact * (uxh * ppx + uyh * ppy + uzh * ppz)
+                                    ue2 = uInf**2 + two * (pInfCorr - pc) / rhoInf
+                                    ue2min = (pgUeMinFrac * uInf)**2
+                                    ue2c = max(ue2, ue2min)
+                                    ue = sqrt(ue2c)
+                                    dUeds = -dpds / (rhoInf * ue)
+                                    lamL = SABCM_PG_K * (d2wall(i, j, k)**2 / nu) * dUeds
+                                else
+                                    lamL = -SABCM_PG_coef * (d2wall(i, j, k)**2 / nu) * Snn + SABCM_PG_off
+                                end if
                                 ! Smooth clip of gain*lamL to [-lamMax, lamMax] (distinct
                                 ! targets, not in place: keeps the fast-reverse AD exact).
                                 ! Module variables are copied to locals before being passed to the
@@ -346,7 +405,20 @@ contains
                                 mlamMax = -SABCM_PG_lamMax
                                 plamMax = SABCM_PG_lamMax
                                 mp = -SABCM_PG_p
-                                lamLo = smoothMinMax(SABCM_PG_gain * lamL, mlamMax, SABCM_PG_p)
+                                if (SABCM_PG_sensor == 2) then
+                                    lamMapped = lamL   ! K already maps to lambda_theta
+                                else if (SABCM_PG_map == 2) then
+                                    ! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
+                                    uMapLo = smoothMinMax(lamL, pgUClipNeg, SABCM_PG_p)
+                                    uMap = smoothMinMax(uMapLo, pgUClip, mp)
+                                    vAdv = pgMapA * tanh(uMap / pgMapB)
+                                    vFav = pgMapC * (exp(uMap / pgMapD) - one)
+                                    wMap = half * (one + tanh(uMap / pgMapEps))
+                                    lamMapped = (one - wMap) * vAdv + wMap * vFav
+                                else
+                                    lamMapped = SABCM_PG_gain * lamL
+                                end if
+                                lamLo = smoothMinMax(lamMapped, mlamMax, SABCM_PG_p)
                                 lam = smoothMinMax(lamLo, plamMax, mp)
                                 Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
                             end if

@@ -586,13 +586,15 @@ module inputPhysics
     logical :: rvfB
     logical :: useQCR, useRotationSA, useft2SA, use_SABCM
     logical :: SABCM_Exp, SABCM_PG
+    integer(kind=intType) :: SABCM_PG_map   ! 1 = linear gain, 2 = Falkner-Skan similarity map
+    integer(kind=intType) :: SABCM_PG_sensor ! 1 = Menter dV/dy (wall normal), 2 = wall-pressure gradient (Bernoulli U_e, K = Blasius similarity constant)
     logical :: wallFunctions, wallDistanceNeeded
 
     real(kind=realType) :: alpha, beta
     real(kind=realType) :: SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_S0_tanh, SABCM_fsmooth,SABCM_maxsmooth
     ! SA-BCM pressure-gradient sensor (Menter 2015 lambda_thetaL + Langtry F(lambda)):
     ! lamL = -coef*(d^2/nu)*n.grad(u).n + off ; lam = clip(gain*lamL, +-lamMax) ; Re_theta_c *= F(lam)
-    real(kind=realType) :: SABCM_PG_coef, SABCM_PG_off, SABCM_PG_gain, SABCM_PG_lamMax, SABCM_PG_p
+    real(kind=realType) :: SABCM_PG_coef, SABCM_PG_off, SABCM_PG_gain, SABCM_PG_lamMax, SABCM_PG_p, SABCM_PG_K
     integer(kind=intType) :: liftIndex
     real(kind=realType) :: Mach, MachCoef, MachGrid
     real(kind=realType) :: Reynolds, ReynoldsLength

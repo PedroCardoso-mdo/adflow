@@ -71,6 +71,25 @@ clipped at −0.1 vs exact −0.068; F3 differs by 0.025 there) and under-predic
 gradients (F1 saturates anyway). Run defaults: `off = 0.01623`, `gain = 2.0`; gain swept on the
 cross set (§4 C3).
 
+## 3b. Sensor 2 — wall-pressure gradient (2026-09-18, after the low-Tu convergence findings)
+
+The velocity-profile sensor (Menter dV/dy) has a feedback loop: transition → boundary-layer growth →
+∂v/∂y at the Re_v peak → F → transition location. On NLF0416/S809 L1 at Tu 0.15/0.07 % it limit-cycles
+in ANK even when started from the converged PG-off state (job 1935764) — the PG fixed point is
+unstable. A sensor that does not see the velocity profile removes the loop:
+
+    lambda = K (d²/ν) dU_e/ds,   dU_e/ds = −(ŝ·∇p)/(ρ∞ U_e),   U_e² = U∞² + 2(p∞ − p)/ρ∞ (Bernoulli, local p ≈ p_wall)
+    ŝ = velocity direction, p from w (constant cp), K = (θ̂/η*)²_Blasius = 0.05064
+
+`falkner_skan_psensor.py`: with this single similarity constant the sensor reproduces the exact
+Falkner–Skan λ_θ to +2/−4 % for |λ_θ| ≤ 0.03 (0.70 at separation, where the ±0.1 clip acts anyway);
+no offset (U_e' = 0 for Blasius), no gain, no map — a calibration on the similarity family, no CFD
+or target data involved. Option `SABCM_PG_sensor = 2` (`SABCM_PG_K`); sensor 1 keeps
+`SABCM_PG_map = 2` = the analytic Falkner–Skan map λ_θL → λ_θ (`falkner_skan_map.py`: adverse
+−A tanh(−u/B), favourable C(exp(u/D) − 1); A 0.0691, B 0.0326, C 0.0991, D 0.0423, representation
+error 7e-4) as the "serious" replacement of the linear gain. Tapenade regenerated for both
+(traps met: >132-char lines and long parameter declarations are rejected/mis-wrapped by Tapenade).
+
 ## 4. Campaign (Deucalion, machV4 rebuilt from `sa-bcm-pg`)
 
 | step | what | where | status |

@@ -1184,6 +1184,9 @@ python module libadflow
          real(kind=realtype) :: sabcm_fsmooth
          real(kind=realtype) :: sabcm_maxsmooth
          logical :: sabcm_pg
+         integer(kind=inttype) :: sabcm_pg_map
+         integer(kind=inttype) :: sabcm_pg_sensor
+         real(kind=realtype) :: sabcm_pg_k
          real(kind=realtype) :: sabcm_pg_coef
          real(kind=realtype) :: sabcm_pg_off
          real(kind=realtype) :: sabcm_pg_gain

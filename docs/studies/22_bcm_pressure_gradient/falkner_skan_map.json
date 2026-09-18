@@ -1,0 +1,9 @@
+{
+ "off": 0.01623373836683295,
+ "A": 0.06912659253719221,
+ "B": 0.03255457774878644,
+ "C": 0.09911998001554041,
+ "D": 0.0422855690217934,
+ "eps": 0.003,
+ "note": "lambda_theta = blend(-A tanh(-u/B) [u<0], C (exp(u/D)-1) [u>0]), u = lamL_raw + off; fit to the Falkner-Skan similarity map only"
+}

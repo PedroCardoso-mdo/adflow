@@ -16,11 +16,11 @@ module sa_d
 contains
 !  differentiation of sasource in forward (tangent) mode (with options i4 dr8 r8):
 !   variations   of useful results: *scratch
-!   with respect to varying inputs: timeref *nwall *w *rlv *vol
-!                *d2wall *si *sj *sk
-!   rw status of diff variables: timeref:in *nwall:in *w:in *rlv:in
-!                *scratch:out *vol:in *d2wall:in *si:in *sj:in
-!                *sk:in
+!   with respect to varying inputs: timeref rhoinf uinf pinfcorr
+!                *nwall *w *rlv *vol *d2wall *si *sj *sk
+!   rw status of diff variables: timeref:in rhoinf:in uinf:in pinfcorr:in
+!                *nwall:in *w:in *rlv:in *scratch:out *vol:in *d2wall:in
+!                *si:in *sj:in *sk:in
 !   plus diff mem management of: nwall:in w:in rlv:in scratch:in
 !                vol:in d2wall:in si:in sj:in sk:in
   subroutine sasource_d()
@@ -77,13 +77,37 @@ contains
 &   mlammax, plammax, mp
     real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
 &   flamd, mlammaxd, plammaxd
+    real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
+    real(kind=realtype) :: umapd, umaplod, vadvd, vfavd, wmapd, &
+&   lammappedd
+    real(kind=realtype) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, &
+&   ppy, ppz
+    real(kind=realtype) :: pcd, pipd, pimd, pjpd, pjmd, pkpd, pkmd, ppxd&
+&   , ppyd, ppzd
+    real(kind=realtype) :: velmagpg, uxh, uyh, uzh, dpds, ue2, ue2c, ue&
+&   , dueds, ue2min
+    real(kind=realtype) :: velmagpgd, uxhd, uyhd, uzhd, dpdsd, ue2d, &
+&   ue2cd, ued, duedsd, ue2mind
+! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
+    real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
+! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
+! falkner_skan_map.py): adverse -a tanh(-u/b), favourable c (exp(u/d) - 1), blended over eps; u clipped
+! to +-uclip before the exponential (u is o(1e3) outside the boundary layer).
+! one parameter per line (tapenade wraps long declarations mid-token)
+    real(kind=realtype), parameter :: pgmapa=0.06913_realtype
+    real(kind=realtype), parameter :: pgmapb=0.03255_realtype
+    real(kind=realtype), parameter :: pgmapc=0.09912_realtype
+    real(kind=realtype), parameter :: pgmapd=0.04229_realtype
+    real(kind=realtype), parameter :: pgmapeps=0.003_realtype
+    real(kind=realtype), parameter :: pguclip=0.2_realtype
+    real(kind=realtype), parameter :: pguclipneg=-0.2_realtype
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
-    intrinsic log
     intrinsic tanh
+    intrinsic log
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
     real(kind=realtype) :: x1
@@ -92,12 +116,18 @@ contains
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max2d
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max3d
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max4d
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
     real(kind=realtype) :: result1
     real(kind=realtype) :: result1d
     real(kind=realtype) :: result2
     real(kind=realtype) :: result2d
-    real(kind=realtype) :: arg1
-    real(kind=realtype) :: arg1d
     real(kind=realtype) :: temp
     real(kind=realtype) :: temp0
     real(kind=realtype) :: temp1
@@ -536,11 +566,199 @@ contains
                 snn = two*(fact*temp7)
 ! no reynolds factor: nu = rlv/rho is non-dimensional with
 ! l_ref = 1 m, same convention as re_vorty below.
-                temp10 = snn/nu
-                temp9 = d2wall(i, j, k)
-                lamld = -(sabcm_pg_coef*(temp10*2*temp9*d2walld(i, j, k)&
-&                 +temp9**2*(snnd-temp10*nud)/nu))
-                laml = sabcm_pg_off - sabcm_pg_coef*(temp9*temp9*temp10)
+                if (sabcm_pg_sensor .eq. 2) then
+! wall-pressure-gradient sensor: lambda = k (d^2/nu) du_e/ds with u_e from bernoulli and the
+! local pressure (p ~ p_wall across the layer), s = velocity direction, p from w (constant cp).
+! k = (thetahat/eta*)^2 of the blasius profile = 0.05064: lambda_theta of falkner-skan to +-5 %,
+! no offset (u_e' = 0 for blasius), no gain. independent of the velocity profile => no
+! transition/sensor feedback (docs/studies/22_bcm_pressure_gradient/falkner_skan_psensor.py).
+                  gm1 = gammaconstant - one
+                  temp10 = w(i, j, k, ivz)
+                  temp9 = w(i, j, k, ivy)
+                  temp8 = w(i, j, k, ivx)
+                  temp7 = temp8*temp8 + temp9*temp9 + temp10*temp10
+                  temp6 = w(i, j, k, irho)
+                  pcd = gm1*(wd(i, j, k, irhoe)-half*(temp7*wd(i, j, k, &
+&                   irho)+temp6*(2*temp8*wd(i, j, k, ivx)+2*temp9*wd(i, &
+&                   j, k, ivy)+2*temp10*wd(i, j, k, ivz))))
+                  pc = gm1*(w(i, j, k, irhoe)-half*(temp6*temp7))
+                  temp10 = w(i+1, j, k, ivz)
+                  temp9 = w(i+1, j, k, ivy)
+                  temp8 = w(i+1, j, k, ivx)
+                  temp7 = temp8*temp8 + temp9*temp9 + temp10*temp10
+                  temp6 = w(i+1, j, k, irho)
+                  pipd = gm1*(wd(i+1, j, k, irhoe)-half*(temp7*wd(i+1, j&
+&                   , k, irho)+temp6*(2*temp8*wd(i+1, j, k, ivx)+2*temp9&
+&                   *wd(i+1, j, k, ivy)+2*temp10*wd(i+1, j, k, ivz))))
+                  pip = gm1*(w(i+1, j, k, irhoe)-half*(temp6*temp7))
+                  temp10 = w(i-1, j, k, ivz)
+                  temp9 = w(i-1, j, k, ivy)
+                  temp8 = w(i-1, j, k, ivx)
+                  temp7 = temp8*temp8 + temp9*temp9 + temp10*temp10
+                  temp6 = w(i-1, j, k, irho)
+                  pimd = gm1*(wd(i-1, j, k, irhoe)-half*(temp7*wd(i-1, j&
+&                   , k, irho)+temp6*(2*temp8*wd(i-1, j, k, ivx)+2*temp9&
+&                   *wd(i-1, j, k, ivy)+2*temp10*wd(i-1, j, k, ivz))))
+                  pim = gm1*(w(i-1, j, k, irhoe)-half*(temp6*temp7))
+                  temp10 = w(i, j+1, k, ivz)
+                  temp9 = w(i, j+1, k, ivy)
+                  temp8 = w(i, j+1, k, ivx)
+                  temp7 = temp8*temp8 + temp9*temp9 + temp10*temp10
+                  temp6 = w(i, j+1, k, irho)
+                  pjpd = gm1*(wd(i, j+1, k, irhoe)-half*(temp7*wd(i, j+1&
+&                   , k, irho)+temp6*(2*temp8*wd(i, j+1, k, ivx)+2*temp9&
+&                   *wd(i, j+1, k, ivy)+2*temp10*wd(i, j+1, k, ivz))))
+                  pjp = gm1*(w(i, j+1, k, irhoe)-half*(temp6*temp7))
+                  temp10 = w(i, j-1, k, ivz)
+                  temp9 = w(i, j-1, k, ivy)
+                  temp8 = w(i, j-1, k, ivx)
+                  temp7 = temp8*temp8 + temp9*temp9 + temp10*temp10
+                  temp6 = w(i, j-1, k, irho)
+                  pjmd = gm1*(wd(i, j-1, k, irhoe)-half*(temp7*wd(i, j-1&
+&                   , k, irho)+temp6*(2*temp8*wd(i, j-1, k, ivx)+2*temp9&
+&                   *wd(i, j-1, k, ivy)+2*temp10*wd(i, j-1, k, ivz))))
+                  pjm = gm1*(w(i, j-1, k, irhoe)-half*(temp6*temp7))
+                  temp10 = w(i, j, k+1, ivz)
+                  temp9 = w(i, j, k+1, ivy)
+                  temp8 = w(i, j, k+1, ivx)
+                  temp7 = temp8*temp8 + temp9*temp9 + temp10*temp10
+                  temp6 = w(i, j, k+1, irho)
+                  pkpd = gm1*(wd(i, j, k+1, irhoe)-half*(temp7*wd(i, j, &
+&                   k+1, irho)+temp6*(2*temp8*wd(i, j, k+1, ivx)+2*temp9&
+&                   *wd(i, j, k+1, ivy)+2*temp10*wd(i, j, k+1, ivz))))
+                  pkp = gm1*(w(i, j, k+1, irhoe)-half*(temp6*temp7))
+                  temp10 = w(i, j, k-1, ivz)
+                  temp9 = w(i, j, k-1, ivy)
+                  temp8 = w(i, j, k-1, ivx)
+                  temp7 = temp8*temp8 + temp9*temp9 + temp10*temp10
+                  temp6 = w(i, j, k-1, irho)
+                  pkmd = gm1*(wd(i, j, k-1, irhoe)-half*(temp7*wd(i, j, &
+&                   k-1, irho)+temp6*(2*temp8*wd(i, j, k-1, ivx)+2*temp9&
+&                   *wd(i, j, k-1, ivy)+2*temp10*wd(i, j, k-1, ivz))))
+                  pkm = gm1*(w(i, j, k-1, irhoe)-half*(temp6*temp7))
+                  temp10 = si(i, j, k, 1)
+                  temp9 = si(i-1, j, k, 1)
+                  temp8 = sj(i, j, k, 1)
+                  temp7 = sk(i, j, k, 1)
+                  temp6 = sj(i, j-1, k, 1)
+                  temp5 = sk(i, j, k-1, 1)
+                  ppxd = temp10*pipd + pip*sid(i, j, k, 1) - temp9*pimd &
+&                   - pim*sid(i-1, j, k, 1) + temp8*pjpd + pjp*sjd(i, j&
+&                   , k, 1) + temp7*pkpd + pkp*skd(i, j, k, 1) - temp6*&
+&                   pjmd - pjm*sjd(i, j-1, k, 1) - temp5*pkmd - pkm*skd(&
+&                   i, j, k-1, 1)
+                  ppx = pip*temp10 - pim*temp9 + pjp*temp8 + pkp*temp7 -&
+&                   pjm*temp6 - pkm*temp5
+                  temp10 = si(i, j, k, 2)
+                  temp9 = si(i-1, j, k, 2)
+                  temp8 = sj(i, j, k, 2)
+                  temp7 = sk(i, j, k, 2)
+                  temp6 = sj(i, j-1, k, 2)
+                  temp5 = sk(i, j, k-1, 2)
+                  ppyd = temp10*pipd + pip*sid(i, j, k, 2) - temp9*pimd &
+&                   - pim*sid(i-1, j, k, 2) + temp8*pjpd + pjp*sjd(i, j&
+&                   , k, 2) + temp7*pkpd + pkp*skd(i, j, k, 2) - temp6*&
+&                   pjmd - pjm*sjd(i, j-1, k, 2) - temp5*pkmd - pkm*skd(&
+&                   i, j, k-1, 2)
+                  ppy = pip*temp10 - pim*temp9 + pjp*temp8 + pkp*temp7 -&
+&                   pjm*temp6 - pkm*temp5
+                  temp10 = si(i, j, k, 3)
+                  temp9 = si(i-1, j, k, 3)
+                  temp8 = sj(i, j, k, 3)
+                  temp7 = sk(i, j, k, 3)
+                  temp6 = sj(i, j-1, k, 3)
+                  temp5 = sk(i, j, k-1, 3)
+                  ppzd = temp10*pipd + pip*sid(i, j, k, 3) - temp9*pimd &
+&                   - pim*sid(i-1, j, k, 3) + temp8*pjpd + pjp*sjd(i, j&
+&                   , k, 3) + temp7*pkpd + pkp*skd(i, j, k, 3) - temp6*&
+&                   pjmd - pjm*sjd(i, j-1, k, 3) - temp5*pkmd - pkm*skd(&
+&                   i, j, k-1, 3)
+                  ppz = pip*temp10 - pim*temp9 + pjp*temp8 + pkp*temp7 -&
+&                   pjm*temp6 - pkm*temp5
+                  temp10 = w(i, j, k, ivx)
+                  temp9 = w(i, j, k, ivy)
+                  temp8 = w(i, j, k, ivz)
+                  arg1d = 2*temp10*wd(i, j, k, ivx) + 2*temp9*wd(i, j, k&
+&                   , ivy) + 2*temp8*wd(i, j, k, ivz)
+                  arg1 = temp10*temp10 + temp9*temp9 + temp8*temp8
+                  temp10 = sqrt(arg1)
+                  if (arg1 .eq. 0.0_8) then
+                    velmagpgd = 0.0_8
+                  else
+                    velmagpgd = arg1d/(2.0*temp10)
+                  end if
+                  velmagpg = temp10
+                  if (velmagpg .lt. xminn) then
+                    max1 = xminn
+                    max1d = 0.0_8
+                  else
+                    max1d = velmagpgd
+                    max1 = velmagpg
+                  end if
+                  temp10 = w(i, j, k, ivx)/max1
+                  uxhd = (wd(i, j, k, ivx)-temp10*max1d)/max1
+                  uxh = temp10
+                  if (velmagpg .lt. xminn) then
+                    max2 = xminn
+                    max2d = 0.0_8
+                  else
+                    max2d = velmagpgd
+                    max2 = velmagpg
+                  end if
+                  temp10 = w(i, j, k, ivy)/max2
+                  uyhd = (wd(i, j, k, ivy)-temp10*max2d)/max2
+                  uyh = temp10
+                  if (velmagpg .lt. xminn) then
+                    max3 = xminn
+                    max3d = 0.0_8
+                  else
+                    max3d = velmagpgd
+                    max3 = velmagpg
+                  end if
+                  temp10 = w(i, j, k, ivz)/max3
+                  uzhd = (wd(i, j, k, ivz)-temp10*max3d)/max3
+                  uzh = temp10
+                  temp10 = uxh*ppx + uyh*ppy + uzh*ppz
+                  dpdsd = two*(temp10*factd+fact*(ppx*uxhd+uxh*ppxd+ppy*&
+&                   uyhd+uyh*ppyd+ppz*uzhd+uzh*ppzd))
+                  dpds = two*(fact*temp10)
+                  temp10 = (pinfcorr-pc)/rhoinf
+                  ue2d = 2*uinf*uinfd + two*(pinfcorrd-pcd-temp10*&
+&                   rhoinfd)/rhoinf
+                  ue2 = uinf*uinf + two*temp10
+                  ue2mind = 2*pgueminfrac**2*uinf*uinfd
+                  ue2min = (pgueminfrac*uinf)**2
+                  if (ue2 .lt. ue2min) then
+                    ue2cd = ue2mind
+                    ue2c = ue2min
+                  else
+                    ue2cd = ue2d
+                    ue2c = ue2
+                  end if
+                  temp10 = sqrt(ue2c)
+                  if (ue2c .eq. 0.0_8) then
+                    ued = 0.0_8
+                  else
+                    ued = ue2cd/(2.0*temp10)
+                  end if
+                  ue = temp10
+                  temp10 = dpds/(rhoinf*ue)
+                  duedsd = -((dpdsd-temp10*(ue*rhoinfd+rhoinf*ued))/(&
+&                   rhoinf*ue))
+                  dueds = -temp10
+                  temp10 = dueds/nu
+                  temp9 = d2wall(i, j, k)
+                  lamld = sabcm_pg_k*(temp10*2*temp9*d2walld(i, j, k)+&
+&                   temp9**2*(duedsd-temp10*nud)/nu)
+                  laml = sabcm_pg_k*(temp9*temp9*temp10)
+                else
+                  temp10 = snn/nu
+                  temp9 = d2wall(i, j, k)
+                  lamld = -(sabcm_pg_coef*(temp10*2*temp9*d2walld(i, j, &
+&                   k)+temp9**2*(snnd-temp10*nud)/nu))
+                  laml = sabcm_pg_off - sabcm_pg_coef*(temp9*temp9*&
+&                   temp10)
+                end if
 ! smooth clip of gain*laml to [-lammax, lammax] (distinct
 ! targets, not in place: keeps the fast-reverse ad exact).
 ! module variables are copied to locals before being passed to the
@@ -548,10 +766,33 @@ contains
                 mlammax = -sabcm_pg_lammax
                 plammax = sabcm_pg_lammax
                 mp = -sabcm_pg_p
+                if (sabcm_pg_sensor .eq. 2) then
+! k already maps to lambda_theta
+                  lammappedd = lamld
+                  lammapped = laml
+                else if (sabcm_pg_map .eq. 2) then
+! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
+                  umaplod = smoothminmax_d(laml, lamld, pguclipneg, &
+&                   0.0_8, sabcm_pg_p, umaplo)
+                  umapd = smoothminmax_d(umaplo, umaplod, pguclip, 0.0_8&
+&                   , mp, umap)
+                  vadvd = pgmapa*(1.0-tanh(umap/pgmapb)**2)*umapd/pgmapb
+                  vadv = pgmapa*tanh(umap/pgmapb)
+                  vfavd = pgmapc*exp(umap/pgmapd)*umapd/pgmapd
+                  vfav = pgmapc*(exp(umap/pgmapd)-one)
+                  wmapd = half*(1.0-tanh(umap/pgmapeps)**2)*umapd/&
+&                   pgmapeps
+                  wmap = half*(one+tanh(umap/pgmapeps))
+                  lammappedd = (one-wmap)*vadvd - (vadv-vfav)*wmapd + &
+&                   wmap*vfavd
+                  lammapped = (one-wmap)*vadv + wmap*vfav
+                else
+                  lammappedd = sabcm_pg_gain*lamld
+                  lammapped = sabcm_pg_gain*laml
+                end if
                 mlammaxd = 0.0_8
-                lamlod = smoothminmax_d(sabcm_pg_gain*laml, &
-&                 sabcm_pg_gain*lamld, mlammax, mlammaxd, sabcm_pg_p, &
-&                 lamlo)
+                lamlod = smoothminmax_d(lammapped, lammappedd, mlammax, &
+&                 mlammaxd, sabcm_pg_p, lamlo)
                 plammaxd = 0.0_8
                 lamd = smoothminmax_d(lamlo, lamlod, plammax, plammaxd, &
 &                 mp, lam)
@@ -589,11 +830,11 @@ contains
                   tterm1 = tterm1
                 end if
                 if (tterm2 .lt. zero) then
-                  max1 = zero
-                  max1d = 0.0_8
+                  max4 = zero
+                  max4d = 0.0_8
                 else
-                  max1d = tterm2d
-                  max1 = tterm2
+                  max4d = tterm2d
+                  max4 = tterm2
                 end if
                 temp10 = sqrt(tterm1)
                 if (tterm1 .eq. 0.0_8) then
@@ -602,11 +843,11 @@ contains
                   result1d = tterm1d/(2.0*temp10)
                 end if
                 result1 = temp10
-                temp10 = sqrt(max1)
-                if (max1 .eq. 0.0_8) then
+                temp10 = sqrt(max4)
+                if (max4 .eq. 0.0_8) then
                   result2d = 0.0_8
                 else
-                  result2d = max1d/(2.0*temp10)
+                  result2d = max4d/(2.0*temp10)
                 end if
                 result2 = temp10
                 arg_gammad = result1d + result2d
@@ -722,20 +963,41 @@ contains
 &   arg_gamma
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
+    real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
+    real(kind=realtype) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, &
+&   ppy, ppz
+    real(kind=realtype) :: velmagpg, uxh, uyh, uzh, dpds, ue2, ue2c, ue&
+&   , dueds, ue2min
+! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
+    real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
+! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
+! falkner_skan_map.py): adverse -a tanh(-u/b), favourable c (exp(u/d) - 1), blended over eps; u clipped
+! to +-uclip before the exponential (u is o(1e3) outside the boundary layer).
+! one parameter per line (tapenade wraps long declarations mid-token)
+    real(kind=realtype), parameter :: pgmapa=0.06913_realtype
+    real(kind=realtype), parameter :: pgmapb=0.03255_realtype
+    real(kind=realtype), parameter :: pgmapc=0.09912_realtype
+    real(kind=realtype), parameter :: pgmapd=0.04229_realtype
+    real(kind=realtype), parameter :: pgmapeps=0.003_realtype
+    real(kind=realtype), parameter :: pguclip=0.2_realtype
+    real(kind=realtype), parameter :: pguclipneg=-0.2_realtype
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
-    intrinsic log
     intrinsic tanh
+    intrinsic log
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: arg1
     real(kind=realtype) :: result1
     real(kind=realtype) :: result2
-    real(kind=realtype) :: arg1
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -910,8 +1172,79 @@ contains
 &                 vvx+nwy*vvy+nwz*vvz)+nwz*(nwx*wwx+nwy*wwy+nwz*wwz))
 ! no reynolds factor: nu = rlv/rho is non-dimensional with
 ! l_ref = 1 m, same convention as re_vorty below.
-                laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
-&                 sabcm_pg_off
+                if (sabcm_pg_sensor .eq. 2) then
+! wall-pressure-gradient sensor: lambda = k (d^2/nu) du_e/ds with u_e from bernoulli and the
+! local pressure (p ~ p_wall across the layer), s = velocity direction, p from w (constant cp).
+! k = (thetahat/eta*)^2 of the blasius profile = 0.05064: lambda_theta of falkner-skan to +-5 %,
+! no offset (u_e' = 0 for blasius), no gain. independent of the velocity profile => no
+! transition/sensor feedback (docs/studies/22_bcm_pressure_gradient/falkner_skan_psensor.py).
+                  gm1 = gammaconstant - one
+                  pc = gm1*(w(i, j, k, irhoe)-half*w(i, j, k, irho)*(w(i&
+&                   , j, k, ivx)**2+w(i, j, k, ivy)**2+w(i, j, k, ivz)**&
+&                   2))
+                  pip = gm1*(w(i+1, j, k, irhoe)-half*w(i+1, j, k, irho)&
+&                   *(w(i+1, j, k, ivx)**2+w(i+1, j, k, ivy)**2+w(i+1, j&
+&                   , k, ivz)**2))
+                  pim = gm1*(w(i-1, j, k, irhoe)-half*w(i-1, j, k, irho)&
+&                   *(w(i-1, j, k, ivx)**2+w(i-1, j, k, ivy)**2+w(i-1, j&
+&                   , k, ivz)**2))
+                  pjp = gm1*(w(i, j+1, k, irhoe)-half*w(i, j+1, k, irho)&
+&                   *(w(i, j+1, k, ivx)**2+w(i, j+1, k, ivy)**2+w(i, j+1&
+&                   , k, ivz)**2))
+                  pjm = gm1*(w(i, j-1, k, irhoe)-half*w(i, j-1, k, irho)&
+&                   *(w(i, j-1, k, ivx)**2+w(i, j-1, k, ivy)**2+w(i, j-1&
+&                   , k, ivz)**2))
+                  pkp = gm1*(w(i, j, k+1, irhoe)-half*w(i, j, k+1, irho)&
+&                   *(w(i, j, k+1, ivx)**2+w(i, j, k+1, ivy)**2+w(i, j, &
+&                   k+1, ivz)**2))
+                  pkm = gm1*(w(i, j, k-1, irhoe)-half*w(i, j, k-1, irho)&
+&                   *(w(i, j, k-1, ivx)**2+w(i, j, k-1, ivy)**2+w(i, j, &
+&                   k-1, ivz)**2))
+                  ppx = pip*si(i, j, k, 1) - pim*si(i-1, j, k, 1) + pjp*&
+&                   sj(i, j, k, 1) - pjm*sj(i, j-1, k, 1) + pkp*sk(i, j&
+&                   , k, 1) - pkm*sk(i, j, k-1, 1)
+                  ppy = pip*si(i, j, k, 2) - pim*si(i-1, j, k, 2) + pjp*&
+&                   sj(i, j, k, 2) - pjm*sj(i, j-1, k, 2) + pkp*sk(i, j&
+&                   , k, 2) - pkm*sk(i, j, k-1, 2)
+                  ppz = pip*si(i, j, k, 3) - pim*si(i-1, j, k, 3) + pjp*&
+&                   sj(i, j, k, 3) - pjm*sj(i, j-1, k, 3) + pkp*sk(i, j&
+&                   , k, 3) - pkm*sk(i, j, k-1, 3)
+                  arg1 = w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, &
+&                   j, k, ivz)**2
+                  velmagpg = sqrt(arg1)
+                  if (velmagpg .lt. xminn) then
+                    max1 = xminn
+                  else
+                    max1 = velmagpg
+                  end if
+                  uxh = w(i, j, k, ivx)/max1
+                  if (velmagpg .lt. xminn) then
+                    max2 = xminn
+                  else
+                    max2 = velmagpg
+                  end if
+                  uyh = w(i, j, k, ivy)/max2
+                  if (velmagpg .lt. xminn) then
+                    max3 = xminn
+                  else
+                    max3 = velmagpg
+                  end if
+                  uzh = w(i, j, k, ivz)/max3
+                  dpds = two*fact*(uxh*ppx+uyh*ppy+uzh*ppz)
+                  ue2 = uinf**2 + two*(pinfcorr-pc)/rhoinf
+                  ue2min = (pgueminfrac*uinf)**2
+                  if (ue2 .lt. ue2min) then
+                    ue2c = ue2min
+                  else
+                    ue2c = ue2
+                  end if
+                  ue = sqrt(ue2c)
+                  dueds = -(dpds/(rhoinf*ue))
+                  laml = sabcm_pg_k*(d2wall(i, j, k)**2/nu)*dueds
+                else
+                  laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
+&                   sabcm_pg_off
+                end if
 ! smooth clip of gain*laml to [-lammax, lammax] (distinct
 ! targets, not in place: keeps the fast-reverse ad exact).
 ! module variables are copied to locals before being passed to the
@@ -919,8 +1252,21 @@ contains
                 mlammax = -sabcm_pg_lammax
                 plammax = sabcm_pg_lammax
                 mp = -sabcm_pg_p
-                lamlo = smoothminmax(sabcm_pg_gain*laml, mlammax, &
-&                 sabcm_pg_p)
+                if (sabcm_pg_sensor .eq. 2) then
+! k already maps to lambda_theta
+                  lammapped = laml
+                else if (sabcm_pg_map .eq. 2) then
+! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
+                  umaplo = smoothminmax(laml, pguclipneg, sabcm_pg_p)
+                  umap = smoothminmax(umaplo, pguclip, mp)
+                  vadv = pgmapa*tanh(umap/pgmapb)
+                  vfav = pgmapc*(exp(umap/pgmapd)-one)
+                  wmap = half*(one+tanh(umap/pgmapeps))
+                  lammapped = (one-wmap)*vadv + wmap*vfav
+                else
+                  lammapped = sabcm_pg_gain*laml
+                end if
+                lamlo = smoothminmax(lammapped, mlammax, sabcm_pg_p)
                 lam = smoothminmax(lamlo, plammax, mp)
                 flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
               end if
@@ -941,12 +1287,12 @@ contains
                   tterm1 = tterm1
                 end if
                 if (tterm2 .lt. zero) then
-                  max1 = zero
+                  max4 = zero
                 else
-                  max1 = tterm2
+                  max4 = tterm2
                 end if
                 result1 = sqrt(tterm1)
-                result2 = sqrt(max1)
+                result2 = sqrt(max4)
                 arg_gamma = result1 + result2
                 ttgamma = one - exp(-arg_gamma)
                 if (ttgamma .lt. zero) then

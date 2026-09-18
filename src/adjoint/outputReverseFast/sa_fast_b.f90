@@ -71,14 +71,38 @@ contains
 &   mlammax, plammax, mp
     real(kind=realtype) :: snnd, lamld, lamd, lamlod, flamd, mlammaxd, &
 &   plammaxd
+    real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
+    real(kind=realtype) :: umapd, umaplod, vadvd, vfavd, wmapd, &
+&   lammappedd
+    real(kind=realtype) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, &
+&   ppy, ppz
+    real(kind=realtype) :: pcd, pipd, pimd, pjpd, pjmd, pkpd, pkmd, ppxd&
+&   , ppyd, ppzd
+    real(kind=realtype) :: velmagpg, uxh, uyh, uzh, dpds, ue2, ue2c, ue&
+&   , dueds, ue2min
+    real(kind=realtype) :: velmagpgd, uxhd, uyhd, uzhd, dpdsd, ue2d, &
+&   ue2cd, ued, duedsd
+! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
+    real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
+! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
+! falkner_skan_map.py): adverse -a tanh(-u/b), favourable c (exp(u/d) - 1), blended over eps; u clipped
+! to +-uclip before the exponential (u is o(1e3) outside the boundary layer).
+! one parameter per line (tapenade wraps long declarations mid-token)
+    real(kind=realtype), parameter :: pgmapa=0.06913_realtype
+    real(kind=realtype), parameter :: pgmapb=0.03255_realtype
+    real(kind=realtype), parameter :: pgmapc=0.09912_realtype
+    real(kind=realtype), parameter :: pgmapd=0.04229_realtype
+    real(kind=realtype), parameter :: pgmapeps=0.003_realtype
+    real(kind=realtype), parameter :: pguclip=0.2_realtype
+    real(kind=realtype), parameter :: pguclipneg=-0.2_realtype
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
-    intrinsic log
     intrinsic tanh
+    intrinsic log
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
     real(kind=realtype) :: x1
@@ -87,15 +111,26 @@ contains
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
-    real(kind=realtype) :: arg1
-    real(kind=realtype) :: arg1d
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max2d
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max3d
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max4d
     real(kind=realtype) :: temp
     real(kind=realtype) :: tempd
     real(kind=realtype) :: temp0
     real(kind=realtype) :: tempd0
     real(kind=realtype) :: temp1
     real(kind=realtype) :: tempd1
+    real(kind=realtype) :: temp2
     real(kind=realtype) :: tempd2
+    real(kind=realtype) :: temp3
+    real(kind=realtype) :: tempd3
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
+    real(kind=realtype) :: arg10
+    real(kind=realtype) :: arg1d0
     integer :: branch
 ! set model constants
     cv13 = rsacv1**3
@@ -297,8 +332,97 @@ myIntPtr = myIntPtr + 1
 &             nwy*vvy+nwz*vvz)+nwz*(nwx*wwx+nwy*wwy+nwz*wwz))
 ! no reynolds factor: nu = rlv/rho is non-dimensional with
 ! l_ref = 1 m, same convention as re_vorty below.
-            laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
-&             sabcm_pg_off
+            if (sabcm_pg_sensor .eq. 2) then
+! wall-pressure-gradient sensor: lambda = k (d^2/nu) du_e/ds with u_e from bernoulli and the
+! local pressure (p ~ p_wall across the layer), s = velocity direction, p from w (constant cp).
+! k = (thetahat/eta*)^2 of the blasius profile = 0.05064: lambda_theta of falkner-skan to +-5 %,
+! no offset (u_e' = 0 for blasius), no gain. independent of the velocity profile => no
+! transition/sensor feedback (docs/studies/22_bcm_pressure_gradient/falkner_skan_psensor.py).
+              gm1 = gammaconstant - one
+              pc = gm1*(w(i, j, k, irhoe)-half*w(i, j, k, irho)*(w(i, j&
+&               , k, ivx)**2+w(i, j, k, ivy)**2+w(i, j, k, ivz)**2))
+              pip = gm1*(w(i+1, j, k, irhoe)-half*w(i+1, j, k, irho)*(w(&
+&               i+1, j, k, ivx)**2+w(i+1, j, k, ivy)**2+w(i+1, j, k, ivz&
+&               )**2))
+              pim = gm1*(w(i-1, j, k, irhoe)-half*w(i-1, j, k, irho)*(w(&
+&               i-1, j, k, ivx)**2+w(i-1, j, k, ivy)**2+w(i-1, j, k, ivz&
+&               )**2))
+              pjp = gm1*(w(i, j+1, k, irhoe)-half*w(i, j+1, k, irho)*(w(&
+&               i, j+1, k, ivx)**2+w(i, j+1, k, ivy)**2+w(i, j+1, k, ivz&
+&               )**2))
+              pjm = gm1*(w(i, j-1, k, irhoe)-half*w(i, j-1, k, irho)*(w(&
+&               i, j-1, k, ivx)**2+w(i, j-1, k, ivy)**2+w(i, j-1, k, ivz&
+&               )**2))
+              pkp = gm1*(w(i, j, k+1, irhoe)-half*w(i, j, k+1, irho)*(w(&
+&               i, j, k+1, ivx)**2+w(i, j, k+1, ivy)**2+w(i, j, k+1, ivz&
+&               )**2))
+              pkm = gm1*(w(i, j, k-1, irhoe)-half*w(i, j, k-1, irho)*(w(&
+&               i, j, k-1, ivx)**2+w(i, j, k-1, ivy)**2+w(i, j, k-1, ivz&
+&               )**2))
+              ppx = pip*si(i, j, k, 1) - pim*si(i-1, j, k, 1) + pjp*sj(i&
+&               , j, k, 1) - pjm*sj(i, j-1, k, 1) + pkp*sk(i, j, k, 1) -&
+&               pkm*sk(i, j, k-1, 1)
+              ppy = pip*si(i, j, k, 2) - pim*si(i-1, j, k, 2) + pjp*sj(i&
+&               , j, k, 2) - pjm*sj(i, j-1, k, 2) + pkp*sk(i, j, k, 2) -&
+&               pkm*sk(i, j, k-1, 2)
+              ppz = pip*si(i, j, k, 3) - pim*si(i-1, j, k, 3) + pjp*sj(i&
+&               , j, k, 3) - pjm*sj(i, j-1, k, 3) + pkp*sk(i, j, k, 3) -&
+&               pkm*sk(i, j, k-1, 3)
+              velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + &
+&               w(i, j, k, ivz)**2)
+              if (velmagpg .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+                max1 = xminn
+              else
+                max1 = velmagpg
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+              end if
+              uxh = w(i, j, k, ivx)/max1
+              if (velmagpg .lt. xminn) then
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+                max2 = xminn
+              else
+                max2 = velmagpg
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+              end if
+              uyh = w(i, j, k, ivy)/max2
+              if (velmagpg .lt. xminn) then
+                max3 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+              else
+                max3 = velmagpg
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+              end if
+              uzh = w(i, j, k, ivz)/max3
+              dpds = two*fact*(uxh*ppx+uyh*ppy+uzh*ppz)
+              ue2 = uinf**2 + two*(pinfcorr-pc)/rhoinf
+              ue2min = (pgueminfrac*uinf)**2
+              if (ue2 .lt. ue2min) then
+                ue2c = ue2min
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+              else
+                ue2c = ue2
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+              end if
+              ue = sqrt(ue2c)
+              dueds = -(dpds/(rhoinf*ue))
+              laml = sabcm_pg_k*(d2wall(i, j, k)**2/nu)*dueds
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+            else
+              laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
+&               sabcm_pg_off
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+            end if
 ! smooth clip of gain*laml to [-lammax, lammax] (distinct
 ! targets, not in place: keeps the fast-reverse ad exact).
 ! module variables are copied to locals before being passed to the
@@ -306,8 +430,26 @@ myIntPtr = myIntPtr + 1
             mlammax = -sabcm_pg_lammax
             plammax = sabcm_pg_lammax
             mp = -sabcm_pg_p
-            arg1 = sabcm_pg_gain*laml
-            lamlo = smoothminmax(arg1, mlammax, sabcm_pg_p)
+            if (sabcm_pg_sensor .eq. 2) then
+! k already maps to lambda_theta
+              lammapped = laml
+              call pushcontrol2b(0)
+            else if (sabcm_pg_map .eq. 2) then
+! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
+              arg1 = pguclipneg
+              umaplo = smoothminmax(laml, arg1, sabcm_pg_p)
+              arg10 = pguclip
+              umap = smoothminmax(umaplo, arg10, mp)
+              vadv = pgmapa*tanh(umap/pgmapb)
+              vfav = pgmapc*(exp(umap/pgmapd)-one)
+              wmap = half*(one+tanh(umap/pgmapeps))
+              lammapped = (one-wmap)*vadv + wmap*vfav
+              call pushcontrol2b(1)
+            else
+              lammapped = sabcm_pg_gain*laml
+              call pushcontrol2b(2)
+            end if
+            lamlo = smoothminmax(lammapped, mlammax, sabcm_pg_p)
             lam = smoothminmax(lamlo, plammax, mp)
             flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
 myIntPtr = myIntPtr + 1
@@ -337,15 +479,15 @@ myIntPtr = myIntPtr + 1
               tterm1 = tterm1
             end if
             if (tterm2 .lt. zero) then
-              max1 = zero
+              max4 = zero
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
             else
-              max1 = tterm2
+              max4 = tterm2
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
             end if
-            arg_gamma = sqrt(tterm1) + sqrt(max1)
+            arg_gamma = sqrt(tterm1) + sqrt(max4)
             ttgamma = one - exp(-arg_gamma)
             if (ttgamma .lt. zero) then
               x1 = zero
@@ -399,26 +541,26 @@ myIntPtr = myIntPtr + 1
         end if
         term2 = dist2inv*(kar2inv*ttgamma*rsacb1*((one-ft2)*fv2+ft2)-&
 &         rsacw1*fwsa)
-        temp1 = w(i, j, k, itu1)
-        tempd2 = w(i, j, k, itu1)*scratchd(i, j, k, idvt)
-        wd(i, j, k, itu1) = wd(i, j, k, itu1) + (term1+term2*temp1)*&
-&         scratchd(i, j, k, idvt) + term2*tempd2
+        temp2 = w(i, j, k, itu1)
+        tempd3 = w(i, j, k, itu1)*scratchd(i, j, k, idvt)
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + (term1+term2*temp2)*&
+&         scratchd(i, j, k, idvt) + term2*tempd3
         scratchd(i, j, k, idvt) = 0.0_8
-        term1d = tempd2
-        term2d = temp1*tempd2
-        tempd2 = kar2inv*rsacb1*dist2inv*term2d
+        term1d = tempd3
+        term2d = temp2*tempd3
+        tempd3 = kar2inv*rsacb1*dist2inv*term2d
         fwsad = -(rsacw1*dist2inv*term2d)
-        ttgammad = ((one-ft2)*fv2+ft2)*tempd2
-        tempd1 = ttgamma*tempd2
-        ft2d = (1.0-fv2)*tempd1
-        fv2d = (one-ft2)*tempd1
+        ttgammad = ((one-ft2)*fv2+ft2)*tempd3
+        tempd2 = ttgamma*tempd3
+        ft2d = (1.0-fv2)*tempd2
+        fv2d = (one-ft2)*tempd2
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .ne. 0) then
           ft2d = ft2d - ttgamma*ss*rsacb1*term1d
-          tempd2 = (one-ft2)*rsacb1*term1d
-          ttgammad = ttgammad + ss*tempd2
-          ssd = ssd + ttgamma*tempd2
+          tempd3 = (one-ft2)*rsacb1*term1d
+          ttgammad = ttgammad + ss*tempd3
+          ssd = ssd + ttgamma*tempd3
         end if
         call popcontrol2b(branch)
         if (branch .lt. 2) then
@@ -426,12 +568,12 @@ branch = myIntStack(myIntPtr)
             arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*ttgammad
             tterm1d = arg_tanhd/sabcm_fsmooth
             tterm2d = arg_tanhd/sabcm_fsmooth
-            tempd2 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
+            tempd3 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
 &             sabcm_maxsmooth)
-            tempd1 = exp(stransition-k_max)*tempd2
-            k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd2 - &
-&             tempd1
-            stransitiond = tempd1
+            tempd2 = exp(stransition-k_max)*tempd3
+            k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd3 - &
+&             tempd2
+            stransitiond = tempd2
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
             if (branch .ne. 0) stransitiond = stransitiond + k_maxd
@@ -470,32 +612,32 @@ branch = myIntStack(myIntPtr)
         else
           tterm1d = arg_gammad/(2.0*sqrt(tterm1))
         end if
-        if (max1 .eq. 0.0_8) then
-          max1d = 0.0_8
+        if (max4 .eq. 0.0_8) then
+          max4d = 0.0_8
         else
-          max1d = arg_gammad/(2.0*sqrt(max1))
+          max4d = arg_gammad/(2.0*sqrt(max4))
         end if
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
           tterm2d = 0.0_8
         else
-          tterm2d = max1d
+          tterm2d = max4d
         end if
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) tterm1d = 0.0_8
- 100    tempd2 = tterm1d/(sabcm_const1*rethetacrit)
-        re_thetad = tempd2
-        rethetacritd = -(((re_theta-rethetacrit)/rethetacrit+1.0)*tempd2&
+ 100    tempd3 = tterm1d/(sabcm_const1*rethetacrit)
+        re_thetad = tempd3
+        rethetacritd = -(((re_theta-rethetacrit)/rethetacrit+1.0)*tempd3&
 &         )
         re_vortyd = re_thetad/2.193_realtype
-        temp1 = sqrtvort/rlv(i, j, k)
-        tempd2 = d2wall(i, j, k)**2*re_vortyd
-        wd(i, j, k, irho) = wd(i, j, k, irho) + temp1*tempd2
-        tempd1 = w(i, j, k, irho)*tempd2/rlv(i, j, k)
-        sqrtvortd = tempd1
-        rlvd(i, j, k) = rlvd(i, j, k) - temp1*tempd1
+        temp2 = sqrtvort/rlv(i, j, k)
+        tempd3 = d2wall(i, j, k)**2*re_vortyd
+        wd(i, j, k, irho) = wd(i, j, k, irho) + temp2*tempd3
+        tempd2 = w(i, j, k, irho)*tempd3/rlv(i, j, k)
+        sqrtvortd = tempd2
+        rlvd(i, j, k) = rlvd(i, j, k) - temp2*tempd2
         flamd = rethetabase*rethetacritd
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
@@ -503,12 +645,179 @@ branch = myIntStack(myIntPtr)
           call bcmflambda_fast_b(sabcm_tu, lam, lamd, sabcm_pg_p, flamd)
           call smoothminmax_fast_b(lamlo, lamlod, plammax, plammaxd, mp&
 &                            , lamd)
-          call smoothminmax_fast_b(arg1, arg1d, mlammax, mlammaxd, &
-&                            sabcm_pg_p, lamlod)
-          lamld = sabcm_pg_gain*arg1d
-          tempd2 = -(sabcm_pg_coef*d2wall(i, j, k)**2*lamld/nu)
-          snnd = tempd2
-          nud = -(snn*tempd2/nu)
+          call smoothminmax_fast_b(lammapped, lammappedd, mlammax, &
+&                            mlammaxd, sabcm_pg_p, lamlod)
+          call popcontrol2b(branch)
+          if (branch .eq. 0) then
+            lamld = lammappedd
+          else if (branch .eq. 1) then
+            wmapd = (vfav-vadv)*lammappedd
+            vadvd = (one-wmap)*lammappedd
+            vfavd = wmap*lammappedd
+            umapd = (1.0-tanh(umap/pgmapeps)**2)*half*wmapd/pgmapeps + &
+&             exp(umap/pgmapd)*pgmapc*vfavd/pgmapd + (1.0-tanh(umap/&
+&             pgmapb)**2)*pgmapa*vadvd/pgmapb
+            call smoothminmax_fast_b(umaplo, umaplod, arg10, arg1d0, mp&
+&                              , umapd)
+            call smoothminmax_fast_b(laml, lamld, arg1, arg1d, &
+&                              sabcm_pg_p, umaplod)
+          else
+            lamld = sabcm_pg_gain*lammappedd
+          end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+          if (branch .eq. 0) then
+            tempd3 = sabcm_pg_k*d2wall(i, j, k)**2*lamld/nu
+            duedsd = tempd3
+            nud = -(dueds*tempd3/nu)
+            tempd3 = -(duedsd/(rhoinf*ue))
+            dpdsd = tempd3
+            ued = -(dpds*tempd3/ue)
+            if (ue2c .eq. 0.0_8) then
+              ue2cd = 0.0_8
+            else
+              ue2cd = ued/(2.0*sqrt(ue2c))
+            end if
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+            if (branch .eq. 0) then
+              ue2d = 0.0_8
+            else
+              ue2d = ue2cd
+            end if
+            pcd = -(two*ue2d/rhoinf)
+            tempd3 = two*fact*dpdsd
+            uxhd = ppx*tempd3
+            ppxd = uxh*tempd3
+            uyhd = ppy*tempd3
+            ppyd = uyh*tempd3
+            uzhd = ppz*tempd3
+            ppzd = uzh*tempd3
+            wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhd/max3
+            max3d = -(w(i, j, k, ivz)*uzhd/max3**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+            if (branch .eq. 0) then
+              velmagpgd = 0.0_8
+            else
+              velmagpgd = max3d
+            end if
+            wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhd/max2
+            max2d = -(w(i, j, k, ivy)*uyhd/max2**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+            if (branch .ne. 0) velmagpgd = velmagpgd + max2d
+            wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhd/max1
+            max1d = -(w(i, j, k, ivx)*uxhd/max1**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+            if (branch .ne. 0) velmagpgd = velmagpgd + max1d
+            temp3 = w(i, j, k, ivz)
+            temp2 = w(i, j, k, ivy)
+            temp1 = w(i, j, k, ivx)
+            if (temp1**2 + temp2**2 + temp3**2 .eq. 0.0_8) then
+              tempd0 = 0.0_8
+            else
+              tempd0 = velmagpgd/(2.0*sqrt(temp1**2+temp2**2+temp3**2))
+            end if
+            wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
+            wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp2*tempd0
+            wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp3*tempd0
+            pipd = si(i, j, k, 3)*ppzd + si(i, j, k, 2)*ppyd + si(i, j, &
+&             k, 1)*ppxd
+            pimd = -(si(i-1, j, k, 3)*ppzd) - si(i-1, j, k, 2)*ppyd - si&
+&             (i-1, j, k, 1)*ppxd
+            pjpd = sj(i, j, k, 3)*ppzd + sj(i, j, k, 2)*ppyd + sj(i, j, &
+&             k, 1)*ppxd
+            pkpd = sk(i, j, k, 3)*ppzd + sk(i, j, k, 2)*ppyd + sk(i, j, &
+&             k, 1)*ppxd
+            pjmd = -(sj(i, j-1, k, 3)*ppzd) - sj(i, j-1, k, 2)*ppyd - sj&
+&             (i, j-1, k, 1)*ppxd
+            pkmd = -(sk(i, j, k-1, 3)*ppzd) - sk(i, j, k-1, 2)*ppyd - sk&
+&             (i, j, k-1, 1)*ppxd
+            temp2 = w(i, j, k-1, ivz)
+            temp1 = w(i, j, k-1, ivy)
+            temp0 = w(i, j, k-1, ivx)
+            tempd3 = gm1*pkmd
+            wd(i, j, k-1, irhoe) = wd(i, j, k-1, irhoe) + tempd3
+            wd(i, j, k-1, irho) = wd(i, j, k-1, irho) - (temp0**2+temp1&
+&             **2+temp2**2)*half*tempd3
+            tempd = -(w(i, j, k-1, irho)*half*tempd3)
+            wd(i, j, k-1, ivx) = wd(i, j, k-1, ivx) + 2*temp0*tempd
+            wd(i, j, k-1, ivy) = wd(i, j, k-1, ivy) + 2*temp1*tempd
+            wd(i, j, k-1, ivz) = wd(i, j, k-1, ivz) + 2*temp2*tempd
+            temp2 = w(i, j, k+1, ivz)
+            temp1 = w(i, j, k+1, ivy)
+            temp0 = w(i, j, k+1, ivx)
+            tempd3 = gm1*pkpd
+            wd(i, j, k+1, irhoe) = wd(i, j, k+1, irhoe) + tempd3
+            wd(i, j, k+1, irho) = wd(i, j, k+1, irho) - (temp0**2+temp1&
+&             **2+temp2**2)*half*tempd3
+            tempd = -(w(i, j, k+1, irho)*half*tempd3)
+            wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + 2*temp0*tempd
+            wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + 2*temp1*tempd
+            wd(i, j, k+1, ivz) = wd(i, j, k+1, ivz) + 2*temp2*tempd
+            temp2 = w(i, j-1, k, ivz)
+            temp1 = w(i, j-1, k, ivy)
+            temp0 = w(i, j-1, k, ivx)
+            tempd3 = gm1*pjmd
+            wd(i, j-1, k, irhoe) = wd(i, j-1, k, irhoe) + tempd3
+            wd(i, j-1, k, irho) = wd(i, j-1, k, irho) - (temp0**2+temp1&
+&             **2+temp2**2)*half*tempd3
+            tempd = -(w(i, j-1, k, irho)*half*tempd3)
+            wd(i, j-1, k, ivx) = wd(i, j-1, k, ivx) + 2*temp0*tempd
+            wd(i, j-1, k, ivy) = wd(i, j-1, k, ivy) + 2*temp1*tempd
+            wd(i, j-1, k, ivz) = wd(i, j-1, k, ivz) + 2*temp2*tempd
+            temp2 = w(i, j+1, k, ivz)
+            temp1 = w(i, j+1, k, ivy)
+            temp0 = w(i, j+1, k, ivx)
+            tempd3 = gm1*pjpd
+            wd(i, j+1, k, irhoe) = wd(i, j+1, k, irhoe) + tempd3
+            wd(i, j+1, k, irho) = wd(i, j+1, k, irho) - (temp0**2+temp1&
+&             **2+temp2**2)*half*tempd3
+            tempd = -(w(i, j+1, k, irho)*half*tempd3)
+            wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + 2*temp0*tempd
+            wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + 2*temp1*tempd
+            wd(i, j+1, k, ivz) = wd(i, j+1, k, ivz) + 2*temp2*tempd
+            temp2 = w(i-1, j, k, ivz)
+            temp1 = w(i-1, j, k, ivy)
+            temp0 = w(i-1, j, k, ivx)
+            tempd3 = gm1*pimd
+            wd(i-1, j, k, irhoe) = wd(i-1, j, k, irhoe) + tempd3
+            wd(i-1, j, k, irho) = wd(i-1, j, k, irho) - (temp0**2+temp1&
+&             **2+temp2**2)*half*tempd3
+            tempd = -(w(i-1, j, k, irho)*half*tempd3)
+            wd(i-1, j, k, ivx) = wd(i-1, j, k, ivx) + 2*temp0*tempd
+            wd(i-1, j, k, ivy) = wd(i-1, j, k, ivy) + 2*temp1*tempd
+            wd(i-1, j, k, ivz) = wd(i-1, j, k, ivz) + 2*temp2*tempd
+            temp2 = w(i+1, j, k, ivz)
+            temp1 = w(i+1, j, k, ivy)
+            temp0 = w(i+1, j, k, ivx)
+            tempd3 = gm1*pipd
+            wd(i+1, j, k, irhoe) = wd(i+1, j, k, irhoe) + tempd3
+            wd(i+1, j, k, irho) = wd(i+1, j, k, irho) - (temp0**2+temp1&
+&             **2+temp2**2)*half*tempd3
+            tempd = -(w(i+1, j, k, irho)*half*tempd3)
+            wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + 2*temp0*tempd
+            wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + 2*temp1*tempd
+            wd(i+1, j, k, ivz) = wd(i+1, j, k, ivz) + 2*temp2*tempd
+            temp1 = w(i, j, k, ivz)
+            temp0 = w(i, j, k, ivy)
+            temp = w(i, j, k, ivx)
+            tempd2 = gm1*pcd
+            wd(i, j, k, irhoe) = wd(i, j, k, irhoe) + tempd2
+            wd(i, j, k, irho) = wd(i, j, k, irho) - (temp**2+temp0**2+&
+&             temp1**2)*half*tempd2
+            tempd3 = -(w(i, j, k, irho)*half*tempd2)
+            wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp*tempd3
+            wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp0*tempd3
+            wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp1*tempd3
+            snnd = 0.0_8
+          else
+            tempd3 = -(sabcm_pg_coef*d2wall(i, j, k)**2*lamld/nu)
+            snnd = tempd3
+            nud = -(snn*tempd3/nu)
+          end if
           tempd0 = two*fact*snnd
           tempd = nwx*tempd0
           tempd1 = nwy*tempd0
@@ -740,19 +1049,39 @@ branch = myIntStack(myIntPtr)
 &   arg_gamma
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
+    real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
+    real(kind=realtype) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, &
+&   ppy, ppz
+    real(kind=realtype) :: velmagpg, uxh, uyh, uzh, dpds, ue2, ue2c, ue&
+&   , dueds, ue2min
+! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
+    real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
+! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
+! falkner_skan_map.py): adverse -a tanh(-u/b), favourable c (exp(u/d) - 1), blended over eps; u clipped
+! to +-uclip before the exponential (u is o(1e3) outside the boundary layer).
+! one parameter per line (tapenade wraps long declarations mid-token)
+    real(kind=realtype), parameter :: pgmapa=0.06913_realtype
+    real(kind=realtype), parameter :: pgmapb=0.03255_realtype
+    real(kind=realtype), parameter :: pgmapc=0.09912_realtype
+    real(kind=realtype), parameter :: pgmapd=0.04229_realtype
+    real(kind=realtype), parameter :: pgmapeps=0.003_realtype
+    real(kind=realtype), parameter :: pguclip=0.2_realtype
+    real(kind=realtype), parameter :: pguclipneg=-0.2_realtype
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
-    intrinsic log
     intrinsic tanh
+    intrinsic log
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
-    real(kind=realtype) :: arg1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -929,8 +1258,77 @@ branch = myIntStack(myIntPtr)
 &             nwy*vvy+nwz*vvz)+nwz*(nwx*wwx+nwy*wwy+nwz*wwz))
 ! no reynolds factor: nu = rlv/rho is non-dimensional with
 ! l_ref = 1 m, same convention as re_vorty below.
-            laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
-&             sabcm_pg_off
+            if (sabcm_pg_sensor .eq. 2) then
+! wall-pressure-gradient sensor: lambda = k (d^2/nu) du_e/ds with u_e from bernoulli and the
+! local pressure (p ~ p_wall across the layer), s = velocity direction, p from w (constant cp).
+! k = (thetahat/eta*)^2 of the blasius profile = 0.05064: lambda_theta of falkner-skan to +-5 %,
+! no offset (u_e' = 0 for blasius), no gain. independent of the velocity profile => no
+! transition/sensor feedback (docs/studies/22_bcm_pressure_gradient/falkner_skan_psensor.py).
+              gm1 = gammaconstant - one
+              pc = gm1*(w(i, j, k, irhoe)-half*w(i, j, k, irho)*(w(i, j&
+&               , k, ivx)**2+w(i, j, k, ivy)**2+w(i, j, k, ivz)**2))
+              pip = gm1*(w(i+1, j, k, irhoe)-half*w(i+1, j, k, irho)*(w(&
+&               i+1, j, k, ivx)**2+w(i+1, j, k, ivy)**2+w(i+1, j, k, ivz&
+&               )**2))
+              pim = gm1*(w(i-1, j, k, irhoe)-half*w(i-1, j, k, irho)*(w(&
+&               i-1, j, k, ivx)**2+w(i-1, j, k, ivy)**2+w(i-1, j, k, ivz&
+&               )**2))
+              pjp = gm1*(w(i, j+1, k, irhoe)-half*w(i, j+1, k, irho)*(w(&
+&               i, j+1, k, ivx)**2+w(i, j+1, k, ivy)**2+w(i, j+1, k, ivz&
+&               )**2))
+              pjm = gm1*(w(i, j-1, k, irhoe)-half*w(i, j-1, k, irho)*(w(&
+&               i, j-1, k, ivx)**2+w(i, j-1, k, ivy)**2+w(i, j-1, k, ivz&
+&               )**2))
+              pkp = gm1*(w(i, j, k+1, irhoe)-half*w(i, j, k+1, irho)*(w(&
+&               i, j, k+1, ivx)**2+w(i, j, k+1, ivy)**2+w(i, j, k+1, ivz&
+&               )**2))
+              pkm = gm1*(w(i, j, k-1, irhoe)-half*w(i, j, k-1, irho)*(w(&
+&               i, j, k-1, ivx)**2+w(i, j, k-1, ivy)**2+w(i, j, k-1, ivz&
+&               )**2))
+              ppx = pip*si(i, j, k, 1) - pim*si(i-1, j, k, 1) + pjp*sj(i&
+&               , j, k, 1) - pjm*sj(i, j-1, k, 1) + pkp*sk(i, j, k, 1) -&
+&               pkm*sk(i, j, k-1, 1)
+              ppy = pip*si(i, j, k, 2) - pim*si(i-1, j, k, 2) + pjp*sj(i&
+&               , j, k, 2) - pjm*sj(i, j-1, k, 2) + pkp*sk(i, j, k, 2) -&
+&               pkm*sk(i, j, k-1, 2)
+              ppz = pip*si(i, j, k, 3) - pim*si(i-1, j, k, 3) + pjp*sj(i&
+&               , j, k, 3) - pjm*sj(i, j-1, k, 3) + pkp*sk(i, j, k, 3) -&
+&               pkm*sk(i, j, k-1, 3)
+              velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + &
+&               w(i, j, k, ivz)**2)
+              if (velmagpg .lt. xminn) then
+                max1 = xminn
+              else
+                max1 = velmagpg
+              end if
+              uxh = w(i, j, k, ivx)/max1
+              if (velmagpg .lt. xminn) then
+                max2 = xminn
+              else
+                max2 = velmagpg
+              end if
+              uyh = w(i, j, k, ivy)/max2
+              if (velmagpg .lt. xminn) then
+                max3 = xminn
+              else
+                max3 = velmagpg
+              end if
+              uzh = w(i, j, k, ivz)/max3
+              dpds = two*fact*(uxh*ppx+uyh*ppy+uzh*ppz)
+              ue2 = uinf**2 + two*(pinfcorr-pc)/rhoinf
+              ue2min = (pgueminfrac*uinf)**2
+              if (ue2 .lt. ue2min) then
+                ue2c = ue2min
+              else
+                ue2c = ue2
+              end if
+              ue = sqrt(ue2c)
+              dueds = -(dpds/(rhoinf*ue))
+              laml = sabcm_pg_k*(d2wall(i, j, k)**2/nu)*dueds
+            else
+              laml = -(sabcm_pg_coef*(d2wall(i, j, k)**2/nu)*snn) + &
+&               sabcm_pg_off
+            end if
 ! smooth clip of gain*laml to [-lammax, lammax] (distinct
 ! targets, not in place: keeps the fast-reverse ad exact).
 ! module variables are copied to locals before being passed to the
@@ -938,8 +1336,21 @@ branch = myIntStack(myIntPtr)
             mlammax = -sabcm_pg_lammax
             plammax = sabcm_pg_lammax
             mp = -sabcm_pg_p
-            arg1 = sabcm_pg_gain*laml
-            lamlo = smoothminmax(arg1, mlammax, sabcm_pg_p)
+            if (sabcm_pg_sensor .eq. 2) then
+! k already maps to lambda_theta
+              lammapped = laml
+            else if (sabcm_pg_map .eq. 2) then
+! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
+              umaplo = smoothminmax(laml, pguclipneg, sabcm_pg_p)
+              umap = smoothminmax(umaplo, pguclip, mp)
+              vadv = pgmapa*tanh(umap/pgmapb)
+              vfav = pgmapc*(exp(umap/pgmapd)-one)
+              wmap = half*(one+tanh(umap/pgmapeps))
+              lammapped = (one-wmap)*vadv + wmap*vfav
+            else
+              lammapped = sabcm_pg_gain*laml
+            end if
+            lamlo = smoothminmax(lammapped, mlammax, sabcm_pg_p)
             lam = smoothminmax(lamlo, plammax, mp)
             flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
           end if
@@ -960,11 +1371,11 @@ branch = myIntStack(myIntPtr)
               tterm1 = tterm1
             end if
             if (tterm2 .lt. zero) then
-              max1 = zero
+              max4 = zero
             else
-              max1 = tterm2
+              max4 = tterm2
             end if
-            arg_gamma = sqrt(tterm1) + sqrt(max1)
+            arg_gamma = sqrt(tterm1) + sqrt(max4)
             ttgamma = one - exp(-arg_gamma)
             if (ttgamma .lt. zero) then
               x1 = zero
