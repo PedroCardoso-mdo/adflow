@@ -123,6 +123,15 @@ BCM today: 68.20 · 0.22/0.49 | 51.38 · 0.74/0.34 | 39.22 · 0.70/0.78 | 53.55 
   smooth, hard **and the pre-change baseline ae1a7dbb** with identical numbers (18.3 % mismatched,
   max rel 195) — pre-existing fragility of that test, not a PG regression.
 
+### 5.1b Adjoint vs CS after the fix — still wrong, and why (sensor 1)
+Rerun 1935763 (fixed fast-reverse): max |Δ| 187 % (cl) / 181 % (cd), median cd 74 % — unchanged. Real
+central differences on the same case (job 1935808, cold solves converged to 4e-8, noise pair = 0):
+dcd/dα = −0.79 / +0.28 / +0.48 for h = 3e-3 / 1e-3 / 3e-4; shape DVs change sign and order of
+magnitude with the step. The primal with the velocity-profile sensor is not a smooth function of the
+DVs (transition/profile feedback on top of the BCM branch structure): adjoint and CS measure tangents
+of different branches and neither is "the" derivative. This is what motivated sensor 2 and the
+smoothing/verification loop (`08_optimization/2d_tu05_L0/pg_loop`).
+
 ### 5.2 Cross-model (NACA0012 L0, Tu 0.5 %, cl 0.3; counts · x_tr up/lo; `cross_eval_pg`, jobs 1934907-09)
 
 | shape | GR (target) | BCM | BCM-PG g=1 | BCM-PG g=2 | BCM-PG g=3 |
@@ -131,15 +140,16 @@ BCM today: 68.20 · 0.22/0.49 | 51.38 · 0.74/0.34 | 39.22 · 0.70/0.78 | 53.55 
 | GR C2 | 34.94 · 0.76/0.89 | 51.38 (+47 %) · 0.74/0.34 | 52.09 · 0.75/0.30 | 52.49 · 0.74/0.29 | 52.80 · 0.74/0.28 |
 | GR C3 | 34.02 · 0.77/0.90 | 39.22 (+15 %) · 0.70/0.78 | 33.63 (−1 %) · 0.76/0.83 | 32.50 (−4 %) · 0.76/0.87 | 32.43 (−5 %) |
 | BCM C2 r1 e50 | 79.50 · 0.16/0.42 | 53.55 (−33 %) · 0.33/0.66 | 70.63 (−11 %) · 0.12/0.62 | 83.59 (+5 %) · 0.08/0.34 | 85.17 (+7 %) |
+| BCM C3 e118 | 71.18 · 0.17/0.63 | 46.39 (−35 %) · 0.48/0.66 | 69.10 (−3 %) · 0.12/0.65 [g1.5: 70.54 (−1 %)] | 74.07 (+4 %) · 0.08/0.56 | [g2.5: 88.91 (+25 %)] |
 
-mean |Δcd/cd_GR| (4 shapes): BCM 24.2 % → PG g1 16.0 %, g2 16.4 %, g3 17.6 %. Ranking vs the own NACA
+mean |Δcd/cd_GR| (4 shapes): BCM 24.2 % → PG g1 16.0 %, g2 16.4 %, g3 17.6 %; over 5 shapes (with e118, job 1935767): BCM 26.3 % → PG g1 13.4 %. Ranking vs the own NACA
 (what an optimiser sees): GR says BCM C2 r1 is +14.6 % *worse* than NACA and GR C3 −51 %; BCM said
 −21 % / −42 %; **BCM-PG g=2 says +14 % / −56 %** — the sensor closes the gap that motivated the work.
 GR C2 stays +50 %: all BCM variants trip the lower surface at 0.3 c where GR keeps laminar flow to
 0.9 c (`cross_pg_cf.png`); F(λ) cannot raise the threshold enough there (F ≤ 1.10 at Tu 0.5 %) — a
 base-threshold/criterion difference (BCM Re_θc(0.5 %) = 725 vs Langtry Re_θt = 880), not a gradient
-effect. Gain 2 (Falkner–Skan) kept. Some PG trims end at ~1e-6 relative instead of 1e-8 (`fail`
-flag; forces converged). BCM C3 e118 gain sweep: job 1935767.
+effect. Some PG trims end at ~1e-6 relative instead of 1e-8 (`fail` flag; forces converged). Sensor 1 is
+superseded by sensor 2 (§3b) after the derivative findings (§5.1b).
 
 ### 5.3 Polar (NLF0416 / S809 L1, 3 α, `15_sabcm_polars`, jobs 1934910/11, 1935125)
 With PG (g=2) the low-Tu airfoils (Tu 0.15/0.07 %) **limit-cycle in ANK** (resrho 0.2–0.7 for 5000+
