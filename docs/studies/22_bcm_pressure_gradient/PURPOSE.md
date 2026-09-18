@@ -1,7 +1,7 @@
 # 22 — SA-BCM with a local pressure-gradient sensor (SABCM_PG)
 
-**Started:** 2026-09-18  **Status:** model implemented + Tapenade regenerated (branch `sa-bcm-pg`);
-validation/calibration campaign on Deucalion in progress (see §4).
+**Started:** 2026-09-18  **Status:** model implemented + Tapenade regenerated (branch `sa-bcm-pg`, dcb4c84e,
+installed in machV4 by build job 1934618: real + complex); validation/calibration jobs submitted (see §4).
 
 ## 1. Why
 
@@ -75,18 +75,71 @@ cross set (§4 C3).
 
 | step | what | where | status |
 |---|---|---|---|
-| B1 | PG-off regression: reg suite (blockette/real/cs/adjoint vs existing refs) + NACA L0 cold trim = 68.20 counts | `tests/reg_tests/job_regtests_pg.sh`; `cross_eval_pg` | pending |
-| B2 | fwd/rev/fast dot products + adjoint-vs-CS with PG on (`bcm_pg_tut_wing` variant) | same job | pending |
-| B3 | adjoint vs complex step, NACA0012 L2, 20 shape DVs + α, PG on | `SA_BCM_ARTICLE/04_cs_naca2d/job_cs_naca_pg.sh` | pending |
-| C2 | TMR flat plate L1/L2, bcm vs bcmpg (ZPG ⇒ identical) | `10_tmr_flatplate/10_bcm_pg/jobs/job_bcm_pg.sh` | pending |
-| C3 | cross shapes trimmed with BCM-PG, gain {2, 1, 3}, vs GR targets | `08_optimization/2d_tu05_L0/cross_eval_pg/submit_cross_pg.sh` | pending |
-| C4 | NLF0416 α 2/4/6 + S809 α 4/6/8, pg vs ref (same ranks) vs experiment/GR | `15_sabcm_polars/jobs/job_polars_pg.sh` | pending |
+| B1 | PG-off regression: reg suite (blockette/real/cs/adjoint vs existing refs) + NACA L0 cold trim = 68.20 counts | `tests/reg_tests/job_regtests_pg.sh`; `cross_eval_pg` | job 1934904 (reg suite), NACA in the cross jobs |
+| B2 | fwd/rev/fast dot products + adjoint-vs-CS with PG on (`bcm_pg_tut_wing` variant) | same job | job 1934904 |
+| B3 | adjoint vs complex step, NACA0012 L2, 20 shape DVs + α, PG on | `SA_BCM_ARTICLE/04_cs_naca2d/job_cs_naca_pg.sh` | job 1934905 |
+| C2 | TMR flat plate L1/L2, bcm vs bcmpg (ZPG ⇒ identical) | `10_tmr_flatplate/10_bcm_pg/jobs/job_bcm_pg.sh` | job 1934906 |
+| C3 | cross shapes trimmed with BCM-PG, gain {2, 1, 3}, vs GR targets | `08_optimization/2d_tu05_L0/cross_eval_pg/submit_cross_pg.sh` | jobs 1934907 (g2), 1934908 (g1), 1934909 (g3) |
+| C4 | NLF0416 α 2/4/6 + S809 α 4/6/8, pg vs ref (same ranks) vs experiment/GR | `15_sabcm_polars/jobs/job_polars_pg.sh` | jobs 1934910 (pg), 1934911 (ref11) |
 | D | C2/C3 optimisations relaunched with BCM-PG on L0 | `SA_BCM_ARTICLE/2d_opt/dense_L0v2_pg` | pending |
 
 Targets for C3 (cd counts · x_tr up/lo): GR NACA 69.36 · 0.19/0.58 | GR C2 34.94 · 0.76/0.89 |
 GR C3 34.02 · 0.77/0.90 | BCM C2 r1 e50 79.50 · 0.16/0.42 | BCM C3 e118 71.18 · 0.17/0.63.
 BCM today: 68.20 · 0.22/0.49 | 51.38 · 0.74/0.34 | 39.22 · 0.70/0.78 | 53.55 · 0.33/0.66 | 46.39 · 0.48/0.66.
 
-## 5. Results
+## 5. Results (2026-09-18, machV4 @ 50b51a76)
 
-(to be filled)
+### 5.1 Adjoint / AD
+* PG off: every reference-based AD test (fwd, rev, fast-rev, dot products, smooth+hard) passes against
+  the 2026-08-25 refs → the regenerated AD is unchanged for the existing model. NACA L0 cold trim is
+  in the cross jobs.
+* PG on, first build (dcb4c84e): forward AD = complex step (5/5 `cmplx_test_*`), fwd↔rev dot products
+  OK, **but `_b` vs `_fast_b` failed** and the NACA L2 adjoint-vs-CS gave up to 180 % errors. Cause:
+  `ReThetaCrit = ReThetaCrit*Flam` (in place) — Tapenade guards it with `pushreal8/popreal8` in
+  `sa_b.f90`, the fast-reverse autoEdit has no stack, so `flamd` used the overwritten value. Fixed
+  with a distinct target (`ReThetaCrit = ReThetaBase*Flam`, commit 50b51a76; no `pushreal8` left in
+  `sa_b.f90`); local check: all pg `_b`/`_fast_b`/dot-product tests pass. HPC re-verification: jobs
+  1935762 (reg suite) and 1935763 (NACA L2 adjoint vs CS) — see §5.5.
+* The AD-vs-FD `wDot` check (`TestJacVecFwdBCMFD.test_wDot`, h=1e-8, rtol 8e-4, atol 0) fails for
+  smooth, hard **and the pre-change baseline ae1a7dbb** with identical numbers (18.3 % mismatched,
+  max rel 195) — pre-existing fragility of that test, not a PG regression.
+
+### 5.2 Cross-model (NACA0012 L0, Tu 0.5 %, cl 0.3; counts · x_tr up/lo; `cross_eval_pg`, jobs 1934907-09)
+
+| shape | GR (target) | BCM | BCM-PG g=1 | BCM-PG g=2 | BCM-PG g=3 |
+|---|---|---|---|---|---|
+| NACA 0012 | 69.36 · 0.19/0.58 | 68.20 · 0.22/0.49 | 71.24 · 0.18/0.46 | 73.28 · 0.16/0.45 | 74.59 · 0.14/0.44 |
+| GR C2 | 34.94 · 0.76/0.89 | 51.38 (+47 %) · 0.74/0.34 | 52.09 · 0.75/0.30 | 52.49 · 0.74/0.29 | 52.80 · 0.74/0.28 |
+| GR C3 | 34.02 · 0.77/0.90 | 39.22 (+15 %) · 0.70/0.78 | 33.63 (−1 %) · 0.76/0.83 | 32.50 (−4 %) · 0.76/0.87 | 32.43 (−5 %) |
+| BCM C2 r1 e50 | 79.50 · 0.16/0.42 | 53.55 (−33 %) · 0.33/0.66 | 70.63 (−11 %) · 0.12/0.62 | 83.59 (+5 %) · 0.08/0.34 | 85.17 (+7 %) |
+
+mean |Δcd/cd_GR| (4 shapes): BCM 24.2 % → PG g1 16.0 %, g2 16.4 %, g3 17.6 %. Ranking vs the own NACA
+(what an optimiser sees): GR says BCM C2 r1 is +14.6 % *worse* than NACA and GR C3 −51 %; BCM said
+−21 % / −42 %; **BCM-PG g=2 says +14 % / −56 %** — the sensor closes the gap that motivated the work.
+GR C2 stays +50 %: all BCM variants trip the lower surface at 0.3 c where GR keeps laminar flow to
+0.9 c (`cross_pg_cf.png`); F(λ) cannot raise the threshold enough there (F ≤ 1.10 at Tu 0.5 %) — a
+base-threshold/criterion difference (BCM Re_θc(0.5 %) = 725 vs Langtry Re_θt = 880), not a gradient
+effect. Gain 2 (Falkner–Skan) kept. Some PG trims end at ~1e-6 relative instead of 1e-8 (`fail`
+flag; forces converged). BCM C3 e118 gain sweep: job 1935767.
+
+### 5.3 Polar (NLF0416 / S809 L1, 3 α, `15_sabcm_polars`, jobs 1934910/11, 1935125)
+With PG (g=2) the low-Tu airfoils (Tu 0.15/0.07 %) **limit-cycle in ANK** (resrho 0.2–0.7 for 5000+
+its, never reach NK) at NLF α6 and S809 α4/α6, while the PG-off twins (same 11 ranks) converge; none
+of {SABCM_PG_p 100, gain 1, ANK CFL 1e4, NK @1e-3} fixed it (job 1935125). Where it converged, PG
+trips NLF α4 earlier than GR/experiment (x_tr,up 0.19 vs 0.33/0.34; cd 81 vs 65 counts): the sensor
+reads λ ≈ −0.005 (raw, → F ≈ 0.89) at the Re_v peak (`analyze_pg_nearwall.py`, x = 0.10 profile),
+i.e. a mild adverse gradient that the GR's transported edge-λ_θ does not see. Continuation test
+(PG switched on from the converged PG-off state): job 1935764. `nlf a2` twice killed by the
+SA-BCM startup NaN (cl/cd monitors) — monitors removed from `run_case_bcm.py`, rerun in 1935764.
+
+### 5.4 Flat plate (TMR, `10_tmr_flatplate/10_bcm_pg`, jobs 1934951, 1935139)
+Not usable as the neutrality test: the SA-BCM itself is **bistable** on this plate at Tu 0.1 %
+(rNK/CANK recipes converge to the fully turbulent branch, cd_wall 0.00317 = SA; the ANK-only /
+CFL-capped recipes stay laminar and never converge). With γ = 1 from Term2 the threshold is
+irrelevant, so bcm ≡ bcmpg there trivially. Neutrality on a Blasius layer rests on the
+Falkner–Skan analysis (§3) and on the near-wall profiles (λ = offset at the wall, Snn → 0).
+
+### 5.5 Open (updated as jobs land)
+- HPC re-verification of the adjoint after the fix (1935762, 1935763).
+- PG convergence at low Tu (1935764).
+- C2/C3 with BCM-PG g=2 (`dense_L0v2_pg`), after 5.5 confirms the adjoint.
