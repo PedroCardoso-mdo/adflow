@@ -1030,7 +1030,7 @@ contains
         real(kind=realType) :: vortx, vorty, vortz
         real(kind=realType) :: omegax, omegay, omegaz
         real(kind=realType) :: strainMag2, prod
-        real(kind=realType) :: tterm2, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
+        real(kind=realType) :: tterm2, ReThetaBase, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
         real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma, vortProd
         real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
         real(kind=realType), parameter :: xminn = 1.e-10_realType
@@ -1216,11 +1216,11 @@ contains
                         tterm2 = fv1*chi / SABCM_Const2
                         
                         ! Re_theta critical
-                        ReThetaCrit = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
+                        ReThetaBase = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
 
                         ! Pressure-gradient sensor (Menter 2015 lambda_thetaL with the
                         ! wall normal n = nWall, Langtry F(lambda) as in the SA-gamma-Retheta
-                        ! model). Off => Flam = 1 and nothing below touches ReThetaCrit.
+                        ! model). Off => Flam = 1 and ReThetaCrit = ReThetaBase exactly.
                         Flam = one
                         lamL = zero
                         if (SABCM_PG) then
@@ -1244,8 +1244,11 @@ contains
                             lamLo = smoothMinMax(SABCM_PG_gain * lamL, mlamMax, SABCM_PG_p)
                             lam = smoothMinMax(lamLo, plamMax, mp)
                             Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
-                            ReThetaCrit = ReThetaCrit * Flam
                         end if
+                        ! Distinct target (never ReThetaCrit = ReThetaCrit*Flam): the fast-reverse AD has no
+                        ! push/pop stack, an in-place update would use the overwritten value in flamd.
+                        ! Flam = one when SABCM_PG is off: the product is exact, PG-off stays bit-identical.
+                        ReThetaCrit = ReThetaBase * Flam
 
                         ! Re_theta actual
                         Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)

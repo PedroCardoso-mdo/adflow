@@ -59,8 +59,8 @@ contains
     real(kind=realtype) :: strainmag2d, strainprodd, vortprodd
 ! note: no local may end in _c: tapenade names its derivative <name>_cd/ and the
 ! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
-    real(kind=realtype) :: tterm2, rethetacrit, re_vorty, re_theta, &
-&   tterm1, ttgamma
+    real(kind=realtype) :: tterm2, rethetabase, rethetacrit, re_vorty, &
+&   re_theta, tterm1, ttgamma
     real(kind=realtype) :: tterm2d, rethetacritd, re_vortyd, re_thetad, &
 &   tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
@@ -282,11 +282,12 @@ myIntPtr = myIntPtr + 1
 ! tterm2 (small values ~0.01)
           tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
-          rethetacrit = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
+          rethetabase = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
 &           1.027_realtype)
 ! pressure-gradient sensor (menter 2015 lambda_thetal with the
 ! wall normal n = nwall, langtry f(lambda) as in the sa-gamma-retheta
-! model). off => flam = 1 and nothing below touches rethetacrit.
+! model). off => flam = 1 and rethetacrit = rethetabase exactly.
+          flam = one
           if (sabcm_pg) then
             nwx = nwall(1, i, j, k)
             nwy = nwall(2, i, j, k)
@@ -309,13 +310,16 @@ myIntPtr = myIntPtr + 1
             lamlo = smoothminmax(arg1, mlammax, sabcm_pg_p)
             lam = smoothminmax(lamlo, plammax, mp)
             flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
-            rethetacrit = rethetacrit*flam
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
           else
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
           end if
+! distinct target (never rethetacrit = rethetacrit*flam): the fast-reverse ad has no
+! push/pop stack, an in-place update would use the overwritten value in flamd.
+! flam = one when sabcm_pg is off: the product is exact, pg-off stays bit-identical.
+          rethetacrit = rethetabase*flam
 ! re_theta actual
           re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
 &           , k)**2
@@ -492,10 +496,10 @@ branch = myIntStack(myIntPtr)
         tempd1 = w(i, j, k, irho)*tempd2/rlv(i, j, k)
         sqrtvortd = tempd1
         rlvd(i, j, k) = rlvd(i, j, k) - temp1*tempd1
+        flamd = rethetabase*rethetacritd
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
-          flamd = rethetacrit*rethetacritd
           call bcmflambda_fast_b(sabcm_tu, lam, lamd, sabcm_pg_p, flamd)
           call smoothminmax_fast_b(lamlo, lamlod, plammax, plammaxd, mp&
 &                            , lamd)
@@ -730,8 +734,8 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: strainmag2, strainprod, vortprod
 ! note: no local may end in _c: tapenade names its derivative <name>_cd/ and the
 ! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
-    real(kind=realtype) :: tterm2, rethetacrit, re_vorty, re_theta, &
-&   tterm1, ttgamma
+    real(kind=realtype) :: tterm2, rethetabase, rethetacrit, re_vorty, &
+&   re_theta, tterm1, ttgamma
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
@@ -909,11 +913,11 @@ branch = myIntStack(myIntPtr)
 ! tterm2 (small values ~0.01)
           tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
-          rethetacrit = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
+          rethetabase = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(-&
 &           1.027_realtype)
 ! pressure-gradient sensor (menter 2015 lambda_thetal with the
 ! wall normal n = nwall, langtry f(lambda) as in the sa-gamma-retheta
-! model). off => flam = 1 and nothing below touches rethetacrit.
+! model). off => flam = 1 and rethetacrit = rethetabase exactly.
           flam = one
           laml = zero
           if (sabcm_pg) then
@@ -938,8 +942,11 @@ branch = myIntStack(myIntPtr)
             lamlo = smoothminmax(arg1, mlammax, sabcm_pg_p)
             lam = smoothminmax(lamlo, plammax, mp)
             flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
-            rethetacrit = rethetacrit*flam
           end if
+! distinct target (never rethetacrit = rethetacrit*flam): the fast-reverse ad has no
+! push/pop stack, an in-place update would use the overwritten value in flamd.
+! flam = one when sabcm_pg is off: the product is exact, pg-off stays bit-identical.
+          rethetacrit = rethetabase*flam
 ! re_theta actual
           re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
 &           , k)**2
