@@ -101,13 +101,41 @@ tuned to these results.
 | it | sensor / knobs | adjoint vs CS | BCM C2 r1 | BCM C3 e118 | GR C2 | note |
 |---|---|---|---|---|---|---|
 | 0 | sensor 2 (K 0.0506, p 300, lamMax 0.1, ν̃∞ 1e-7) | (job died on an int/float option; rerun) | 83.84 · 0.08/0.34 | 88.44 · 0.08/0.14 | 52.12 · 0.75/0.29 | all trims converged in 12–13 solves (no stalls); e118 lower surface over-penalised |
-| 1 | sensor 3 (θ = Re_θc ν/U_e, no constant) | pending | pending | pending | pending | |
+| 0 | (adjoint/CS rerun, job 1936308) | α 1.0 % · DV8 10 % · DV12 35 % (cd); cl ≤ 0.3 % | | | | partials all pass (reg suite); gap = primal branch sensitivity |
+| 1 | sensor 3 (θ = Re_θc ν/U_e, no constant) | pending (1936311) | 91.4 · 0.07/0.12 | 89.7 · 0.07/0.11 | 52.7 · 0.75/0.28 | trips both surfaces at 0.07–0.12 c |
 
 **Sensor 3** (2026-09-19): the reference model applies F(λ_θ) with the *model* thickness
 θ_t = Re_θt·ν/U (P&Z Eqs. 10–14), bounded and uniform across the layer; sensor 2's physical θ ∝ d
 grows with the laminar run and over-reads adverse gradients far downstream (e118 lower surface:
 0.14 c vs 0.63 c in GR). Sensor 3 uses θ = Re_θc(Tu)·ν/U_e, λ = θ²U_e′/ν, U_e from the local
 pressure — the same definition as the reference, no constant left. Option `SABCM_PG_sensor = 3`.
+
+### 3d. Why the local sensors trip earlier than GR — checked against the GR solution (2026-09-19)
+
+Analytic λ_θ from the surface cp of the BCM C2 r1 shape (`u = U_e/U∞ = √(1−cp)`, λ = Re_θ²/Re · u′/u²):
+lower surface x = 0.06–0.10 has a real adverse gradient, λ = −0.12…−0.23 (sensor-3 definition) →
+F = 0.61 (clip); favourable at 0.15–0.25 (F 1.10); adverse again at 0.3 (F 0.69). The GR volume of the
+same shape (`cross_eval/trim_gr_on_bcm_c2r1_e50/trim_000_vol.cgns`, field `TransitionRetheta`) shows
+the transported R̅eθt **outside the layer following exactly this**: 950 (x 0.02–0.04), 560/542/550
+(0.06–0.10 ≈ 880·0.61 = 537), 772/966 (0.15/0.20 ≈ 970), 667 (0.30). So the sensor reads the same
+edge λ_θ as the reference model — the pressure sensor is *correct* as an implementation of the LM
+correlation.
+
+Near the wall (Re_v peak, d ≈ 5e-5…1e-3 c) GR's R̅eθt is lagged/diffused: 600–650 all along the lower
+surface (0.68–0.74 of the ZPG value) instead of 540–970 — a mild history effect. The decisive
+difference is the **onset criterion level**: GR fires at Re_S ≈ 2.6·1.35·Re_θc(R̅eθt) ≈ 2.46·R̅eθt
+(≈ 1470 at R̅eθt 600), the BCM at Re_v ≈ 2.193·Re_θc^BCM·F = 970 at F 0.61, and the γ transport adds
+a further delay in GR. With Blasius-like Re_v ≈ 2.19·Re_θ that puts the BCM-PG trip at x ≈ 0.12 c
+and GR's at ≈ 0.4 c on this surface — exactly what the trims give (0.12 vs 0.42). The same F(λ)
+therefore cannot bring the BCM to GR's x_tr on these shapes: the gap is the base onset criterion
+(and its flat-plate calibration), not the gradient sensitivity. Closing it would mean changing the
+BCM onset constants to GR's (= becoming the GR model) — not a calibration of the sensor.
+
+What the local sensor does achieve: the ranking of the shapes becomes the GR one (GR C3 < GR C2 <
+NACA < BCM optima), i.e. an optimiser driven by BCM-PG no longer exploits the nose suction-peak
+loophole. Sensor 1 (Menter, gain 1) happened to land closest to GR's numbers (mean 13 %) because it
+under-reads adverse gradients by ~2× (Falkner–Skan map) — a coincidence with GR's lag, and it is not
+smooth (§5.1b). Sensor 2 (θ ∝ d, Blasius K) is the smooth, constant-free LM-local model.
 
 ## 4. Campaign (Deucalion, machV4 rebuilt from `sa-bcm-pg`)
 
