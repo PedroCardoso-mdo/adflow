@@ -226,7 +226,8 @@ contains
         use flowVarRefState
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
-                      transitionSrcDtRestrict, transitionUseApproxSA, transitionRefLength
+                      transitionSrcDtRestrict, transitionUseApproxSA, transitionRefLength, &
+                      transitionBCMGamma
         implicit none
 
         ! Local parameters
@@ -331,6 +332,12 @@ contains
         real(kind=realType) :: dfOnset1_dReT, dfOnset_dReT, dPgamma_dReT
         real(kind=realType) :: dEgamma_dReT
         real(kind=realType) :: pGamma_common, sech2_val
+        ! SA-BCM intermittency with transported threshold (transitionBCMGamma)
+        real(kind=realType) :: gammaBC, tuPct, reThetaBCtilde, bcVortMag
+        real(kind=realType) :: reVortBC, reThetaBC, reThetaC0BC, reThetaT0BC, reThetaCBC
+        real(kind=realType) :: bcTerm1Raw, bcTerm1, bcTerm2, bcS, bcKmax, bcArg
+        real(kind=realType) :: sech2BC, sigBC, dbcTerm2, dgammaBC_dnu, dgammaBC_dReT
+        real(kind=realType) :: dSnu_dgamma
 
 
 
@@ -511,6 +518,61 @@ contains
                         termFw = ((one + cw36) / (gg6 + cw36))**sixth
                         fwSa = gg * termFw
 
+                        ! --- Compute vorticity and strain magnitudes ---
+                        vortx = two * fact * (wwy - vvz) - two * omegax
+                        vorty = two * fact * (uuz - wwx) - two * omegay
+                        vortz = two * fact * (vvx - uuy) - two * omegaz
+                        vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+                        sxx = two * fact * uux
+                        syy = two * fact * vvy
+                        szz = two * fact * wwz
+                        sxy = fact * (uuy + vvx)
+                        sxz = fact * (uuz + wwx)
+                        syz = fact * (vvz + wwy)
+
+                        strainMag2 = two*(sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
+                        strainMag  = sqrt(max(two*strainMag2, xminn))
+
+                        ! --- transitionBCMGamma: SA-BCM intermittency with a transported
+                        ! threshold. gamma_BC is the algebraic Cakmakcioglu (2020)
+                        ! intermittency in the tanh/KS-smoothed form of sa.F90's SA-BCM
+                        ! (Term1 = (Re_theta - Re_theta_c)/(Re_theta_c*chi1), Term2 =
+                        ! nu_t/(chi2*nu), gamma = 1/2(1+tanh((KSmax(Term1,0)+Term2-S0)/f))).
+                        ! Its critical Re_theta_c^BCM(Tu) -- a freestream constant in
+                        ! SA-BCM -- is scaled by ReThetaTilde / Re_theta_t(Tu, lambda=0):
+                        ! the transported Langtry-Menter threshold normalised by its
+                        ! zero-pressure-gradient value. At ZPG the ratio is 1 and the
+                        ! model is exactly SA-BCM; under an adverse (favourable)
+                        ! pressure gradient the threshold drops (rises) with the lag and
+                        ! upstream history that the ReTheta transport equation gives
+                        ! SA-gamma-ReTheta, instead of a local sensor. Re_theta uses the
+                        ! raw |omega| (no floor) exactly as sa.F90, and ft2 is dropped as
+                        ! in SA-BCM. Tu is turbIntensityInf (fraction -> percent), the
+                        ! same Tu the ReTheta correlation uses. gammaBC = 1 (inert) when
+                        ! the option is off; the transported gamma stays solved but only
+                        ! diagnostic.
+                        gammaBC = one
+                        if (transitionBCMGamma) then
+                            tuPct = turbIntensityInf * 100.0_realType
+                            reThetaBCtilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
+                            bcVortMag = sqrt(vortx**2 + vorty**2 + vortz**2)
+                            reVortBC = bcVortMag * w(i, j, k, irho) / rlv(i, j, k) * (d2Wall(i, j, k)**2)
+                            reThetaBC = reVortBC / 2.193_realType
+                            reThetaC0BC = 803.73_realType * (tuPct + 0.6067_realType)**(-1.027_realType)
+                            reThetaT0BC = reThetaTCorrelation(tuPct, zero)
+                            reThetaCBC = reThetaC0BC * reThetaBCtilde / reThetaT0BC
+                            bcTerm1Raw = (reThetaBC - reThetaCBC) / (reThetaCBC * SABCM_Const1)
+                            bcTerm2 = fv1 * chi / SABCM_Const2
+                            ! KS-smoothed max(Term1, 0) (shift by kmax for overflow safety)
+                            bcS = SABCM_maxsmooth * bcTerm1Raw
+                            bcKmax = max(bcS, xminn)
+                            bcTerm1 = (bcKmax + log(exp(bcS - bcKmax) + exp(-bcKmax))) / SABCM_maxsmooth
+                            bcArg = (bcTerm1 + bcTerm2 - SABCM_S0_tanh) / SABCM_fsmooth
+                            gammaBC = half * (one + tanh(bcArg))
+                            ft2 = zero
+                        end if
+
                         ! Compute the source term; some terms are saved for the
                         ! linearization. The source term is stored in scratch.
 
@@ -538,7 +600,11 @@ contains
                         ! xminn is only met asymptotically (steady-state gamma
                         ! respects the implicit 0.02 floor), so it carries no tie
                         ! risk and just guards divergent/negative gamma.
-                        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
+                        if (transitionBCMGamma) then
+                            gammaForSA = gammaBC
+                        else
+                            gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
+                        end if
 
                         if (approxSA .and. transitionUseApproxSA) then
                             term1 = zero
@@ -562,22 +628,6 @@ contains
                         ! ========================================================
                         ! Gamma and ReTheta source terms (sLangtry-Menter)
                         ! ========================================================
-
-                        ! --- Compute vorticity and strain magnitudes ---
-                        vortx = two * fact * (wwy - vvz) - two * omegax
-                        vorty = two * fact * (uuz - wwx) - two * omegay
-                        vortz = two * fact * (vvx - uuy) - two * omegaz
-                        vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
-
-                        sxx = two * fact * uux
-                        syy = two * fact * vvy
-                        szz = two * fact * wwz
-                        sxy = fact * (uuy + vvx)
-                        sxz = fact * (uuz + wwx)
-                        syz = fact * (vvz + wwy)
-
-                        strainMag2 = two*(sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
-                        strainMag  = sqrt(max(two*strainMag2, xminn))
 
                         ! --- Local variables ---
                         !v_t= ν̃ · fv1 is the SA eddy viscosity
@@ -851,6 +901,24 @@ contains
                         dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
                         dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
 
+                        ! transitionBCMGamma: gamma_BC depends on nuTilde through
+                        ! Term2 = fv1*chi/chi2 (same dtTgamma as sa.F90's SA-BCM
+                        ! Jacobian) and on ReThetaTilde through the scaled threshold
+                        ! Re_theta_c = Re_theta_c0 * ReThetaTilde / ReThetaT0:
+                        !   dTerm1raw/dReThetaTilde = -Re_theta/(Re_theta_c*chi1*ReThetaTilde)
+                        !   dKSmax/dTerm1raw        = sigmoid(maxsmooth*Term1raw)
+                        ! Both are zero when the option is off (bit-identical LHS).
+                        dgammaBC_dnu = zero
+                        dgammaBC_dReT = zero
+                        if (transitionBCMGamma) then
+                            sech2BC = one - tanh(bcArg)**2
+                            sigBC = exp(bcS - bcKmax) / (exp(bcS - bcKmax) + exp(-bcKmax))
+                            dbcTerm2 = (chi * dfv1 + fv1) / (nu * SABCM_Const2)
+                            dgammaBC_dnu = half * sech2BC * dbcTerm2 / SABCM_fsmooth
+                            dgammaBC_dReT = -half * sech2BC * sigBC / SABCM_fsmooth &
+                                            * reThetaBC / (reThetaCBC * SABCM_Const1 * reThetaBCtilde)
+                        end if
+
                         ! Compute the source term jacobian.
                         ! term2 already contains gammaForSA on production part.
                         ! The derivative chain also needs gamma on production
@@ -860,7 +928,8 @@ contains
                                       - dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
                                       * (gammaForSA * rsaCb1 * kar2Inv &
                                          * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
-                                         - rsaCw1 * dfw)
+                                         - rsaCw1 * dfw) &
+                                      - w(i, j, k, itu1) * w(i, j, k, itu1) * term2_prod * dgammaBC_dnu
 
                         ! Mirror the SA solver's diagonal clip (sa.F90): the
                         ! destruction terms (-rsaCw1*dfw) may drive qq(1,1)
@@ -931,16 +1000,27 @@ contains
                         ! approx-SA mode term1 is dropped from the residual, so its
                         ! gamma-derivative must be dropped here too.
                         if (approxSA .and. transitionUseApproxSA) then
-                            qq(i, j, k, 1, 2) = -term2_prod &
+                            dSnu_dgamma = term2_prod &
                                 * w(i, j, k, itu1) * w(i, j, k, itu1)
                         else
-                            qq(i, j, k, 1, 2) = -(rsaCb1 * (one - ft2) * ss &
+                            dSnu_dgamma = (rsaCb1 * (one - ft2) * ss &
                                 + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
                         end if
 
                         ! qq(1,3) = -dS_nu/dReThetaTilde: exactly zero — the SA
-                        ! source has no ReThetaTilde dependence.
-                        qq(i, j, k, 1, 3) = zero
+                        ! source has no ReThetaTilde dependence -- except with
+                        ! transitionBCMGamma, where the algebraic gamma_BC does not
+                        ! see the transported gamma (qq(1,2) = 0) but does see
+                        ! ReThetaTilde through its scaled threshold. The source
+                        ! Jacobian keeps A31 = A32 = 0 and gains A12 = 0, so it is
+                        ! still block-triangular: computeSrcLambda stays valid.
+                        if (transitionBCMGamma) then
+                            qq(i, j, k, 1, 2) = zero
+                            qq(i, j, k, 1, 3) = -dSnu_dgamma * dgammaBC_dReT
+                        else
+                            qq(i, j, k, 1, 2) = -dSnu_dgamma
+                            qq(i, j, k, 1, 3) = zero
+                        end if
 
                         ! qq(2,1) = -dS_gamma/dnu_tilde: both pGamma and
                         ! eGamma depend on nu_tilde through rTurb.
@@ -2408,7 +2488,9 @@ contains
         !
         ! Compute the source-term Jacobian A_source = ∂S/∂Q for cell (i,j,k).
         ! Returns the 5 non-zero entries: A(1,1), A(1,2), A(2,1), A(2,2), A(3,3).
-        ! A(1,3) is exactly zero (SA source has no ReThetaTilde dependence).
+        ! A(1,3) is exactly zero (SA source has no ReThetaTilde dependence),
+        ! except with transitionBCMGamma (algebraic gamma_BC with the
+        ! ReThetaTilde-scaled threshold), where A(1,2) = 0 and A(1,3) /= 0.
         ! A(3,2) is exactly zero (this FThetaT has no gamma term).
         ! A(3,1) is zero without crossflow; with transitionCrossflow the weak
         ! D_scf dependence on nu_tilde (via crossflowRatio(rTurb)) is
@@ -2425,9 +2507,10 @@ contains
         use section
         use inputPhysics
         use flowVarRefState
-        use turbUtils, only: flengthCorrelation, rethetacCorrelation, smoothMinMax
+        use turbUtils, only: flengthCorrelation, rethetacCorrelation, smoothMinMax, &
+                             reThetaTCorrelation
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
-                      transitionRefLength
+                      transitionRefLength, transitionBCMGamma
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -2470,6 +2553,12 @@ contains
         real(kind=realType) :: fTurb_p, eGamma_p
         real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
         real(kind=realType) :: dfOnset1_drT, dfOnset_dfOnset1
+        ! SA-BCM intermittency with transported threshold (transitionBCMGamma)
+        real(kind=realType) :: gammaBC, tuPct, reThetaBCtilde, bcVortMag
+        real(kind=realType) :: reVortBC, reThetaBC, reThetaC0BC, reThetaT0BC, reThetaCBC
+        real(kind=realType) :: bcTerm1Raw, bcTerm1, bcTerm2, bcS, bcKmax, bcArg
+        real(kind=realType) :: sech2BC, sigBC, dbcTerm2, dgammaBC_dnu, dgammaBC_dReT
+        real(kind=realType) :: dSnu_dgamma
 
         ! Set model constants
         cv13 = rsaCv1**3
@@ -2553,14 +2642,45 @@ contains
         ! clamp gamma the same way as the residual for the linearization point
         ! to stay physically consistent): [xminn, one + xminn], upper cap ~1
         ! since Eq. 41's SA-production multiplier is the raw gamma in [0,1].
-        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
+        ! transitionBCMGamma: same algebraic gamma_BC as Source (kept in
+        ! lockstep), with its nuTilde / ReThetaTilde derivatives.
+        gammaBC = one
+        dgammaBC_dnu = zero
+        dgammaBC_dReT = zero
+        dfv1 = three * chi2 * cv13 / ((chi3 + cv13)**2)
+        if (transitionBCMGamma) then
+            tuPct = turbIntensityInf * 100.0_realType
+            reThetaBCtilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
+            bcVortMag = sqrt(vortx**2 + vorty**2 + vortz**2)
+            reVortBC = bcVortMag * w(i, j, k, irho) / rlv(i, j, k) * (d2Wall(i, j, k)**2)
+            reThetaBC = reVortBC / 2.193_realType
+            reThetaC0BC = 803.73_realType * (tuPct + 0.6067_realType)**(-1.027_realType)
+            reThetaT0BC = reThetaTCorrelation(tuPct, zero)
+            reThetaCBC = reThetaC0BC * reThetaBCtilde / reThetaT0BC
+            bcTerm1Raw = (reThetaBC - reThetaCBC) / (reThetaCBC * SABCM_Const1)
+            bcTerm2 = fv1 * chi / SABCM_Const2
+            bcS = SABCM_maxsmooth * bcTerm1Raw
+            bcKmax = max(bcS, xminn)
+            bcTerm1 = (bcKmax + log(exp(bcS - bcKmax) + exp(-bcKmax))) / SABCM_maxsmooth
+            bcArg = (bcTerm1 + bcTerm2 - SABCM_S0_tanh) / SABCM_fsmooth
+            gammaBC = half * (one + tanh(bcArg))
+            ft2 = zero
+            sech2BC = one - tanh(bcArg)**2
+            sigBC = exp(bcS - bcKmax) / (exp(bcS - bcKmax) + exp(-bcKmax))
+            dbcTerm2 = (chi * dfv1 + fv1) / (nu * SABCM_Const2)
+            dgammaBC_dnu = half * sech2BC * dbcTerm2 / SABCM_fsmooth
+            dgammaBC_dReT = -half * sech2BC * sigBC / SABCM_fsmooth &
+                            * reThetaBC / (reThetaCBC * SABCM_Const1 * reThetaBCtilde)
+            gammaForSA = gammaBC
+        else
+            gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
+        end if
 
         term2_prod = dist2Inv * kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2)
         term2_dest = -dist2Inv * rsaCw1 * fwSa
         term2 = gammaForSA * term2_prod + term2_dest
 
         ! Derivatives for A(1,1)
-        dfv1 = three * chi2 * cv13 / ((chi3 + cv13)**2)
         dfv2 = (chi2 * dfv1 - one) / (nu * ((one + chi * fv1)**2))
         dft2 = -two * rsaCt4 * chi * ft2 / nu
 
@@ -2568,12 +2688,13 @@ contains
         dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
         dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
 
-        ! A(1,1) = +∂S_nu/∂nu_tilde
+        ! A(1,1) = +∂S_nu/∂nu_tilde (+ gamma_BC's nuTilde dependence, 0 when off)
         A(1,1) = two * term2 * w(i, j, k, itu1) &
                + dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
                * (gammaForSA * rsaCb1 * kar2Inv &
                   * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
-                  - rsaCw1 * dfw)
+                  - rsaCw1 * dfw) &
+               + w(i, j, k, itu1) * w(i, j, k, itu1) * term2_prod * dgammaBC_dnu
 
         ! --- Gamma-ReTheta variables for A(2,*) ---
         vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
@@ -2650,9 +2771,19 @@ contains
                    + rsaGRca2 * fTurb_val * vortMagLim &
                    * (two * rsaGRce2 * gammaLocal - one))
 
-        ! A(1,2) = +∂S_nu/∂gamma
-        A(1,2) = (rsaCb1 * (one - ft2) * ss &
+        ! A(1,2) = +∂S_nu/∂gamma (transitionBCMGamma: gamma_BC ignores the
+        ! transported gamma -> A(1,2) = 0, and A(1,3) = dS_nu/dReThetaTilde
+        ! through the scaled threshold; A31 = A32 = 0 still, so the
+        ! block-triangular eigenvalue split in computeSrcLambda holds).
+        dSnu_dgamma = (rsaCb1 * (one - ft2) * ss &
                   + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
+        if (transitionBCMGamma) then
+            A(1,2) = zero
+            A(1,3) = dSnu_dgamma * dgammaBC_dReT
+        else
+            A(1,2) = dSnu_dgamma
+            A(1,3) = zero
+        end if
 
         ! A(2,1) = +∂S_gamma/∂nu_tilde
         drTurb_dnu = (fv1 + chi * dfv1) / nu
@@ -2718,7 +2849,8 @@ contains
         end if
         A(3,3) = min(A(3,3), zero)  ! Always <= 0 (relaxation)
 
-        ! A(1,3), A(3,1), A(3,2) are zero per P&Z §7.1
+        ! A(3,1), A(3,2) are zero per P&Z §7.1; A(1,3) is zero unless
+        ! transitionBCMGamma (set above).
 
     end subroutine evalSrcJacBlock
 

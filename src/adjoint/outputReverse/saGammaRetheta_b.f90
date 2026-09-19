@@ -145,7 +145,7 @@ contains
 &   rethetaccorrelation_b, smoothminmax, smoothminmax_b
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
-&   transitionuseapproxsa, transitionreflength
+&   transitionuseapproxsa, transitionreflength, transitionbcmgamma
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -280,14 +280,27 @@ contains
     real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
     real(kind=realtype) :: degamma_dret
     real(kind=realtype) :: pgamma_common, sech2_val
+! sa-bcm intermittency with transported threshold (transitionbcmgamma)
+    real(kind=realtype) :: gammabc, tupct, rethetabctilde, bcvortmag
+    real(kind=realtype) :: gammabcd, rethetabctilded, bcvortmagd
+    real(kind=realtype) :: revortbc, rethetabc, rethetac0bc, rethetat0bc&
+&   , rethetacbc
+    real(kind=realtype) :: revortbcd, rethetabcd, rethetacbcd
+    real(kind=realtype) :: bcterm1raw, bcterm1, bcterm2, bcs, bckmax, &
+&   bcarg
+    real(kind=realtype) :: bcterm1rawd, bcterm1d, bcterm2d, bcsd, &
+&   bckmaxd, bcargd
+    real(kind=realtype) :: sech2bc, sigbc, dbcterm2, dgammabc_dnu, &
+&   dgammabc_dret
+    real(kind=realtype) :: dsnu_dgamma
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
+    intrinsic log
     intrinsic tanh
     intrinsic abs
-    intrinsic log
     intrinsic associated
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
@@ -534,38 +547,6 @@ contains
         gg6 = gg**6
         termfw = ((one+cw36)/(gg6+cw36))**sixth
         fwsa = gg*termfw
-        if (w(i, j, k, itu2) .lt. xminn) then
-          call pushcontrol1b(0)
-          x1 = xminn
-        else
-          x1 = w(i, j, k, itu2)
-          call pushcontrol1b(1)
-        end if
-        if (x1 .gt. one + xminn) then
-          gammaforsa = one + xminn
-          call pushcontrol1b(0)
-        else
-          gammaforsa = x1
-          call pushcontrol1b(1)
-        end if
-        if (approxsa .and. transitionuseapproxsa) then
-          call pushcontrol1b(1)
-          term1 = zero
-        else
-          term1 = gammaforsa*rsacb1*(one-ft2)*ss
-          call pushcontrol1b(0)
-        end if
-! split term2 into production and destruction parts.
-! production: near-wall correction from cb1*fv2/(kappa^2*d^2)
-! destruction: -cw1*fw/d^2
-! gamma multiplies only production.
-        term2_prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
-        term2_dest = -(dist2inv*rsacw1*fwsa)
-! effective term2 with gamma on production only
-        term2 = gammaforsa*term2_prod + term2_dest
-! ========================================================
-! gamma and retheta source terms (slangtry-menter)
-! ========================================================
 ! --- compute vorticity and strain magnitudes ---
         call pushreal8(vortx)
         vortx = two*fact*(wwy-vvz) - two*omegax
@@ -601,6 +582,125 @@ contains
           call pushcontrol1b(1)
         end if
         strainmag = sqrt(max2)
+! --- transitionbcmgamma: sa-bcm intermittency with a transported
+! threshold. gamma_bc is the algebraic cakmakcioglu (2020)
+! intermittency in the tanh/ks-smoothed form of sa.f90's sa-bcm
+! (term1 = (re_theta - re_theta_c)/(re_theta_c*chi1), term2 =
+! nu_t/(chi2*nu), gamma = 1/2(1+tanh((ksmax(term1,0)+term2-s0)/f))).
+! its critical re_theta_c^bcm(tu) -- a freestream constant in
+! sa-bcm -- is scaled by rethetatilde / re_theta_t(tu, lambda=0):
+! the transported langtry-menter threshold normalised by its
+! zero-pressure-gradient value. at zpg the ratio is 1 and the
+! model is exactly sa-bcm; under an adverse (favourable)
+! pressure gradient the threshold drops (rises) with the lag and
+! upstream history that the retheta transport equation gives
+! sa-gamma-retheta, instead of a local sensor. re_theta uses the
+! raw |omega| (no floor) exactly as sa.f90, and ft2 is dropped as
+! in sa-bcm. tu is turbintensityinf (fraction -> percent), the
+! same tu the retheta correlation uses. gammabc = 1 (inert) when
+! the option is off; the transported gamma stays solved but only
+! diagnostic.
+        gammabc = one
+        if (transitionbcmgamma) then
+          tupct = turbintensityinf*100.0_realtype
+          if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
+            call pushcontrol1b(0)
+            rethetabctilde = rsagrrethetalo
+          else
+            rethetabctilde = w(i, j, k, itu3)
+            call pushcontrol1b(1)
+          end if
+          bcvortmag = sqrt(vortx**2 + vorty**2 + vortz**2)
+          revortbc = bcvortmag*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
+&           , k)**2
+          rethetabc = revortbc/2.193_realtype
+          rethetac0bc = 803.73_realtype*(tupct+0.6067_realtype)**(-&
+&           1.027_realtype)
+          rethetat0bc = rethetatcorrelation(tupct, zero)
+          rethetacbc = rethetac0bc*rethetabctilde/rethetat0bc
+          bcterm1raw = (rethetabc-rethetacbc)/(rethetacbc*sabcm_const1)
+          bcterm2 = fv1*chi/sabcm_const2
+! ks-smoothed max(term1, 0) (shift by kmax for overflow safety)
+          bcs = sabcm_maxsmooth*bcterm1raw
+          if (bcs .lt. xminn) then
+            call pushcontrol1b(0)
+            bckmax = xminn
+          else
+            bckmax = bcs
+            call pushcontrol1b(1)
+          end if
+          bcterm1 = (bckmax+log(exp(bcs-bckmax)+exp(-bckmax)))/&
+&           sabcm_maxsmooth
+          bcarg = (bcterm1+bcterm2-sabcm_s0_tanh)/sabcm_fsmooth
+          gammabc = half*(one+tanh(bcarg))
+          ft2 = zero
+          call pushcontrol1b(0)
+        else
+          call pushcontrol1b(1)
+        end if
+! compute the source term; some terms are saved for the
+! linearization. the source term is stored in scratch.
+! clamp the intermittency multiplying sa production
+! (eq. 41: p~_nu = gamma*p_nu). gamma is the raw
+! intermittency in [0,1] here: unlike standard
+! langtry-menter, p&z drop the separation-induced
+! gamma_sep term (sec. ii), so the sa-production
+! multiplier never exceeds 1 -- hence the upper cap is
+! ~1 (one + xminn), not rsagrgammahi=2.0 (that 2.0 is
+! gammalocal's raw solver-state bound from algorithm 2, a
+! different role). this is a failure/divergence safeguard,
+! not normal physics -- gamma stays in [0,1] on its own in
+! any healthy solve. a bare min(max(gamma,0),1) ties
+! exactly at gamma==1, which gamma legitimately reaches
+! over large fully-turbulent regions, and tapenade's
+! forward tangent picks the wrong branch there vs.
+! complex-step (confirmed 2026-07-23 by cell-by-cell
+! ad-vs-cs diffing: every mismatched cell in
+! dr[nutilde]/dw[gamma] had gamma==1.0 bit-exact, cs=0
+! correctly, ad nonzero incorrectly). padding the upper
+! bound to one + xminn keeps gamma==1.0 strictly inside
+! the pass-through region (xminn=1e-10 >> the observed
+! ~1-ulp overshoot), removing the tie. the lower bound
+! xminn is only met asymptotically (steady-state gamma
+! respects the implicit 0.02 floor), so it carries no tie
+! risk and just guards divergent/negative gamma.
+        if (transitionbcmgamma) then
+          gammaforsa = gammabc
+          call pushcontrol2b(0)
+        else
+          if (w(i, j, k, itu2) .lt. xminn) then
+            call pushcontrol1b(0)
+            x1 = xminn
+          else
+            x1 = w(i, j, k, itu2)
+            call pushcontrol1b(1)
+          end if
+          if (x1 .gt. one + xminn) then
+            gammaforsa = one + xminn
+            call pushcontrol2b(2)
+          else
+            gammaforsa = x1
+            call pushcontrol2b(1)
+          end if
+        end if
+        if (approxsa .and. transitionuseapproxsa) then
+          call pushcontrol1b(1)
+          term1 = zero
+        else
+          term1 = gammaforsa*rsacb1*(one-ft2)*ss
+          call pushcontrol1b(0)
+        end if
+! split term2 into production and destruction parts.
+! production: near-wall correction from cb1*fv2/(kappa^2*d^2)
+! destruction: -cw1*fw/d^2
+! gamma multiplies only production.
+        term2_prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
+        term2_dest = -(dist2inv*rsacw1*fwsa)
+! effective term2 with gamma on production only
+        term2 = gammaforsa*term2_prod + term2_dest
+! ========================================================
+! gamma and retheta source terms (slangtry-menter)
+! ========================================================
 ! --- local variables ---
 !v_t= ν̃ · fv1 is the sa eddy viscosity
         nutsa = w(i, j, k, itu1)*fv1
@@ -1115,55 +1215,55 @@ contains
         scratchd(i, j, k, idvt+1) = 0.0_8
         tempd1 = (rsagrce2*gammalocal-one)*rsagrca2*egammad
         fturb_vald = vortmaglim*gammalocal*tempd1
-        vortmaglimd = fturb_val*gammalocal*tempd1
-        temp0 = sqrt(gammalocal)
-        temp1 = flength_val*fonset*vortmaglim
-        tempd = temp0*rsagrca1*pgammad
+        temp1 = sqrt(gammalocal)
+        temp = flength_val*fonset*vortmaglim
+        tempd0 = temp1*rsagrca1*pgammad
         if (gammalocal .eq. 0.0_8) then
           gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*&
 &           rsagrca2*egammad + fturb_val*vortmaglim*tempd1 - rsagrce1*&
-&           temp1*tempd
+&           temp*tempd0
         else
           gammalocald = rsagrce2*fturb_val*vortmaglim*gammalocal*&
-&           rsagrca2*egammad + fturb_val*vortmaglim*tempd1 + temp1*(one-&
-&           rsagrce1*gammalocal)*rsagrca1*pgammad/(2.0*temp0) - rsagrce1&
-&           *temp1*tempd
+&           rsagrca2*egammad + fturb_val*vortmaglim*tempd1 + temp*(one-&
+&           rsagrce1*gammalocal)*rsagrca1*pgammad/(2.0*temp1) - rsagrce1&
+&           *temp*tempd0
         end if
-        tempd1 = (one-rsagrce1*gammalocal)*tempd
-        flength_vald = fonset*vortmaglim*tempd1
-        fonsetd = flength_val*vortmaglim*tempd1 - exp(-rturb)*fturb_vald
-        vortmaglimd = vortmaglimd + flength_val*fonset*tempd1
+        tempd = (one-rsagrce1*gammalocal)*tempd0
+        vortmaglimd = fturb_val*gammalocal*tempd1 + flength_val*fonset*&
+&         tempd
+        flength_vald = fonset*vortmaglim*tempd
+        fonsetd = flength_val*vortmaglim*tempd - exp(-rturb)*fturb_vald
         call flengthcorrelation_b(rethetatilde, rethetatilded, &
 &                           flength_vald)
         fonset1d = 6.0_realtype*(1.0-tanh(6.0_realtype*(fonset1-&
 &         1.35_realtype))**2)*half*fonsetd
-        temp0 = res_val/(2.6_realtype*rethetac_val)
-        if (temp0**2 + rturb**2 .eq. 0.0_8) then
-          tempd = 0.0_8
+        temp1 = res_val/(2.6_realtype*rethetac_val)
+        if (temp1**2 + rturb**2 .eq. 0.0_8) then
+          tempd0 = 0.0_8
         else
-          tempd = fonset1d/(2.0*sqrt(temp0**2+rturb**2))
+          tempd0 = fonset1d/(2.0*sqrt(temp1**2+rturb**2))
         end if
-        rturbd = rturbd + 2*rturb*tempd - exp(-rturb)*(one-fonset)*&
+        rturbd = rturbd + 2*rturb*tempd0 - exp(-rturb)*(one-fonset)*&
 &         fturb_vald
-        tempd0 = 2*temp0*tempd/(2.6_realtype*rethetac_val)
-        res_vald = res_vald + tempd0
-        rethetac_vald = -(2.6_realtype*temp0*tempd0)
+        tempd1 = 2*temp1*tempd0/(2.6_realtype*rethetac_val)
+        res_vald = res_vald + tempd1
+        rethetac_vald = -(2.6_realtype*temp1*tempd1)
         call rethetaccorrelation_b(rethetatilde, rethetatilded, &
 &                            rethetac_vald)
-        temp0 = w(i, j, k, irho)/rlv(i, j, k)
-        tempd0 = ydist**2*strainmag*res_vald/rlv(i, j, k)
-        ydistd = ydistd + 2*ydist*strainmag*temp0*res_vald
-        strainmagd = ydist**2*temp0*res_vald
-        wd(i, j, k, irho) = wd(i, j, k, irho) + tempd0
-        rlvd(i, j, k) = rlvd(i, j, k) - temp0*tempd0
+        temp1 = w(i, j, k, irho)/rlv(i, j, k)
+        tempd1 = ydist**2*strainmag*res_vald/rlv(i, j, k)
+        ydistd = ydistd + 2*ydist*strainmag*temp1*res_vald
+        strainmagd = ydist**2*temp1*res_vald
+        wd(i, j, k, irho) = wd(i, j, k, irho) + tempd1
+        rlvd(i, j, k) = rlvd(i, j, k) - temp1*tempd1
         call smoothminmax_b(vortmag, vortmagd, vortlim, vortlimd, &
 &                     rsagrpmin, vortmaglimd)
-        temp0 = sqrt(max4)
-        ureftransd = temp0*vortlimd/20.0_realtype
+        temp1 = sqrt(max4)
+        ureftransd = temp1*vortlimd/20.0_realtype
         if (max4 .eq. 0.0_8) then
           max4d = 0.0_8
         else
-          max4d = ureftrans*vortlimd/(2.0*temp0*20.0_realtype)
+          max4d = ureftrans*vortlimd/(2.0*temp1*20.0_realtype)
         end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
@@ -1176,15 +1276,15 @@ contains
         call popcontrol1b(branch)
         if (branch .ne. 0) muinfd = muinfd + reflentrans*max14d
         if (uinf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2 .eq. 0.0_8) then
-          tempd0 = 0.0_8
+          tempd1 = 0.0_8
         else
-          tempd0 = ureftransd/(2.0*sqrt(uinf**2+sc(1)**2+sc(2)**2+sc(3)&
+          tempd1 = ureftransd/(2.0*sqrt(uinf**2+sc(1)**2+sc(2)**2+sc(3)&
 &           **2))
         end if
-        uinfd = uinfd + 2*uinf*tempd0
-        scd(1) = scd(1) + 2*sc(1)*tempd0
-        scd(2) = scd(2) + 2*sc(2)*tempd0
-        scd(3) = scd(3) + 2*sc(3)*tempd0
+        uinfd = uinfd + 2*uinf*tempd1
+        scd(1) = scd(1) + 2*sc(1)*tempd1
+        scd(2) = scd(2) + 2*sc(2)*tempd1
+        scd(3) = scd(3) + 2*sc(3)*tempd1
         if (max3 .eq. 0.0_8) then
           max3d = 0.0_8
         else
@@ -1219,10 +1319,92 @@ contains
         end if
         call popcontrol1b(branch)
         if (branch .ne. 0) wd(i, j, k, itu2) = wd(i, j, k, itu2) + x2d
+        tempd1 = w(i, j, k, itu1)*scratchd(i, j, k, idvt)
+        temp0 = w(i, j, k, itu1)
         nutsad = rturbd/nu
         nud = nud - nutsa*rturbd/nu**2
-        wd(i, j, k, itu1) = wd(i, j, k, itu1) + fv1*nutsad
+        wd(i, j, k, itu1) = wd(i, j, k, itu1) + fv1*nutsad + (term1+&
+&         term2*temp0)*scratchd(i, j, k, idvt) + term2*tempd1
         fv1d = w(i, j, k, itu1)*nutsad
+        scratchd(i, j, k, idvt) = 0.0_8
+        term1d = tempd1
+        term2d = temp0*tempd1
+        gammaforsad = term2_prod*term2d
+        term2_prodd = gammaforsa*term2d
+        term2_destd = term2d
+        fwsad = -(dist2inv*rsacw1*term2_destd)
+        tempd1 = kar2inv*rsacb1*term2_prodd
+        dist2invd = ((one-ft2)*fv2+ft2)*tempd1 - fwsa*rsacw1*term2_destd
+        tempd0 = dist2inv*tempd1
+        ft2d = (1.0-fv2)*tempd0
+        fv2d = (one-ft2)*tempd0
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          ft2d = ft2d - gammaforsa*ss*rsacb1*term1d
+          tempd1 = (one-ft2)*rsacb1*term1d
+          gammaforsad = gammaforsad + ss*tempd1
+          ssd = ssd + gammaforsa*tempd1
+        end if
+        call popcontrol2b(branch)
+        if (branch .eq. 0) then
+          gammabcd = gammaforsad
+        else
+          if (branch .eq. 1) then
+            x1d = gammaforsad
+          else
+            x1d = 0.0_8
+          end if
+          call popcontrol1b(branch)
+          if (branch .ne. 0) wd(i, j, k, itu2) = wd(i, j, k, itu2) + x1d
+          gammabcd = 0.0_8
+        end if
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          bcargd = (1.0-tanh(bcarg)**2)*half*gammabcd
+          bcterm1d = bcargd/sabcm_fsmooth
+          bcterm2d = bcargd/sabcm_fsmooth
+          tempd1 = bcterm1d/((exp(bcs-bckmax)+exp(-bckmax))*&
+&           sabcm_maxsmooth)
+          tempd0 = exp(bcs-bckmax)*tempd1
+          bckmaxd = bcterm1d/sabcm_maxsmooth - exp(-bckmax)*tempd1 - &
+&           tempd0
+          bcsd = tempd0
+          call popcontrol1b(branch)
+          if (branch .ne. 0) bcsd = bcsd + bckmaxd
+          bcterm1rawd = sabcm_maxsmooth*bcsd
+          fv1d = fv1d + chi*bcterm2d/sabcm_const2
+          chid = fv1*bcterm2d/sabcm_const2
+          tempd1 = bcterm1rawd/(sabcm_const1*rethetacbc)
+          rethetabcd = tempd1
+          rethetacbcd = -(((rethetabc-rethetacbc)/rethetacbc+1.0)*tempd1&
+&           )
+          rethetabctilded = rethetac0bc*rethetacbcd/rethetat0bc
+          revortbcd = rethetabcd/2.193_realtype
+          temp0 = bcvortmag/rlv(i, j, k)
+          temp = d2wall(i, j, k)
+          temp1 = w(i, j, k, irho)
+          wd(i, j, k, irho) = wd(i, j, k, irho) + temp**2*temp0*&
+&           revortbcd
+          d2walld(i, j, k) = d2walld(i, j, k) + 2*temp*temp1*temp0*&
+&           revortbcd
+          tempd0 = temp1*temp**2*revortbcd/rlv(i, j, k)
+          bcvortmagd = tempd0
+          rlvd(i, j, k) = rlvd(i, j, k) - temp0*tempd0
+          if (vortx**2 + vorty**2 + vortz**2 .eq. 0.0_8) then
+            tempd0 = 0.0_8
+          else
+            tempd0 = bcvortmagd/(2.0*sqrt(vortx**2+vorty**2+vortz**2))
+          end if
+          vortxd = vortxd + 2*vortx*tempd0
+          vortyd = vortyd + 2*vorty*tempd0
+          vortzd = vortzd + 2*vortz*tempd0
+          call popcontrol1b(branch)
+          if (branch .ne. 0) wd(i, j, k, itu3) = wd(i, j, k, itu3) + &
+&             rethetabctilded
+          ft2d = 0.0_8
+        else
+          chid = 0.0_8
+        end if
         if (max2 .eq. 0.0_8) then
           max2d = 0.0_8
         else
@@ -1263,6 +1445,14 @@ contains
           vortyd = vortyd + 2*vorty*max1d
           vortzd = vortzd + 2*vortz*max1d
         end if
+        termfwd = gg*fwsad
+        temp0 = (one+cw36)/(cw36+gg6)
+        if (temp0 .le. 0.0_8 .and. (sixth .eq. 0.0_8 .or. sixth .ne. int&
+&           (sixth))) then
+          gg6d = 0.0_8
+        else
+          gg6d = -(temp0*sixth*temp0**(sixth-1)*termfwd/(cw36+gg6))
+        end if
         call popreal8(vortz)
         tempd0 = two*vortzd
         omegazd = omegazd - two*vortzd
@@ -1281,45 +1471,6 @@ contains
         factd = factd + (wwy-vvz)*tempd0
         wwyd = wwyd + fact*tempd0
         vvzd = vvzd - fact*tempd0
-        temp = w(i, j, k, itu1)
-        tempd0 = w(i, j, k, itu1)*scratchd(i, j, k, idvt)
-        wd(i, j, k, itu1) = wd(i, j, k, itu1) + (term1+term2*temp)*&
-&         scratchd(i, j, k, idvt) + term2*tempd0
-        scratchd(i, j, k, idvt) = 0.0_8
-        term1d = tempd0
-        term2d = temp*tempd0
-        gammaforsad = term2_prod*term2d
-        term2_prodd = gammaforsa*term2d
-        term2_destd = term2d
-        fwsad = -(dist2inv*rsacw1*term2_destd)
-        tempd0 = kar2inv*rsacb1*term2_prodd
-        dist2invd = ((one-ft2)*fv2+ft2)*tempd0 - fwsa*rsacw1*term2_destd
-        tempd = dist2inv*tempd0
-        ft2d = (1.0-fv2)*tempd
-        fv2d = (one-ft2)*tempd
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          ft2d = ft2d - gammaforsa*ss*rsacb1*term1d
-          tempd0 = (one-ft2)*rsacb1*term1d
-          gammaforsad = gammaforsad + ss*tempd0
-          ssd = ssd + gammaforsa*tempd0
-        end if
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          x1d = 0.0_8
-        else
-          x1d = gammaforsad
-        end if
-        call popcontrol1b(branch)
-        if (branch .ne. 0) wd(i, j, k, itu2) = wd(i, j, k, itu2) + x1d
-        termfwd = gg*fwsad
-        temp0 = (one+cw36)/(cw36+gg6)
-        if (temp0 .le. 0.0_8 .and. (sixth .eq. 0.0_8 .or. sixth .ne. int&
-&           (sixth))) then
-          gg6d = 0.0_8
-        else
-          gg6d = -(temp0*sixth*temp0**(sixth-1)*termfwd/(cw36+gg6))
-        end if
         ggd = termfw*fwsad + 6*gg**5*gg6d
         rrd = (6*rr**5*rsacw2-rsacw2+1.0)*ggd
         call popcontrol1b(branch)
@@ -1360,7 +1511,7 @@ contains
           chi2d = 0.0_8
         end if
         tempd = -(fv2d/(one+chi*fv1))
-        chid = tempd
+        chid = chid + tempd
         tempd0 = -(chi*tempd/(one+chi*fv1))
         fv1d = fv1d + chi*tempd0
         tempd = fv1d/(cv13+chi3)
@@ -1549,7 +1700,7 @@ contains
 &   rethetaccorrelation, smoothminmax
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
-&   transitionuseapproxsa, transitionreflength
+&   transitionuseapproxsa, transitionreflength, transitionbcmgamma
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1652,14 +1803,23 @@ contains
     real(kind=realtype) :: dfonset1_dret, dfonset_dret, dpgamma_dret
     real(kind=realtype) :: degamma_dret
     real(kind=realtype) :: pgamma_common, sech2_val
+! sa-bcm intermittency with transported threshold (transitionbcmgamma)
+    real(kind=realtype) :: gammabc, tupct, rethetabctilde, bcvortmag
+    real(kind=realtype) :: revortbc, rethetabc, rethetac0bc, rethetat0bc&
+&   , rethetacbc
+    real(kind=realtype) :: bcterm1raw, bcterm1, bcterm2, bcs, bckmax, &
+&   bcarg
+    real(kind=realtype) :: sech2bc, sigbc, dbcterm2, dgammabc_dnu, &
+&   dgammabc_dret
+    real(kind=realtype) :: dsnu_dgamma
     intrinsic mod
     intrinsic sqrt
     intrinsic exp
     intrinsic min
     intrinsic max
+    intrinsic log
     intrinsic tanh
     intrinsic abs
-    intrinsic log
     intrinsic associated
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
@@ -1834,34 +1994,6 @@ contains
         gg6 = gg**6
         termfw = ((one+cw36)/(gg6+cw36))**sixth
         fwsa = gg*termfw
-        if (w(i, j, k, itu2) .lt. xminn) then
-          x1 = xminn
-        else
-          x1 = w(i, j, k, itu2)
-        end if
-        if (x1 .gt. one + xminn) then
-          gammaforsa = one + xminn
-        else
-          gammaforsa = x1
-        end if
-        if (approxsa .and. transitionuseapproxsa) then
-          term1 = zero
-        else
-          term1 = gammaforsa*rsacb1*(one-ft2)*ss
-        end if
-! split term2 into production and destruction parts.
-! production: near-wall correction from cb1*fv2/(kappa^2*d^2)
-! destruction: -cw1*fw/d^2
-! gamma multiplies only production.
-        term2_prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
-        term2_dest = -(dist2inv*rsacw1*fwsa)
-! effective term2 with gamma on production only
-        term2 = gammaforsa*term2_prod + term2_dest
-        scratch(i, j, k, idvt) = (term1+term2*w(i, j, k, itu1))*w(i, j, &
-&         k, itu1)
-! ========================================================
-! gamma and retheta source terms (slangtry-menter)
-! ========================================================
 ! --- compute vorticity and strain magnitudes ---
         vortx = two*fact*(wwy-vvz) - two*omegax
         vorty = two*fact*(uuz-wwx) - two*omegay
@@ -1886,6 +2018,113 @@ contains
           max2 = two*strainmag2
         end if
         strainmag = sqrt(max2)
+! --- transitionbcmgamma: sa-bcm intermittency with a transported
+! threshold. gamma_bc is the algebraic cakmakcioglu (2020)
+! intermittency in the tanh/ks-smoothed form of sa.f90's sa-bcm
+! (term1 = (re_theta - re_theta_c)/(re_theta_c*chi1), term2 =
+! nu_t/(chi2*nu), gamma = 1/2(1+tanh((ksmax(term1,0)+term2-s0)/f))).
+! its critical re_theta_c^bcm(tu) -- a freestream constant in
+! sa-bcm -- is scaled by rethetatilde / re_theta_t(tu, lambda=0):
+! the transported langtry-menter threshold normalised by its
+! zero-pressure-gradient value. at zpg the ratio is 1 and the
+! model is exactly sa-bcm; under an adverse (favourable)
+! pressure gradient the threshold drops (rises) with the lag and
+! upstream history that the retheta transport equation gives
+! sa-gamma-retheta, instead of a local sensor. re_theta uses the
+! raw |omega| (no floor) exactly as sa.f90, and ft2 is dropped as
+! in sa-bcm. tu is turbintensityinf (fraction -> percent), the
+! same tu the retheta correlation uses. gammabc = 1 (inert) when
+! the option is off; the transported gamma stays solved but only
+! diagnostic.
+        gammabc = one
+        if (transitionbcmgamma) then
+          tupct = turbintensityinf*100.0_realtype
+          if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
+            rethetabctilde = rsagrrethetalo
+          else
+            rethetabctilde = w(i, j, k, itu3)
+          end if
+          bcvortmag = sqrt(vortx**2 + vorty**2 + vortz**2)
+          revortbc = bcvortmag*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
+&           , k)**2
+          rethetabc = revortbc/2.193_realtype
+          rethetac0bc = 803.73_realtype*(tupct+0.6067_realtype)**(-&
+&           1.027_realtype)
+          rethetat0bc = rethetatcorrelation(tupct, zero)
+          rethetacbc = rethetac0bc*rethetabctilde/rethetat0bc
+          bcterm1raw = (rethetabc-rethetacbc)/(rethetacbc*sabcm_const1)
+          bcterm2 = fv1*chi/sabcm_const2
+! ks-smoothed max(term1, 0) (shift by kmax for overflow safety)
+          bcs = sabcm_maxsmooth*bcterm1raw
+          if (bcs .lt. xminn) then
+            bckmax = xminn
+          else
+            bckmax = bcs
+          end if
+          bcterm1 = (bckmax+log(exp(bcs-bckmax)+exp(-bckmax)))/&
+&           sabcm_maxsmooth
+          bcarg = (bcterm1+bcterm2-sabcm_s0_tanh)/sabcm_fsmooth
+          gammabc = half*(one+tanh(bcarg))
+          ft2 = zero
+        end if
+! compute the source term; some terms are saved for the
+! linearization. the source term is stored in scratch.
+! clamp the intermittency multiplying sa production
+! (eq. 41: p~_nu = gamma*p_nu). gamma is the raw
+! intermittency in [0,1] here: unlike standard
+! langtry-menter, p&z drop the separation-induced
+! gamma_sep term (sec. ii), so the sa-production
+! multiplier never exceeds 1 -- hence the upper cap is
+! ~1 (one + xminn), not rsagrgammahi=2.0 (that 2.0 is
+! gammalocal's raw solver-state bound from algorithm 2, a
+! different role). this is a failure/divergence safeguard,
+! not normal physics -- gamma stays in [0,1] on its own in
+! any healthy solve. a bare min(max(gamma,0),1) ties
+! exactly at gamma==1, which gamma legitimately reaches
+! over large fully-turbulent regions, and tapenade's
+! forward tangent picks the wrong branch there vs.
+! complex-step (confirmed 2026-07-23 by cell-by-cell
+! ad-vs-cs diffing: every mismatched cell in
+! dr[nutilde]/dw[gamma] had gamma==1.0 bit-exact, cs=0
+! correctly, ad nonzero incorrectly). padding the upper
+! bound to one + xminn keeps gamma==1.0 strictly inside
+! the pass-through region (xminn=1e-10 >> the observed
+! ~1-ulp overshoot), removing the tie. the lower bound
+! xminn is only met asymptotically (steady-state gamma
+! respects the implicit 0.02 floor), so it carries no tie
+! risk and just guards divergent/negative gamma.
+        if (transitionbcmgamma) then
+          gammaforsa = gammabc
+        else
+          if (w(i, j, k, itu2) .lt. xminn) then
+            x1 = xminn
+          else
+            x1 = w(i, j, k, itu2)
+          end if
+          if (x1 .gt. one + xminn) then
+            gammaforsa = one + xminn
+          else
+            gammaforsa = x1
+          end if
+        end if
+        if (approxsa .and. transitionuseapproxsa) then
+          term1 = zero
+        else
+          term1 = gammaforsa*rsacb1*(one-ft2)*ss
+        end if
+! split term2 into production and destruction parts.
+! production: near-wall correction from cb1*fv2/(kappa^2*d^2)
+! destruction: -cw1*fw/d^2
+! gamma multiplies only production.
+        term2_prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
+        term2_dest = -(dist2inv*rsacw1*fwsa)
+! effective term2 with gamma on production only
+        term2 = gammaforsa*term2_prod + term2_dest
+        scratch(i, j, k, idvt) = (term1+term2*w(i, j, k, itu1))*w(i, j, &
+&         k, itu1)
+! ========================================================
+! gamma and retheta source terms (slangtry-menter)
+! ========================================================
 ! --- local variables ---
 !v_t= ν̃ · fv1 is the sa eddy viscosity
         nutsa = w(i, j, k, itu1)*fv1
@@ -4273,7 +4512,9 @@ contains
 !
 ! compute the source-term jacobian a_source = ∂s/∂q for cell (i,j,k).
 ! returns the 5 non-zero entries: a(1,1), a(1,2), a(2,1), a(2,2), a(3,3).
-! a(1,3) is exactly zero (sa source has no rethetatilde dependence).
+! a(1,3) is exactly zero (sa source has no rethetatilde dependence),
+! except with transitionbcmgamma (algebraic gamma_bc with the
+! rethetatilde-scaled threshold), where a(1,2) = 0 and a(1,3) /= 0.
 ! a(3,2) is exactly zero (this fthetat has no gamma term).
 ! a(3,1) is zero without crossflow; with transitioncrossflow the weak
 ! d_scf dependence on nu_tilde (via crossflowratio(rturb)) is
@@ -4291,9 +4532,9 @@ contains
     use inputphysics
     use flowvarrefstate
     use turbutils_b, only : flengthcorrelation, rethetaccorrelation, &
-&   smoothminmax
+&   smoothminmax, rethetatcorrelation
     use inputiteration, only : transitioncrossflow, &
-&   transitionroughnessheight, transitionreflength
+&   transitionroughnessheight, transitionreflength, transitionbcmgamma
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(3, 3)
@@ -4333,13 +4574,22 @@ contains
     real(kind=realtype) :: fturb_p, egamma_p
     real(kind=realtype) :: drturb_dnu, dfturb_dnu, dfonset_dnu
     real(kind=realtype) :: dfonset1_drt, dfonset_dfonset1
+! sa-bcm intermittency with transported threshold (transitionbcmgamma)
+    real(kind=realtype) :: gammabc, tupct, rethetabctilde, bcvortmag
+    real(kind=realtype) :: revortbc, rethetabc, rethetac0bc, rethetat0bc&
+&   , rethetacbc
+    real(kind=realtype) :: bcterm1raw, bcterm1, bcterm2, bcs, bckmax, &
+&   bcarg
+    real(kind=realtype) :: sech2bc, sigbc, dbcterm2, dgammabc_dnu, &
+&   dgammabc_dret
+    real(kind=realtype) :: dsnu_dgamma
     intrinsic max
     intrinsic sqrt
     intrinsic exp
     intrinsic min
+    intrinsic log
     intrinsic tanh
     intrinsic abs
-    intrinsic log
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
@@ -4456,30 +4706,78 @@ contains
     gg6 = gg**6
     termfw = ((one+cw36)/(gg6+cw36))**sixth
     fwsa = gg*termfw
-    if (w(i, j, k, itu2) .lt. xminn) then
-      x1 = xminn
+! clamp -- kept in lockstep with source's gammaforsa (this is the
+! hand-coded pc/dadi jacobian, not tapenade-differentiated, but must
+! clamp gamma the same way as the residual for the linearization point
+! to stay physically consistent): [xminn, one + xminn], upper cap ~1
+! since eq. 41's sa-production multiplier is the raw gamma in [0,1].
+! transitionbcmgamma: same algebraic gamma_bc as source (kept in
+! lockstep), with its nutilde / rethetatilde derivatives.
+    gammabc = one
+    dgammabc_dnu = zero
+    dgammabc_dret = zero
+    dfv1 = three*chi2*cv13/(chi3+cv13)**2
+    if (transitionbcmgamma) then
+      tupct = turbintensityinf*100.0_realtype
+      if (w(i, j, k, itu3) .lt. rsagrrethetalo) then
+        rethetabctilde = rsagrrethetalo
+      else
+        rethetabctilde = w(i, j, k, itu3)
+      end if
+      bcvortmag = sqrt(vortx**2 + vorty**2 + vortz**2)
+      revortbc = bcvortmag*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j, k)&
+&       **2
+      rethetabc = revortbc/2.193_realtype
+      rethetac0bc = 803.73_realtype*(tupct+0.6067_realtype)**(-&
+&       1.027_realtype)
+      rethetat0bc = rethetatcorrelation(tupct, zero)
+      rethetacbc = rethetac0bc*rethetabctilde/rethetat0bc
+      bcterm1raw = (rethetabc-rethetacbc)/(rethetacbc*sabcm_const1)
+      bcterm2 = fv1*chi/sabcm_const2
+      bcs = sabcm_maxsmooth*bcterm1raw
+      if (bcs .lt. xminn) then
+        bckmax = xminn
+      else
+        bckmax = bcs
+      end if
+      bcterm1 = (bckmax+log(exp(bcs-bckmax)+exp(-bckmax)))/&
+&       sabcm_maxsmooth
+      bcarg = (bcterm1+bcterm2-sabcm_s0_tanh)/sabcm_fsmooth
+      gammabc = half*(one+tanh(bcarg))
+      ft2 = zero
+      sech2bc = one - tanh(bcarg)**2
+      sigbc = exp(bcs-bckmax)/(exp(bcs-bckmax)+exp(-bckmax))
+      dbcterm2 = (chi*dfv1+fv1)/(nu*sabcm_const2)
+      dgammabc_dnu = half*sech2bc*dbcterm2/sabcm_fsmooth
+      dgammabc_dret = -(half*sech2bc*sigbc/sabcm_fsmooth*rethetabc/(&
+&       rethetacbc*sabcm_const1*rethetabctilde))
+      gammaforsa = gammabc
     else
-      x1 = w(i, j, k, itu2)
-    end if
-    if (x1 .gt. one + xminn) then
-      gammaforsa = one + xminn
-    else
-      gammaforsa = x1
+      if (w(i, j, k, itu2) .lt. xminn) then
+        x1 = xminn
+      else
+        x1 = w(i, j, k, itu2)
+      end if
+      if (x1 .gt. one + xminn) then
+        gammaforsa = one + xminn
+      else
+        gammaforsa = x1
+      end if
     end if
     term2_prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
     term2_dest = -(dist2inv*rsacw1*fwsa)
     term2 = gammaforsa*term2_prod + term2_dest
 ! derivatives for a(1,1)
-    dfv1 = three*chi2*cv13/(chi3+cv13)**2
     dfv2 = (chi2*dfv1-one)/(nu*(one+chi*fv1)**2)
     dft2 = -(two*rsact4*chi*ft2/nu)
     drr = (one-rr*(fv2+w(i, j, k, itu1)*dfv2))*kar2inv*dist2inv/sst
     dgg = (one-rsacw2+six*rsacw2*rr**5)*drr
     dfw = cw36/(gg6+cw36)*termfw*dgg
-! a(1,1) = +∂s_nu/∂nu_tilde
+! a(1,1) = +∂s_nu/∂nu_tilde (+ gamma_bc's nutilde dependence, 0 when off)
     a(1, 1) = two*term2*w(i, j, k, itu1) + dist2inv*w(i, j, k, itu1)*w(i&
 &     , j, k, itu1)*(gammaforsa*rsacb1*kar2inv*(dfv2-ft2*dfv2-fv2*dft2+&
-&     dft2)-rsacw1*dfw)
+&     dft2)-rsacw1*dfw) + w(i, j, k, itu1)*w(i, j, k, itu1)*term2_prod*&
+&     dgammabc_dnu
     if (vortx**2 + vorty**2 + vortz**2 .lt. xminn) then
       max2 = xminn
     else
@@ -4593,9 +4891,19 @@ contains
     a(2, 2) = -(rsagrca1*flength_val*fonset*vortmaglim*(1.5_realtype*&
 &     rsagrce1*gammalocal-half)/sqrt(max7)+rsagrca2*fturb_val*vortmaglim&
 &     *(two*rsagrce2*gammalocal-one))
-! a(1,2) = +∂s_nu/∂gamma
-    a(1, 2) = (rsacb1*(one-ft2)*ss+term2_prod*w(i, j, k, itu1))*w(i, j, &
-&     k, itu1)
+! a(1,2) = +∂s_nu/∂gamma (transitionbcmgamma: gamma_bc ignores the
+! transported gamma -> a(1,2) = 0, and a(1,3) = ds_nu/drethetatilde
+! through the scaled threshold; a31 = a32 = 0 still, so the
+! block-triangular eigenvalue split in computesrclambda holds).
+    dsnu_dgamma = (rsacb1*(one-ft2)*ss+term2_prod*w(i, j, k, itu1))*w(i&
+&     , j, k, itu1)
+    if (transitionbcmgamma) then
+      a(1, 2) = zero
+      a(1, 3) = dsnu_dgamma*dgammabc_dret
+    else
+      a(1, 2) = dsnu_dgamma
+      a(1, 3) = zero
+    end if
 ! a(2,1) = +∂s_gamma/∂nu_tilde
     drturb_dnu = (fv1+chi*dfv1)/nu
     if (fonset1 .lt. xminn) then

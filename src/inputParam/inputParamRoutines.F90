@@ -3888,6 +3888,25 @@ contains
             end if
             call mpi_barrier(ADflow_comm_world, ierr)
         end if
+
+        ! transitionBCMGamma is a modifier of the SA-gamma-ReTheta model only
+        ! (it reads the transported ReTheta); it is meaningless for plain SA
+        ! and must not be combined with the SA-BCM gamma of sa.F90.
+        if (transitionBCMGamma .and. .not. (equations == RANSEquations .and. &
+            turbModel == spalartAllmarasNoft2GammaRetheta)) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "transitionBCMGamma requires turbulenceModel = sa-noft2-gamma-retheta")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
+        end if
+        if (transitionBCMGamma .and. use_SABCM) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "transitionBCMGamma and use_SABCM are mutually exclusive")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
+        end if
         !
         !       Parallelization parameters. Set the minimum load imbalance to
         !       3 percent to avoid any problems.

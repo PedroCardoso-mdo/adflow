@@ -403,6 +403,16 @@ module inputIteration
     integer(kind=intType) :: transitionDampMaxIter = 10000
     ! Use approxSA simplification in SA-gamma-rethetha (default true for stability)
     logical :: transitionUseApproxSA = .true.
+    ! SA-BCM intermittency with a transported threshold: replace the
+    ! transported gamma as the SA-production multiplier by the algebraic
+    ! Cakmakcioglu (2020) gamma_BC (tanh/KS-smoothed form of sa.F90's SA-BCM),
+    ! with its critical Re_theta_c^BCM(Tu) scaled by
+    ! ReThetaTilde / Re_theta_t(Tu, lambda_theta = 0). At zero pressure
+    ! gradient this is exactly SA-BCM; under a pressure gradient the threshold
+    ! follows the lagged, history-carrying ReTheta transport equation instead
+    ! of a local sensor. The gamma equation keeps being solved (diagnostic
+    ! only). Tu is turbIntensityInf (fraction), NOT SABCM_TU.
+    logical :: transitionBCMGamma = .false.
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic

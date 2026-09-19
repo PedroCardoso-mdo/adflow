@@ -1134,6 +1134,7 @@ python module libadflow
          logical :: transitioncrossflow
          real(kind=realtype) :: transitionroughnessheight
          logical :: transitionuseapproxsa
+         logical :: transitionbcmgamma
          logical :: transitionrestartalgebraicinit
          real(kind=realtype) :: transitionreflength
          logical :: transitionnk

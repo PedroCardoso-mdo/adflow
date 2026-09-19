@@ -5938,6 +5938,10 @@ class ADFLOW(AeroSolver):
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 10000],
             "transitionUseApproxSA": [bool, True],
+            # SA-BCM algebraic intermittency driven by the transported ReTheta
+            # (threshold Re_theta_c^BCM(Tu) * ReThetaTilde / Re_theta_t(Tu, 0));
+            # exactly SA-BCM at zero pressure gradient. Tu = turbIntensityInf.
+            "transitionBCMGamma": [bool, False],
             "transitionRestartAlgebraicInit": [bool, False],
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
@@ -6428,6 +6432,7 @@ class ADFLOW(AeroSolver):
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
+            "transitionbcmgamma": ["iter", "transitionbcmgamma"],
             "transitionrestartalgebraicinit": ["iter", "transitionrestartalgebraicinit"],
             "transitionreflength": ["iter", "transitionreflength"],
             "solverstalldiag": ["iter", "solverstalldiag"],
