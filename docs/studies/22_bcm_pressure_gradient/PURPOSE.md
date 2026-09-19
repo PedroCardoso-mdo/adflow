@@ -178,7 +178,7 @@ Targets for C3 (cd counts · x_tr up/lo): GR NACA 69.36 · 0.19/0.58 | GR C2 34.
 GR C3 34.02 · 0.77/0.90 | BCM C2 r1 e50 79.50 · 0.16/0.42 | BCM C3 e118 71.18 · 0.17/0.63.
 BCM today: 68.20 · 0.22/0.49 | 51.38 · 0.74/0.34 | 39.22 · 0.70/0.78 | 53.55 · 0.33/0.66 | 46.39 · 0.48/0.66.
 
-## 6. Conclusion (2026-09-19)
+## 6. Conclusion (2026-09-19) — local sensors closed; line reopened as Plan B (§7)
 
 A local pressure-gradient sensor on the BCM threshold reproduces the LM/GR edge λ_θ exactly, but the
 BCM–GR disagreement on the optimised shapes comes from the reference model's onset level and transport
@@ -191,6 +191,38 @@ SA-γ-R̅eθt; keep SA-BCM for cheap primal evaluation; do not use `SABCM_PG` fo
 Side products kept: exact `nWall` (wall-normal) block array with adjoint plumbing, `smoothMinMax` /
 `bcmFlambda` helpers, the fast-reverse in-place trap and the reference-scalar head trap (both documented
 in `docs/adjoint-trace.md`), and the one-state rule for adjoint-vs-CS checks on this multi-state primal.
+
+## 7. Reopened (2026-09-19 evening): gradient response F=2 (Menter) and Plan B (transported threshold)
+
+User: "descobre como resolver isto, pesquisa e testa até dar". Two more steps.
+
+**F=2 (`SABCM_PG_F=2`, 3dac53f3): Menter-2015 F_PG ratio for adverse + LM F1 for favourable** (§2, Falkner–Skan
+inverse map, `falkner_skan_fpg.py`). Direct-prediction tests (all sensor 2, g 2.0, K 0.05064):
+
+| test | BCM | F=1 (LM) | F=2 (Menter) | GR |
+|---|---|---|---|---|
+| NACA L0 α 0…6 (`pg_calib`, mean \|Δcd/cd_GR\|) | 2.4 % | 6.5 % | **2.1 %** | — |
+| NLF0416 L1 α 2/4/6 cd (x_tr,up) | 58.2 (0.38) / 65.5 (0.33) / 85.6 (0.21) | 65.1 (0.31) / 79.4 (0.21) / 102.3* (0.11) | **58.9 (0.38) / 65.9 (0.33) / 88.9 (0.18)** | 57.0 / 64.4 / 79.3 (0.34 exp @ α4) |
+| S809 L1 α 4/6/8 cd | 47.6* / 75.0 / 149.1 | 48.7* / 74.6 / 149.9 | 80.1* / 72.5* / 148.3 | 67.5 / 69.8 / 131.8 |
+| cross GR C2 / GR C3 / BCM C2 r1 (GR 34.9 / 34.0 / 79.5) | 51.4 / 39.2 / 53.5 | 52.1 / 32.5 / 83.8 | 51.1 / 31.8 / **54.6** | — |
+| adjoint vs CS at one state (pg_loop `it3_s2_F2`, α + DV 8/12) | 0.008 % / 0.26 % | 0.00 % / 0.43 % | 0.00 % / 0.43 % | — |
+
+(* not converged, ANK limit cycle — same S809 α4 stall as plain BCM.) F=2 is the least-bad local form: it
+no longer degrades NLF/NACA (it is plain BCM there, Menter's F_PG ≈ 1 for mild λ), the derivatives hold —
+but it does **not** close the loophole (BCM C2 r1 54.6 vs GR 79.5): Menter's ratio under-penalises the strong
+nose gradient that LM over-penalises. Checked against the GR volume (§3d): GR trips at x = 0.16 on that
+upper surface where the local λ_θ is mild — R̅eθt there is dragged down from the suction peak by transport.
+**No local response fits both** the mild (NACA/NLF) and the strong (BCM optimum) gradients: the missing
+ingredient is the lag/history, not the shape of F(λ).
+
+**Plan B (handoff §"plano B"): BCM's γ with GR's transported threshold** — implemented 2026-09-19 as option
+`transitionBCMGamma` of the SA-γ-R̅eθt model on branch `transition-models` (`adflow_opt_improvements`,
+`e84475f9`; docs `CORE_BASE/CORE_01_architecture.md`): γ_BC algebraic (tanh/KS form, fsmooth 0.08, same
+constants) with `Re_θc = Re_θc^BCM(Tu) · R̅eθt / Re_θt(Tu, λ=0)`. ZPG ⇒ exactly BCM; with gradient the
+threshold follows the transported R̅eθt (lag + history). The γ equation stays solved but only as
+diagnostic. Tests (machV3): `08_optimization/2d_tu05_L0/pg_calib/job_bcmg_naca_sweep.sh` (job 1937059),
+`cross_eval_bcmg/submit_cross_bcmg.sh` (1937060), derivative gate `bcmg_gate/job_bcmg_gate.sh` (after
+the complex build 1937061). Results: `cross_eval_bcmg/PURPOSE.md` and the 18/09 deck.
 
 ## 5. Results (2026-09-18, machV4 @ 50b51a76)
 
