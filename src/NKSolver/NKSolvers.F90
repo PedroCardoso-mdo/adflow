@@ -1493,6 +1493,9 @@ contains
         implicit none
         Mat mat
         integer(kind=intType) :: ierr
+        ! PetscReal argument: alwaysRealType so the complex-step build (where
+        ! the option is complex) still passes a REAL(8) to PETSc.
+        real(kind=alwaysRealType) :: funcErr
 
         if (trim(mffdType) == 'wp') then
             call MatMFFDSetType(mat, MATMFFD_WP, ierr)
@@ -1500,7 +1503,8 @@ contains
         end if
 
         if (mffdFunctionError > zero) then
-            call MatMFFDSetFunctionError(mat, mffdFunctionError, ierr)
+            funcErr = real(mffdFunctionError, alwaysRealType)
+            call MatMFFDSetFunctionError(mat, funcErr, ierr)
             call EChk(ierr, __FILE__, __LINE__)
         end if
 

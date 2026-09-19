@@ -113,6 +113,14 @@ module precision
     integer, parameter :: adtElementType = kind(adtDummyElementInt)
     integer, parameter :: cgnsRealType = kind(dummyCGNSReal)
     integer, parameter :: cgnsPerType = kind(dummyCGNSPer)
+    ! Same kind as cgnsPerType, for LOCAL temporaries handed to the CGNS
+    ! periodic-read calls. complexify (complex-step build) turns every
+    ! `real(kind=...)` declaration into complex except those whose kind name
+    ! starts with cgnsRealType / alwaysRealType, so a `real(kind=cgnsPerType)`
+    ! local became COMPLEX(4) and broke cg_conn_periodic_read_f
+    ! (readCGNSGrid.F90, "passed COMPLEX(4) to REAL(4)"). Declaring those
+    ! temporaries with this name keeps them real*4 in both builds.
+    integer, parameter :: cgnsRealTypePer = kind(dummyCGNSPer)
     integer, parameter :: alwaysRealType = kind(dummyReal)
     integer, parameter :: singleType = kind(dummySingle)
     integer, parameter :: doubleType = kind(dummyDouble)

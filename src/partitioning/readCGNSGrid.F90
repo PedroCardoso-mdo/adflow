@@ -2785,7 +2785,9 @@ contains
 
         real(kind=realType) :: mult, trans
 
-        real(kind=cgnsPerType), dimension(3) :: rotCenterP, rotAnglesP, tlationP
+        ! cgnsRealTypePer (= cgnsPerType) so that complexify keeps them real*4
+        ! in the complex-step build (see precision.F90).
+        real(kind=cgnsRealTypePer), dimension(3) :: rotCenterP, rotAnglesP, tlationP
 
         ! Check if this is a periodic boundary. The data must be read into
         ! variables of the CGNS periodic kind: real(x, kind) expressions are
@@ -2937,7 +2939,9 @@ contains
 
         real(kind=realType) :: mult, trans
 
-        real(kind=cgnsPerType), dimension(3) :: rotCenterP, rotAnglesP, tlationP
+        ! cgnsRealTypePer (= cgnsPerType) so that complexify keeps them real*4
+        ! in the complex-step build (see precision.F90).
+        real(kind=cgnsRealTypePer), dimension(3) :: rotCenterP, rotAnglesP, tlationP
 
         ! Check if this is a periodic boundary. The data must be read into
         ! variables of the CGNS periodic kind: real(x, kind) expressions are

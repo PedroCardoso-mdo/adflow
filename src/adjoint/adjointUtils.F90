@@ -118,9 +118,11 @@ contains
         ! describe the SAME system or the Krylov solve stagnates (it did:
         ! 96/96 adjoints failed, flat residual, job 1851209). Zero those rows
         ! here and restore their unit diagonal after assembly.
-        frozenTrans = frozenTransition .and. .not. turbOnly .and. .not. frozenTurb &
-                      .and. turbModel == spalartAllmarasNoft2GammaRetheta &
-                      .and. nState == nw
+        ! (Two statements, not one continued logical expression with `==`:
+        ! complexify's relational rewrite mangles the continuation and the
+        ! complex-step build fails to compile.)
+        frozenTrans = frozenTransition .and. .not. turbOnly .and. .not. frozenTurb
+        if (turbModel /= spalartAllmarasNoft2GammaRetheta .or. nState /= nw) frozenTrans = .false.
 
         ! Generic block to use while setting values
         allocate (blk(nState, nState))
