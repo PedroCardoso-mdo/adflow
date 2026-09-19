@@ -845,8 +845,12 @@ contains
                 lamlod = smoothminmax_d(lammapped, lammappedd, mlammax, &
 &                 sabcm_pg_p, lamlo)
                 lamd = smoothminmax_d(lamlo, lamlod, plammax, mp, lam)
-                flamd = bcmflambda_d(sabcm_tu, lam, lamd, sabcm_pg_p, &
-&                 flam)
+                if (sabcm_pg_f .eq. 2) then
+                  flamd = bcmflambdamenter_d(sabcm_tu, lam, lamd, flam)
+                else
+                  flamd = bcmflambda_d(sabcm_tu, lam, lamd, sabcm_pg_p, &
+&                   flam)
+                end if
               else
                 flamd = 0.0_8
               end if
@@ -1345,7 +1349,11 @@ contains
                 end if
                 lamlo = smoothminmax(lammapped, mlammax, sabcm_pg_p)
                 lam = smoothminmax(lamlo, plammax, mp)
-                flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+                if (sabcm_pg_f .eq. 2) then
+                  flam = bcmflambdamenter(sabcm_tu, lam)
+                else
+                  flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+                end if
               end if
 ! distinct target (never rethetacrit = rethetacrit*flam): the fast-reverse ad has no
 ! push/pop stack, an in-place update would use the overwritten value in flamd.

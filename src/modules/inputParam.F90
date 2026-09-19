@@ -587,6 +587,7 @@ module inputPhysics
     logical :: useQCR, useRotationSA, useft2SA, use_SABCM
     logical :: SABCM_Exp, SABCM_PG
     integer(kind=intType) :: SABCM_PG_map   ! 1 = linear gain, 2 = Falkner-Skan similarity map
+    integer(kind=intType) :: SABCM_PG_F      ! gradient response: 1 = Langtry-Menter 2009 F(lambda_theta), 2 = Menter 2015 F_PG ratio (adverse) + LM F1 (favourable)
     integer(kind=intType) :: SABCM_PG_sdir   ! streamwise direction for dp/ds: 1 = local velocity, 2 = wall tangent oriented by the free stream
     integer(kind=intType) :: SABCM_PG_sensor ! 1 = Menter dV/dy (wall normal), 2 = wall-pressure gradient with theta ~ d (K Blasius), 3 = same with theta = Re_theta_c nu/U_e (reference-model definition)
     logical :: wallFunctions, wallDistanceNeeded

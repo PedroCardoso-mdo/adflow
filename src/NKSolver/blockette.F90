@@ -1012,8 +1012,8 @@ contains
                     SABCM_S0_tanh, SABCM_fsmooth, SABCM_maxsmooth, &
                     use_SABCM, SABCM_Exp, &
                     SABCM_PG, SABCM_PG_map, SABCM_PG_coef, SABCM_PG_off, SABCM_PG_gain, SABCM_PG_lamMax, SABCM_PG_p, &
-                    SABCM_PG_sensor, SABCM_PG_sdir, SABCM_PG_K, gammaConstant, velDirFreestream
-        use turbUtils, only: smoothMinMax, bcmFlambda
+                    SABCM_PG_sensor, SABCM_PG_sdir, SABCM_PG_F, SABCM_PG_K, gammaConstant, velDirFreestream
+        use turbUtils, only: smoothMinMax, bcmFlambda, bcmFlambdaMenter
         use inputDiscretization, only: approxSA
         use section, only: sections
         use sa, only: cv13, kar2Inv, cw36, cb3Inv
@@ -1342,7 +1342,11 @@ contains
                             end if
                             lamLo = smoothMinMax(lamMapped, mlamMax, SABCM_PG_p)
                             lam = smoothMinMax(lamLo, plamMax, mp)
-                            Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
+                            if (SABCM_PG_F == 2) then
+                                Flam = bcmFlambdaMenter(SABCM_TU, lam)
+                            else
+                                Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
+                            end if
                         end if
                         ! Distinct target (never ReThetaCrit = ReThetaCrit*Flam): the fast-reverse AD has no
                         ! push/pop stack, an in-place update would use the overwritten value in flamd.

@@ -471,10 +471,15 @@ contains
             end if
             lamlo = smoothminmax(lammapped, mlammax, sabcm_pg_p)
             lam = smoothminmax(lamlo, plammax, mp)
-            flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
-            call pushcontrol1b(0)
+            if (sabcm_pg_f .eq. 2) then
+              flam = bcmflambdamenter(sabcm_tu, lam)
+              call pushcontrol2b(0)
+            else
+              flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+              call pushcontrol2b(1)
+            end if
           else
-            call pushcontrol1b(1)
+            call pushcontrol2b(2)
           end if
 ! distinct target (never rethetacrit = rethetacrit*flam): the fast-reverse ad has no
 ! push/pop stack, an in-place update would use the overwritten value in flamd.
@@ -606,7 +611,7 @@ contains
           uuxd = 0.0_8
           uuyd = 0.0_8
           uuzd = 0.0_8
-          goto 120
+          goto 130
         end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
@@ -648,274 +653,11 @@ contains
         sqrtvortd = tempd3
         rlvd(i, j, k) = rlvd(i, j, k) - temp3*tempd3
         flamd = rethetabase*rethetacritd
-        call popcontrol1b(branch)
+        call popcontrol2b(branch)
         if (branch .eq. 0) then
+          call bcmflambdamenter_b(sabcm_tu, lam, lamd, flamd)
+        else if (branch .eq. 1) then
           call bcmflambda_b(sabcm_tu, lam, lamd, sabcm_pg_p, flamd)
-          call smoothminmax_b(lamlo, lamlod, plammax, mp, lamd)
-          call smoothminmax_b(lammapped, lammappedd, mlammax, sabcm_pg_p&
-&                       , lamlod)
-          call popcontrol2b(branch)
-          if (branch .eq. 0) then
-            lamld = lammappedd
-          else if (branch .eq. 1) then
-            wmapd = (vfav-vadv)*lammappedd
-            vadvd = (one-wmap)*lammappedd
-            vfavd = wmap*lammappedd
-            umapd = (1.0-tanh(umap/pgmapeps)**2)*half*wmapd/pgmapeps + &
-&             exp(umap/pgmapd)*pgmapc*vfavd/pgmapd + (1.0-tanh(umap/&
-&             pgmapb)**2)*pgmapa*vadvd/pgmapb
-            call smoothminmax_b(umaplo, umaplod, pguclip, mp, umapd)
-            call smoothminmax_b(laml, lamld, pguclipneg, sabcm_pg_p, &
-&                         umaplod)
-          else
-            lamld = sabcm_pg_gain*lammappedd
-          end if
-          call popcontrol2b(branch)
-          if (branch .eq. 0) then
-            thetamd = 2*thetam*dueds*lamld/nu
-            tempd3 = thetam**2*lamld/nu
-            duedsd = tempd3
-            nud = -(dueds*tempd3/nu)
-            tempd3 = rethetabase*thetamd/ue
-            nud = nud + tempd3
-            ued = -(nu*tempd3/ue)
-          else if (branch .eq. 1) then
-            d2walld(i, j, k) = d2walld(i, j, k) + 2*d2wall(i, j, k)*&
-&             dueds*sabcm_pg_k*lamld/nu
-            tempd3 = d2wall(i, j, k)**2*sabcm_pg_k*lamld/nu
-            duedsd = tempd3
-            nud = -(dueds*tempd3/nu)
-            ued = 0.0_8
-          else
-            d2walld(i, j, k) = d2walld(i, j, k) - 2*d2wall(i, j, k)*snn*&
-&             sabcm_pg_coef*lamld/nu
-            tempd3 = -(d2wall(i, j, k)**2*sabcm_pg_coef*lamld/nu)
-            snnd = tempd3
-            nud = -(snn*tempd3/nu)
-            nwxd = 0.0_8
-            nwyd = 0.0_8
-            nwzd = 0.0_8
-            factd = 0.0_8
-            goto 110
-          end if
-          tempd3 = -(duedsd/(rhoinf*ue))
-          dpdsd = tempd3
-          tempd1 = -(dpds*tempd3/(rhoinf*ue))
-          rhoinfd = rhoinfd + ue*tempd1
-          ued = ued + rhoinf*tempd1
-          if (ue2c .eq. 0.0_8) then
-            ue2cd = 0.0_8
-          else
-            ue2cd = ued/(2.0*sqrt(ue2c))
-          end if
-          call popcontrol1b(branch)
-          if (branch .eq. 0) then
-            ue2mind = ue2cd
-            ue2d = 0.0_8
-          else
-            ue2d = ue2cd
-            ue2mind = 0.0_8
-          end if
-          uinfd = uinfd + pgueminfrac**2*2*uinf*ue2mind + 2*uinf*ue2d
-          tempd3 = two*ue2d/rhoinf
-          pinfcorrd = pinfcorrd + tempd3
-          pcd = -tempd3
-          rhoinfd = rhoinfd - (pinfcorr-pc)*tempd3/rhoinf
-          factd = (uxh*ppx+uyh*ppy+uzh*ppz)*two*dpdsd
-          tempd3 = fact*two*dpdsd
-          uxhd = ppx*tempd3
-          ppxd = uxh*tempd3
-          uyhd = ppy*tempd3
-          ppyd = uyh*tempd3
-          uzhd = ppz*tempd3
-          ppzd = uzh*tempd3
-          call popcontrol1b(branch)
-          if (branch .eq. 0) then
-            wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhd/max3
-            max3d = -(w(i, j, k, ivz)*uzhd/max3**2)
-            call popcontrol1b(branch)
-            if (branch .eq. 0) then
-              velmagpgd = 0.0_8
-            else
-              velmagpgd = max3d
-            end if
-            wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhd/max2
-            max2d = -(w(i, j, k, ivy)*uyhd/max2**2)
-            call popcontrol1b(branch)
-            if (branch .ne. 0) velmagpgd = velmagpgd + max2d
-            wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhd/max1
-            max1d = -(w(i, j, k, ivx)*uxhd/max1**2)
-            call popcontrol1b(branch)
-            if (branch .ne. 0) velmagpgd = velmagpgd + max1d
-            temp3 = w(i, j, k, ivz)
-            temp2 = w(i, j, k, ivy)
-            temp1 = w(i, j, k, ivx)
-            if (temp1**2 + temp2**2 + temp3**2 .eq. 0.0_8) then
-              tempd0 = 0.0_8
-            else
-              tempd0 = velmagpgd/(2.0*sqrt(temp1**2+temp2**2+temp3**2))
-            end if
-            wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
-            wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp2*tempd0
-            wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp3*tempd0
-            nwxd = 0.0_8
-            nwyd = 0.0_8
-            nwzd = 0.0_8
-          else
-            tmagcd = -(tz*uzhd/tmagc**2) - ty*uyhd/tmagc**2 - tx*uxhd/&
-&             tmagc**2
-            call smoothminmax_b(tmag, tmagd, pgtangmin, sabcm_pg_p, &
-&                         tmagcd)
-            if (tx**2 + ty**2 + tz**2 .eq. 0.0_8) then
-              tempd3 = 0.0_8
-            else
-              tempd3 = tmagd/(2.0*sqrt(tx**2+ty**2+tz**2))
-            end if
-            tzd = uzhd/tmagc + 2*tz*tempd3
-            tyd = uyhd/tmagc + 2*ty*tempd3
-            txd = uxhd/tmagc + 2*tx*tempd3
-            vdnd = -(nwz*tzd) - nwy*tyd - nwx*txd
-            veldirfreestreamd(3) = veldirfreestreamd(3) + tzd + nwz*vdnd
-            nwzd = veldirfreestream(3)*vdnd - vdn*tzd
-            veldirfreestreamd(2) = veldirfreestreamd(2) + tyd + nwy*vdnd
-            nwyd = veldirfreestream(2)*vdnd - vdn*tyd
-            veldirfreestreamd(1) = veldirfreestreamd(1) + txd + nwx*vdnd
-            nwxd = veldirfreestream(1)*vdnd - vdn*txd
-          end if
-          pipd = si(i, j, k, 3)*ppzd + si(i, j, k, 2)*ppyd + si(i, j, k&
-&           , 1)*ppxd
-          sid(i, j, k, 3) = sid(i, j, k, 3) + pip*ppzd
-          pimd = -(si(i-1, j, k, 3)*ppzd) - si(i-1, j, k, 2)*ppyd - si(i&
-&           -1, j, k, 1)*ppxd
-          sid(i-1, j, k, 3) = sid(i-1, j, k, 3) - pim*ppzd
-          pjpd = sj(i, j, k, 3)*ppzd + sj(i, j, k, 2)*ppyd + sj(i, j, k&
-&           , 1)*ppxd
-          sjd(i, j, k, 3) = sjd(i, j, k, 3) + pjp*ppzd
-          pkpd = sk(i, j, k, 3)*ppzd + sk(i, j, k, 2)*ppyd + sk(i, j, k&
-&           , 1)*ppxd
-          skd(i, j, k, 3) = skd(i, j, k, 3) + pkp*ppzd
-          pjmd = -(sj(i, j-1, k, 3)*ppzd) - sj(i, j-1, k, 2)*ppyd - sj(i&
-&           , j-1, k, 1)*ppxd
-          sjd(i, j-1, k, 3) = sjd(i, j-1, k, 3) - pjm*ppzd
-          pkmd = -(sk(i, j, k-1, 3)*ppzd) - sk(i, j, k-1, 2)*ppyd - sk(i&
-&           , j, k-1, 1)*ppxd
-          skd(i, j, k-1, 3) = skd(i, j, k-1, 3) - pkm*ppzd
-          sid(i, j, k, 2) = sid(i, j, k, 2) + pip*ppyd
-          sid(i-1, j, k, 2) = sid(i-1, j, k, 2) - pim*ppyd
-          sjd(i, j, k, 2) = sjd(i, j, k, 2) + pjp*ppyd
-          skd(i, j, k, 2) = skd(i, j, k, 2) + pkp*ppyd
-          sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) - pjm*ppyd
-          skd(i, j, k-1, 2) = skd(i, j, k-1, 2) - pkm*ppyd
-          sid(i, j, k, 1) = sid(i, j, k, 1) + pip*ppxd
-          sid(i-1, j, k, 1) = sid(i-1, j, k, 1) - pim*ppxd
-          sjd(i, j, k, 1) = sjd(i, j, k, 1) + pjp*ppxd
-          skd(i, j, k, 1) = skd(i, j, k, 1) + pkp*ppxd
-          sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) - pjm*ppxd
-          skd(i, j, k-1, 1) = skd(i, j, k-1, 1) - pkm*ppxd
-          temp2 = w(i, j, k-1, ivz)
-          temp1 = w(i, j, k-1, ivy)
-          temp0 = w(i, j, k-1, ivx)
-          tempd3 = gm1*pkmd
-          wd(i, j, k-1, irhoe) = wd(i, j, k-1, irhoe) + tempd3
-          wd(i, j, k-1, irho) = wd(i, j, k-1, irho) - (temp0**2+temp1**2&
-&           +temp2**2)*half*tempd3
-          tempd = -(w(i, j, k-1, irho)*half*tempd3)
-          wd(i, j, k-1, ivx) = wd(i, j, k-1, ivx) + 2*temp0*tempd
-          wd(i, j, k-1, ivy) = wd(i, j, k-1, ivy) + 2*temp1*tempd
-          wd(i, j, k-1, ivz) = wd(i, j, k-1, ivz) + 2*temp2*tempd
-          temp2 = w(i, j, k+1, ivz)
-          temp1 = w(i, j, k+1, ivy)
-          temp0 = w(i, j, k+1, ivx)
-          tempd3 = gm1*pkpd
-          wd(i, j, k+1, irhoe) = wd(i, j, k+1, irhoe) + tempd3
-          wd(i, j, k+1, irho) = wd(i, j, k+1, irho) - (temp0**2+temp1**2&
-&           +temp2**2)*half*tempd3
-          tempd = -(w(i, j, k+1, irho)*half*tempd3)
-          wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + 2*temp0*tempd
-          wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + 2*temp1*tempd
-          wd(i, j, k+1, ivz) = wd(i, j, k+1, ivz) + 2*temp2*tempd
-          temp2 = w(i, j-1, k, ivz)
-          temp1 = w(i, j-1, k, ivy)
-          temp0 = w(i, j-1, k, ivx)
-          tempd3 = gm1*pjmd
-          wd(i, j-1, k, irhoe) = wd(i, j-1, k, irhoe) + tempd3
-          wd(i, j-1, k, irho) = wd(i, j-1, k, irho) - (temp0**2+temp1**2&
-&           +temp2**2)*half*tempd3
-          tempd = -(w(i, j-1, k, irho)*half*tempd3)
-          wd(i, j-1, k, ivx) = wd(i, j-1, k, ivx) + 2*temp0*tempd
-          wd(i, j-1, k, ivy) = wd(i, j-1, k, ivy) + 2*temp1*tempd
-          wd(i, j-1, k, ivz) = wd(i, j-1, k, ivz) + 2*temp2*tempd
-          temp2 = w(i, j+1, k, ivz)
-          temp1 = w(i, j+1, k, ivy)
-          temp0 = w(i, j+1, k, ivx)
-          tempd3 = gm1*pjpd
-          wd(i, j+1, k, irhoe) = wd(i, j+1, k, irhoe) + tempd3
-          wd(i, j+1, k, irho) = wd(i, j+1, k, irho) - (temp0**2+temp1**2&
-&           +temp2**2)*half*tempd3
-          tempd = -(w(i, j+1, k, irho)*half*tempd3)
-          wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + 2*temp0*tempd
-          wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + 2*temp1*tempd
-          wd(i, j+1, k, ivz) = wd(i, j+1, k, ivz) + 2*temp2*tempd
-          temp2 = w(i-1, j, k, ivz)
-          temp1 = w(i-1, j, k, ivy)
-          temp0 = w(i-1, j, k, ivx)
-          tempd3 = gm1*pimd
-          wd(i-1, j, k, irhoe) = wd(i-1, j, k, irhoe) + tempd3
-          wd(i-1, j, k, irho) = wd(i-1, j, k, irho) - (temp0**2+temp1**2&
-&           +temp2**2)*half*tempd3
-          tempd = -(w(i-1, j, k, irho)*half*tempd3)
-          wd(i-1, j, k, ivx) = wd(i-1, j, k, ivx) + 2*temp0*tempd
-          wd(i-1, j, k, ivy) = wd(i-1, j, k, ivy) + 2*temp1*tempd
-          wd(i-1, j, k, ivz) = wd(i-1, j, k, ivz) + 2*temp2*tempd
-          temp2 = w(i+1, j, k, ivz)
-          temp1 = w(i+1, j, k, ivy)
-          temp0 = w(i+1, j, k, ivx)
-          tempd3 = gm1*pipd
-          wd(i+1, j, k, irhoe) = wd(i+1, j, k, irhoe) + tempd3
-          wd(i+1, j, k, irho) = wd(i+1, j, k, irho) - (temp0**2+temp1**2&
-&           +temp2**2)*half*tempd3
-          tempd = -(w(i+1, j, k, irho)*half*tempd3)
-          wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + 2*temp0*tempd
-          wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + 2*temp1*tempd
-          wd(i+1, j, k, ivz) = wd(i+1, j, k, ivz) + 2*temp2*tempd
-          temp1 = w(i, j, k, ivz)
-          temp0 = w(i, j, k, ivy)
-          temp = w(i, j, k, ivx)
-          tempd1 = gm1*pcd
-          wd(i, j, k, irhoe) = wd(i, j, k, irhoe) + tempd1
-          wd(i, j, k, irho) = wd(i, j, k, irho) - (temp**2+temp0**2+&
-&           temp1**2)*half*tempd1
-          tempd3 = -(w(i, j, k, irho)*half*tempd1)
-          wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp*tempd3
-          wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp0*tempd3
-          wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp1*tempd3
-          snnd = 0.0_8
- 110      temp0 = nwx*wwx + nwy*wwy + nwz*wwz
-          temp = nwx*vvx + nwy*vvy + nwz*vvz
-          temp1 = nwx*uux + nwy*uuy + nwz*uuz
-          factd = factd + (nwx*temp1+nwy*temp+nwz*temp0)*two*snnd
-          tempd1 = fact*two*snnd
-          tempd2 = nwx*tempd1
-          tempd = nwy*tempd1
-          tempd0 = nwz*tempd1
-          nwxd = nwxd + temp1*tempd1 + wwx*tempd0 + vvx*tempd + uux*&
-&           tempd2
-          nwyd = nwyd + temp*tempd1 + wwy*tempd0 + vvy*tempd + uuy*&
-&           tempd2
-          nwzd = nwzd + temp0*tempd1 + wwz*tempd0 + vvz*tempd + uuz*&
-&           tempd2
-          wwxd = nwx*tempd0
-          wwyd = nwy*tempd0
-          wwzd = nwz*tempd0
-          vvxd = nwx*tempd
-          vvyd = nwy*tempd
-          vvzd = nwz*tempd
-          uuxd = nwx*tempd2
-          uuyd = nwy*tempd2
-          uuzd = nwz*tempd2
-          nwalld(3, i, j, k) = nwalld(3, i, j, k) + nwzd
-          nwalld(2, i, j, k) = nwalld(2, i, j, k) + nwyd
-          nwalld(1, i, j, k) = nwalld(1, i, j, k) + nwxd
         else
           nud = 0.0_8
           wwxd = 0.0_8
@@ -928,8 +670,276 @@ contains
           uuxd = 0.0_8
           uuyd = 0.0_8
           uuzd = 0.0_8
+          goto 120
         end if
-        fv1d = chi*tterm2d/sabcm_const2
+        lamlod = 0.0_8
+        call smoothminmax_b(lamlo, lamlod, plammax, mp, lamd)
+        lammappedd = 0.0_8
+        call smoothminmax_b(lammapped, lammappedd, mlammax, sabcm_pg_p, &
+&                     lamlod)
+        call popcontrol2b(branch)
+        if (branch .eq. 0) then
+          lamld = lammappedd
+        else if (branch .eq. 1) then
+          wmapd = (vfav-vadv)*lammappedd
+          vadvd = (one-wmap)*lammappedd
+          vfavd = wmap*lammappedd
+          umapd = (1.0-tanh(umap/pgmapeps)**2)*half*wmapd/pgmapeps + exp&
+&           (umap/pgmapd)*pgmapc*vfavd/pgmapd + (1.0-tanh(umap/pgmapb)**&
+&           2)*pgmapa*vadvd/pgmapb
+          umaplod = 0.0_8
+          call smoothminmax_b(umaplo, umaplod, pguclip, mp, umapd)
+          lamld = 0.0_8
+          call smoothminmax_b(laml, lamld, pguclipneg, sabcm_pg_p, &
+&                       umaplod)
+        else
+          lamld = sabcm_pg_gain*lammappedd
+        end if
+        call popcontrol2b(branch)
+        if (branch .eq. 0) then
+          thetamd = 2*thetam*dueds*lamld/nu
+          tempd3 = thetam**2*lamld/nu
+          duedsd = tempd3
+          nud = -(dueds*tempd3/nu)
+          tempd3 = rethetabase*thetamd/ue
+          nud = nud + tempd3
+          ued = -(nu*tempd3/ue)
+        else if (branch .eq. 1) then
+          d2walld(i, j, k) = d2walld(i, j, k) + 2*d2wall(i, j, k)*dueds*&
+&           sabcm_pg_k*lamld/nu
+          tempd3 = d2wall(i, j, k)**2*sabcm_pg_k*lamld/nu
+          duedsd = tempd3
+          nud = -(dueds*tempd3/nu)
+          ued = 0.0_8
+        else
+          d2walld(i, j, k) = d2walld(i, j, k) - 2*d2wall(i, j, k)*snn*&
+&           sabcm_pg_coef*lamld/nu
+          tempd3 = -(d2wall(i, j, k)**2*sabcm_pg_coef*lamld/nu)
+          snnd = tempd3
+          nud = -(snn*tempd3/nu)
+          nwxd = 0.0_8
+          nwyd = 0.0_8
+          nwzd = 0.0_8
+          factd = 0.0_8
+          goto 110
+        end if
+        tempd3 = -(duedsd/(rhoinf*ue))
+        dpdsd = tempd3
+        tempd1 = -(dpds*tempd3/(rhoinf*ue))
+        rhoinfd = rhoinfd + ue*tempd1
+        ued = ued + rhoinf*tempd1
+        if (ue2c .eq. 0.0_8) then
+          ue2cd = 0.0_8
+        else
+          ue2cd = ued/(2.0*sqrt(ue2c))
+        end if
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          ue2mind = ue2cd
+          ue2d = 0.0_8
+        else
+          ue2d = ue2cd
+          ue2mind = 0.0_8
+        end if
+        uinfd = uinfd + pgueminfrac**2*2*uinf*ue2mind + 2*uinf*ue2d
+        tempd3 = two*ue2d/rhoinf
+        pinfcorrd = pinfcorrd + tempd3
+        pcd = -tempd3
+        rhoinfd = rhoinfd - (pinfcorr-pc)*tempd3/rhoinf
+        factd = (uxh*ppx+uyh*ppy+uzh*ppz)*two*dpdsd
+        tempd3 = fact*two*dpdsd
+        uxhd = ppx*tempd3
+        ppxd = uxh*tempd3
+        uyhd = ppy*tempd3
+        ppyd = uyh*tempd3
+        uzhd = ppz*tempd3
+        ppzd = uzh*tempd3
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhd/max3
+          max3d = -(w(i, j, k, ivz)*uzhd/max3**2)
+          call popcontrol1b(branch)
+          if (branch .eq. 0) then
+            velmagpgd = 0.0_8
+          else
+            velmagpgd = max3d
+          end if
+          wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhd/max2
+          max2d = -(w(i, j, k, ivy)*uyhd/max2**2)
+          call popcontrol1b(branch)
+          if (branch .ne. 0) velmagpgd = velmagpgd + max2d
+          wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhd/max1
+          max1d = -(w(i, j, k, ivx)*uxhd/max1**2)
+          call popcontrol1b(branch)
+          if (branch .ne. 0) velmagpgd = velmagpgd + max1d
+          temp3 = w(i, j, k, ivz)
+          temp2 = w(i, j, k, ivy)
+          temp1 = w(i, j, k, ivx)
+          if (temp1**2 + temp2**2 + temp3**2 .eq. 0.0_8) then
+            tempd0 = 0.0_8
+          else
+            tempd0 = velmagpgd/(2.0*sqrt(temp1**2+temp2**2+temp3**2))
+          end if
+          wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
+          wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp2*tempd0
+          wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp3*tempd0
+          nwxd = 0.0_8
+          nwyd = 0.0_8
+          nwzd = 0.0_8
+        else
+          tmagcd = -(tz*uzhd/tmagc**2) - ty*uyhd/tmagc**2 - tx*uxhd/&
+&           tmagc**2
+          tmagd = 0.0_8
+          call smoothminmax_b(tmag, tmagd, pgtangmin, sabcm_pg_p, tmagcd&
+&                      )
+          if (tx**2 + ty**2 + tz**2 .eq. 0.0_8) then
+            tempd3 = 0.0_8
+          else
+            tempd3 = tmagd/(2.0*sqrt(tx**2+ty**2+tz**2))
+          end if
+          tzd = uzhd/tmagc + 2*tz*tempd3
+          tyd = uyhd/tmagc + 2*ty*tempd3
+          txd = uxhd/tmagc + 2*tx*tempd3
+          vdnd = -(nwz*tzd) - nwy*tyd - nwx*txd
+          veldirfreestreamd(3) = veldirfreestreamd(3) + tzd + nwz*vdnd
+          nwzd = veldirfreestream(3)*vdnd - vdn*tzd
+          veldirfreestreamd(2) = veldirfreestreamd(2) + tyd + nwy*vdnd
+          nwyd = veldirfreestream(2)*vdnd - vdn*tyd
+          veldirfreestreamd(1) = veldirfreestreamd(1) + txd + nwx*vdnd
+          nwxd = veldirfreestream(1)*vdnd - vdn*txd
+        end if
+        pipd = si(i, j, k, 3)*ppzd + si(i, j, k, 2)*ppyd + si(i, j, k, 1&
+&         )*ppxd
+        sid(i, j, k, 3) = sid(i, j, k, 3) + pip*ppzd
+        pimd = -(si(i-1, j, k, 3)*ppzd) - si(i-1, j, k, 2)*ppyd - si(i-1&
+&         , j, k, 1)*ppxd
+        sid(i-1, j, k, 3) = sid(i-1, j, k, 3) - pim*ppzd
+        pjpd = sj(i, j, k, 3)*ppzd + sj(i, j, k, 2)*ppyd + sj(i, j, k, 1&
+&         )*ppxd
+        sjd(i, j, k, 3) = sjd(i, j, k, 3) + pjp*ppzd
+        pkpd = sk(i, j, k, 3)*ppzd + sk(i, j, k, 2)*ppyd + sk(i, j, k, 1&
+&         )*ppxd
+        skd(i, j, k, 3) = skd(i, j, k, 3) + pkp*ppzd
+        pjmd = -(sj(i, j-1, k, 3)*ppzd) - sj(i, j-1, k, 2)*ppyd - sj(i, &
+&         j-1, k, 1)*ppxd
+        sjd(i, j-1, k, 3) = sjd(i, j-1, k, 3) - pjm*ppzd
+        pkmd = -(sk(i, j, k-1, 3)*ppzd) - sk(i, j, k-1, 2)*ppyd - sk(i, &
+&         j, k-1, 1)*ppxd
+        skd(i, j, k-1, 3) = skd(i, j, k-1, 3) - pkm*ppzd
+        sid(i, j, k, 2) = sid(i, j, k, 2) + pip*ppyd
+        sid(i-1, j, k, 2) = sid(i-1, j, k, 2) - pim*ppyd
+        sjd(i, j, k, 2) = sjd(i, j, k, 2) + pjp*ppyd
+        skd(i, j, k, 2) = skd(i, j, k, 2) + pkp*ppyd
+        sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) - pjm*ppyd
+        skd(i, j, k-1, 2) = skd(i, j, k-1, 2) - pkm*ppyd
+        sid(i, j, k, 1) = sid(i, j, k, 1) + pip*ppxd
+        sid(i-1, j, k, 1) = sid(i-1, j, k, 1) - pim*ppxd
+        sjd(i, j, k, 1) = sjd(i, j, k, 1) + pjp*ppxd
+        skd(i, j, k, 1) = skd(i, j, k, 1) + pkp*ppxd
+        sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) - pjm*ppxd
+        skd(i, j, k-1, 1) = skd(i, j, k-1, 1) - pkm*ppxd
+        temp2 = w(i, j, k-1, ivz)
+        temp1 = w(i, j, k-1, ivy)
+        temp0 = w(i, j, k-1, ivx)
+        tempd3 = gm1*pkmd
+        wd(i, j, k-1, irhoe) = wd(i, j, k-1, irhoe) + tempd3
+        wd(i, j, k-1, irho) = wd(i, j, k-1, irho) - (temp0**2+temp1**2+&
+&         temp2**2)*half*tempd3
+        tempd = -(w(i, j, k-1, irho)*half*tempd3)
+        wd(i, j, k-1, ivx) = wd(i, j, k-1, ivx) + 2*temp0*tempd
+        wd(i, j, k-1, ivy) = wd(i, j, k-1, ivy) + 2*temp1*tempd
+        wd(i, j, k-1, ivz) = wd(i, j, k-1, ivz) + 2*temp2*tempd
+        temp2 = w(i, j, k+1, ivz)
+        temp1 = w(i, j, k+1, ivy)
+        temp0 = w(i, j, k+1, ivx)
+        tempd3 = gm1*pkpd
+        wd(i, j, k+1, irhoe) = wd(i, j, k+1, irhoe) + tempd3
+        wd(i, j, k+1, irho) = wd(i, j, k+1, irho) - (temp0**2+temp1**2+&
+&         temp2**2)*half*tempd3
+        tempd = -(w(i, j, k+1, irho)*half*tempd3)
+        wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + 2*temp0*tempd
+        wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + 2*temp1*tempd
+        wd(i, j, k+1, ivz) = wd(i, j, k+1, ivz) + 2*temp2*tempd
+        temp2 = w(i, j-1, k, ivz)
+        temp1 = w(i, j-1, k, ivy)
+        temp0 = w(i, j-1, k, ivx)
+        tempd3 = gm1*pjmd
+        wd(i, j-1, k, irhoe) = wd(i, j-1, k, irhoe) + tempd3
+        wd(i, j-1, k, irho) = wd(i, j-1, k, irho) - (temp0**2+temp1**2+&
+&         temp2**2)*half*tempd3
+        tempd = -(w(i, j-1, k, irho)*half*tempd3)
+        wd(i, j-1, k, ivx) = wd(i, j-1, k, ivx) + 2*temp0*tempd
+        wd(i, j-1, k, ivy) = wd(i, j-1, k, ivy) + 2*temp1*tempd
+        wd(i, j-1, k, ivz) = wd(i, j-1, k, ivz) + 2*temp2*tempd
+        temp2 = w(i, j+1, k, ivz)
+        temp1 = w(i, j+1, k, ivy)
+        temp0 = w(i, j+1, k, ivx)
+        tempd3 = gm1*pjpd
+        wd(i, j+1, k, irhoe) = wd(i, j+1, k, irhoe) + tempd3
+        wd(i, j+1, k, irho) = wd(i, j+1, k, irho) - (temp0**2+temp1**2+&
+&         temp2**2)*half*tempd3
+        tempd = -(w(i, j+1, k, irho)*half*tempd3)
+        wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + 2*temp0*tempd
+        wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + 2*temp1*tempd
+        wd(i, j+1, k, ivz) = wd(i, j+1, k, ivz) + 2*temp2*tempd
+        temp2 = w(i-1, j, k, ivz)
+        temp1 = w(i-1, j, k, ivy)
+        temp0 = w(i-1, j, k, ivx)
+        tempd3 = gm1*pimd
+        wd(i-1, j, k, irhoe) = wd(i-1, j, k, irhoe) + tempd3
+        wd(i-1, j, k, irho) = wd(i-1, j, k, irho) - (temp0**2+temp1**2+&
+&         temp2**2)*half*tempd3
+        tempd = -(w(i-1, j, k, irho)*half*tempd3)
+        wd(i-1, j, k, ivx) = wd(i-1, j, k, ivx) + 2*temp0*tempd
+        wd(i-1, j, k, ivy) = wd(i-1, j, k, ivy) + 2*temp1*tempd
+        wd(i-1, j, k, ivz) = wd(i-1, j, k, ivz) + 2*temp2*tempd
+        temp2 = w(i+1, j, k, ivz)
+        temp1 = w(i+1, j, k, ivy)
+        temp0 = w(i+1, j, k, ivx)
+        tempd3 = gm1*pipd
+        wd(i+1, j, k, irhoe) = wd(i+1, j, k, irhoe) + tempd3
+        wd(i+1, j, k, irho) = wd(i+1, j, k, irho) - (temp0**2+temp1**2+&
+&         temp2**2)*half*tempd3
+        tempd = -(w(i+1, j, k, irho)*half*tempd3)
+        wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + 2*temp0*tempd
+        wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + 2*temp1*tempd
+        wd(i+1, j, k, ivz) = wd(i+1, j, k, ivz) + 2*temp2*tempd
+        temp1 = w(i, j, k, ivz)
+        temp0 = w(i, j, k, ivy)
+        temp = w(i, j, k, ivx)
+        tempd1 = gm1*pcd
+        wd(i, j, k, irhoe) = wd(i, j, k, irhoe) + tempd1
+        wd(i, j, k, irho) = wd(i, j, k, irho) - (temp**2+temp0**2+temp1&
+&         **2)*half*tempd1
+        tempd3 = -(w(i, j, k, irho)*half*tempd1)
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp*tempd3
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp0*tempd3
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp1*tempd3
+        snnd = 0.0_8
+ 110    temp0 = nwx*wwx + nwy*wwy + nwz*wwz
+        temp = nwx*vvx + nwy*vvy + nwz*vvz
+        temp1 = nwx*uux + nwy*uuy + nwz*uuz
+        factd = factd + (nwx*temp1+nwy*temp+nwz*temp0)*two*snnd
+        tempd1 = fact*two*snnd
+        tempd2 = nwx*tempd1
+        tempd = nwy*tempd1
+        tempd0 = nwz*tempd1
+        nwxd = nwxd + temp1*tempd1 + wwx*tempd0 + vvx*tempd + uux*tempd2
+        nwyd = nwyd + temp*tempd1 + wwy*tempd0 + vvy*tempd + uuy*tempd2
+        nwzd = nwzd + temp0*tempd1 + wwz*tempd0 + vvz*tempd + uuz*tempd2
+        wwxd = nwx*tempd0
+        wwyd = nwy*tempd0
+        wwzd = nwz*tempd0
+        vvxd = nwx*tempd
+        vvyd = nwy*tempd
+        vvzd = nwz*tempd
+        uuxd = nwx*tempd2
+        uuyd = nwy*tempd2
+        uuzd = nwz*tempd2
+        nwalld(3, i, j, k) = nwalld(3, i, j, k) + nwzd
+        nwalld(2, i, j, k) = nwalld(2, i, j, k) + nwyd
+        nwalld(1, i, j, k) = nwalld(1, i, j, k) + nwxd
+ 120    fv1d = chi*tterm2d/sabcm_const2
         chid = fv1*tterm2d/sabcm_const2
         if (vortprod .eq. 0.0_8) then
           vortprodd = 0.0_8
@@ -955,7 +965,7 @@ contains
         wwyd = wwyd + fact*tempd0
         vvzd = vvzd - fact*tempd0
         ft2d = 0.0_8
- 120    termfwd = gg*fwsad
+ 130    termfwd = gg*fwsad
         temp0 = (one+cw36)/(cw36+gg6)
         if (temp0 .le. 0.0_8 .and. (sixth .eq. 0.0_8 .or. sixth .ne. int&
 &           (sixth))) then
@@ -1537,7 +1547,11 @@ contains
             end if
             lamlo = smoothminmax(lammapped, mlammax, sabcm_pg_p)
             lam = smoothminmax(lamlo, plammax, mp)
-            flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+            if (sabcm_pg_f .eq. 2) then
+              flam = bcmflambdamenter(sabcm_tu, lam)
+            else
+              flam = bcmflambda(sabcm_tu, lam, sabcm_pg_p)
+            end if
           end if
 ! distinct target (never rethetacrit = rethetacrit*flam): the fast-reverse ad has no
 ! push/pop stack, an in-place update would use the overwritten value in flamd.

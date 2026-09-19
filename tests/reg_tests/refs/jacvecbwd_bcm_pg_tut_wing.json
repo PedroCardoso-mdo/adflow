@@ -1,8 +1,8 @@
 {
-    "Dot product test for (w, xV) -> (dw, F)": 7207889821.568728,
-    "Dot product test for Xv -> R": -452586.3485080154,
+    "Dot product test for (w, xV) -> (dw, F)": 7208166283.704107,
+    "Dot product test for Xv -> R": -452566.2599098864,
     "Dot product test for w -> F": 165073.6724798136,
-    "Dot product test for w -> R": 7208043751.308298,
+    "Dot product test for w -> R": 7208320193.355082,
     "Dot product test for xV -> F": 133582.93645730516,
     "metadata": {
         "ADPC": false,
@@ -88,6 +88,7 @@
         "SABCM_Const2": 0.02,
         "SABCM_Exp": false,
         "SABCM_PG": true,
+        "SABCM_PG_F": 2,
         "SABCM_PG_K": 0.05064,
         "SABCM_PG_coef": 0.00757,
         "SABCM_PG_gain": 1.0,

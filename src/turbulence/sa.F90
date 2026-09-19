@@ -446,7 +446,11 @@ contains
                                 end if
                                 lamLo = smoothMinMax(lamMapped, mlamMax, SABCM_PG_p)
                                 lam = smoothMinMax(lamLo, plamMax, mp)
-                                Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
+                                if (SABCM_PG_F == 2) then
+                                    Flam = bcmFlambdaMenter(SABCM_TU, lam)
+                                else
+                                    Flam = bcmFlambda(SABCM_TU, lam, SABCM_PG_p)
+                                end if
                             end if
                             ! Distinct target (never ReThetaCrit = ReThetaCrit*Flam): the fast-reverse AD has no
                             ! push/pop stack, an in-place update would use the overwritten value in flamd.

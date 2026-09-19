@@ -2226,4 +2226,52 @@ contains
 
     end function bcmFlambda
 
+    function bcmFlambdaMenter(Tu, lam) result(Flam)
+        !
+        !  Gradient response option 2 (2026-09-19): Menter et al. 2015 F_PG in RATIO form on the
+        !  adverse side, Langtry-Menter F1 on the favourable side, tanh-blended at lam = 0.
+        !    adverse (lam < 0):  the pressure sensor gives the LM lambda_theta; map it to Menter's
+        !      lambda_thetaL through the Falkner-Skan similarity map (docs/studies/22_bcm_pressure_
+        !      gradient/falkner_skan_map.py: lambda_theta = -A tanh(-u/B), A = 0.06913, B = 0.03255),
+        !      held at the laminar-separation value u_sep = -0.0728 (lambda_theta >= -0.0675);
+        !      F_PG = 1 - 7.34 u (C_PG2, cap 3.0); ratio = (C_TU1 + C_TU2 exp(-C_TU3 Tu F_PG)) /
+        !      (C_TU1 + C_TU2 exp(-C_TU3 Tu)), C_TU = 100, 1000, 1 (Tu in percent, free-stream value
+        !      as in Parente et al. 2026). ZPG => ratio = 1 exactly.
+        !    favourable (lam > 0): F1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-Tu/0.5) (LM 2009).
+        !  No fitted constant: all numbers are Menter-2015 / LM-2009 constants or the FS map.
+        !
+        use constants
+        implicit none
+
+        real(kind=realType), intent(in) :: Tu, lam
+        real(kind=realType) :: Flam
+
+        real(kind=realType) :: F1val, lamc, ratio, u, arg, FPG, wblend, base
+        real(kind=realType), parameter :: mapA = 0.06913_realType, mapB = 0.03255_realType
+        real(kind=realType), parameter :: lamSepClip = -0.0675_realType   ! FS separation limit of the map
+        real(kind=realType), parameter :: lamPosClip = 0.03_realType
+        real(kind=realType), parameter :: cPG2 = 7.34_realType, cPG2lim = 3.0_realType
+        real(kind=realType), parameter :: cTU1 = 100.0_realType, cTU2 = 1000.0_realType, cTU3 = one
+        real(kind=realType), parameter :: pClip = 300.0_realType, mClip = -300.0_realType
+        real(kind=realType), parameter :: bcmFeps = 0.002_realType
+
+        ! favourable branch (LM F1)
+        F1val = one + 0.275_realType * (one - exp(-35.0_realType * lam)) * exp(-Tu / 0.5_realType)
+
+        ! adverse branch: lambda_theta -> u = lambda_thetaL (FS inverse map, atanh via log), clipped
+        lamc = smoothMinMax(lam, lamSepClip, pClip)          ! lamc >= lamSepClip (smooth max)
+        lamc = smoothMinMax(lamc, lamPosClip, mClip)          ! lamc <= 0.03 < A: log stays finite; the
+        !                                                       favourable side is blended out anyway
+        arg = -lamc / mapA                                    ! in [-0.43, 0.976]
+        u = -mapB * half * log((one + arg) / (one - arg))     ! -B atanh(arg) <= 0
+        FPG = one - cPG2 * u                                  ! >= 1, Menter C_PG2 branch
+        FPG = smoothMinMax(FPG, cPG2lim, mClip)               ! cap 3.0 (never active here)
+        base = cTU1 + cTU2 * exp(-cTU3 * Tu)
+        ratio = (cTU1 + cTU2 * exp(-cTU3 * Tu * FPG)) / base
+
+        wblend = half * (one + tanh(lam / bcmFeps))
+        Flam = ratio + (F1val - ratio) * wblend
+
+    end function bcmFlambdaMenter
+
 end module turbUtils

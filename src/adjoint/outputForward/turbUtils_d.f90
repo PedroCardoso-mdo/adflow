@@ -2357,5 +2357,149 @@ nadvloopspectral:do ii=1,nadv
     flam = f3val + (f1val-f3val)*wblend
   end function bcmflambda
 
+!  differentiation of bcmflambdamenter in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: flam
+!   with respect to varying inputs: lam
+  real(kind=realtype) function bcmflambdamenter_d(tu, lam, lamd, flam) &
+& result (flamd)
+!
+!  gradient response option 2 (2026-09-19): menter et al. 2015 f_pg in ratio form on the
+!  adverse side, langtry-menter f1 on the favourable side, tanh-blended at lam = 0.
+!    adverse (lam < 0):  the pressure sensor gives the lm lambda_theta; map it to menter's
+!      lambda_thetal through the falkner-skan similarity map (docs/studies/22_bcm_pressure_
+!      gradient/falkner_skan_map.py: lambda_theta = -a tanh(-u/b), a = 0.06913, b = 0.03255),
+!      held at the laminar-separation value u_sep = -0.0728 (lambda_theta >= -0.0675);
+!      f_pg = 1 - 7.34 u (c_pg2, cap 3.0); ratio = (c_tu1 + c_tu2 exp(-c_tu3 tu f_pg)) /
+!      (c_tu1 + c_tu2 exp(-c_tu3 tu)), c_tu = 100, 1000, 1 (tu in percent, free-stream value
+!      as in parente et al. 2026). zpg => ratio = 1 exactly.
+!    favourable (lam > 0): f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5) (lm 2009).
+!  no fitted constant: all numbers are menter-2015 / lm-2009 constants or the fs map.
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lam
+    real(kind=realtype), intent(in) :: lamd
+    real(kind=realtype), intent(out) :: flam
+    real(kind=realtype) :: f1val, lamc, ratio, u, arg, fpg, wblend, base
+    real(kind=realtype) :: f1vald, lamcd, ratiod, ud, argd, fpgd, &
+&   wblendd
+    real(kind=realtype), parameter :: mapa=0.06913_realtype, mapb=&
+&     0.03255_realtype
+! fs separation limit of the map
+    real(kind=realtype), parameter :: lamsepclip=-0.0675_realtype
+    real(kind=realtype), parameter :: lamposclip=0.03_realtype
+    real(kind=realtype), parameter :: cpg2=7.34_realtype, cpg2lim=&
+&     3.0_realtype
+    real(kind=realtype), parameter :: ctu1=100.0_realtype, ctu2=&
+&     1000.0_realtype, ctu3=one
+    real(kind=realtype), parameter :: pclip=300.0_realtype, mclip=-&
+&     300.0_realtype
+    real(kind=realtype), parameter :: bcmfeps=0.002_realtype
+    intrinsic exp
+    intrinsic log
+    intrinsic tanh
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
+    real(kind=8) :: temp
+    real(kind=realtype) :: tmpresult
+    real(kind=realtype) :: temp0
+    real(kind=realtype) :: tmpresult0
+! favourable branch (lm f1)
+    temp = 0.275_realtype*exp(-(tu/0.5_realtype))
+    f1vald = temp*exp(-(35.0_realtype*lam))*35.0_realtype*lamd
+    f1val = one + temp*(one-exp(-(35.0_realtype*lam)))
+! adverse branch: lambda_theta -> u = lambda_thetal (fs inverse map, atanh via log), clipped
+! lamc >= lamsepclip (smooth max)
+    lamcd = smoothminmax_d(lam, lamd, lamsepclip, pclip, lamc)
+! lamc <= 0.03 < a: log stays finite; the
+    lamcd = smoothminmax_d(lamc, lamcd, lamposclip, mclip, tmpresult)
+    lamc = tmpresult
+!                                                       favourable side is blended out anyway
+! in [-0.43, 0.976]
+    argd = -(lamcd/mapa)
+    arg = -(lamc/mapa)
+! -b atanh(arg) <= 0
+    temp0 = (one+arg)/(one-arg)
+    arg1d = (temp0+1.0)*argd/(one-arg)
+    arg1 = temp0
+    ud = -(mapb*half*arg1d/arg1)
+    u = -(mapb*half*log(arg1))
+! >= 1, menter c_pg2 branch
+    fpgd = -(cpg2*ud)
+    fpg = one - cpg2*u
+! cap 3.0 (never active here)
+    fpgd = smoothminmax_d(fpg, fpgd, cpg2lim, mclip, tmpresult0)
+    fpg = tmpresult0
+    base = ctu1 + ctu2*exp(-(ctu3*tu))
+    arg1d = -(ctu3*tu*fpgd)
+    arg1 = -(ctu3*tu*fpg)
+    ratiod = ctu2*exp(arg1)*arg1d/base
+    ratio = (ctu1+ctu2*exp(arg1))/base
+    wblendd = half*(1.0-tanh(lam/bcmfeps)**2)*lamd/bcmfeps
+    wblend = half*(one+tanh(lam/bcmfeps))
+    flamd = ratiod + wblend*(f1vald-ratiod) + (f1val-ratio)*wblendd
+    flam = ratio + (f1val-ratio)*wblend
+  end function bcmflambdamenter_d
+
+  function bcmflambdamenter(tu, lam) result (flam)
+!
+!  gradient response option 2 (2026-09-19): menter et al. 2015 f_pg in ratio form on the
+!  adverse side, langtry-menter f1 on the favourable side, tanh-blended at lam = 0.
+!    adverse (lam < 0):  the pressure sensor gives the lm lambda_theta; map it to menter's
+!      lambda_thetal through the falkner-skan similarity map (docs/studies/22_bcm_pressure_
+!      gradient/falkner_skan_map.py: lambda_theta = -a tanh(-u/b), a = 0.06913, b = 0.03255),
+!      held at the laminar-separation value u_sep = -0.0728 (lambda_theta >= -0.0675);
+!      f_pg = 1 - 7.34 u (c_pg2, cap 3.0); ratio = (c_tu1 + c_tu2 exp(-c_tu3 tu f_pg)) /
+!      (c_tu1 + c_tu2 exp(-c_tu3 tu)), c_tu = 100, 1000, 1 (tu in percent, free-stream value
+!      as in parente et al. 2026). zpg => ratio = 1 exactly.
+!    favourable (lam > 0): f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5) (lm 2009).
+!  no fitted constant: all numbers are menter-2015 / lm-2009 constants or the fs map.
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lam
+    real(kind=realtype) :: flam
+    real(kind=realtype) :: f1val, lamc, ratio, u, arg, fpg, wblend, base
+    real(kind=realtype), parameter :: mapa=0.06913_realtype, mapb=&
+&     0.03255_realtype
+! fs separation limit of the map
+    real(kind=realtype), parameter :: lamsepclip=-0.0675_realtype
+    real(kind=realtype), parameter :: lamposclip=0.03_realtype
+    real(kind=realtype), parameter :: cpg2=7.34_realtype, cpg2lim=&
+&     3.0_realtype
+    real(kind=realtype), parameter :: ctu1=100.0_realtype, ctu2=&
+&     1000.0_realtype, ctu3=one
+    real(kind=realtype), parameter :: pclip=300.0_realtype, mclip=-&
+&     300.0_realtype
+    real(kind=realtype), parameter :: bcmfeps=0.002_realtype
+    intrinsic exp
+    intrinsic log
+    intrinsic tanh
+    real(kind=realtype) :: arg1
+! favourable branch (lm f1)
+    f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lam)))*exp(-(&
+&     tu/0.5_realtype))
+! adverse branch: lambda_theta -> u = lambda_thetal (fs inverse map, atanh via log), clipped
+! lamc >= lamsepclip (smooth max)
+    lamc = smoothminmax(lam, lamsepclip, pclip)
+! lamc <= 0.03 < a: log stays finite; the
+    lamc = smoothminmax(lamc, lamposclip, mclip)
+!                                                       favourable side is blended out anyway
+! in [-0.43, 0.976]
+    arg = -(lamc/mapa)
+! -b atanh(arg) <= 0
+    arg1 = (one+arg)/(one-arg)
+    u = -(mapb*half*log(arg1))
+! >= 1, menter c_pg2 branch
+    fpg = one - cpg2*u
+! cap 3.0 (never active here)
+    fpg = smoothminmax(fpg, cpg2lim, mclip)
+    base = ctu1 + ctu2*exp(-(ctu3*tu))
+    arg1 = -(ctu3*tu*fpg)
+    ratio = (ctu1+ctu2*exp(arg1))/base
+    wblend = half*(one+tanh(lam/bcmfeps))
+    flam = ratio + (f1val-ratio)*wblend
+  end function bcmflambdamenter
+
 end module turbutils_d
 

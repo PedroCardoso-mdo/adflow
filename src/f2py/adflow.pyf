@@ -1187,6 +1187,7 @@ python module libadflow
          integer(kind=inttype) :: sabcm_pg_map
          integer(kind=inttype) :: sabcm_pg_sensor
          integer(kind=inttype) :: sabcm_pg_sdir
+         integer(kind=inttype) :: sabcm_pg_f
          real(kind=realtype) :: sabcm_pg_k
          real(kind=realtype) :: sabcm_pg_coef
          real(kind=realtype) :: sabcm_pg_off
