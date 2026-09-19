@@ -1,7 +1,9 @@
 # 22 — SA-BCM with a local pressure-gradient sensor (SABCM_PG)
 
-**Started:** 2026-09-18  **Status:** model implemented + Tapenade regenerated (branch `sa-bcm-pg`, dcb4c84e,
-installed in machV4 by build job 1934618: real + complex); validation/calibration jobs submitted (see §4).
+**Started:** 2026-09-18  **Status: CLOSED 2026-09-19** — sensor 2 implemented, audited and its adjoint verified
+(branch `sa-bcm-pg` @ 9b39601e, machV4), but the user's verdict on the results stands: *not a net improvement*
+(ranking of the Tu-0.5 % optima fixed, NLF polar degraded, GR C2 unchanged). The C2/C3 BCM-PG optimisation
+(job 1936872) was cancelled at SLSQP major 1. `SABCM_PG` stays in the code as an option (default off).
 
 ## 1. Why
 
@@ -175,6 +177,20 @@ smooth (§5.1b). Sensor 2 (θ ∝ d, Blasius K) is the smooth, constant-free LM-
 Targets for C3 (cd counts · x_tr up/lo): GR NACA 69.36 · 0.19/0.58 | GR C2 34.94 · 0.76/0.89 |
 GR C3 34.02 · 0.77/0.90 | BCM C2 r1 e50 79.50 · 0.16/0.42 | BCM C3 e118 71.18 · 0.17/0.63.
 BCM today: 68.20 · 0.22/0.49 | 51.38 · 0.74/0.34 | 39.22 · 0.70/0.78 | 53.55 · 0.33/0.66 | 46.39 · 0.48/0.66.
+
+## 6. Conclusion (2026-09-19)
+
+A local pressure-gradient sensor on the BCM threshold reproduces the LM/GR edge λ_θ exactly, but the
+BCM–GR disagreement on the optimised shapes comes from the reference model's onset level and transport
+lag, not from missing gradient sensitivity. Applying F(λ) locally therefore over-penalises mild/short
+adverse gradients: NLF0416 α4 x_tr 0.33 → 0.21 (GR/experiment 0.34), cd +21 %; NACA 68 → 73 (GR 69);
+GR C2 unchanged (+49 %); only the BCM optima are pushed toward the GR values (−33 % → +5 %, −35 % → +24 %).
+Closing the gap "seriously" would mean adopting GR's onset criterion and R̅eθt transport — i.e. using the
+GR model, which already exists and is the robust optimiser (slide 20). Recommendation: optimise with
+SA-γ-R̅eθt; keep SA-BCM for cheap primal evaluation; do not use `SABCM_PG` for predictions.
+Side products kept: exact `nWall` (wall-normal) block array with adjoint plumbing, `smoothMinMax` /
+`bcmFlambda` helpers, the fast-reverse in-place trap and the reference-scalar head trap (both documented
+in `docs/adjoint-trace.md`), and the one-state rule for adjoint-vs-CS checks on this multi-state primal.
 
 ## 5. Results (2026-09-18, machV4 @ 50b51a76)
 
