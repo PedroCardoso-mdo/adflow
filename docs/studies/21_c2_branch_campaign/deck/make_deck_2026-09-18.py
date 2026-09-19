@@ -296,20 +296,19 @@ def _cs_line(path):
     try: return [l for l in open(path).read().splitlines() if l.startswith("MAX")][0]
     except Exception: return "pending"
 s = prs.slides.add_slide(BL); title(s, "24. Verification of the differentiated model",
-                                    "reg suite tests/reg_tests (tutorial wing, 2 ranks) + NACA0012 L2 adjoint vs complex step (20 shape DVs + α)")
-table(s, [["check", "PG off (smooth, hard)", "PG on (new variant bcm_pg)"],
-          ["fwd/rev/fast AD vs 2026-08-25 references", "pass (AD unchanged)", "n/a (refs trained now)"],
-          ["forward AD vs complex step (5 tests)", "pass", "pass"],
-          ["fwd ↔ rev dot products", "pass", "pass"],
-          ["rev (_b) vs fast-rev (_fast_b)", "pass", "FAILED in build 1 → fixed (in-place Re_θc·F, no stack in _fast_b) → pass"],
-          ["block == blockette residual", "pass", "(not parameterised)"],
-          ["AD vs FD wDot (h 1e-8, rtol 8e-4)", "fails — also on the pre-change baseline", "fails (same test)"],
-          ["NACA L2 adjoint vs CS, max |Δ| cl / cd", "0.008 % / 0.26 %", "build 1: 187 % / 181 % → after fix: " + _cs_line(f"{PGD}/cs_pg_fixed/adjoint_vs_cs_table_pg.txt").replace("MAX PG: ", "")]],
-      x=0.4, y=1.4, w=12.5, colw=[4.0, 3.5, 5.0], size=11)
-bullets(s, ["The fast-reverse bug is the classic one the GR code documents for its clamps: Tapenade guards `x = x·f` with pushreal8/popreal8 in _b, the fast-reverse autoEdit strips the real stack. Forward AD and CS were right all along — only the adjoint's state Jacobian was wrong.",
-            "Two more Tapenade traps hit and recorded in the source: no local may end in _c (autoEdit strips _cd/_cb), module variables must be copied to locals before differentiated calls."],
-        y=4.6, h=2.2, size=12)
-note(s, "Jobs: 1934943/1935117 (reg suite, before fix), 1935762 (after), 1934905 → 1935763 (NACA CS); cross_eval_pg/cs_pg*/adjoint_vs_cs_table_pg.txt.", y=7.05)
+                                    "reg suite (tutorial wing, 2 ranks) + NACA0012 L2 adjoint vs complex step · three sensors tried, one kept")
+table(s, [["check", "PG off (smooth, hard)", "sensor 1 (Menter λθL)", "sensor 2 (wall dp/ds, kept)"],
+          ["fwd/rev/fast AD vs references", "pass (AD unchanged)", "pass", "pass"],
+          ["forward AD vs complex step", "pass", "pass", "pass"],
+          ["fwd ↔ rev dot products, _b vs _fast_b", "pass", "pass (after in-place fix)", "pass"],
+          ["adjoint vs CS, NACA L2, max |Δ| cl / cd", "0.008 % / 0.26 %", "187 % / 181 % — primal not smooth (FD: sign flips with step)", "0.000 % / 0.004 % (α), 0.001 % (DV12), 0.4 % (DV8, cd ≈ 1e-4) at the same state"],
+          ["independent code audit (3 lenses + refutation)", "—", "—", "signs, stencil, Bernoulli, non-dim, mirror: correct; 3 fixes applied"]],
+      x=0.4, y=1.4, w=12.5, colw=[3.4, 2.0, 3.4, 3.7], size=11)
+bullets(s, ["Bugs found and fixed on the way: in-place Re_θc·F broke the fast-reverse state Jacobian (no push/pop stack); Tapenade head had the reference-state scalars as input-only (seeds zeroed at entry); F(0) = 0.9986 at p = 300 (smoothMax/Min bias) → exact tanh blend; ŝ = local velocity flips sign in bubbles → wall tangent oriented by the free stream.",
+            "The 10–35 % adjoint-vs-CS 'gap' of sensor 2 was the two sides sitting on different steady states of the multi-state BCM primal (ANK/NK vs DADI path); formed at the same state they agree to 0.004 %.",
+            "Sensor 3 (θ = Re_θc ν/U_e, the reference's own definition) is not smooth near stagnation (λ ∝ 1/U_e²): adjoint vs CS 46–105 %, trips both surfaces at 0.1 c — dropped."],
+        y=4.15, h=2.8, size=12)
+note(s, "Jobs: 1935762/1936305/1936446 (reg suite), 1935763/1935808 (sensor 1 CS + FD), 1936308/1936311/1936444 (loop it0–it2); adflow_sabcm docs/studies/22_bcm_pressure_gradient/PURPOSE.md §3e, §5.1.", y=7.05)
 
 def _pg(g, shp):
     f = f"{PGD}/g{g}/bcmpg_on_{shp}/out/result.json"
@@ -318,36 +317,47 @@ def _pg(g, shp):
 GRV = {"naca": 69.36, "gr_c2_best": 34.94, "gr_c3_best": 34.02, "bcm_c2r1_e50": 79.50, "bcm_c3_e118": 71.18}
 BCV = {"naca": 68.20, "gr_c2_best": 51.38, "gr_c3_best": 39.22, "bcm_c2r1_e50": 53.55, "bcm_c3_e118": 46.39}
 LBL = {"naca": "NACA 0012", "gr_c2_best": "C2 GR", "gr_c3_best": "C3 GR", "bcm_c2r1_e50": "C2 BCM (restart e50)", "bcm_c3_e118": "C3 BCM (e118)"}
-GS = ["1.0", "2.0", "3.0"]
-rows = [["Shape", "SA-GR (target)", "SA-BCM", "Δ vs GR"] + sum([[f"BCM-PG g={g}", "Δ vs GR"] for g in GS], [])]
+GS = ["1.0", "2.0"]
+LOOP = "/home/mdo/Desktop/Run/MDO_PhD/Transition/gama_rethetha/08_optimization/2d_tu05_L0/pg_loop/it2_s2_sdir2"
+def _s2(shp):
+    f = f"{LOOP}/trim_{shp}/out/result.json"
+    return json.load(open(f))["cd"] * 1e4 if os.path.isfile(f) else None
+rows = [["Shape", "SA-GR (target)", "SA-BCM", "Δ vs GR"] + sum([[f"sensor 1 g={g}", "Δ vs GR"] for g in GS], []) + ["sensor 2 (kept)", "Δ vs GR"]]
 for shp in LBL:
     r = [LBL[shp], f"{GRV[shp]:.2f}", f"{BCV[shp]:.2f}", pct(BCV[shp], GRV[shp])]
     for g in GS:
         v = _pg(g, shp); r += ([f"{v[0]*1e4:.2f}" + ("*" if v[1] else ""), pct(v[0]*1e4, GRV[shp])] if v else ["—", "—"])
+    v2 = _s2(shp); r += ([f"{v2:.2f}", pct(v2, GRV[shp])] if v2 else ["—", "—"])
     rows.append(r)
 s = prs.slides.add_slide(BL); title(s, "25. Cross-evaluation with the sensor on (L0, Tu 0.5 %)",
-                                    "BCM-PG vs GR, cl 0.3 · trims as slide 16 · gain 1 / 2 / 3, off 0.01623 · counts · * = solve stopped at ~1e-6")
-table(s, rows, x=0.4, y=1.35, w=12.5, colw=[2.6, 1.3, 1.1, 1.0, 1.3, 1.0, 1.3, 1.0, 1.3, 1.0], size=11)
-bullets(s, ["Distance to GR over the four shapes: mean |Δcd/cd_GR| 24 % (BCM) → 16 % (BCM-PG, g 1–2).",
-            "The case that motivated the work is fixed: the BCM optimum that GR rejects (+14.6 % vs NACA) is now rejected by BCM-PG too (g=2: 83.6 vs its NACA 73.3 = +14 %); the GR C3 ends within 4 % of GR (32.5 vs 34.0). Gain 2 reproduces the GR ranking best.",
-            "Not fixed: GR C2 (+50 %): every BCM trips the LOWER surface at 0.3 c where GR stays laminar to 0.9 c (next slide). F(λ) can only lower the threshold (adverse) or raise it by ≤ 10 % at Tu 0.5 % — this gap is the base threshold itself (BCM Re_θc(0.5 %) = 725 vs Langtry Re_θt = 880), not the gradient.",
-            "NACA moves +6 % with g=2 (upper x_tr 0.16 vs GR 0.19 — closer than BCM's 0.22; lower 0.45 vs 0.58)."],
+                                    "BCM-PG vs GR, cl 0.3 · trims as slide 16 · sensor 1 (Menter, gain 1/2) and sensor 2 (wall dp/ds, K Blasius) · counts")
+table(s, rows, x=0.4, y=1.35, w=12.5, colw=[2.4, 1.3, 1.1, 1.0, 1.3, 1.0, 1.3, 1.0, 1.4, 1.0], size=11)
+bullets(s, ["Sensor 1 g=1 gets closest to GR's numbers (mean |Δcd| 26 % → 13 %) — by under-reading adverse gradients ~2× (Falkner–Skan map) — and is not differentiable; sensor 2 reads the LM edge λ_θ exactly (checked against the GR's own transported R̅eθt outside the layer: 950/560/966/667 vs 880·F = 970/537/970/560) and over-trips.",
+            "What every variant achieves: the ranking becomes the GR one (GR C3 < GR C2 < NACA < BCM optima) — an optimiser driven by BCM-PG no longer exploits the nose suction-peak loophole; the BCM optimum that GR rejects (+14.6 %) is rejected by BCM-PG (+5…+7 %).",
+            "What none can: GR C2 (+50 %) and the absolute levels — GR's onset fires at Re_S ≈ 2.46·R̅eθt (transported, lagged near the wall) vs the BCM's Re_v ≈ 2.19·Re_θc·F: with F = 0.61 in the short adverse zone at x = 0.06–0.10 the BCM-PG trips at 0.12 c, GR at 0.42 c. That gap is the base onset criterion, not the gradient sensitivity."],
         y=4.05, h=2.9, size=12)
-note(s, "Data: jobs 1934907 (g2), 1934908 (g1), 1934909 (g3), 1935767 (e118 sweep); $R/08_optimization/2d_tu05_L0/cross_eval_pg/g*/bcmpg_on_*/out/result.json; PURPOSE.md there.", y=7.05)
+note(s, "Data: jobs 1934907/08 (sensor 1), 1936444 (sensor 2, pg_loop/it2_s2_sdir2); $R/08_optimization/2d_tu05_L0/{cross_eval_pg,pg_loop}; study 22 PURPOSE.md §3d.", y=7.05)
 
 s = prs.slides.add_slide(BL); title(s, "26. cf along the chord with the sensor on",
                                     "GR red · BCM blue dotted · BCM-PG green per gain · upper thick, lower thin · C3 GR and the BCM optimum move toward GR")
 s.shapes.add_picture("../figures/pg_cross_cf.png", Inches(0.4), Inches(1.9), width=Inches(12.5))
 note(s, "cross_eval_pg/make_cross_pg.py → cross_pg_cf.png (surfaces from the trims).", y=7.05)
 
-s = prs.slides.add_slide(BL); title(s, "27. Polar at low Tu and the flat plate: what is still open",
-                                    "NLF0416 L1 (Tu 0.15 %) / S809 L1 (Tu 0.07 %), 3 α each, 11 ranks, rNK · TMR plate L1/L2, Tu 0.10 %")
-s.shapes.add_picture("../figures/pg_profile_nlf_a4.png", Inches(0.3), Inches(1.6), width=Inches(5.7))
-bullets(s, ["Polar: with PG on, NLF α6 and S809 α4/α6 limit-cycle in ANK (resrho 0.2–0.7 for 5000+ its, NK never engages) while the PG-off twins converge; none of {p 100, gain 1, CFL 1e4, NK@1e-3} helps. Continuation from the converged PG-off state: job 1935764.",
-            "Where it converges, PG trips NLF α4 earlier than GR/experiment (x_tr,up 0.19 vs 0.33/0.34; 81 vs 65 counts): at the Re_v peak (d/c ≈ 5e-4) the local sensor reads λ ≈ −0.005 (figure: profiles at x/c 0.05–0.20, λ = offset at the wall, negative through the layer, positive outside), a mild adverse gradient the GR's transported edge-λ_θ does not see. S809 α8: unchanged.",
-            "Flat plate: the plain SA-BCM is bistable there at Tu 0.1 % (rNK/CANK → fully turbulent, cd 0.00317 = SA; ANK-only → laminar, no convergence), so it cannot test neutrality; the Blasius neutrality rests on the Falkner–Skan analysis and on λ = offset at the wall (Snn → 0).",
-            "Next: C2/C3 with BCM-PG (gain 2) on L0 (dense_L0v2_pg) once the HPC adjoint check is in; low-Tu convergence needs its own study (continuation in gain, or the R̅eθt-equation plan B)."],
-        x=6.2, y=1.35, w=6.8, h=5.5, size=11)
-note(s, "Data: 15_sabcm_polars/{results/*_pg,*_ref11, plot_polars_pg.py, analyze_pg_nearwall.py}, jobs 1934910/11, 1935125, 1935764; 10_tmr_flatplate/10_bcm_pg jobs 1934951, 1935139.", y=7.05)
+s = prs.slides.add_slide(BL); title(s, "27. Direct predictions with the sensor: polar at low Tu",
+                                    "NLF0416 L1 (Tu 0.15 %) / S809 L1 (Tu 0.07 %), 3 α each, 11 ranks, rNK · counts · x_tr upper/lower")
+table(s, [["case", "SA-BCM (no sensor)", "SA-BCM + sensor 2", "SA-γ-R̅eθt", "experiment x_tr,up"],
+          ["NLF0416 α2", "58.2 · 0.38/0.60", "65.1 · 0.31/0.60", "57.0 · 0.38/0.60", "—"],
+          ["NLF0416 α4", "65.5 · 0.33/0.61", "79.4 · 0.21/0.60", "64.4 · 0.34/0.61", "≈ 0.34"],
+          ["NLF0416 α6", "85.6 · 0.21/0.61", "102.3 · 0.11/0.61 (not conv.)", "79.3 · 0.25/0.61", "—"],
+          ["S809 α4", "47.6 (not conv.)", "48.7 (not conv.)", "67.5", "—"],
+          ["S809 α6", "75.0 · 0.49/0.49", "74.6 · 0.50/0.49", "69.8 · 0.50/0.50", "—"],
+          ["S809 α8", "149.1 · 0.96/0.50", "149.9 · 0.96/0.49", "131.8", "—"]],
+      x=0.4, y=1.4, w=12.5, colw=[1.8, 2.6, 3.0, 2.6, 2.5], size=11)
+bullets(s, ["S809 (transition by laminar separation): the sensor is neutral — as it should be. NLF0416 (attached transition in a mild adverse gradient): the local F(λ) trips the upper surface too early (α4: 0.21 vs 0.34 GR/experiment, cd +21 %); plain SA-BCM already matched experiment there.",
+            "Same mechanism as slide 25: the local LM correlation applies F ≈ 0.8 where the reference's lagged near-wall R̅eθt and higher onset level do not. Sensor 1 (Menter, gain 2) behaved the same on this polar (0.19 at α4) and limit-cycled in ANK at NLF α6 / S809 α4–6 (no recipe helped: p, gain, CFL cap, early NK, ν̃∞ 1e-8/1e-10, restart from the converged PG-off state).",
+            "Verdict on the direct-prediction criterion: the local sensor is NOT a net improvement — it fixes the ranking of optimised shapes at Tu 0.5 % but degrades the NLF polar. It stays in the code as an option (SABCM_PG, sensor 2 default) with a verified adjoint; closing the gap to GR for real would mean adopting GR's onset/transport, i.e. using GR.",
+            "Running: C2/C3 with SA-BCM + sensor 2 on L0 (job 1936548) — whether its optima are accepted by GR is the last test. Flat plate: the plain SA-BCM is bistable there (fully turbulent branch with rNK/CANK), unusable as a neutrality test."],
+        y=4.25, h=2.75, size=11)
+note(s, "Data: 15_sabcm_polars/{results/*_ref11,*_pg,*_pgs2, plot_polars_pg.py}, jobs 1934910/11, 1935125, 1935764, 1935776, 1936549; study 22 PURPOSE.md §5.3, §5.3b.", y=7.05)
 
 prs.save("SA-BCM_2D_reruns_and_branches_2026-09-18.pptx"); print("ok")
