@@ -103,6 +103,7 @@ tuned to these results.
 | 0 | sensor 2 (K 0.0506, p 300, lamMax 0.1, ν̃∞ 1e-7) | (job died on an int/float option; rerun) | 83.84 · 0.08/0.34 | 88.44 · 0.08/0.14 | 52.12 · 0.75/0.29 | all trims converged in 12–13 solves (no stalls); e118 lower surface over-penalised |
 | 0 | (adjoint/CS rerun, job 1936308) | α 1.0 % · DV8 10 % · DV12 35 % (cd); cl ≤ 0.3 % | | | | partials all pass (reg suite); gap = primal branch sensitivity |
 | 1 | sensor 3 (θ = Re_θc ν/U_e, no constant) | pending (1936311) | 91.4 · 0.07/0.12 | 89.7 · 0.07/0.11 | 52.7 · 0.75/0.28 | trips both surfaces at 0.07–0.12 c |
+| 2 | sensor 2 + fixes of §3e (sdir 2, F(0)=1), gate at the DADI state (job 1936444) | **α 0.004 % · DV12 0.001 % · DV8 0.4 % (cd ≈ 1.6e-4)** — PG-off level | 83.8 · 0.08/0.34 | 88.4 · 0.08/0.14 | 52.1 · 0.75/0.29 | **gate passed**; trims unchanged vs it0 |
 
 **Sensor 3** (2026-09-19): the reference model applies F(λ_θ) with the *model* thickness
 θ_t = Re_θt·ν/U (P&Z Eqs. 10–14), bounded and uniform across the layer; sensor 2's physical θ ∝ d
@@ -240,4 +241,4 @@ Falkner–Skan analysis (§3) and on the near-wall profiles (λ = offset at the 
 ### 5.5 Open (updated as jobs land)
 - HPC re-verification of the adjoint after the fix (1935762, 1935763).
 - PG convergence at low Tu (1935764).
-- C2/C3 with BCM-PG g=2 (`dense_L0v2_pg`), after 5.5 confirms the adjoint.
+- C2/C3 with BCM-PG sensor 2 (`dense_L0v2_pg`): job 1936548 (32 + 32 ranks, 40 h). Polar NLF/S809 3 α with sensor 2: job 1936549.
