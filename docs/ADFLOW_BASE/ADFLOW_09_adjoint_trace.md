@@ -48,6 +48,30 @@ drifted — locate by symbol name.*
 
 ---
 
+## Tapenade regeneration 2026-09-19 — `transitionBCMGamma` (`e84475f9`)
+
+`saGammaRetheta%Source` gained the algebraic SA-BCM intermittency block
+(`gammaBC`, threshold scaled by `w(itu3)`) and the `gammaForSA` switch
+(`CORE_BASE/CORE_01_architecture.md`, option table). Heads unchanged
+(`w, rlv, vol, si, sj, sk, timeRef, d2wall, uInf, muInf`; the new inputs
+`turbIntensityInf`/`SABCM_*` are passive constants). Regenerated
+`saGammaRetheta_{d,b,fast_b}.f90` only (`turbUtils_*` untouched:
+`reThetaTCorrelation(tuPct, zero)` is the same routine already differentiated).
+AD-hygiene notes that held: the ZPG call passes a *local* (`tuPct`), not the
+module variable (the `sabcm_pg_lammaxd` trap of `sa-bcm-pg`); the KS max is
+written with distinct targets (no in-place update — `_fast_b` has no stack);
+`ft2 = zero` inside the block is an overwrite Tapenade handles with a plain
+`ft2d = 0` (the earlier `ft2` has no other consumer). The hand-written DADI/PC
+Jacobian (`#ifndef USE_TAPENADE`) and `evalSrcJacBlock` were updated by hand
+(`qq(1,1)` += ∂γ_BC/∂ν̃ term, `qq(1,2)=0`, `qq(1,3)≠0`). Local real build OK;
+the local complex build fails in `readCGNSGrid.F90` (`rotationcenter`
+COMPLEX/REAL mismatch — a local CGNS-toolchain issue unrelated to this change,
+the Deucalion complex build is the reference). Option off ⇒ residual and LHS
+bit-identical (all new terms are inside `if (transitionBCMGamma)` or
+multiplied by zeros).
+
+---
+
 ## Tapenade regeneration 2026-08-04 — AD debt paid + a reusable gotcha
 
 Triggered by making `epsAcoustic`/`epsShear` runtime options (see
