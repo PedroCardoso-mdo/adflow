@@ -90,6 +90,25 @@ or target data involved. Option `SABCM_PG_sensor = 2` (`SABCM_PG_K`); sensor 1 k
 error 7e-4) as the "serious" replacement of the linear gain. Tapenade regenerated for both
 (traps met: >132-char lines and long parameter declarations are rejected/mis-wrapped by Tapenade).
 
+## 3c. Loop suavização → verificação (`08_optimization/2d_tu05_L0/pg_loop`, from 2026-09-18 evening)
+
+Per iteration (1 node): adjoint vs complex step on NACA0012 L2 (α, DV 8, DV 12; gate = the PG-off
+level, cl 0.008 % / cd 0.26 %) and cold L0 trims of the shapes where the BCM disagrees with GR
+(BCM C2 r1 e50, BCM C3 e118, GR C2; GR 79.50 / 71.18 / 34.94, BCM 53.55 / 46.39 / 51.38 counts).
+Knobs per iteration are smoothing/formulation only (p, lamMax, ν̃∞, sensor form); no constant is
+tuned to these results.
+
+| it | sensor / knobs | adjoint vs CS | BCM C2 r1 | BCM C3 e118 | GR C2 | note |
+|---|---|---|---|---|---|---|
+| 0 | sensor 2 (K 0.0506, p 300, lamMax 0.1, ν̃∞ 1e-7) | (job died on an int/float option; rerun) | 83.84 · 0.08/0.34 | 88.44 · 0.08/0.14 | 52.12 · 0.75/0.29 | all trims converged in 12–13 solves (no stalls); e118 lower surface over-penalised |
+| 1 | sensor 3 (θ = Re_θc ν/U_e, no constant) | pending | pending | pending | pending | |
+
+**Sensor 3** (2026-09-19): the reference model applies F(λ_θ) with the *model* thickness
+θ_t = Re_θt·ν/U (P&Z Eqs. 10–14), bounded and uniform across the layer; sensor 2's physical θ ∝ d
+grows with the laminar run and over-reads adverse gradients far downstream (e118 lower surface:
+0.14 c vs 0.63 c in GR). Sensor 3 uses θ = Re_θc(Tu)·ν/U_e, λ = θ²U_e′/ν, U_e from the local
+pressure — the same definition as the reference, no constant left. Option `SABCM_PG_sensor = 3`.
+
 ## 4. Campaign (Deucalion, machV4 rebuilt from `sa-bcm-pg`)
 
 | step | what | where | status |
