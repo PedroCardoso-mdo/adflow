@@ -310,3 +310,18 @@ Falkner–Skan analysis (§3) and on the near-wall profiles (λ = offset at the 
 - HPC re-verification of the adjoint after the fix (1935762, 1935763).
 - PG convergence at low Tu (1935764).
 - C2/C3 with BCM-PG sensor 2 (`dense_L0v2_pg`): job 1936548 (32 + 32 ranks, 40 h). Polar NLF/S809 3 α with sensor 2: job 1936549.
+
+### 7.1 Plan B result and closure (2026-09-19, late)
+
+User: **"Transportado não quero"** — the BCM must stay algebraic; Plan B is not a product, only a diagnostic.
+Its runs (transition-models `e84475f9`, machV3, ev 1e-7; `08_optimization/2d_tu05_L0/cross_eval_bcmg/PURPOSE.md`)
+show that the lag closes the BCM-optima loophole (BCM C2 r1 83.7 vs GR 79.5; C3 e118 85.8 vs 71.2) but
+penalises the GR optima (GR C2 65.6 vs 34.9 — trips the lower surface at 0.32 where GR stays laminar to 0.89)
+and the NLF polar (α6 x_tr 0.17 vs 0.25); cross mean 34 % vs plain BCM 26 %, NACA sweep 5.1 % vs 2.4 %.
+An algebraic-integral check (Thwaites θ(s) marched along the wall from the GR cp + LM/AGS/BCM criteria,
+`pg_calib/thwaites_check.py`, no CFD) fails the same way (GR C2 lower 0.27 vs 0.89). Conclusion: SA-γ-R̅eθt
+is its own onset criterion (Re_S ≈ 3.5·Re_θc(R̅eθt) with a lagged R̅eθt), not a pressure-gradient correction of
+the BCM — no local, integral or transported modification of the BCM threshold reproduces it on both the
+optimised and the validation shapes. **Line closed in all variants.** Kept: `SABCM_PG` (F=2 the least-bad
+local form, off by default), `transitionBCMGamma` (off by default, diagnostic), the complex-build fixes of
+transition-models (`c2e51507`), the one-state adjoint/CS rule, `nWall`.
