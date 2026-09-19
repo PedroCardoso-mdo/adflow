@@ -124,7 +124,7 @@ contains
         real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
                             real(kind=realType) :: uMap, uMapLo, vAdv, vFav, wMap, lamMapped
                             real(kind=realType) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, ppy, ppz
-                            real(kind=realType) :: velMagPG, uxh, uyh, uzh, dpds, ue2, ue2c, ue, dUeds, ue2min
+                            real(kind=realType) :: velMagPG, uxh, uyh, uzh, dpds, ue2, ue2c, ue, dUeds, ue2min, thetaM
                             ! floor of the Bernoulli edge velocity (stagnation region), fraction of U_inf
                             real(kind=realType), parameter :: pgUeMinFrac = 0.05_realType
                             ! Falkner-Skan similarity map lambda_thetaL(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
@@ -354,8 +354,8 @@ contains
                                                     + nwz * (nwx * wwx + nwy * wwy + nwz * wwz))
                                 ! No Reynolds factor: nu = rlv/rho is non-dimensional with
                                 ! L_ref = 1 m, same convention as Re_vorty below.
-                                if (SABCM_PG_sensor == 2) then
-                                    ! Wall-pressure-gradient sensor: lambda = K (d^2/nu) dU_e/ds with U_e from Bernoulli and the
+                                if (SABCM_PG_sensor >= 2) then
+                                    ! Wall-pressure-gradient sensors: dU_e/ds with U_e from Bernoulli and the
                                     ! LOCAL pressure (p ~ p_wall across the layer), s = velocity direction, p from w (constant cp).
                                     ! K = (thetahat/eta*)^2 of the Blasius profile = 0.05064: lambda_theta of Falkner-Skan to +-5 %,
                                     ! no offset (U_e' = 0 for Blasius), no gain. Independent of the velocity profile => no
@@ -394,7 +394,15 @@ contains
                                     ue2c = max(ue2, ue2min)
                                     ue = sqrt(ue2c)
                                     dUeds = -dpds / (rhoInf * ue)
-                                    lamL = SABCM_PG_K * (d2wall(i, j, k)**2 / nu) * dUeds
+                                    if (SABCM_PG_sensor == 3) then
+                                        ! sensor 3: reference-model definition, theta = Re_theta_c(Tu)*nu/U_e (P&Z Eqs. 10-14:
+                                        ! theta_t = Re_theta_t nu/U) -> lambda = theta^2 U_e'/nu, uniform across the layer.
+                                        thetaM = ReThetaBase * nu / ue
+                                        lamL = thetaM**2 / nu * dUeds
+                                    else
+                                        ! sensor 2: physical theta ~ d at the Re_v peak, K = (thetahat/eta*)^2 Blasius
+                                        lamL = SABCM_PG_K * (d2wall(i, j, k)**2 / nu) * dUeds
+                                    end if
                                 else
                                     lamL = -SABCM_PG_coef * (d2wall(i, j, k)**2 / nu) * Snn + SABCM_PG_off
                                 end if
@@ -405,8 +413,8 @@ contains
                                 mlamMax = -SABCM_PG_lamMax
                                 plamMax = SABCM_PG_lamMax
                                 mp = -SABCM_PG_p
-                                if (SABCM_PG_sensor == 2) then
-                                    lamMapped = lamL   ! K already maps to lambda_theta
+                                if (SABCM_PG_sensor >= 2) then
+                                    lamMapped = lamL   ! already lambda_theta (no gain/map)
                                 else if (SABCM_PG_map == 2) then
                                     ! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
                                     uMapLo = smoothMinMax(lamL, pgUClipNeg, SABCM_PG_p)

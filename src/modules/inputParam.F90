@@ -587,7 +587,7 @@ module inputPhysics
     logical :: useQCR, useRotationSA, useft2SA, use_SABCM
     logical :: SABCM_Exp, SABCM_PG
     integer(kind=intType) :: SABCM_PG_map   ! 1 = linear gain, 2 = Falkner-Skan similarity map
-    integer(kind=intType) :: SABCM_PG_sensor ! 1 = Menter dV/dy (wall normal), 2 = wall-pressure gradient (Bernoulli U_e, K = Blasius similarity constant)
+    integer(kind=intType) :: SABCM_PG_sensor ! 1 = Menter dV/dy (wall normal), 2 = wall-pressure gradient with theta ~ d (K Blasius), 3 = same with theta = Re_theta_c nu/U_e (reference-model definition)
     logical :: wallFunctions, wallDistanceNeeded
 
     real(kind=realType) :: alpha, beta
