@@ -231,6 +231,26 @@ i.e. a mild adverse gradient that the GR's transported edge-λ_θ does not see. 
 (PG switched on from the converged PG-off state): job 1935764. `nlf a2` twice killed by the
 SA-BCM startup NaN (cl/cd monitors) — monitors removed from `run_case_bcm.py`, rerun in 1935764.
 
+### 5.3b Polar with sensor 2 (job 1936549, 11 ranks, rNK; cd counts · x_tr up/lo)
+
+| case | BCM (no PG) | BCM-PG sensor 2 | GR (campaign 12) | exp x_tr,up |
+|---|---|---|---|---|
+| NLF a2 | 58.2 · 0.38/0.60 | 65.1 · 0.31/0.60 | 57.0 · 0.38/0.60 | — |
+| NLF a4 | 65.5 · 0.33/0.61 | 79.4 · 0.21/0.60 | 64.4 · 0.34/0.61 | ≈ 0.34 |
+| NLF a6 | 85.6 · 0.21/0.61 | 102.3 · 0.11/0.61 (not conv.) | 79.3 · 0.25/0.61 | — |
+| S809 a4 | 47.6 (not conv.) | 48.7 (not conv.) | 67.5 | — |
+| S809 a6 | 75.0 · 0.49/0.49 | 74.6 · 0.50/0.49 | 69.8 · 0.50/0.50 | — |
+| S809 a8 | 149.1 · 0.96/0.50 | 149.9 · 0.96/0.49 | 131.8 | — |
+
+S809 (transition by laminar separation): the sensor is neutral, as it should be. NLF0416
+(Tu 0.15 %, attached-flow transition in a mild adverse gradient): the local F(λ) trips the upper
+surface earlier than GR *and* experiment (α4: 0.21 vs 0.34) → cd +21 %. Same mechanism as §3d:
+the local LM correlation penalises the mild adverse gradient (F ≈ 0.8), which the reference model's
+lagged near-wall R̅eθt and higher onset level do not. Plain BCM already matched experiment here.
+Verdict on the user's direct-prediction criterion: **the local sensor is not a net improvement** —
+it fixes the ranking of the optimised shapes at Tu 0.5 % (§5.2) but degrades the NLF polar. The
+BCM-PG C2/C3 optimisations (job 1936548) will show whether its optima are at least accepted by GR.
+
 ### 5.4 Flat plate (TMR, `10_tmr_flatplate/10_bcm_pg`, jobs 1934951, 1935139)
 Not usable as the neutrality test: the SA-BCM itself is **bistable** on this plate at Tu 0.1 %
 (rNK/CANK recipes converge to the fully turbulent branch, cd_wall 0.00317 = SA; the ANK-only /
