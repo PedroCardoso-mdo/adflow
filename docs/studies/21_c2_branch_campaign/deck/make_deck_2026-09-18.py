@@ -343,7 +343,7 @@ s = prs.slides.add_slide(BL); title(s, "26. cf along the chord with the sensor o
 s.shapes.add_picture("../figures/pg_cross_cf.png", Inches(0.4), Inches(1.9), width=Inches(12.5))
 note(s, "cross_eval_pg/make_cross_pg.py → cross_pg_cf.png (surfaces from the trims).", y=7.05)
 
-s = prs.slides.add_slide(BL); title(s, "27. Direct predictions with the sensor: polar at low Tu",
+s = prs.slides.add_slide(BL); title(s, "27. Direct predictions with the sensor, and the decision",
                                     "NLF0416 L1 (Tu 0.15 %) / S809 L1 (Tu 0.07 %), 3 α each, 11 ranks, rNK · counts · x_tr upper/lower")
 table(s, [["case", "SA-BCM (no sensor)", "SA-BCM + sensor 2", "SA-γ-R̅eθt", "experiment x_tr,up"],
           ["NLF0416 α2", "58.2 · 0.38/0.60", "65.1 · 0.31/0.60", "57.0 · 0.38/0.60", "—"],
@@ -356,7 +356,7 @@ table(s, [["case", "SA-BCM (no sensor)", "SA-BCM + sensor 2", "SA-γ-R̅eθt", "
 bullets(s, ["S809 (transition by laminar separation): the sensor is neutral — as it should be. NLF0416 (attached transition in a mild adverse gradient): the local F(λ) trips the upper surface too early (α4: 0.21 vs 0.34 GR/experiment, cd +21 %); plain SA-BCM already matched experiment there.",
             "Same mechanism as slide 25: the local LM correlation applies F ≈ 0.8 where the reference's lagged near-wall R̅eθt and higher onset level do not. Sensor 1 (Menter, gain 2) behaved the same on this polar (0.19 at α4) and limit-cycled in ANK at NLF α6 / S809 α4–6 (no recipe helped: p, gain, CFL cap, early NK, ν̃∞ 1e-8/1e-10, restart from the converged PG-off state).",
             "Verdict on the direct-prediction criterion: the local sensor is NOT a net improvement — it fixes the ranking of optimised shapes at Tu 0.5 % but degrades the NLF polar. It stays in the code as an option (SABCM_PG, sensor 2 default) with a verified adjoint; closing the gap to GR for real would mean adopting GR's onset/transport, i.e. using GR.",
-            "Running: C2/C3 with SA-BCM + sensor 2 on L0 (job 1936548) — whether its optima are accepted by GR is the last test. Flat plate: the plain SA-BCM is bistable there (fully turbulent branch with rNK/CANK), unusable as a neutrality test."],
+            "Decision (2026-09-19): line closed — \"worse, and no significant improvement\". The C2/C3 BCM-PG optimisation was cancelled at SLSQP major 1. Recommendation: optimise with SA-γ-R̅eθt (the robust model, slide 20), keep SA-BCM for cheap primal evaluation, leave SABCM_PG off. Kept from the work: exact wall-normal array + adjoint plumbing, two Tapenade traps documented, the one-state rule for adjoint-vs-CS checks on this multi-state primal."],
         y=4.25, h=2.75, size=11)
 note(s, "Data: 15_sabcm_polars/{results/*_ref11,*_pg,*_pgs2, plot_polars_pg.py}, jobs 1934910/11, 1935125, 1935764, 1935776, 1936549; study 22 PURPOSE.md §5.3, §5.3b.", y=7.05)
 
