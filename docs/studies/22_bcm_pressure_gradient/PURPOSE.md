@@ -110,6 +110,28 @@ grows with the laminar run and over-reads adverse gradients far downstream (e118
 0.14 c vs 0.63 c in GR). Sensor 3 uses θ = Re_θc(Tu)·ν/U_e, λ = θ²U_e′/ν, U_e from the local
 pressure — the same definition as the reference, no constant left. Option `SABCM_PG_sensor = 3`.
 
+### 3e. Independent audit of the implementation (workflow, 2026-09-19: 3 lenses + refutation)
+
+Confirmed correct: signs, Green-Gauss stencil scaling, Bernoulli without γ/M factors,
+non-dimensionalisation (net exponent 0 in p_ref, ρ_ref, u_ref — also checked by a run with the
+reference state scaled ×2/×0.5: BCM_lambda bit-identical), p from w = `computePressureSimple`,
+K = 0.05064 (Blasius re-solve), blockette mirror identical, no in-place updates on the differentiated
+path, `_b` has zero `pushreal8`. Fixed after the audit (commit 9b39601e): (1) `pInfCorr/rhoInf/uInf`
+were input-only in the Tapenade head → `sasource_b` zeroed their seeds at entry (benign in the
+present reverse ordering — the PG-off adjoint was bitwise identical to the baseline — but wrong);
+now in-out, plus `velDirFreestream`; (2) F(0) was 0.9986 at p = 300 (smoothMax/smoothMin bias) → tanh
+blend of the two LM branches, F(0) = 1 exactly; (3) ŝ = local velocity direction flips sign inside
+separation-bubble backflow → `SABCM_PG_sdir = 2`: wall tangent oriented by the free stream (the
+edge-streamline direction); (4) `cpModel = constant` guard for the pressure sensors.
+Reg suite: the adjoint-stage failures (P DV, KeyError) are **pre-existing** — same on the baseline
+build; those refs were written by a dev script and only hold `Eval Functions Sens:`.
+Adjoint vs CS gap (sensor 2, α 1 %, shape 10–35 %): the two sides sit on **different steady states**
+(ANK/NK primal vs the CS DADI path; the CS alpha derivative equals the adjoint *at the DADI state*
+to 1e-4 % / 7e-3 %). The loop gate now forms the adjoint at the DADI-continued state (`adjB`) and
+runs the CS from it.
+Sensor 3 (θ = Re_θc ν/U_e): adjoint vs CS 46–105 % (λ ∝ 1/U_e² near stagnation, saturates), trips
+both surfaces at 0.07–0.12 c → dropped.
+
 ### 3d. Why the local sensors trip earlier than GR — checked against the GR solution (2026-09-19)
 
 Analytic λ_θ from the surface cp of the BCM C2 r1 shape (`u = U_e/U∞ = √(1−cp)`, λ = Re_θ²/Re · u′/u²):
