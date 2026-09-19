@@ -22,7 +22,7 @@ cplx () { ( source $BASE/env_mdo_cs.sh; cd $T; python -m testflo -n 1 "$@" -v );
 summ () { grep -E "^(Passed|Failed|Skipped)" $1 | tr '\n' ' '; echo; }
 if [[ "${TRAIN_PG:-1}" == 1 && ! -f refs/jacvecfwd_bcm_pg_tut_wing.json ]]; then
   # adjoint/CS train classes hang under the real env (job 1935762 timed out here): train fwd/bwd refs only
-  echo "=== train pg refs $(date)"; BCM_VARIANTS=pg timeout 40m real test_jacVecProdFWD_bcm.py test_jacVecProdBWDFast_bcm.py -m "train*" > logs/regtests_trainpg_$J.log 2>&1; summ logs/regtests_trainpg_$J.log; ls refs | grep pg
+  echo "=== train pg refs $(date)"; BCM_VARIANTS=pg real test_jacVecProdFWD_bcm.py test_jacVecProdBWDFast_bcm.py -m "train*" > logs/regtests_trainpg_$J.log 2>&1; summ logs/regtests_trainpg_$J.log; ls refs | grep pg
 fi
 echo "=== blockette $(date)"; real test_blockette_bcm.py > logs/regtests_blockette_$J.log 2>&1; summ logs/regtests_blockette_$J.log
 echo "=== real $(date)";      real test_jacVecProdFWD_bcm.py test_jacVecProdBWDFast_bcm.py > logs/regtests_real_$J.log 2>&1; summ logs/regtests_real_$J.log
