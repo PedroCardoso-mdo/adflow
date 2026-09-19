@@ -2106,7 +2106,7 @@ nadvloopspectral:do ii=1,nadv
 
 !  differentiation of smoothminmax in forward (tangent) mode (with options i4 dr8 r8):
 !   variations   of useful results: phi
-!   with respect to varying inputs: g1 g2
+!   with respect to varying inputs: g1
 ! ----------------------------------------------------------------------
 !                                                                      |
 !                    no tapenade routine below this line               |
@@ -2120,7 +2120,7 @@ nadvloopspectral:do ii=1,nadv
 !  which live in `constants`; an `only:` list is propagated verbatim by
 !  tapenade and breaks the *_fast_b compile.
 ! ------------------------------------------------------------------
-  real(kind=realtype) function smoothminmax_d(g1, g1d, g2, g2d, p, phi) &
+  real(kind=realtype) function smoothminmax_d(g1, g1d, g2, p, phi) &
 & result (phid)
 !
 !  smooth max (p > 0) or min (p < 0) of two variables.
@@ -2138,7 +2138,7 @@ nadvloopspectral:do ii=1,nadv
     use constants
     implicit none
     real(kind=realtype), intent(in) :: g1, g2, p
-    real(kind=realtype), intent(in) :: g1d, g2d
+    real(kind=realtype), intent(in) :: g1d
     real(kind=realtype), intent(out) :: phi
     real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
     real(kind=realtype) :: a, b, lambda_switch
@@ -2155,15 +2155,15 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: arg2
     real(kind=realtype) :: arg2d
     if (g1 .lt. g2) then
-      ad = g2d
       a = g2
+      ad = 0.0_8
     else
       ad = g1d
       a = g1
     end if
     if (g1 .gt. g2) then
-      bd = g2d
       b = g2
+      bd = 0.0_8
     else
       bd = g1d
       b = g1
@@ -2290,65 +2290,71 @@ nadvloopspectral:do ii=1,nadv
   real(kind=realtype) function bcmflambda_d(tu, lam, lamd, p, flam) &
 & result (flamd)
 !
-!  langtry-menter pressure-gradient factor f(lambda_theta) in the
-!  smooth form of piotrowski & zingg eqs. 54-57:
-!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)
-!     f2 = smoothmax(f1, 1)
-!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)
-!     f  = smoothmin(f2, f3)
-!  tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
-!  f(0) = 1 exactly (f1 = f3 = 1).
+!  langtry-menter pressure-gradient factor f(lambda_theta), lm2009 eq. 8:
+!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)                    (lam > 0)
+!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)   (lam <= 0)
+!  blended over sign(lam) with w = 1/2 (1 + tanh(lam/eps)) (handoff eq. "f final"):
+!     f = f3 + (f1 - f3) w
+!  both branches equal 1 at lam = 0, so f(0) = 1 exactly (the earlier
+!  smoothmax/smoothmin form gave f(0) = 1 - ln(1.5)/p = 0.9986 at p = 300).
+!  tu in percent, lam already clipped to [-lammax, lammax]; p is unused (kept for
+!  the call signature) and eps is a fixed parameter.
 !
     use constants
     implicit none
     real(kind=realtype), intent(in) :: tu, lam, p
     real(kind=realtype), intent(in) :: lamd
     real(kind=realtype), intent(out) :: flam
-    real(kind=realtype) :: f1val, f2val, f3val, mp
-    real(kind=realtype) :: f1vald, f2vald, f3vald
+    real(kind=realtype) :: f1val, f3val, wblend
+    real(kind=realtype) :: f1vald, f3vald, wblendd
+    real(kind=realtype), parameter :: bcmfeps=0.002_realtype
     intrinsic exp
+    intrinsic tanh
     real(kind=realtype) :: arg1
     real(kind=8) :: temp
     temp = 0.275_realtype*exp(-(tu/0.5_realtype))
     f1vald = temp*exp(-(35.0_realtype*lam))*35.0_realtype*lamd
     f1val = one + temp*(one-exp(-(35.0_realtype*lam)))
-    f2vald = smoothminmax_d(f1val, f1vald, one, 0.0_8, p, f2val)
     arg1 = -((tu/1.5_realtype)**1.5_realtype)
     temp = exp(arg1)
     f3vald = temp*(123.66_realtype*2*lam+405.689_realtype*3*lam**2+&
 &     12.986_realtype)*lamd
     f3val = one - temp*(-(12.986_realtype*lam)-123.66_realtype*(lam*lam)&
 &     -405.689_realtype*(lam*lam*lam))
-    mp = -p
-    flamd = smoothminmax_d(f2val, f2vald, f3val, f3vald, mp, flam)
+    wblendd = half*(1.0-tanh(lam/bcmfeps)**2)*lamd/bcmfeps
+    wblend = half*(one+tanh(lam/bcmfeps))
+    flamd = f3vald + wblend*(f1vald-f3vald) + (f1val-f3val)*wblendd
+    flam = f3val + (f1val-f3val)*wblend
   end function bcmflambda_d
 
   function bcmflambda(tu, lam, p) result (flam)
 !
-!  langtry-menter pressure-gradient factor f(lambda_theta) in the
-!  smooth form of piotrowski & zingg eqs. 54-57:
-!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)
-!     f2 = smoothmax(f1, 1)
-!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)
-!     f  = smoothmin(f2, f3)
-!  tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
-!  f(0) = 1 exactly (f1 = f3 = 1).
+!  langtry-menter pressure-gradient factor f(lambda_theta), lm2009 eq. 8:
+!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)                    (lam > 0)
+!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)   (lam <= 0)
+!  blended over sign(lam) with w = 1/2 (1 + tanh(lam/eps)) (handoff eq. "f final"):
+!     f = f3 + (f1 - f3) w
+!  both branches equal 1 at lam = 0, so f(0) = 1 exactly (the earlier
+!  smoothmax/smoothmin form gave f(0) = 1 - ln(1.5)/p = 0.9986 at p = 300).
+!  tu in percent, lam already clipped to [-lammax, lammax]; p is unused (kept for
+!  the call signature) and eps is a fixed parameter.
 !
     use constants
     implicit none
     real(kind=realtype), intent(in) :: tu, lam, p
     real(kind=realtype) :: flam
-    real(kind=realtype) :: f1val, f2val, f3val, mp
+    real(kind=realtype) :: f1val, f3val, wblend
+    real(kind=realtype), parameter :: bcmfeps=0.002_realtype
     intrinsic exp
+    intrinsic tanh
     real(kind=realtype) :: arg1
     f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lam)))*exp(-(&
 &     tu/0.5_realtype))
-    f2val = smoothminmax(f1val, one, p)
     arg1 = -((tu/1.5_realtype)**1.5_realtype)
     f3val = one - (-(12.986_realtype*lam)-123.66_realtype*lam**2-&
 &     405.689_realtype*lam**3)*exp(arg1)
-    mp = -p
-    flam = smoothminmax(f2val, f3val, mp)
+    wblend = half*(one+tanh(lam/bcmfeps))
+    flam = f3val + (f1val-f3val)*wblend
   end function bcmflambda
 
 end module turbutils_d

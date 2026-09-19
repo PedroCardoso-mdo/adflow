@@ -69,8 +69,7 @@ contains
 &   arg_gammad
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
-    real(kind=realtype) :: snnd, lamld, lamd, lamlod, flamd, mlammaxd, &
-&   plammaxd
+    real(kind=realtype) :: snnd, lamld, lamd, lamlod, flamd
     real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
     real(kind=realtype) :: umapd, umaplod, vadvd, vfavd, wmapd, &
 &   lammappedd
@@ -82,6 +81,10 @@ contains
 &   , dueds, ue2min, thetam
     real(kind=realtype) :: velmagpgd, uxhd, uyhd, uzhd, dpdsd, ue2d, &
 &   ue2cd, ued, duedsd, thetamd
+    real(kind=realtype) :: tx, ty, tz, tmag, tmagc, vdn
+! wall-tangent floor (fraction of the unit free-stream direction):
+! dp/ds -> 0 smoothly at the attachment line
+    real(kind=realtype), parameter :: pgtangmin=0.05_realtype
 ! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
     real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
 ! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
@@ -127,10 +130,6 @@ contains
     real(kind=realtype) :: tempd2
     real(kind=realtype) :: temp3
     real(kind=realtype) :: tempd3
-    real(kind=realtype) :: arg1
-    real(kind=realtype) :: arg1d
-    real(kind=realtype) :: arg10
-    real(kind=realtype) :: arg1d0
     integer :: branch
 ! set model constants
     cv13 = rsacv1**3
@@ -368,38 +367,57 @@ myIntPtr = myIntPtr + 1
               ppz = pip*si(i, j, k, 3) - pim*si(i-1, j, k, 3) + pjp*sj(i&
 &               , j, k, 3) - pjm*sj(i, j-1, k, 3) + pkp*sk(i, j, k, 3) -&
 &               pkm*sk(i, j, k-1, 3)
-              velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + &
-&               w(i, j, k, ivz)**2)
-              if (velmagpg .lt. xminn) then
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-                max1 = xminn
-              else
-                max1 = velmagpg
+              if (sabcm_pg_sdir .eq. 2) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
-              end if
-              uxh = w(i, j, k, ivx)/max1
-              if (velmagpg .lt. xminn) then
+! edge-streamline direction = wall tangent oriented by the free stream (never
+! reversed inside separation bubbles): t = e_inf - (e_inf.n) n, s = t/max(|t|, tmin)
+                vdn = veldirfreestream(1)*nwx + veldirfreestream(2)*nwy &
+&                 + veldirfreestream(3)*nwz
+                tx = veldirfreestream(1) - vdn*nwx
+                ty = veldirfreestream(2) - vdn*nwy
+                tz = veldirfreestream(3) - vdn*nwz
+                tmag = sqrt(tx**2 + ty**2 + tz**2)
+                tmagc = smoothminmax(tmag, pgtangmin, sabcm_pg_p)
+                uxh = tx/tmagc
+                uyh = ty/tmagc
+                uzh = tz/tmagc
+              else
+                velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
+&                 + w(i, j, k, ivz)**2)
+                if (velmagpg .lt. xminn) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-                max2 = xminn
-              else
-                max2 = velmagpg
+                  max1 = xminn
+                else
+                  max1 = velmagpg
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
-              end if
-              uyh = w(i, j, k, ivy)/max2
-              if (velmagpg .lt. xminn) then
-                max3 = xminn
+                end if
+                uxh = w(i, j, k, ivx)/max1
+                if (velmagpg .lt. xminn) then
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
-              else
-                max3 = velmagpg
+                  max2 = xminn
+                else
+                  max2 = velmagpg
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
+                end if
+                uyh = w(i, j, k, ivy)/max2
+                if (velmagpg .lt. xminn) then
+                  max3 = xminn
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
+                else
+                  max3 = velmagpg
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 1
+                end if
+                uzh = w(i, j, k, ivz)/max3
+myIntPtr = myIntPtr + 1
+ myIntStack(myIntPtr) = 0
               end if
-              uzh = w(i, j, k, ivz)/max3
               dpds = two*fact*(uxh*ppx+uyh*ppy+uzh*ppz)
               ue2 = uinf**2 + two*(pinfcorr-pc)/rhoinf
               ue2min = (pgueminfrac*uinf)**2
@@ -443,10 +461,8 @@ myIntPtr = myIntPtr + 1
               call pushcontrol2b(0)
             else if (sabcm_pg_map .eq. 2) then
 ! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
-              arg1 = pguclipneg
-              umaplo = smoothminmax(laml, arg1, sabcm_pg_p)
-              arg10 = pguclip
-              umap = smoothminmax(umaplo, arg10, mp)
+              umaplo = smoothminmax(laml, pguclipneg, sabcm_pg_p)
+              umap = smoothminmax(umaplo, pguclip, mp)
               vadv = pgmapa*tanh(umap/pgmapb)
               vfav = pgmapc*(exp(umap/pgmapd)-one)
               wmap = half*(one+tanh(umap/pgmapeps))
@@ -650,10 +666,9 @@ branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
           call bcmflambda_fast_b(sabcm_tu, lam, lamd, sabcm_pg_p, flamd)
-          call smoothminmax_fast_b(lamlo, lamlod, plammax, plammaxd, mp&
-&                            , lamd)
+          call smoothminmax_fast_b(lamlo, lamlod, plammax, mp, lamd)
           call smoothminmax_fast_b(lammapped, lammappedd, mlammax, &
-&                            mlammaxd, sabcm_pg_p, lamlod)
+&                            sabcm_pg_p, lamlod)
           call popcontrol2b(branch)
           if (branch .eq. 0) then
             lamld = lammappedd
@@ -664,10 +679,10 @@ branch = myIntStack(myIntPtr)
             umapd = (1.0-tanh(umap/pgmapeps)**2)*half*wmapd/pgmapeps + &
 &             exp(umap/pgmapd)*pgmapc*vfavd/pgmapd + (1.0-tanh(umap/&
 &             pgmapb)**2)*pgmapa*vadvd/pgmapb
-            call smoothminmax_fast_b(umaplo, umaplod, arg10, arg1d0, mp&
-&                              , umapd)
-            call smoothminmax_fast_b(laml, lamld, arg1, arg1d, &
-&                              sabcm_pg_p, umaplod)
+            call smoothminmax_fast_b(umaplo, umaplod, pguclip, mp, umapd&
+&                             )
+            call smoothminmax_fast_b(laml, lamld, pguclipneg, sabcm_pg_p&
+&                              , umaplod)
           else
             lamld = sabcm_pg_gain*lammappedd
           end if
@@ -714,36 +729,40 @@ branch = myIntStack(myIntPtr)
           ppyd = uyh*tempd3
           uzhd = ppz*tempd3
           ppzd = uzh*tempd3
-          wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhd/max3
-          max3d = -(w(i, j, k, ivz)*uzhd/max3**2)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
           if (branch .eq. 0) then
-            velmagpgd = 0.0_8
-          else
-            velmagpgd = max3d
-          end if
-          wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhd/max2
-          max2d = -(w(i, j, k, ivy)*uyhd/max2**2)
+            wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhd/max3
+            max3d = -(w(i, j, k, ivz)*uzhd/max3**2)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-          if (branch .ne. 0) velmagpgd = velmagpgd + max2d
-          wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhd/max1
-          max1d = -(w(i, j, k, ivx)*uxhd/max1**2)
+            if (branch .eq. 0) then
+              velmagpgd = 0.0_8
+            else
+              velmagpgd = max3d
+            end if
+            wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhd/max2
+            max2d = -(w(i, j, k, ivy)*uyhd/max2**2)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-          if (branch .ne. 0) velmagpgd = velmagpgd + max1d
-          temp3 = w(i, j, k, ivz)
-          temp2 = w(i, j, k, ivy)
-          temp1 = w(i, j, k, ivx)
-          if (temp1**2 + temp2**2 + temp3**2 .eq. 0.0_8) then
-            tempd0 = 0.0_8
-          else
-            tempd0 = velmagpgd/(2.0*sqrt(temp1**2+temp2**2+temp3**2))
+            if (branch .ne. 0) velmagpgd = velmagpgd + max2d
+            wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhd/max1
+            max1d = -(w(i, j, k, ivx)*uxhd/max1**2)
+branch = myIntStack(myIntPtr)
+ myIntPtr = myIntPtr - 1
+            if (branch .ne. 0) velmagpgd = velmagpgd + max1d
+            temp3 = w(i, j, k, ivz)
+            temp2 = w(i, j, k, ivy)
+            temp1 = w(i, j, k, ivx)
+            if (temp1**2 + temp2**2 + temp3**2 .eq. 0.0_8) then
+              tempd0 = 0.0_8
+            else
+              tempd0 = velmagpgd/(2.0*sqrt(temp1**2+temp2**2+temp3**2))
+            end if
+            wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
+            wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp2*tempd0
+            wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp3*tempd0
           end if
-          wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
-          wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp2*tempd0
-          wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp3*tempd0
           pipd = si(i, j, k, 3)*ppzd + si(i, j, k, 2)*ppyd + si(i, j, k&
 &           , 1)*ppxd
           pimd = -(si(i-1, j, k, 3)*ppzd) - si(i-1, j, k, 2)*ppyd - si(i&
@@ -1070,6 +1089,10 @@ branch = myIntStack(myIntPtr)
 &   ppy, ppz
     real(kind=realtype) :: velmagpg, uxh, uyh, uzh, dpds, ue2, ue2c, ue&
 &   , dueds, ue2min, thetam
+    real(kind=realtype) :: tx, ty, tz, tmag, tmagc, vdn
+! wall-tangent floor (fraction of the unit free-stream direction):
+! dp/ds -> 0 smoothly at the attachment line
+    real(kind=realtype), parameter :: pgtangmin=0.05_realtype
 ! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
     real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
 ! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
@@ -1310,26 +1333,41 @@ branch = myIntStack(myIntPtr)
               ppz = pip*si(i, j, k, 3) - pim*si(i-1, j, k, 3) + pjp*sj(i&
 &               , j, k, 3) - pjm*sj(i, j-1, k, 3) + pkp*sk(i, j, k, 3) -&
 &               pkm*sk(i, j, k-1, 3)
-              velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + &
-&               w(i, j, k, ivz)**2)
-              if (velmagpg .lt. xminn) then
-                max1 = xminn
+              if (sabcm_pg_sdir .eq. 2) then
+! edge-streamline direction = wall tangent oriented by the free stream (never
+! reversed inside separation bubbles): t = e_inf - (e_inf.n) n, s = t/max(|t|, tmin)
+                vdn = veldirfreestream(1)*nwx + veldirfreestream(2)*nwy &
+&                 + veldirfreestream(3)*nwz
+                tx = veldirfreestream(1) - vdn*nwx
+                ty = veldirfreestream(2) - vdn*nwy
+                tz = veldirfreestream(3) - vdn*nwz
+                tmag = sqrt(tx**2 + ty**2 + tz**2)
+                tmagc = smoothminmax(tmag, pgtangmin, sabcm_pg_p)
+                uxh = tx/tmagc
+                uyh = ty/tmagc
+                uzh = tz/tmagc
               else
-                max1 = velmagpg
+                velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
+&                 + w(i, j, k, ivz)**2)
+                if (velmagpg .lt. xminn) then
+                  max1 = xminn
+                else
+                  max1 = velmagpg
+                end if
+                uxh = w(i, j, k, ivx)/max1
+                if (velmagpg .lt. xminn) then
+                  max2 = xminn
+                else
+                  max2 = velmagpg
+                end if
+                uyh = w(i, j, k, ivy)/max2
+                if (velmagpg .lt. xminn) then
+                  max3 = xminn
+                else
+                  max3 = velmagpg
+                end if
+                uzh = w(i, j, k, ivz)/max3
               end if
-              uxh = w(i, j, k, ivx)/max1
-              if (velmagpg .lt. xminn) then
-                max2 = xminn
-              else
-                max2 = velmagpg
-              end if
-              uyh = w(i, j, k, ivy)/max2
-              if (velmagpg .lt. xminn) then
-                max3 = xminn
-              else
-                max3 = velmagpg
-              end if
-              uzh = w(i, j, k, ivz)/max3
               dpds = two*fact*(uxh*ppx+uyh*ppy+uzh*ppz)
               ue2 = uinf**2 + two*(pinfcorr-pc)/rhoinf
               ue2min = (pgueminfrac*uinf)**2

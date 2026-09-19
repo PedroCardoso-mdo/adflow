@@ -2196,14 +2196,15 @@ contains
 
     function bcmFlambda(Tu, lam, p) result(Flam)
         !
-        !  Langtry-Menter pressure-gradient factor F(lambda_theta) in the
-        !  smooth form of Piotrowski & Zingg Eqs. 54-57:
-        !     F1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-Tu/0.5)
-        !     F2 = smoothMax(F1, 1)
-        !     F3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(Tu/1.5)^1.5)
-        !     F  = smoothMin(F2, F3)
-        !  Tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
-        !  F(0) = 1 exactly (F1 = F3 = 1).
+        !  Langtry-Menter pressure-gradient factor F(lambda_theta), LM2009 Eq. 8:
+        !     F1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-Tu/0.5)                    (lam > 0)
+        !     F3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(Tu/1.5)^1.5)   (lam <= 0)
+        !  blended over sign(lam) with w = 1/2 (1 + tanh(lam/eps)) (handoff Eq. "F final"):
+        !     F = F3 + (F1 - F3) w
+        !  Both branches equal 1 at lam = 0, so F(0) = 1 EXACTLY (the earlier
+        !  smoothMax/smoothMin form gave F(0) = 1 - ln(1.5)/p = 0.9986 at p = 300).
+        !  Tu in percent, lam already clipped to [-lamMax, lamMax]; p is unused (kept for
+        !  the call signature) and eps is a fixed parameter.
         !
         use constants
         implicit none
@@ -2211,17 +2212,17 @@ contains
         real(kind=realType), intent(in) :: Tu, lam, p
         real(kind=realType) :: Flam
 
-        real(kind=realType) :: F1val, F2val, F3val, mp
+        real(kind=realType) :: F1val, F3val, wblend
+        real(kind=realType), parameter :: bcmFeps = 0.002_realType
 
         F1val = one + 0.275_realType * (one - exp(-35.0_realType * lam)) &
                 * exp(-Tu / 0.5_realType)
-        F2val = smoothMinMax(F1val, one, p)
         F3val = one - (-12.986_realType * lam &
                        - 123.66_realType * lam**2 &
                        - 405.689_realType * lam**3) &
                 * exp(-(Tu / 1.5_realType)**1.5_realType)
-        mp = -p
-        Flam = smoothMinMax(F2val, F3val, mp)
+        wblend = half * (one + tanh(lam / bcmFeps))
+        Flam = F3val + (F1val - F3val) * wblend
 
     end function bcmFlambda
 

@@ -171,8 +171,8 @@ turbBCRoutines%bcTurbTreatment(w, rlv, d2wall, winf) > \
 solverUtils%timeStep_block(w, pInfCorr, rhoInf, si, sj, sk, sFaceI, sFaceJ, sFaceK, p, radi, radj, radk, dtl, rlv, rev, vol) > \
               (w, pInfCorr, rhoInf, si, sj, sk, sFaceI, sFaceJ, sFaceK, p, radi, radj, radk, dtl, rlv, rev, vol) \
 \
-sa%saSource(w, rlv, vol, si, sj, sk, timeRef, d2wall, nWall, pInfCorr, rhoInf, uInf) > \
-           (w, rlv, vol, si, sj, sk, timeREf, scratch) \
+sa%saSource(w, rlv, vol, si, sj, sk, timeRef, d2wall, nWall, pInfCorr, rhoInf, uInf, velDirFreestream) > \
+           (w, rlv, vol, si, sj, sk, timeREf, scratch, pInfCorr, rhoInf, uInf, velDirFreestream) \
 \
 turbutils%turbAdvection(w, vol, si, sj, sk, scratch, sfacei, sfacej, sfacek) > \
                        (w, vol, si, sj, sk, scratch, sfacei, sfacej, sfacek) \

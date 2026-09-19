@@ -3444,6 +3444,14 @@ contains
             end if
             call mpi_barrier(ADflow_comm_world, ierr)
         end if
+        ! The pressure sensors rebuild p from w with the constant-cp relation.
+        if (SABCM_PG .and. SABCM_PG_sensor >= 2 .and. cpModel /= cpConstant) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "SABCM_PG_sensor >= 2 requires cpModel = constant")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
+        end if
         !
         !       Parallelization parameters. Set the minimum load imbalance to
         !       3 percent to avoid any problems.

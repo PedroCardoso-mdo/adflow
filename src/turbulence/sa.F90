@@ -125,6 +125,10 @@ contains
                             real(kind=realType) :: uMap, uMapLo, vAdv, vFav, wMap, lamMapped
                             real(kind=realType) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, ppy, ppz
                             real(kind=realType) :: velMagPG, uxh, uyh, uzh, dpds, ue2, ue2c, ue, dUeds, ue2min, thetaM
+                            real(kind=realType) :: tx, ty, tz, tmag, tmagc, vdn
+                            ! wall-tangent floor (fraction of the unit free-stream direction):
+        ! dp/ds -> 0 smoothly at the attachment line
+                            real(kind=realType), parameter :: pgTangMin = 0.05_realType
                             ! floor of the Bernoulli edge velocity (stagnation region), fraction of U_inf
                             real(kind=realType), parameter :: pgUeMinFrac = 0.05_realType
                             ! Falkner-Skan similarity map lambda_thetaL(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
@@ -384,10 +388,24 @@ contains
                                     ppz = pip * si(i, j, k, 3) - pim * si(i - 1, j, k, 3) &
                                           + pjp * sj(i, j, k, 3) - pjm * sj(i, j - 1, k, 3) &
                                           + pkp * sk(i, j, k, 3) - pkm * sk(i, j, k - 1, 3)
-                                    velMagPG = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
-                                    uxh = w(i, j, k, ivx) / max(velMagPG, xminn)
-                                    uyh = w(i, j, k, ivy) / max(velMagPG, xminn)
-                                    uzh = w(i, j, k, ivz) / max(velMagPG, xminn)
+                                    if (SABCM_PG_sdir == 2) then
+                                        ! edge-streamline direction = wall tangent oriented by the free stream (never
+                                        ! reversed inside separation bubbles): t = e_inf - (e_inf.n) n, s = t/max(|t|, tmin)
+                                        vdn = velDirFreestream(1) * nwx + velDirFreestream(2) * nwy + velDirFreestream(3) * nwz
+                                        tx = velDirFreestream(1) - vdn * nwx
+                                        ty = velDirFreestream(2) - vdn * nwy
+                                        tz = velDirFreestream(3) - vdn * nwz
+                                        tmag = sqrt(tx**2 + ty**2 + tz**2)
+                                        tmagc = smoothMinMax(tmag, pgTangMin, SABCM_PG_p)
+                                        uxh = tx / tmagc
+                                        uyh = ty / tmagc
+                                        uzh = tz / tmagc
+                                    else
+                                        velMagPG = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                                        uxh = w(i, j, k, ivx) / max(velMagPG, xminn)
+                                        uyh = w(i, j, k, ivy) / max(velMagPG, xminn)
+                                        uzh = w(i, j, k, ivz) / max(velMagPG, xminn)
+                                    end if
                                     dpds = two * fact * (uxh * ppx + uyh * ppy + uzh * ppz)
                                     ue2 = uInf**2 + two * (pInfCorr - pc) / rhoInf
                                     ue2min = (pgUeMinFrac * uInf)**2

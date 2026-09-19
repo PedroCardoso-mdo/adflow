@@ -2053,7 +2053,7 @@ nadvloopspectral:do ii=1,nadv
 
 !  differentiation of smoothminmax in reverse (adjoint) mode (with options noisize i4 dr8 r8):
 !   gradient     of useful results: phi
-!   with respect to varying inputs: g1 g2
+!   with respect to varying inputs: g1
 ! ----------------------------------------------------------------------
 !                                                                      |
 !                    no tapenade routine below this line               |
@@ -2067,7 +2067,7 @@ nadvloopspectral:do ii=1,nadv
 !  which live in `constants`; an `only:` list is propagated verbatim by
 !  tapenade and breaks the *_fast_b compile.
 ! ------------------------------------------------------------------
-  subroutine smoothminmax_fast_b(g1, g1d, g2, g2d, p, phid)
+  subroutine smoothminmax_fast_b(g1, g1d, g2, p, phid)
 !
 !  smooth max (p > 0) or min (p < 0) of two variables.
 !  algorithm 1, piotrowski & zingg (aiaa j. 2020,
@@ -2084,7 +2084,7 @@ nadvloopspectral:do ii=1,nadv
     use constants
     implicit none
     real(kind=realtype), intent(in) :: g1, g2, p
-    real(kind=realtype) :: g1d, g2d
+    real(kind=realtype) :: g1d
     real(kind=realtype) :: phi
     real(kind=realtype) :: phid
     real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
@@ -2100,9 +2100,9 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: tempd
     integer :: branch
     if (g1 .lt. g2) then
-      a = g2
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
+      a = g2
     else
       a = g1
 myIntPtr = myIntPtr + 1
@@ -2148,19 +2148,13 @@ myIntPtr = myIntPtr + 1
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
     if (branch .eq. 0) then
-      g2d = bd
       g1d = 0.0_8
     else
       g1d = bd
-      g2d = 0.0_8
     end if
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
-    if (branch .eq. 0) then
-      g2d = g2d + ad
-    else
-      g1d = g1d + ad
-    end if
+    if (branch .ne. 0) g1d = g1d + ad
   end subroutine smoothminmax_fast_b
 
 ! ----------------------------------------------------------------------
@@ -2242,14 +2236,15 @@ branch = myIntStack(myIntPtr)
 !   with respect to varying inputs: lam
   subroutine bcmflambda_fast_b(tu, lam, lamd, p, flamd)
 !
-!  langtry-menter pressure-gradient factor f(lambda_theta) in the
-!  smooth form of piotrowski & zingg eqs. 54-57:
-!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)
-!     f2 = smoothmax(f1, 1)
-!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)
-!     f  = smoothmin(f2, f3)
-!  tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
-!  f(0) = 1 exactly (f1 = f3 = 1).
+!  langtry-menter pressure-gradient factor f(lambda_theta), lm2009 eq. 8:
+!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)                    (lam > 0)
+!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)   (lam <= 0)
+!  blended over sign(lam) with w = 1/2 (1 + tanh(lam/eps)) (handoff eq. "f final"):
+!     f = f3 + (f1 - f3) w
+!  both branches equal 1 at lam = 0, so f(0) = 1 exactly (the earlier
+!  smoothmax/smoothmin form gave f(0) = 1 - ln(1.5)/p = 0.9986 at p = 300).
+!  tu in percent, lam already clipped to [-lammax, lammax]; p is unused (kept for
+!  the call signature) and eps is a fixed parameter.
 !
     use constants
     implicit none
@@ -2257,51 +2252,53 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: lamd
     real(kind=realtype) :: flam
     real(kind=realtype) :: flamd
-    real(kind=realtype) :: f1val, f2val, f3val, mp
-    real(kind=realtype) :: f1vald, f2vald, f3vald
+    real(kind=realtype) :: f1val, f3val, wblend
+    real(kind=realtype) :: f1vald, f3vald, wblendd
+    real(kind=realtype), parameter :: bcmfeps=0.002_realtype
     intrinsic exp
-    real(kind=realtype) :: arg1
-    real(kind=realtype) :: arg1d
+    intrinsic tanh
     real(realtype) :: tempd
     f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lam)))*exp(-(&
 &     tu/0.5_realtype))
-    arg1 = one
-    f2val = smoothminmax(f1val, arg1, p)
     f3val = one - (-(12.986_realtype*lam)-123.66_realtype*lam**2-&
 &     405.689_realtype*lam**3)*exp(-((tu/1.5_realtype)**1.5_realtype))
-    mp = -p
-    call smoothminmax_fast_b(f2val, f2vald, f3val, f3vald, mp, flamd)
+    wblend = half*(one+tanh(lam/bcmfeps))
+    f3vald = (1.0-wblend)*flamd
+    f1vald = wblend*flamd
+    wblendd = (f1val-f3val)*flamd
     tempd = -(exp(-((tu/1.5_realtype)**1.5_realtype))*f3vald)
-    call smoothminmax_fast_b(f1val, f1vald, arg1, arg1d, p, f2vald)
-    lamd = 35.0_realtype*exp(-(35.0_realtype*lam))*exp(-(tu/0.5_realtype&
-&     ))*0.275_realtype*f1vald - (2*lam*123.66_realtype+3*lam**2*&
+    lamd = (1.0-tanh(lam/bcmfeps)**2)*half*wblendd/bcmfeps + &
+&     35.0_realtype*exp(-(35.0_realtype*lam))*exp(-(tu/0.5_realtype))*&
+&     0.275_realtype*f1vald - (2*lam*123.66_realtype+3*lam**2*&
 &     405.689_realtype+12.986_realtype)*tempd
   end subroutine bcmflambda_fast_b
 
   function bcmflambda(tu, lam, p) result (flam)
 !
-!  langtry-menter pressure-gradient factor f(lambda_theta) in the
-!  smooth form of piotrowski & zingg eqs. 54-57:
-!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)
-!     f2 = smoothmax(f1, 1)
-!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)
-!     f  = smoothmin(f2, f3)
-!  tu in percent, lam already clipped to [-0.1, 0.1], p > 0 sharpness.
-!  f(0) = 1 exactly (f1 = f3 = 1).
+!  langtry-menter pressure-gradient factor f(lambda_theta), lm2009 eq. 8:
+!     f1 = 1 + 0.275 (1 - exp(-35 lam)) exp(-tu/0.5)                    (lam > 0)
+!     f3 = 1 - (-12.986 lam - 123.66 lam^2 - 405.689 lam^3) exp(-(tu/1.5)^1.5)   (lam <= 0)
+!  blended over sign(lam) with w = 1/2 (1 + tanh(lam/eps)) (handoff eq. "f final"):
+!     f = f3 + (f1 - f3) w
+!  both branches equal 1 at lam = 0, so f(0) = 1 exactly (the earlier
+!  smoothmax/smoothmin form gave f(0) = 1 - ln(1.5)/p = 0.9986 at p = 300).
+!  tu in percent, lam already clipped to [-lammax, lammax]; p is unused (kept for
+!  the call signature) and eps is a fixed parameter.
 !
     use constants
     implicit none
     real(kind=realtype), intent(in) :: tu, lam, p
     real(kind=realtype) :: flam
-    real(kind=realtype) :: f1val, f2val, f3val, mp
+    real(kind=realtype) :: f1val, f3val, wblend
+    real(kind=realtype), parameter :: bcmfeps=0.002_realtype
     intrinsic exp
+    intrinsic tanh
     f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lam)))*exp(-(&
 &     tu/0.5_realtype))
-    f2val = smoothminmax(f1val, one, p)
     f3val = one - (-(12.986_realtype*lam)-123.66_realtype*lam**2-&
 &     405.689_realtype*lam**3)*exp(-((tu/1.5_realtype)**1.5_realtype))
-    mp = -p
-    flam = smoothminmax(f2val, f3val, mp)
+    wblend = half*(one+tanh(lam/bcmfeps))
+    flam = f3val + (f1val-f3val)*wblend
   end function bcmflambda
 
 end module turbutils_fast_b

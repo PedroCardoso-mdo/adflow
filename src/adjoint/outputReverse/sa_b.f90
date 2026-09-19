@@ -15,13 +15,16 @@ module sa_b
 
 contains
 !  differentiation of sasource in reverse (adjoint) mode (with options noisize i4 dr8 r8):
-!   gradient     of useful results: timeref *w *rlv *scratch *vol
-!                *si *sj *sk
+!   gradient     of useful results: timeref rhoinf uinf pinfcorr
+!                veldirfreestream *w *rlv *scratch *vol *si *sj
+!                *sk
 !   with respect to varying inputs: timeref rhoinf uinf pinfcorr
-!                *nwall *w *rlv *scratch *vol *d2wall *si *sj *sk
-!   rw status of diff variables: timeref:incr rhoinf:out uinf:out
-!                pinfcorr:out *nwall:out *w:incr *rlv:incr *scratch:in-out
-!                *vol:incr *d2wall:out *si:incr *sj:incr *sk:incr
+!                veldirfreestream *nwall *w *rlv *scratch *vol
+!                *d2wall *si *sj *sk
+!   rw status of diff variables: timeref:incr rhoinf:incr uinf:incr
+!                pinfcorr:incr veldirfreestream:incr *nwall:out
+!                *w:incr *rlv:incr *scratch:in-out *vol:incr *d2wall:out
+!                *si:incr *sj:incr *sk:incr
 !   plus diff mem management of: nwall:in w:in rlv:in scratch:in
 !                vol:in d2wall:in si:in sj:in sk:in
   subroutine sasource_b()
@@ -77,7 +80,7 @@ contains
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
-&   flamd, mlammaxd, plammaxd
+&   flamd
     real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
     real(kind=realtype) :: umapd, umaplod, vadvd, vfavd, wmapd, &
 &   lammappedd
@@ -89,6 +92,11 @@ contains
 &   , dueds, ue2min, thetam
     real(kind=realtype) :: velmagpgd, uxhd, uyhd, uzhd, dpdsd, ue2d, &
 &   ue2cd, ued, duedsd, ue2mind, thetamd
+    real(kind=realtype) :: tx, ty, tz, tmag, tmagc, vdn
+    real(kind=realtype) :: txd, tyd, tzd, tmagd, tmagcd, vdnd
+! wall-tangent floor (fraction of the unit free-stream direction):
+! dp/ds -> 0 smoothly at the attachment line
+    real(kind=realtype), parameter :: pgtangmin=0.05_realtype
 ! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
     real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
 ! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
@@ -134,10 +142,6 @@ contains
     real(kind=realtype) :: tempd2
     real(kind=realtype) :: temp3
     real(kind=realtype) :: tempd3
-    real(kind=realtype) :: arg1
-    real(kind=realtype) :: arg1d
-    real(kind=realtype) :: arg10
-    real(kind=realtype) :: arg1d0
     integer :: branch
 ! set model constants
     cv13 = rsacv1**3
@@ -152,9 +156,6 @@ contains
     if (turbprod .eq. katolaunder) then
       stop
     else
-      rhoinfd = 0.0_8
-      uinfd = 0.0_8
-      pinfcorrd = 0.0_8
       if (associated(nwalld)) nwalld = 0.0_8
       if (associated(d2walld)) d2walld = 0.0_8
       omegaxd = 0.0_8
@@ -373,32 +374,49 @@ contains
               ppz = pip*si(i, j, k, 3) - pim*si(i-1, j, k, 3) + pjp*sj(i&
 &               , j, k, 3) - pjm*sj(i, j-1, k, 3) + pkp*sk(i, j, k, 3) -&
 &               pkm*sk(i, j, k-1, 3)
-              velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + &
-&               w(i, j, k, ivz)**2)
-              if (velmagpg .lt. xminn) then
-                call pushcontrol1b(0)
-                max1 = xminn
-              else
-                max1 = velmagpg
+              if (sabcm_pg_sdir .eq. 2) then
+! edge-streamline direction = wall tangent oriented by the free stream (never
+! reversed inside separation bubbles): t = e_inf - (e_inf.n) n, s = t/max(|t|, tmin)
+                vdn = veldirfreestream(1)*nwx + veldirfreestream(2)*nwy &
+&                 + veldirfreestream(3)*nwz
+                tx = veldirfreestream(1) - vdn*nwx
+                ty = veldirfreestream(2) - vdn*nwy
+                tz = veldirfreestream(3) - vdn*nwz
+                tmag = sqrt(tx**2 + ty**2 + tz**2)
+                tmagc = smoothminmax(tmag, pgtangmin, sabcm_pg_p)
+                uxh = tx/tmagc
+                uyh = ty/tmagc
+                uzh = tz/tmagc
                 call pushcontrol1b(1)
-              end if
-              uxh = w(i, j, k, ivx)/max1
-              if (velmagpg .lt. xminn) then
-                call pushcontrol1b(0)
-                max2 = xminn
               else
-                max2 = velmagpg
-                call pushcontrol1b(1)
-              end if
-              uyh = w(i, j, k, ivy)/max2
-              if (velmagpg .lt. xminn) then
-                max3 = xminn
+                velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
+&                 + w(i, j, k, ivz)**2)
+                if (velmagpg .lt. xminn) then
+                  call pushcontrol1b(0)
+                  max1 = xminn
+                else
+                  max1 = velmagpg
+                  call pushcontrol1b(1)
+                end if
+                uxh = w(i, j, k, ivx)/max1
+                if (velmagpg .lt. xminn) then
+                  call pushcontrol1b(0)
+                  max2 = xminn
+                else
+                  max2 = velmagpg
+                  call pushcontrol1b(1)
+                end if
+                uyh = w(i, j, k, ivy)/max2
+                if (velmagpg .lt. xminn) then
+                  max3 = xminn
+                  call pushcontrol1b(0)
+                else
+                  max3 = velmagpg
+                  call pushcontrol1b(1)
+                end if
+                uzh = w(i, j, k, ivz)/max3
                 call pushcontrol1b(0)
-              else
-                max3 = velmagpg
-                call pushcontrol1b(1)
               end if
-              uzh = w(i, j, k, ivz)/max3
               dpds = two*fact*(uxh*ppx+uyh*ppy+uzh*ppz)
               ue2 = uinf**2 + two*(pinfcorr-pc)/rhoinf
               ue2min = (pgueminfrac*uinf)**2
@@ -440,10 +458,8 @@ contains
               call pushcontrol2b(0)
             else if (sabcm_pg_map .eq. 2) then
 ! exact similarity map (no free gain): clip u, two analytic branches, smooth blend
-              arg1 = pguclipneg
-              umaplo = smoothminmax(laml, arg1, sabcm_pg_p)
-              arg10 = pguclip
-              umap = smoothminmax(umaplo, arg10, mp)
+              umaplo = smoothminmax(laml, pguclipneg, sabcm_pg_p)
+              umap = smoothminmax(umaplo, pguclip, mp)
               vadv = pgmapa*tanh(umap/pgmapb)
               vfav = pgmapc*(exp(umap/pgmapd)-one)
               wmap = half*(one+tanh(umap/pgmapeps))
@@ -635,10 +651,9 @@ contains
         call popcontrol1b(branch)
         if (branch .eq. 0) then
           call bcmflambda_b(sabcm_tu, lam, lamd, sabcm_pg_p, flamd)
-          call smoothminmax_b(lamlo, lamlod, plammax, plammaxd, mp, lamd&
-&                      )
-          call smoothminmax_b(lammapped, lammappedd, mlammax, mlammaxd, &
-&                       sabcm_pg_p, lamlod)
+          call smoothminmax_b(lamlo, lamlod, plammax, mp, lamd)
+          call smoothminmax_b(lammapped, lammappedd, mlammax, sabcm_pg_p&
+&                       , lamlod)
           call popcontrol2b(branch)
           if (branch .eq. 0) then
             lamld = lammappedd
@@ -649,9 +664,8 @@ contains
             umapd = (1.0-tanh(umap/pgmapeps)**2)*half*wmapd/pgmapeps + &
 &             exp(umap/pgmapd)*pgmapc*vfavd/pgmapd + (1.0-tanh(umap/&
 &             pgmapb)**2)*pgmapa*vadvd/pgmapb
-            call smoothminmax_b(umaplo, umaplod, arg10, arg1d0, mp, &
-&                         umapd)
-            call smoothminmax_b(laml, lamld, arg1, arg1d, sabcm_pg_p, &
+            call smoothminmax_b(umaplo, umaplod, pguclip, mp, umapd)
+            call smoothminmax_b(laml, lamld, pguclipneg, sabcm_pg_p, &
 &                         umaplod)
           else
             lamld = sabcm_pg_gain*lammappedd
@@ -678,6 +692,9 @@ contains
             tempd3 = -(d2wall(i, j, k)**2*sabcm_pg_coef*lamld/nu)
             snnd = tempd3
             nud = -(snn*tempd3/nu)
+            nwxd = 0.0_8
+            nwyd = 0.0_8
+            nwzd = 0.0_8
             factd = 0.0_8
             goto 110
           end if
@@ -712,33 +729,59 @@ contains
           ppyd = uyh*tempd3
           uzhd = ppz*tempd3
           ppzd = uzh*tempd3
-          wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhd/max3
-          max3d = -(w(i, j, k, ivz)*uzhd/max3**2)
           call popcontrol1b(branch)
           if (branch .eq. 0) then
-            velmagpgd = 0.0_8
+            wd(i, j, k, ivz) = wd(i, j, k, ivz) + uzhd/max3
+            max3d = -(w(i, j, k, ivz)*uzhd/max3**2)
+            call popcontrol1b(branch)
+            if (branch .eq. 0) then
+              velmagpgd = 0.0_8
+            else
+              velmagpgd = max3d
+            end if
+            wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhd/max2
+            max2d = -(w(i, j, k, ivy)*uyhd/max2**2)
+            call popcontrol1b(branch)
+            if (branch .ne. 0) velmagpgd = velmagpgd + max2d
+            wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhd/max1
+            max1d = -(w(i, j, k, ivx)*uxhd/max1**2)
+            call popcontrol1b(branch)
+            if (branch .ne. 0) velmagpgd = velmagpgd + max1d
+            temp3 = w(i, j, k, ivz)
+            temp2 = w(i, j, k, ivy)
+            temp1 = w(i, j, k, ivx)
+            if (temp1**2 + temp2**2 + temp3**2 .eq. 0.0_8) then
+              tempd0 = 0.0_8
+            else
+              tempd0 = velmagpgd/(2.0*sqrt(temp1**2+temp2**2+temp3**2))
+            end if
+            wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
+            wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp2*tempd0
+            wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp3*tempd0
+            nwxd = 0.0_8
+            nwyd = 0.0_8
+            nwzd = 0.0_8
           else
-            velmagpgd = max3d
+            tmagcd = -(tz*uzhd/tmagc**2) - ty*uyhd/tmagc**2 - tx*uxhd/&
+&             tmagc**2
+            call smoothminmax_b(tmag, tmagd, pgtangmin, sabcm_pg_p, &
+&                         tmagcd)
+            if (tx**2 + ty**2 + tz**2 .eq. 0.0_8) then
+              tempd3 = 0.0_8
+            else
+              tempd3 = tmagd/(2.0*sqrt(tx**2+ty**2+tz**2))
+            end if
+            tzd = uzhd/tmagc + 2*tz*tempd3
+            tyd = uyhd/tmagc + 2*ty*tempd3
+            txd = uxhd/tmagc + 2*tx*tempd3
+            vdnd = -(nwz*tzd) - nwy*tyd - nwx*txd
+            veldirfreestreamd(3) = veldirfreestreamd(3) + tzd + nwz*vdnd
+            nwzd = veldirfreestream(3)*vdnd - vdn*tzd
+            veldirfreestreamd(2) = veldirfreestreamd(2) + tyd + nwy*vdnd
+            nwyd = veldirfreestream(2)*vdnd - vdn*tyd
+            veldirfreestreamd(1) = veldirfreestreamd(1) + txd + nwx*vdnd
+            nwxd = veldirfreestream(1)*vdnd - vdn*txd
           end if
-          wd(i, j, k, ivy) = wd(i, j, k, ivy) + uyhd/max2
-          max2d = -(w(i, j, k, ivy)*uyhd/max2**2)
-          call popcontrol1b(branch)
-          if (branch .ne. 0) velmagpgd = velmagpgd + max2d
-          wd(i, j, k, ivx) = wd(i, j, k, ivx) + uxhd/max1
-          max1d = -(w(i, j, k, ivx)*uxhd/max1**2)
-          call popcontrol1b(branch)
-          if (branch .ne. 0) velmagpgd = velmagpgd + max1d
-          temp3 = w(i, j, k, ivz)
-          temp2 = w(i, j, k, ivy)
-          temp1 = w(i, j, k, ivx)
-          if (temp1**2 + temp2**2 + temp3**2 .eq. 0.0_8) then
-            tempd0 = 0.0_8
-          else
-            tempd0 = velmagpgd/(2.0*sqrt(temp1**2+temp2**2+temp3**2))
-          end if
-          wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
-          wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp2*tempd0
-          wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp3*tempd0
           pipd = si(i, j, k, 3)*ppzd + si(i, j, k, 2)*ppyd + si(i, j, k&
 &           , 1)*ppxd
           sid(i, j, k, 3) = sid(i, j, k, 3) + pip*ppzd
@@ -855,9 +898,12 @@ contains
           tempd2 = nwx*tempd1
           tempd = nwy*tempd1
           tempd0 = nwz*tempd1
-          nwxd = temp1*tempd1 + wwx*tempd0 + vvx*tempd + uux*tempd2
-          nwyd = temp*tempd1 + wwy*tempd0 + vvy*tempd + uuy*tempd2
-          nwzd = temp0*tempd1 + wwz*tempd0 + vvz*tempd + uuz*tempd2
+          nwxd = nwxd + temp1*tempd1 + wwx*tempd0 + vvx*tempd + uux*&
+&           tempd2
+          nwyd = nwyd + temp*tempd1 + wwy*tempd0 + vvy*tempd + uuy*&
+&           tempd2
+          nwzd = nwzd + temp0*tempd1 + wwz*tempd0 + vvz*tempd + uuz*&
+&           tempd2
           wwxd = nwx*tempd0
           wwyd = nwy*tempd0
           wwzd = nwz*tempd0
@@ -1166,6 +1212,10 @@ contains
 &   ppy, ppz
     real(kind=realtype) :: velmagpg, uxh, uyh, uzh, dpds, ue2, ue2c, ue&
 &   , dueds, ue2min, thetam
+    real(kind=realtype) :: tx, ty, tz, tmag, tmagc, vdn
+! wall-tangent floor (fraction of the unit free-stream direction):
+! dp/ds -> 0 smoothly at the attachment line
+    real(kind=realtype), parameter :: pgtangmin=0.05_realtype
 ! floor of the bernoulli edge velocity (stagnation region), fraction of u_inf
     real(kind=realtype), parameter :: pgueminfrac=0.05_realtype
 ! falkner-skan similarity map lambda_thetal(eta*) -> lambda_theta (docs/studies/22_bcm_pressure_gradie
@@ -1406,26 +1456,41 @@ contains
               ppz = pip*si(i, j, k, 3) - pim*si(i-1, j, k, 3) + pjp*sj(i&
 &               , j, k, 3) - pjm*sj(i, j-1, k, 3) + pkp*sk(i, j, k, 3) -&
 &               pkm*sk(i, j, k-1, 3)
-              velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + &
-&               w(i, j, k, ivz)**2)
-              if (velmagpg .lt. xminn) then
-                max1 = xminn
+              if (sabcm_pg_sdir .eq. 2) then
+! edge-streamline direction = wall tangent oriented by the free stream (never
+! reversed inside separation bubbles): t = e_inf - (e_inf.n) n, s = t/max(|t|, tmin)
+                vdn = veldirfreestream(1)*nwx + veldirfreestream(2)*nwy &
+&                 + veldirfreestream(3)*nwz
+                tx = veldirfreestream(1) - vdn*nwx
+                ty = veldirfreestream(2) - vdn*nwy
+                tz = veldirfreestream(3) - vdn*nwz
+                tmag = sqrt(tx**2 + ty**2 + tz**2)
+                tmagc = smoothminmax(tmag, pgtangmin, sabcm_pg_p)
+                uxh = tx/tmagc
+                uyh = ty/tmagc
+                uzh = tz/tmagc
               else
-                max1 = velmagpg
+                velmagpg = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 &
+&                 + w(i, j, k, ivz)**2)
+                if (velmagpg .lt. xminn) then
+                  max1 = xminn
+                else
+                  max1 = velmagpg
+                end if
+                uxh = w(i, j, k, ivx)/max1
+                if (velmagpg .lt. xminn) then
+                  max2 = xminn
+                else
+                  max2 = velmagpg
+                end if
+                uyh = w(i, j, k, ivy)/max2
+                if (velmagpg .lt. xminn) then
+                  max3 = xminn
+                else
+                  max3 = velmagpg
+                end if
+                uzh = w(i, j, k, ivz)/max3
               end if
-              uxh = w(i, j, k, ivx)/max1
-              if (velmagpg .lt. xminn) then
-                max2 = xminn
-              else
-                max2 = velmagpg
-              end if
-              uyh = w(i, j, k, ivy)/max2
-              if (velmagpg .lt. xminn) then
-                max3 = xminn
-              else
-                max3 = velmagpg
-              end if
-              uzh = w(i, j, k, ivz)/max3
               dpds = two*fact*(uxh*ppx+uyh*ppy+uzh*ppz)
               ue2 = uinf**2 + two*(pinfcorr-pc)/rhoinf
               ue2min = (pgueminfrac*uinf)**2
