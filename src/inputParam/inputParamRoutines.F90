@@ -3900,6 +3900,14 @@ contains
             end if
             call mpi_barrier(ADflow_comm_world, ierr)
         end if
+        if (transitionLocalReTheta .and. .not. (equations == RANSEquations .and. &
+            turbModel == spalartAllmarasNoft2GammaRetheta)) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "transitionLocalReTheta requires turbulenceModel = sa-noft2-gamma-retheta")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
+        end if
         if (transitionBCMGamma .and. use_SABCM) then
             if (myID == 0) then
                 call terminate("checkInputParam", &

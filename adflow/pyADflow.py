@@ -5942,6 +5942,9 @@ class ADFLOW(AeroSolver):
             # (threshold Re_theta_c^BCM(Tu) * ReThetaTilde / Re_theta_t(Tu, 0));
             # exactly SA-BCM at zero pressure gradient. Tu = turbIntensityInf.
             "transitionBCMGamma": [bool, False],
+            # One-equation SA-gamma: onset from the LOCAL Re_theta_t(Tu, lambda_theta_L) (Menter-2015
+            # lambda_theta_L) instead of the transported ReThetaTilde (still solved, diagnostic only).
+            "transitionLocalReTheta": [bool, False],
             "transitionRestartAlgebraicInit": [bool, False],
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
@@ -6433,6 +6436,7 @@ class ADFLOW(AeroSolver):
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
             "transitionbcmgamma": ["iter", "transitionbcmgamma"],
+            "transitionlocalretheta": ["iter", "transitionlocalretheta"],
             "transitionrestartalgebraicinit": ["iter", "transitionrestartalgebraicinit"],
             "transitionreflength": ["iter", "transitionreflength"],
             "solverstalldiag": ["iter", "solverstalldiag"],

@@ -2233,7 +2233,7 @@ branch = myIntStack(myIntPtr)
   end function rethetatcorrelation
 
 !  differentiation of flengthcorrelation in reverse (adjoint) mode (with options noisize i4 dr8 r8):
-!   gradient     of useful results: rethetatilde flength
+!   gradient     of useful results: flength
 !   with respect to varying inputs: rethetatilde
   subroutine flengthcorrelation_fast_b(rethetatilde, rethetatilded, &
 &   flengthd)
@@ -2267,9 +2267,8 @@ branch = myIntStack(myIntPtr)
 &       596.0_realtype)+43.5)*flengthd/temp0**2
     end if
     flength1d = based
-    rethetatilded = rethetatilded - 3.0e-4_realtype*flengthd/temp0 - &
-&     3.0e-2_realtype*exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype&
-&     )))*flength1d
+    rethetatilded = -(3.0e-4_realtype*flengthd/temp0) - 3.0e-2_realtype*&
+&     exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype)))*flength1d
   end subroutine flengthcorrelation_fast_b
 
   function flengthcorrelation(rethetatilde) result (flength)

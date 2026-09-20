@@ -227,7 +227,7 @@ contains
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
                       transitionSrcDtRestrict, transitionUseApproxSA, transitionRefLength, &
-                      transitionBCMGamma
+                      transitionBCMGamma, transitionLocalReTheta
         implicit none
 
         ! Local parameters
@@ -338,8 +338,8 @@ contains
         real(kind=realType) :: bcTerm1Raw, bcTerm1, bcTerm2, bcS, bcKmax, bcArg
         real(kind=realType) :: sech2BC, sigBC, dbcTerm2, dgammaBC_dnu, dgammaBC_dReT
         real(kind=realType) :: dSnu_dgamma
-
-
+        ! one-equation variant (transitionLocalReTheta): local onset Re_theta
+        real(kind=realType) :: reThetaOnset, lambdaThetaMenter, lamMenterClamped, lamMenterLocal
 
         ! Set model constants
         cv13 = rsaCv1**3
@@ -358,6 +358,9 @@ contains
         omegax = timeRef * sections(sectionID)%rotRate(1)
         omegay = timeRef * sections(sectionID)%rotRate(2)
         omegaz = timeRef * sections(sectionID)%rotRate(3)
+
+        ! Freestream turbulence intensity in percent (the correlations' Tu)
+        tuPct = turbIntensityInf * 100.0_realType
 
         ! Create switches to production term depending on the variable that
         ! should be used
@@ -554,7 +557,6 @@ contains
                         ! diagnostic.
                         gammaBC = one
                         if (transitionBCMGamma) then
-                            tuPct = turbIntensityInf * 100.0_realType
                             reThetaBCtilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
                             bcVortMag = sqrt(vortx**2 + vorty**2 + vortz**2)
                             reVortBC = bcVortMag * w(i, j, k, irho) / rlv(i, j, k) * (d2Wall(i, j, k)**2)
@@ -689,6 +691,45 @@ contains
                         velMag2 = velRelx**2 + velRely**2 + velRelz**2
                         velMag = sqrt(max(velMag2, xminn))
 
+                        ! Streamwise velocity gradient dU/ds (used by lambdaTheta =
+                        ! (thetaBL^2 / nu) * dU/ds below and by the one-equation variant).
+                        ! Streamwise unit vector is along the RELATIVE velocity
+                        ! (rotating-frame streamline). The velocity-gradient
+                        ! stencils (uux..wwz) stay absolute: dU/ds contracts them
+                        ! with the symmetric u_hat_i u_hat_j, and the antisymmetric
+                        ! rotation part of d(V_rel)/dx - d(V_abs)/dx cancels there,
+                        ! so only u_hat needs the relative velocity.
+                        uxhat = velRelx / max(velMag, xminn)
+                        uyhat = velRely / max(velMag, xminn)
+                        uzhat = velRelz / max(velMag, xminn)
+                        dUds = two * fact &
+                             * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
+                              + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
+                              + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
+
+                        ! --- transitionLocalReTheta: one-equation variant ---
+                        ! The onset quantities (Re_theta_c, Flength) use the LOCAL
+                        ! Langtry-Menter correlation Re_theta_t(Tu, lambda_theta_L)
+                        ! instead of the transported ReThetaTilde, with Menter's
+                        ! (2015, one-equation gamma model) wall-distance based local
+                        ! pressure-gradient parameter
+                        !   lambda_theta_L = -7.57e-3 (dV/dy) d^2/nu + 0.0128,
+                        ! written through boundary-layer continuity (dV/dy = -dU/ds)
+                        ! with the streamwise gradient dUds, so no wall normal is
+                        ! needed. Clamped to the LM validity range like the GR
+                        ! lambda_theta (distinct targets: no in-place update on the
+                        ! differentiated path). The ReThetaTilde transport equation
+                        ! keeps being solved unchanged (diagnostic only); the gamma
+                        ! source then has no ReThetaTilde dependence (qq(2,3) = 0).
+                        if (transitionLocalReTheta) then
+                            lambdaThetaMenter = 7.57e-3_realType * yDist**2 / nu * dUds + 0.0128_realType
+                            lamMenterClamped = smoothMinMax(lambdaThetaMenter, rsaGRlambdaThetaMin, rsaGRpmax)
+                            lamMenterLocal = smoothMinMax(lamMenterClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                            reThetaOnset = reThetaTCorrelation(tuPct, lamMenterLocal)
+                        else
+                            reThetaOnset = reThetaTilde
+                        end if
+
                         ! --- Vorticity limiting ---
                         ! ADflow nondim of paper Eqs. 52–53. Paper writes M·√(M·Re)/20
                         ! using a∞ as velocity scale; ADflow uses √(p/ρ) as velocity
@@ -721,13 +762,13 @@ contains
                         ! --- Fonset (smooth tanh-based transition onset) ---
                         reS_val = w(i, j, k, irho) * yDist**2 * strainMag &
                                   / rlv(i, j, k)
-                        reThetaC_val = rethetacCorrelation(reThetaTilde)                       
+                        reThetaC_val = rethetacCorrelation(reThetaOnset)
                         fOnset1 = sqrt((reS_val / (2.6_realType * reThetaC_val))**2 &
                                        + rTurb**2)
                         fOnset = (tanh(6.0_realType * (fOnset1 - 1.35_realType)) + one) * half
 
                         ! --- Flength and Fturb (modified) ---
-                        fLength_val = flengthCorrelation(reThetaTilde)
+                        fLength_val = flengthCorrelation(reThetaOnset)
                         fTurb_val = (one - fOnset) * exp(-rTurb)
                         !Check here if needed 
                         !fTurb_val = exp(-(rTurb / 4.0_realType)**4)
@@ -753,20 +794,8 @@ contains
                         thetaBL = reThetaTilde * nu &
                                   / max(velMag, xminn)
 
-                        ! Compute local lambdaTheta = (thetaBL^2 / nu) * dU/ds.
-                        ! Streamwise unit vector is along the RELATIVE velocity
-                        ! (rotating-frame streamline). The velocity-gradient
-                        ! stencils (uux..wwz) stay absolute: dU/ds contracts them
-                        ! with the symmetric u_hat_i u_hat_j, and the antisymmetric
-                        ! rotation part of d(V_rel)/dx - d(V_abs)/dx cancels there,
-                        ! so only u_hat needs the relative velocity.
-                        uxhat = velRelx / max(velMag, xminn)
-                        uyhat = velRely / max(velMag, xminn)
-                        uzhat = velRelz / max(velMag, xminn)
-                        dUds = two * fact &
-                             * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
-                              + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
-                              + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
+                        ! (dU/ds is computed above, right after velMag, so that the
+                        ! one-equation variant can use it before the onset terms.)
                         ! Use distinct targets for each clamp (NOT in-place
                         ! overwrite) so the reverse-fast AD recomputes each
                         ! intermediate instead of relying on a push/pop stack
@@ -1082,8 +1111,13 @@ contains
                                      * vortMagLim * gammaLocal &
                                      * (rsaGRce2 * gammaLocal - one)
 
-                        ! qq(2,3) = -d(pGamma - eGamma)/dReThetaTilde
-                        qq(i, j, k, 2, 3) = -dPgamma_dReT + dEgamma_dReT
+                        ! qq(2,3) = -d(pGamma - eGamma)/dReThetaTilde (zero in the
+                        ! one-equation variant: the onset no longer sees ReThetaTilde)
+                        if (transitionLocalReTheta) then
+                            qq(i, j, k, 2, 3) = zero
+                        else
+                            qq(i, j, k, 2, 3) = -dPgamma_dReT + dEgamma_dReT
+                        end if
 
                         ! qq(3,1) = -dS_retheta/dnu_tilde: exactly zero without
                         ! crossflow (S_theta has no nu_tilde dependence). With
@@ -2510,7 +2544,7 @@ contains
         use turbUtils, only: flengthCorrelation, rethetacCorrelation, smoothMinMax, &
                              reThetaTCorrelation
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
-                      transitionRefLength, transitionBCMGamma
+                      transitionRefLength, transitionBCMGamma, transitionLocalReTheta
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -2559,6 +2593,9 @@ contains
         real(kind=realType) :: bcTerm1Raw, bcTerm1, bcTerm2, bcS, bcKmax, bcArg
         real(kind=realType) :: sech2BC, sigBC, dbcTerm2, dgammaBC_dnu, dgammaBC_dReT
         real(kind=realType) :: dSnu_dgamma
+        ! one-equation variant (transitionLocalReTheta): local onset Re_theta
+        real(kind=realType) :: reThetaOnset, lambdaThetaMenter, lamMenterClamped, lamMenterLocal
+        real(kind=realType) :: uxhat, uyhat, uzhat, dUds
 
         ! Set model constants
         cv13 = rsaCv1**3
@@ -2739,6 +2776,22 @@ contains
         velMag2 = velRelx**2 + velRely**2 + velRelz**2
         velMag = sqrt(max(velMag2, xminn))
 
+        ! transitionLocalReTheta: local onset Re_theta (kept in lockstep with Source)
+        if (transitionLocalReTheta) then
+            uxhat = velRelx / max(velMag, xminn)
+            uyhat = velRely / max(velMag, xminn)
+            uzhat = velRelz / max(velMag, xminn)
+            dUds = two * fact * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
+                 + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
+                 + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
+            lambdaThetaMenter = 7.57e-3_realType * yDist**2 / nu * dUds + 0.0128_realType
+            lamMenterClamped = smoothMinMax(lambdaThetaMenter, rsaGRlambdaThetaMin, rsaGRpmax)
+            lamMenterLocal = smoothMinMax(lamMenterClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+            reThetaOnset = reThetaTCorrelation(turbIntensityInf * 100.0_realType, lamMenterLocal)
+        else
+            reThetaOnset = reThetaTilde
+        end if
+
         if (transitionRefLength > zero) then
             refLenTrans = transitionRefLength
         else
@@ -2752,11 +2805,11 @@ contains
         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
 
         reS_val = w(i, j, k, irho) * yDist**2 * strainMag / rlv(i, j, k)
-        reThetaC_val = rethetacCorrelation(reThetaTilde)
+        reThetaC_val = rethetacCorrelation(reThetaOnset)
         fOnset1 = sqrt((reS_val / (2.6_realType * reThetaC_val))**2 + rTurb**2)
         fOnset = (tanh(6.0_realType * (fOnset1 - 1.35_realType)) + one) * half
 
-        fLength_val = flengthCorrelation(reThetaTilde)
+        fLength_val = flengthCorrelation(reThetaOnset)
         fTurb_val = (one - fOnset) * exp(-rTurb)
 
         pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
@@ -2815,6 +2868,7 @@ contains
         eGamma_p = rsaGRca2 * fTurb_p * vortMagLim * gammaLocal &
                    * (rsaGRce2 * gammaLocal - one)
         A(2,3) = ((pGamma_p - eGamma_p) - (pGamma - eGamma)) / epsRT
+        if (transitionLocalReTheta) A(2,3) = zero   ! onset no longer sees ReThetaTilde
 
         ! A(3,3) = +∂S_retheta/∂ReThetaTilde
         timeScale = 500.0_realType * nu / max(velMag2, xminn)

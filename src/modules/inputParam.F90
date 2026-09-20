@@ -413,6 +413,12 @@ module inputIteration
     ! of a local sensor. The gamma equation keeps being solved (diagnostic
     ! only). Tu is turbIntensityInf (fraction), NOT SABCM_TU.
     logical :: transitionBCMGamma = .false.
+    ! One-equation variant of SA-gamma-ReTheta: the gamma-equation onset
+    ! (Re_theta_c, Flength) uses the LOCAL Langtry-Menter correlation
+    ! Re_theta_t(Tu_inf, lambda_theta_L) with Menter's (2015) wall-distance
+    ! based lambda_theta_L instead of the transported ReThetaTilde, which keeps
+    ! being solved but is diagnostic only (no upstream history in the onset).
+    logical :: transitionLocalReTheta = .false.
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic
