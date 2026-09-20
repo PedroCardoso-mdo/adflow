@@ -146,7 +146,7 @@ contains
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
 &   transitionuseapproxsa, transitionreflength, transitionbcmgamma, &
-&   transitionlocalretheta
+&   transitionlocalretheta, transitionrethetainert
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -1060,9 +1060,20 @@ contains
         else
           call pushcontrol1b(1)
         end if
-        prethetad = scratchd(i, j, k, idvt+2)
-        dscfd = scratchd(i, j, k, idvt+2)
-        scratchd(i, j, k, idvt+2) = 0.0_8
+! transitionrethetainert (with transitionlocalretheta): the
+! rethetatilde equation gets no source -- pure convection/
+! diffusion of its freestream value, i.e. a trivially
+! converged uniform field -- so the (slow) retheta equation
+! costs nothing in the coupled solves. its lhs follows below.
+        if (transitionrethetainert) then
+          scratchd(i, j, k, idvt+2) = 0.0_8
+          prethetad = 0.0_8
+          dscfd = 0.0_8
+        else
+          prethetad = scratchd(i, j, k, idvt+2)
+          dscfd = scratchd(i, j, k, idvt+2)
+          scratchd(i, j, k, idvt+2) = 0.0_8
+        end if
         call popcontrol1b(branch)
         if (branch .eq. 0) then
           tempd2 = rsagrcthetat*rsagrccrossflow*dscfd/max13
@@ -1762,7 +1773,7 @@ contains
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
 &   transitionuseapproxsa, transitionreflength, transitionbcmgamma, &
-&   transitionlocalretheta
+&   transitionlocalretheta, transitionrethetainert
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -2493,7 +2504,16 @@ contains
           result1 = smoothminmax(arg1, zero, rsagrpmin)
           dscf = rsagrcthetat/max13*rsagrccrossflow*result1*fthetat
         end if
-        scratch(i, j, k, idvt+2) = pretheta + dscf
+! transitionrethetainert (with transitionlocalretheta): the
+! rethetatilde equation gets no source -- pure convection/
+! diffusion of its freestream value, i.e. a trivially
+! converged uniform field -- so the (slow) retheta equation
+! costs nothing in the coupled solves. its lhs follows below.
+        if (transitionrethetainert) then
+          scratch(i, j, k, idvt+2) = zero
+        else
+          scratch(i, j, k, idvt+2) = pretheta + dscf
+        end if
         if (associated(transitiondebug)) then
           dudx = two*fact*uux
           dudy = two*fact*uuy
@@ -4629,7 +4649,7 @@ contains
 &   smoothminmax, rethetatcorrelation
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionreflength, transitionbcmgamma, &
-&   transitionlocalretheta
+&   transitionlocalretheta, transitionrethetainert
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(3, 3)
@@ -5192,6 +5212,11 @@ contains
     else
       a(3, 3) = a(3, 3)
     end if
+! no retheta source at all
+    if (transitionrethetainert) a(3, 3) = zero
+! a(3,1), a(3,2) are zero per p&z §7.1; a(1,3) is zero unless
+! transitionbcmgamma (set above).
+
   end subroutine evalsrcjacblock
 
   subroutine computesrclambda(mode)

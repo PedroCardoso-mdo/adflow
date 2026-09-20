@@ -3908,6 +3908,13 @@ contains
             end if
             call mpi_barrier(ADflow_comm_world, ierr)
         end if
+        if (transitionReThetaInert .and. .not. transitionLocalReTheta) then
+            if (myID == 0) then
+                call terminate("checkInputParam", &
+                               "transitionReThetaInert requires transitionLocalReTheta (the onset must not read ReThetaTilde)")
+            end if
+            call mpi_barrier(ADflow_comm_world, ierr)
+        end if
         if (transitionBCMGamma .and. use_SABCM) then
             if (myID == 0) then
                 call terminate("checkInputParam", &

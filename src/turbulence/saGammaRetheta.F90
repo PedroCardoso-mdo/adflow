@@ -227,7 +227,7 @@ contains
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
                       transitionSrcDtRestrict, transitionUseApproxSA, transitionRefLength, &
-                      transitionBCMGamma, transitionLocalReTheta
+                      transitionBCMGamma, transitionLocalReTheta, transitionReThetaInert
         implicit none
 
         ! Local parameters
@@ -856,7 +856,16 @@ contains
                                 * smoothMinMax(reScf - reThetaTilde, zero, rsaGRpmin) * fThetaT
                         end if
 
-                        scratch(i, j, k, idvt + 2) = pReTheta + dScf
+                        ! transitionReThetaInert (with transitionLocalReTheta): the
+                        ! ReThetaTilde equation gets no source -- pure convection/
+                        ! diffusion of its freestream value, i.e. a trivially
+                        ! converged uniform field -- so the (slow) ReTheta equation
+                        ! costs nothing in the coupled solves. Its LHS follows below.
+                        if (transitionReThetaInert) then
+                            scratch(i, j, k, idvt + 2) = zero
+                        else
+                            scratch(i, j, k, idvt + 2) = pReTheta + dScf
+                        end if
 
                         if (associated(transitionDebug)) then
                             dudx = two * fact * uux
@@ -1021,6 +1030,10 @@ contains
                                     * fThetaT * crossflowPhiPrime
                             end if
                         end if
+
+                        ! transitionReThetaInert: no ReTheta source -> no ReTheta
+                        ! source Jacobian (keep the LHS consistent with the residual)
+                        if (transitionReThetaInert) qq(i, j, k, 3, 3) = zero
 
                         ! --- Off-diagonal source Jacobian entries ---
 
@@ -2544,7 +2557,8 @@ contains
         use turbUtils, only: flengthCorrelation, rethetacCorrelation, smoothMinMax, &
                              reThetaTCorrelation
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
-                      transitionRefLength, transitionBCMGamma, transitionLocalReTheta
+                      transitionRefLength, transitionBCMGamma, transitionLocalReTheta, &
+                      transitionReThetaInert
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -2902,6 +2916,7 @@ contains
             end if
         end if
         A(3,3) = min(A(3,3), zero)  ! Always <= 0 (relaxation)
+        if (transitionReThetaInert) A(3,3) = zero   ! no ReTheta source at all
 
         ! A(3,1), A(3,2) are zero per P&Z §7.1; A(1,3) is zero unless
         ! transitionBCMGamma (set above).

@@ -419,6 +419,10 @@ module inputIteration
     ! based lambda_theta_L instead of the transported ReThetaTilde, which keeps
     ! being solved but is diagnostic only (no upstream history in the onset).
     logical :: transitionLocalReTheta = .false.
+    ! With transitionLocalReTheta: drop the ReThetaTilde source entirely (the
+    ! field stays at its freestream value, trivially converged) so the slow
+    ! ReTheta equation costs nothing in the coupled solves.
+    logical :: transitionReThetaInert = .false.
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic

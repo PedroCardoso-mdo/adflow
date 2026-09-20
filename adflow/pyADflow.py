@@ -5945,6 +5945,8 @@ class ADFLOW(AeroSolver):
             # One-equation SA-gamma: onset from the LOCAL Re_theta_t(Tu, lambda_theta_L) (Menter-2015
             # lambda_theta_L) instead of the transported ReThetaTilde (still solved, diagnostic only).
             "transitionLocalReTheta": [bool, False],
+            # with transitionLocalReTheta: no ReThetaTilde source (uniform freestream field, zero cost)
+            "transitionReThetaInert": [bool, False],
             "transitionRestartAlgebraicInit": [bool, False],
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
@@ -6437,6 +6439,7 @@ class ADFLOW(AeroSolver):
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
             "transitionbcmgamma": ["iter", "transitionbcmgamma"],
             "transitionlocalretheta": ["iter", "transitionlocalretheta"],
+            "transitionrethetainert": ["iter", "transitionrethetainert"],
             "transitionrestartalgebraicinit": ["iter", "transitionrestartalgebraicinit"],
             "transitionreflength": ["iter", "transitionreflength"],
             "solverstalldiag": ["iter", "solverstalldiag"],
