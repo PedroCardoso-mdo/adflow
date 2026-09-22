@@ -1334,6 +1334,54 @@ bocos:do nn=1,nbocos
         end do
       end select
 !        ================================================================
+    case (spalartallmarasnoft2gamma) 
+! sa-sgamma wall values: nu~ = 0, gamma zero-gradient.
+! lockstep with the spalartallmarasnoft2gammaretheta case above (minus itu3).
+      select case  (bcfaceid(nn)) 
+      case (imin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti1(i, j, itu1, itu1) = one
+            bmti1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (imax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti2(i, j, itu1, itu1) = one
+            bmti2(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (jmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj1(i, j, itu1, itu1) = one
+            bmtj1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (jmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj2(i, j, itu1, itu1) = one
+            bmtj2(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (kmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk1(i, j, itu1, itu1) = one
+            bmtk1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (kmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk2(i, j, itu1, itu1) = one
+            bmtk2(i, j, itu2, itu2) = -one
+          end do
+        end do
+      end select
+!        ================================================================
     case (komegawilcox, komegamodified, mentersst) 
 ! k-omega type of models. k is zero on the wall and thus the
 ! halo value is the negative of the first internal cell.
@@ -1773,6 +1821,54 @@ bocos:do nn=1,nbocos
             bmtk2(i, j, itu2, itu2) = -one
             bmtk2(i, j, itu3, itu3) = -one
             bvtk2(i, j, itu3) = zero
+          end do
+        end do
+      end select
+!        ================================================================
+    case (spalartallmarasnoft2gamma) 
+! sa-sgamma wall values: nu~ = 0, gamma zero-gradient.
+! lockstep with the spalartallmarasnoft2gammaretheta case above (minus itu3).
+      select case  (bcfaceid(nn)) 
+      case (imin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti1(i, j, itu1, itu1) = one
+            bmti1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (imax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti2(i, j, itu1, itu1) = one
+            bmti2(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (jmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj1(i, j, itu1, itu1) = one
+            bmtj1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (jmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj2(i, j, itu1, itu1) = one
+            bmtj2(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (kmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk1(i, j, itu1, itu1) = one
+            bmtk1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (kmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk2(i, j, itu1, itu1) = one
+            bmtk2(i, j, itu2, itu2) = -one
           end do
         end do
       end select

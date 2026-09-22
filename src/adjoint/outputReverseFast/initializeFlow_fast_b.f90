@@ -114,6 +114,10 @@ contains
         arg1 = turbintensityinf*100.0_realtype
         winf(itu3) = rethetatcorrelation(arg1, zero)
 !=============================================================
+      case (spalartallmarasnoft2gamma) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
+!=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         winf(itu2) = winf(itu1)/(eddyvisinfratio*nuinf)

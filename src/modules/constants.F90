@@ -126,6 +126,7 @@ module constants
         spalartAllmaras = 2, &
         spalartAllmarasEdwards = 3, &
         spalartallmarasnoft2gammaretheta = 8, &
+        spalartallmarasnoft2gamma = 9, &
         komegaWilcox = 4, &
         komegaModified = 5, &
         ktau = 6, &

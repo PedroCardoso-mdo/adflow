@@ -6521,9 +6521,11 @@ contains
         logical :: useRowVolScale, useAutoscale
 
         useRowVolScale = transitionNK .and. transitionRowVolScale .and. &
-                        turbModel == spalartallmarasnoft2gammaretheta
+                        (turbModel == spalartallmarasnoft2gammaretheta .or. &
+                         turbModel == spalartallmarasnoft2gamma)
         useAutoscale = transitionNK .and. transitionResidualAutoscale .and. &
-                       turbModel == spalartallmarasnoft2gammaretheta
+                       (turbModel == spalartallmarasnoft2gammaretheta .or. &
+                        turbModel == spalartallmarasnoft2gamma)
 
         ! Per-variable autoscale factor, resolved once (constant over the
         ! whole loop): 1 unless the option is on, in which case reuse

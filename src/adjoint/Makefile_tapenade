@@ -63,6 +63,7 @@ ALL_RES_FILES =	$(SRC)/adjoint/adjointExtra.F90\
 		$(SRC)/turbulence/turbMod.F90\
 		$(SRC)/turbulence/sa.F90\
 		$(SRC)/turbulence/saGammaRetheta.F90\
+		$(SRC)/turbulence/saGamma.F90\
 		$(SRC)/utils/flowUtils.F90\
 		$(SRC)/utils/utils.F90\
 		$(SRC)/utils/sorting.F90\
@@ -193,6 +194,15 @@ saGammaRetheta%Viscous(w, vol, si, sj, sk, rlv, scratch) > \
 saGammaRetheta%ResScale(scratch, dw) > \
                        (dw) \
 \
+saGamma%sgSource(w, rlv, vol, si, sj, sk, timeRef, d2wall, uInf, muInf) > \
+              (w, rlv, vol, si, sj, sk, timeRef, scratch) \
+\
+saGamma%sgViscous(w, vol, si, sj, sk, rlv, scratch) > \
+               (w, vol, si, sj, sk, rlv, scratch) \
+\
+saGamma%sgResScale(scratch, dw) > \
+                (dw) \
+\
 residuals%sourceTerms_block(w, pref, uref, plocal, dw, vol, actuatorRegions%force, actuatorRegions%heat, actuatorRegions%volume) > \
                            (w, pref, uref, plocal, dw, vol, actuatorRegions%force, actuatorRegions%heat, actuatorRegions%volume) \
 \
@@ -318,6 +328,14 @@ saGammaRetheta%Viscous(w, rlv, scratch) > \
                       (w, rlv, scratch) \
 \
 saGammaRetheta%ResScale(scratch) > (dw) \
+\
+saGamma%sgSource(w, rlv) > \
+              (w, rlv, scratch) \
+\
+saGamma%sgViscous(w, rlv, scratch) > \
+               (w, rlv, scratch) \
+\
+saGamma%sgResScale(scratch) > (dw) \
 \
 turbutils%saEddyViscosity(w,rlv) > (w,rlv,rev) \
 \

@@ -1734,6 +1734,7 @@ contains
         use communication, only: adflow_comm_world
         use flowVarRefState, only: nw, nwf
         use inputADjoint, only: GMRESOrthogType, adjLGMRESAugDim, fieldSplitType, fieldSplitBlocks
+        use inputPhysics, only: turbModel
 #include <petsc/finclude/petsc.h>
         use petsc
         implicit none
@@ -1830,6 +1831,13 @@ contains
                 splitLo(3) = itu2 - 1
                 splitHi(3) = nw - 1
             end if
+        else if (turbModel == spalartallmarasnoft2gamma) then
+            ! SA-noft2-Gamma (nwt = 2): flow / nuTilde / gamma
+            splitHi(2) = itu1 - 1
+            nSplits = 3
+            splitName(3) = 'gamma'
+            splitLo(3) = itu2 - 1
+            splitHi(3) = nw - 1
         else
             nSplits = 2
         end if

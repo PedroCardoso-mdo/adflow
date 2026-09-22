@@ -617,7 +617,7 @@ nadvloopspectral:do ii=1,nadv
       end if
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards, &
-&     spalartallmarasnoft2gammaretheta) 
+&     spalartallmarasnoft2gammaretheta, spalartallmarasnoft2gamma) 
         call saeddyviscosity_b(ibeg, iend, jbeg, jend, kbeg, kend)
       end select
     end if
@@ -676,7 +676,7 @@ nadvloopspectral:do ii=1,nadv
       end if
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards, &
-&     spalartallmarasnoft2gammaretheta) 
+&     spalartallmarasnoft2gammaretheta, spalartallmarasnoft2gamma) 
         call saeddyviscosity(ibeg, iend, jbeg, jend, kbeg, kend)
       end select
     end if
@@ -2384,6 +2384,7 @@ nadvloopspectral:do ii=1,nadv
     arg10 = rethetatfloor
     tmpd = rethetatd
     rethetatd = 0.0_8
+    arg1d0 = 0.0_8
     call smoothminmax_b(rethetat, rethetatd, arg10, arg1d0, rsagrpmax, &
 &                 tmpd)
     call popcontrol1b(branch)
@@ -2395,9 +2396,11 @@ nadvloopspectral:do ii=1,nadv
 &       -0.671_realtype)*rethetatd
     end if
     f2vald = 0.0_8
+    f3vald = 0.0_8
     call smoothminmax_b(f2val, f2vald, f3val, f3vald, rsagrpmin, &
 &                 flambdad)
     tempd = -(exp(-((tu_safe/1.5_realtype)**1.5_realtype))*f3vald)
+    arg1d = 0.0_8
     f1vald = 0.0_8
     call smoothminmax_b(f1val, f1vald, arg1, arg1d, rsagrpmax, f2vald)
     lambdathetad = 35.0_realtype*exp(-(35.0_realtype*lambdatheta))*exp(-&
@@ -2559,7 +2562,7 @@ nadvloopspectral:do ii=1,nadv
   end function rethetaccorrelation
 
 !  differentiation of smoothminmax in reverse (adjoint) mode (with options noisize i4 dr8 r8):
-!   gradient     of useful results: g1 phi
+!   gradient     of useful results: g1 g2 phi
 !   with respect to varying inputs: g1 g2
   subroutine smoothminmax_b(g1, g1d, g2, g2d, p, phid)
 !
@@ -2637,10 +2640,9 @@ nadvloopspectral:do ii=1,nadv
     end if
     call popcontrol1b(branch)
     if (branch .eq. 0) then
-      g2d = bd
+      g2d = g2d + bd
     else
       g1d = g1d + bd
-      g2d = 0.0_8
     end if
     call popcontrol1b(branch)
     if (branch .eq. 0) then
@@ -2711,6 +2713,65 @@ nadvloopspectral:do ii=1,nadv
     end if
   end function smoothminmax
 
+
+
+    subroutine tdia2x2(nb, ne, l, c, u, r)
+        !
+        !       tdia2x2 solves the tridiagonal linear system (l+c+u) v = r
+        !       with 2x2 block central diagonal and scalar (diagonal) lower
+        !       and upper diagonals. 2-equation analog of tdia3x3 (same
+        !       backward elimination + forward sweep), for SA-noft2-Gamma.
+        !
+        use constants
+        implicit none
+
+        integer(kind=intType), intent(in) :: nb, ne
+        real(kind=realType), dimension(2, nb:ne), intent(inout) :: l, u, r
+        real(kind=realType), dimension(2, 2, nb:ne), intent(inout) :: c
+
+        integer(kind=intType) :: n
+        real(kind=realType) :: deti, r1
+        real(kind=realType) :: ci11, ci12, ci21, ci22
+        real(kind=realType) :: f11, f12, f21, f22
+
+        ! Backward sweep: eliminate the upper diagonal.
+        do n = ne - 1, nb, -1
+            deti = one / (c(1, 1, n + 1) * c(2, 2, n + 1) - c(1, 2, n + 1) * c(2, 1, n + 1))
+            ci11 = c(2, 2, n + 1) * deti
+            ci12 = -c(1, 2, n + 1) * deti
+            ci21 = -c(2, 1, n + 1) * deti
+            ci22 = c(1, 1, n + 1) * deti
+
+            f11 = u(1, n) * ci11
+            f12 = u(1, n) * ci12
+            f21 = u(2, n) * ci21
+            f22 = u(2, n) * ci22
+
+            c(1, 1, n) = c(1, 1, n) - f11 * l(1, n + 1)
+            c(1, 2, n) = c(1, 2, n) - f12 * l(2, n + 1)
+            c(2, 1, n) = c(2, 1, n) - f21 * l(1, n + 1)
+            c(2, 2, n) = c(2, 2, n) - f22 * l(2, n + 1)
+
+            r(1, n) = r(1, n) - f11 * r(1, n + 1) - f12 * r(2, n + 1)
+            r(2, n) = r(2, n) - f21 * r(1, n + 1) - f22 * r(2, n + 1)
+        end do
+
+        ! Forward sweep. Solution stored in r.
+        deti = one / (c(1, 1, nb) * c(2, 2, nb) - c(1, 2, nb) * c(2, 1, nb))
+        r1 = r(1, nb)
+        r(1, nb) = deti * (c(2, 2, nb) * r1 - c(1, 2, nb) * r(2, nb))
+        r(2, nb) = deti * (-c(2, 1, nb) * r1 + c(1, 1, nb) * r(2, nb))
+
+        do n = nb + 1, ne
+            r(1, n) = r(1, n) - l(1, n) * r(1, n - 1)
+            r(2, n) = r(2, n) - l(2, n) * r(2, n - 1)
+            deti = one / (c(1, 1, n) * c(2, 2, n) - c(1, 2, n) * c(2, 1, n))
+            r1 = r(1, n)
+            r(1, n) = deti * (c(2, 2, n) * r1 - c(1, 2, n) * r(2, n))
+            r(2, n) = deti * (-c(2, 1, n) * r1 + c(1, 1, n) * r(2, n))
+        end do
+
+    end subroutine tdia2x2
 
 
     subroutine tdia3x3(nb, ne, l, c, u, r)

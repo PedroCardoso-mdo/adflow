@@ -130,6 +130,26 @@ Quick routing (full table in `docs/README.md`):
 Upstream ADflow docs (`/README.md`, `doc/`, `tests/`, `LICENSE.md`) are **not**
 part of this KB — don't rely on them for transition-model facts.
 
+## SA-sγ — novo modelo de turbulência em desenho (2026-09-22, sem código ainda)
+
+Um modelo IRMÃO do GR, não uma opção dele: γ de uma equação da literatura
+(Menter 2015 acoplado ao SA por Nichols 2019 / Lee 2021, Tu∞ constante,
+constantes de Colonia via Jung 2022) com a suavização do P&Z (φ±300 nos kinks).
+Estado (ν̃, γ), nwt = 2, `turbulenceModel = "SA-noft2-Gamma"` (nome a fechar),
+ficheiro próprio `src/turbulence/saGamma.F90`, Tapenade próprio. Tudo o que
+está decidido vive FORA do repo, em
+`/home/mdo/Desktop/Run/MDO_PhD/Transition/sa_sgamma/`:
+`00_proposal/RESUMO_FINAL_SA_sgamma.md` (as 10 equações, forma ADflow),
+`01_implementation_plan/ARCHITECTURE_GR_today_and_SAsGAMMA_plan.md` (como o
+GR está ligado hoje, ficheiro:linha, e os passos C1–C11 para o novo modelo),
+`02_calibration_check/` (as suavizações não exigem recalibração; só a Eq. 5,
+F_turb do P&Z, pode). Ler esses três antes de tocar em código do SA-sγ.
+Regras que se aplicam: 2 (SA intocado — o acoplamento vive em `saGamma.F90`),
+6 (Tapenade), 11 (unidades p-ρ). As flags `transitionLocalReTheta`,
+`transitionReThetaInert` e `transitionBCMGamma` do GR são investigação
+(SA-G-s, `22_sa_g_model`) a retirar de `saGammaRetheta.F90` quando o SA-sγ
+estiver validado — não construir nada novo sobre elas.
+
 ## File Locations (most-edited)
 
 | What            | Where                                                  |

@@ -180,6 +180,12 @@ contains
         winf(itu3) = rethetatcorrelation(turbintensityinf*100.0_realtype&
 &         , zero)
 !=============================================================
+      case (spalartallmarasnoft2gamma) 
+        winfd(itu1) = sanuknowneddyratio_d(eddyvisinfratio, nuinf, &
+&         nuinfd, winf(itu1))
+        winfd(itu2) = 0.0_8
+        winf(itu2) = one
+!=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winfd(itu1) = turbintensityinf**2*1.5_realtype*uinf2d
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
@@ -344,6 +350,10 @@ contains
         winf(itu2) = one
         winf(itu3) = rethetatcorrelation(turbintensityinf*100.0_realtype&
 &         , zero)
+!=============================================================
+      case (spalartallmarasnoft2gamma) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2

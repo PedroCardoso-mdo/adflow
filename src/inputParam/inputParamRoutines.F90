@@ -96,6 +96,13 @@ contains
                 monNames(nMon - 1) = cgnsL2ResGamma
                 monNames(nMon) = cgnsL2ResRetheta
 
+                ! Two equation SA-noft2-Gamma (SA-sgamma): nuTilde + gamma.
+
+            case (spalartallmarasnoft2gamma)
+                nMon = nMon + 2; nMonSum = nMonSum + 2
+                monNames(nMon - 1) = cgnsL2ResNu
+                monNames(nMon) = cgnsL2ResGamma
+
                 ! Tree equation models of the spalartallmarasnoft2gammaretheta family.
 
             case (komegaWilcox, komegaModified, menterSST)
@@ -2169,6 +2176,15 @@ contains
 
                 !===========================================================
 
+            case (spalartallmarasnoft2gamma)
+                ! SA-sgamma: nuTilde (itu1) + gamma (itu2), no ReThetaTilde.
+                nw = 7
+                nt2 = 7
+
+                eddyModel = .true.
+
+                !===========================================================
+
             case (komegaWilcox)
                 nw = 7
                 nt2 = 7
@@ -3832,11 +3848,12 @@ contains
         ! SA-noft2-Gamma-Retheta transition model needs to resolve
         ! (momentum-thickness Reynolds number, intermittency onset); the
         ! two are not compatible.
-        if (wallFunctions .and. turbModel == spalartallmarasnoft2gammaretheta) then
+        if (wallFunctions .and. (turbModel == spalartallmarasnoft2gammaretheta .or. &
+                                 turbModel == spalartallmarasnoft2gamma)) then
             if (myID == 0) &
                 call terminate("checkInputParam", &
                                "Wall functions cannot be used with the &
-                               &SA-noft2-Gamma-Retheta transition model")
+                               &SA-noft2-Gamma-Retheta / SA-noft2-Gamma transition models")
             call mpi_barrier(ADflow_comm_world, ierr)
         end if
         !
@@ -3982,7 +3999,7 @@ contains
             case (spalartAllmaras, spalartAllmarasEdwards)
                 eddyVisInfRatio = 0.009_realType
 
-            case (spalartallmarasnoft2gammaretheta)
+            case (spalartallmarasnoft2gammaretheta, spalartallmarasnoft2gamma)
                 eddyVisInfRatio = 1.0e-10_realType
 
 

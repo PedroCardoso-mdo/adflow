@@ -461,6 +461,10 @@ contains
                 solNames(itu2) = cgnsTurbGamma
                 solNames(itu3) = cgnsTurbRetheta
 
+            case (spalartallmarasnoft2gamma)
+                solNames(itu1) = cgnsTurbSaNu
+                solNames(itu2) = cgnsTurbGamma
+
             case (komegaWilcox, komegaModified, menterSST)
                 solNames(itu1) = cgnsTurbK
                 solNames(itu2) = cgnsTurbOmega
@@ -623,6 +627,13 @@ contains
 
                 nn = nn + 1
                 solNames(nn) = cgnsResRetheta
+
+            case (spalartallmarasnoft2gamma)
+                nn = nn + 1
+                solNames(nn) = cgnsResNu
+
+                nn = nn + 1
+                solNames(nn) = cgnsResGamma
 
             case (komegaWilcox, komegaModified, menterSST)
                 nn = nn + 1
@@ -1677,7 +1688,8 @@ contains
                         end do
                     end do
                 end do
-            else if (turbModel == spalartAllmarasNoft2GammaRetheta) then
+            else if (turbModel == spalartAllmarasNoft2GammaRetheta .or. &
+                     turbModel == spalartallmarasnoft2gamma) then
                 ! Physical intermittency is the gamma transport variable.
                 do k = kBeg, kEnd
                     do j = jBeg, jEnd
@@ -3120,6 +3132,12 @@ contains
                 nn = nn + 1
                 solNames(nn) = cgnsTurbRetheta
 
+            case (spalartallmarasnoft2gamma)
+                nn = nn + 1
+                solNames(nn) = cgnsTurbSaNu
+                nn = nn + 1
+                solNames(nn) = cgnsTurbGamma
+
             case (komegaWilcox, komegaModified, menterSST)
                 nn = nn + 1
                 solNames(nn) = cgnsTurbK
@@ -3284,6 +3302,13 @@ contains
 
                 nn = nn + 1
                 solNames(nn) = cgnsResRetheta
+
+            case (spalartallmarasnoft2gamma)
+                nn = nn + 1
+                solNames(nn) = cgnsResNu
+
+                nn = nn + 1
+                solNames(nn) = cgnsResGamma
 
             case (komegaWilcox, komegaModified, menterSST)
                 nn = nn + 1

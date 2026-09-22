@@ -146,6 +146,13 @@ contains
 
                 !=============================================================
 
+            case (spalartallmarasnoft2gamma)
+
+                wInf(itu1) = saNuKnownEddyRatio(eddyVisInfRatio, nuInf)
+                wInf(itu2) = one
+
+                !=============================================================
+
             case (komegaWilcox, komegaModified, menterSST)
 
                 wInf(itu1) = 1.5_realType * uInf2 * turbIntensityInf**2
@@ -517,7 +524,8 @@ contains
                                "Memory allocation failure for rev")
             !endif
 
-            if (turbModel == spalartallmarasnoft2gammaretheta) then
+            if (turbModel == spalartallmarasnoft2gammaretheta .or. &
+                turbModel == spalartallmarasnoft2gamma) then
                 allocate (flowDoms(nn, level, sps)%transitionDebug(2:il, 2:jl, 2:kl, 1:nTransitionDebug), &
                           stat=ierr)
                 if (ierr /= 0) &
@@ -2366,7 +2374,7 @@ contains
                                    pInfCorr, wInf
         use inputIteration, only: mgStartLevel
         use inputPhysics, only: equationMode, flowType, eddyVisInfRatio, turbModel
-        use constants, only: spalartallmarasnoft2gammaretheta
+        use constants, only: spalartallmarasnoft2gammaretheta, spalartallmarasnoft2gamma
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers
         implicit none
@@ -2425,7 +2433,8 @@ contains
                 ! so that SA production is suppressed until Fonset
                 ! activates gamma through the physical transition
                 ! mechanism. Farfield BCs prescribe gamma=1 at inflow.
-                if (turbModel == spalartallmarasnoft2gammaretheta) then
+                if (turbModel == spalartallmarasnoft2gammaretheta .or. &
+                    turbModel == spalartallmarasnoft2gamma) then
                     do k = 0, kb
                         do j = 0, jb
                             do i = 0, ib

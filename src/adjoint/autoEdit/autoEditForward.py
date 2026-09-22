@@ -47,6 +47,67 @@ useful_modules = [
 ]
 modSubToKeep = []
 
+TDIA2X2_SOURCE = """
+
+    subroutine tdia2x2(nb, ne, l, c, u, r)
+        !
+        !       tdia2x2 solves the tridiagonal linear system (l+c+u) v = r
+        !       with 2x2 block central diagonal and scalar (diagonal) lower
+        !       and upper diagonals. 2-equation analog of tdia3x3 (same
+        !       backward elimination + forward sweep), for SA-noft2-Gamma.
+        !
+        use constants
+        implicit none
+
+        integer(kind=intType), intent(in) :: nb, ne
+        real(kind=realType), dimension(2, nb:ne), intent(inout) :: l, u, r
+        real(kind=realType), dimension(2, 2, nb:ne), intent(inout) :: c
+
+        integer(kind=intType) :: n
+        real(kind=realType) :: deti, r1
+        real(kind=realType) :: ci11, ci12, ci21, ci22
+        real(kind=realType) :: f11, f12, f21, f22
+
+        ! Backward sweep: eliminate the upper diagonal.
+        do n = ne - 1, nb, -1
+            deti = one / (c(1, 1, n + 1) * c(2, 2, n + 1) - c(1, 2, n + 1) * c(2, 1, n + 1))
+            ci11 = c(2, 2, n + 1) * deti
+            ci12 = -c(1, 2, n + 1) * deti
+            ci21 = -c(2, 1, n + 1) * deti
+            ci22 = c(1, 1, n + 1) * deti
+
+            f11 = u(1, n) * ci11
+            f12 = u(1, n) * ci12
+            f21 = u(2, n) * ci21
+            f22 = u(2, n) * ci22
+
+            c(1, 1, n) = c(1, 1, n) - f11 * l(1, n + 1)
+            c(1, 2, n) = c(1, 2, n) - f12 * l(2, n + 1)
+            c(2, 1, n) = c(2, 1, n) - f21 * l(1, n + 1)
+            c(2, 2, n) = c(2, 2, n) - f22 * l(2, n + 1)
+
+            r(1, n) = r(1, n) - f11 * r(1, n + 1) - f12 * r(2, n + 1)
+            r(2, n) = r(2, n) - f21 * r(1, n + 1) - f22 * r(2, n + 1)
+        end do
+
+        ! Forward sweep. Solution stored in r.
+        deti = one / (c(1, 1, nb) * c(2, 2, nb) - c(1, 2, nb) * c(2, 1, nb))
+        r1 = r(1, nb)
+        r(1, nb) = deti * (c(2, 2, nb) * r1 - c(1, 2, nb) * r(2, nb))
+        r(2, nb) = deti * (-c(2, 1, nb) * r1 + c(1, 1, nb) * r(2, nb))
+
+        do n = nb + 1, ne
+            r(1, n) = r(1, n) - l(1, n) * r(1, n - 1)
+            r(2, n) = r(2, n) - l(2, n) * r(2, n - 1)
+            deti = one / (c(1, 1, n) * c(2, 2, n) - c(1, 2, n) * c(2, 1, n))
+            r1 = r(1, n)
+            r(1, n) = deti * (c(2, 2, n) * r1 - c(1, 2, n) * r(2, n))
+            r(2, n) = deti * (-c(2, 1, n) * r1 + c(1, 1, n) * r(2, n))
+        end do
+
+    end subroutine tdia2x2
+"""
+
 TDIA3X3_SOURCE = """
 
     subroutine tdia3x3(nb, ne, l, c, u, r)
@@ -186,6 +247,8 @@ for f in os.listdir(DIR_ORI):
 
             if line.strip() == "external tdia3x3":
                 line = ""
+            if line.strip() == "external tdia2x2":
+                line = ""
 
             # Replace _d modules with normal -- except for the useful
             # ones.
@@ -222,6 +285,7 @@ for f in os.listdir(DIR_ORI):
                 inSubroutine = False
 
             if f.lower() == "turbutils_d.f90" and line.strip() == "end module turbutils_d":
+                file_object_mod.write(TDIA2X2_SOURCE)
                 file_object_mod.write(TDIA3X3_SOURCE)
 
             file_object_mod.write(line)

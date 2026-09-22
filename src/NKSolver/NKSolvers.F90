@@ -407,6 +407,7 @@ contains
         use adjointUtils, only: setupStateResidualMatrix, setupStandardKSP, setupStandardMultigrid
         use paramTurb, only: srcLambdaModeFull
         use saGammaRetheta, only: computeSrcLambda
+        use saGamma, only: computeSrcLambdaSaGamma
         implicit none
 
         ! Local Variables
@@ -419,7 +420,8 @@ contains
         ! Eq. 58 S_a proxy: refresh the per-block autoscale factor once per
         ! Jacobian reform (same lagged cadence as everything else here),
         ! before any residual/PC work below uses it (via setRVec).
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive .and. &
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. transitionNKActive .and. &
             transitionResidualAutoscale) then
             call computeNKResidualAutoscale()
         end if
@@ -453,7 +455,8 @@ contains
         ! variables (see getNKColScale); make the assembled PC consistent
         ! with the scaled MFFD operator. The MG coarse levels are NOT
         ! scaled — use the (default) ASM preconditioner with this model.
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. transitionNKActive) then
             call applyNKColumnScaling(dRdwPre)
             if (NK_precondType == 'mg' .and. myID == 0) then
                 print *, 'Warning: NK MG coarse levels are not column-scaled for ', &
@@ -466,7 +469,11 @@ contains
             ! ANKStep's timeStepMat (see the comment there) so it is already
             ! consistent with the scaled PC.
             if (transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
-                call computeSrcLambda(srcLambdaModeFull)
+                if (turbModel == spalartallmarasnoft2gamma) then
+                    call computeSrcLambdaSaGamma(srcLambdaModeFull)
+                else
+                    call computeSrcLambda(srcLambdaModeFull)
+                end if
                 call applyNKSrcDtDiagonal(dRdwPre)
             end if
 
@@ -670,7 +677,8 @@ contains
         ! barely changing -> ratio~1 -> rtol->0.8 cap, see getEWTol above).
         ! Force it tighter once Step has been pinned for several iterations
         ! in a row (see inputParam.F90 for the rationale).
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive .and. &
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. transitionNKActive .and. &
             transitionNKStallRtolCap < one .and. nkStallCount >= transitionNKStallCountTrigger) then
             rtol = min(rtol, transitionNKStallRtolCap)
         end if
@@ -761,7 +769,8 @@ contains
         ! Algorithm 2 (P&Z 2020 SS IV.B.2): per-node bounds-triggered damping
         ! of gamma/Re-theta-t on the accepted step, before it becomes the new
         ! state. See applyNKAlgorithm2Damping for the full rationale.
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. transitionNKActive) then
             call applyNKAlgorithm2Damping(wVec, work)
         end if
 
@@ -796,7 +805,8 @@ contains
         ! there is no totalR-vs-secondOrdSwitchTol leg here: NK only engages
         ! once the residual is already well past that regime, so a residual
         ! rise is already caught by the backtrack check.
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive .and. &
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. transitionNKActive .and. &
             transitionSrcDtRestrict) then
             if ((.not. flag) .or. stepMonitor < one) then
                 noBacktrackCount = 0
@@ -807,7 +817,8 @@ contains
 
         ! Stall detector feeding the rtol cap above: count consecutive
         ! pinned-step iterations.
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. transitionNKActive) then
             if (stepMonitor < transitionNKStallStepTol) then
                 nkStallCount = nkStallCount + 1
             else
@@ -1185,7 +1196,7 @@ contains
 
         ! Stock behavior (accept the fixed step blindly) for everything
         ! except the SA-GR transition model with transitionNK active.
-        useGuard = (turbModel == spalartallmarasnoft2gammaretheta .and. &
+        useGuard = ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma) .and. &
                     transitionNK .and. transitionNKActive)
 
         if (.not. useGuard) then
@@ -1527,7 +1538,8 @@ contains
         integer(kind=intType) :: l
 
         cs = one
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. transitionNKActive) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. transitionNKActive) then
             do l = nt1, nt2
                 cs(l) = turbResScale(l - nt1 + 1)
             end do
@@ -1735,6 +1747,7 @@ contains
         ! next NKStep's residual evaluation picks up the corrected state
         ! naturally. Same trade-off already accepted for DD-ADI.
         use constants
+        use inputPhysics, only: turbModel
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputIteration, only: transitionDampTheta, transitionDampMaxIter
         use flowVarRefState, only: nw, nt1
@@ -1802,6 +1815,9 @@ contains
                 minDampFactorGamma = min(minDampFactorGamma, dampFactor)
             end if
             workPtr(jj * nw + gammaOff) = candScaled
+
+            ! Re-theta-t: only the 3-equation model has it (SA-noft2-Gamma: skip)
+            if (turbModel /= spalartallmarasnoft2gammaretheta) cycle
 
             ! Re-theta-t: exponential back-off until >= rsaGRreThetaLo (lower bound only)
             xOld = xPtr(jj * nw + rethetaOff)
@@ -1878,7 +1894,7 @@ contains
 
         sumLocal = zero
         useRowVolScale = transitionNK .and. transitionNKActive .and. transitionRowVolScale .and. &
-                        turbModel == spalartallmarasnoft2gammaretheta
+                        (turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma)
 
         do nn = 1, nDom
             do sps = 1, nTimeIntervalsSpectral
@@ -1991,9 +2007,9 @@ contains
         flowResLocal = zero
         turbResLocal = zero
         useRowVolScale = transitionNK .and. transitionNKActive .and. transitionRowVolScale .and. &
-                         turbModel == spalartallmarasnoft2gammaretheta
+                         (turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma)
         useAutoscale = transitionNK .and. transitionNKActive .and. transitionResidualAutoscale .and. &
-                       turbModel == spalartallmarasnoft2gammaretheta
+                       (turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma)
 
         call VecGetArrayF90(rVec, rvec_pointer, ierr)
         call EChk(ierr, __FILE__, __LINE__)
@@ -2836,7 +2852,8 @@ contains
         ! Column-scale the coupled PC to match the column-scaled state
         ! vector (timeStepMat is scaled at its own assembly, so it is added
         ! afterwards already consistent). Skipped for non-transition models.
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. ANK_coupled) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. ANK_coupled) then
             call applyANKColumnScaling(dRdwPre)
             if (ANK_precondType == 'mg' .and. myid == 0) then
                 print *, 'Warning: ANK multigrid coarse levels are not ', &
@@ -2973,7 +2990,8 @@ contains
         ! matrix-free MatMultAdd in FormFunction_mf and the PC MatAXPY
         ! consume this matrix). No-op arithmetic for non-transition models
         ! (skipped entirely there).
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. ANK_coupled) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. ANK_coupled) then
             call applyANKColumnScaling(timeStepMat)
         end if
 
@@ -3206,7 +3224,8 @@ contains
         ! ANKStep before this matrix is formed. The turb rows are purely
         ! diagonal here (characteristic time stepping is not applied to
         ! them), so overriding the diagonal after the transforms is exact.
-        if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK) then
+        if (ANK_coupled .and. (turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
             if (transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
                 do l = nt1, nt2
                     l1 = l - nt1 + 1
@@ -3336,7 +3355,7 @@ contains
         ! diag(1/cs) makes it a consistent preconditioner for
         ! S_row * dRdw * diag(1/cs). Skipped entirely for models other
         ! than SA-Gamma-Retheta (cs = 1 there).
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
             call applyTurbPCColumnScaling()
         end if
 
@@ -4028,7 +4047,7 @@ contains
         real(kind=realType), intent(out) :: cs(nState)
 
         cs = one
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
             cs(1:nState) = turbResScale(1:nState)
         end if
     end subroutine getTurbColScale
@@ -4128,7 +4147,7 @@ contains
         integer(kind=intType) :: l
 
         fac = one
-        if (turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
             do l = max(lStart, nt1), min(lEnd, nt2)
                 fac(l) = turbResScale(l - nt1 + 1)
             end do
@@ -4171,6 +4190,7 @@ contains
         ! linear interpolation by a scalar is scale-invariant, so only the
         ! bounds check needs the physical value.
         use constants
+        use inputPhysics, only: turbModel
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputIteration, only: transitionDampTheta, transitionDampMaxIter, solverStallDiag
         use flowVarRefState, only: nw, nt1
@@ -4231,6 +4251,9 @@ contains
                 minDampFactorGamma = min(minDampFactorGamma, dampFactor)
             end if
             wPtr(jj * nw + gammaOff) = candScaled
+
+            ! Re-theta-t: only the 3-equation model has it (SA-noft2-Gamma: skip)
+            if (turbModel /= spalartallmarasnoft2gammaretheta) cycle
 
             ! Re-theta-t: back-off until >= rsaGRreThetaLo (lower bound only)
             deltaScaled = -lam * dPtr(jj * nw + rethetaOff)
@@ -4741,7 +4764,8 @@ contains
                                     ! transition front — gamma residual bounced and wall-time
                                     ! progress was worse than the global-lambda throttle
                                     ! (paper_mimic run 2 vs run 1).
-                                    if (turbModel == spalartallmarasnoft2gammaretheta) then
+                                    if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+                                         turbModel == spalartallmarasnoft2gamma)) then
                                         ratioBound = one
 
                                         if (l == nt1 + 1) then
@@ -4954,11 +4978,12 @@ contains
         ! wVecTurb/deltaWTurb hold the COLUMN-SCALED state/update
         ! (see getTurbColScale). Relative ratios (w/d) are scale-invariant,
         ! but the absolute gamma/retheta bounds must be scaled to match.
-        if (turbModel == spalartallmarasnoft2gammaretheta) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma)) then
             call getTurbColScale(cs, nt2 - nt1 + 1)
             gLoS = rsaGRgammaLo * cs(2)
             gHiS = rsaGRgammaHi * cs(2)
-            rLoS = rsaGRreThetaLo * cs(3)
+            rLoS = zero
+            if (turbModel == spalartallmarasnoft2gammaretheta) rLoS = rsaGRreThetaLo * cs(3)
         end if
 
         ! Initialize the local step size as ANK_stepFactor
@@ -5027,7 +5052,8 @@ contains
                                 dval = real(dvec_pointer(ii))
 #endif
 
-                                if (turbModel == spalartallmarasnoft2gammaretheta) then
+                                if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+                                     turbModel == spalartallmarasnoft2gamma)) then
                                     if (l == nt1 + 1) then
                                         ! GAMMA: absolute bound enforcement, no relative check.
                                         ! Full step allowed if result stays in [gammaLo, gammaHi].
@@ -5134,9 +5160,11 @@ contains
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
+        use saGamma, only: computeSrcLambdaSaGamma
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, currentLevel
+        use inputPhysics, only: turbModel
         use utils, only: EChk, setPointers
         use genericISNAN, only: myisnan
         use solverUtils, only: computeUTau
@@ -5169,7 +5197,11 @@ contains
 
         ! Freeze srcLambda at base state before ANK iterations
         if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-            call computeSrcLambda(srcLambdaModeFull)
+            if (turbModel == spalartallmarasnoft2gamma) then
+                call computeSrcLambdaSaGamma(srcLambdaModeFull)
+            else
+                call computeSrcLambda(srcLambdaModeFull)
+            end if
         end if
 
         do n = 1, ANK_nsubIterTurb
@@ -5263,7 +5295,11 @@ contains
 
             ! Refresh srcLambda from updated base state before KSPSolve
             if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-                call computeSrcLambda(srcLambdaModeFull)
+                if (turbModel == spalartallmarasnoft2gamma) then
+                    call computeSrcLambdaSaGamma(srcLambdaModeFull)
+                else
+                    call computeSrcLambda(srcLambdaModeFull)
+                end if
             end if
 
             ! Actually do the Linear Krylov Solve
@@ -5461,6 +5497,7 @@ contains
                                   ankAlgorithm2Damping, ankTransitionGlobalLambda, ankColScaleUnit
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
+        use saGamma, only: computeSrcLambdaSaGamma
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: lumpedDiss, approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, stepMonitor, linResMonitor, currentLevel, iterType
@@ -5622,7 +5659,11 @@ contains
         ! consume srcLambda through computeTimeStepBlock).
         if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. &
             transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
-            call computeSrcLambda(srcLambdaModeFull)
+            if (turbModel == spalartallmarasnoft2gamma) then
+                call computeSrcLambdaSaGamma(srcLambdaModeFull)
+            else
+                call computeSrcLambda(srcLambdaModeFull)
+            end if
         end if
 
         ! ============== PZ reference-CFL law (replaces the ADflow controller) ==============
@@ -6104,7 +6145,7 @@ contains
         end if
         if ((ankAlgorithm2Damping .or. (.not. ankTransitionGlobalLambda)) &
             .and. ANK_coupled .and. transitionNK .and. &
-            turbModel == spalartallmarasnoft2gammaretheta) then
+            (turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma)) then
             call applyANKAlgorithm2Damping(wVec, deltaW, lambda)
             call setWANKScaled(wVec, 1, nState)
         end if
@@ -6203,7 +6244,8 @@ contains
         ! triggered, the step is rejected, or the relative residual rises back
         ! above the phase-switch tolerance. In segregated mode the counter is
         ! owned by ANKTurbSolveKSP, so only update it here when coupled.
-        if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. &
+        if (ANK_coupled .and. (turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK .and. &
             transitionSrcDtRestrict) then
             if (backtrackTriggeredANK .or. lambda == zero .or. &
                 totalR > ANK_secondOrdSwitchTol * totalR0) then

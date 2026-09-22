@@ -145,20 +145,25 @@ contains
         winf(itu3) = rethetatcorrelation(arg1, zero)
 !=============================================================
         call pushcontrol3b(2)
+      case (spalartallmarasnoft2gamma) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
+!=============================================================
+        call pushcontrol3b(3)
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         tmp = winf(itu1)/(eddyvisinfratio*nuinf)
         call pushreal8(winf(itu2))
         winf(itu2) = tmp
 !=============================================================
-        call pushcontrol3b(3)
+        call pushcontrol3b(4)
       case (ktau) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         tmp0 = eddyvisinfratio*nuinf/winf(itu1)
         call pushreal8(winf(itu2))
         winf(itu2) = tmp0
 !=============================================================
-        call pushcontrol3b(4)
+        call pushcontrol3b(5)
       case (v2f) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
         tmp3 = 0.09_realtype*winf(itu1)**2/(eddyvisinfratio*nuinf)
@@ -169,12 +174,12 @@ contains
         winf(itu3) = tmp4
         call pushreal8(winf(itu4))
         winf(itu4) = 0.0_realtype
-        call pushcontrol3b(5)
+        call pushcontrol3b(6)
       case default
         call pushcontrol3b(0)
       end select
     else
-      call pushcontrol3b(6)
+      call pushcontrol3b(7)
     end if
 ! set the value of pinfcorr. in case a k-equation is present
 ! add 2/3 times rho*k.
@@ -213,25 +218,33 @@ contains
     end if
     pinfd = pinfd + pinfcorrd
     call popcontrol3b(branch)
-    if (branch .lt. 3) then
-      if (branch .eq. 0) then
-        uinf2d = 0.0_8
-        nuinfd = 0.0_8
-      else if (branch .eq. 1) then
-        call sanuknowneddyratio_b(eddyvisinfratio, nuinf, nuinfd, winfd(&
-&                           itu1))
-        winfd(itu1) = 0.0_8
-        uinf2d = 0.0_8
-      else
+    if (branch .lt. 4) then
+      if (branch .lt. 2) then
+        if (branch .eq. 0) then
+          uinf2d = 0.0_8
+          nuinfd = 0.0_8
+        else
+          call sanuknowneddyratio_b(eddyvisinfratio, nuinf, nuinfd, &
+&                             winfd(itu1))
+          winfd(itu1) = 0.0_8
+          uinf2d = 0.0_8
+        end if
+      else if (branch .eq. 2) then
         winfd(itu3) = 0.0_8
         winfd(itu2) = 0.0_8
         call sanuknowneddyratio_b(eddyvisinfratio, nuinf, nuinfd, winfd(&
 &                           itu1))
         winfd(itu1) = 0.0_8
         uinf2d = 0.0_8
+      else
+        winfd(itu2) = 0.0_8
+        call sanuknowneddyratio_b(eddyvisinfratio, nuinf, nuinfd, winfd(&
+&                           itu1))
+        winfd(itu1) = 0.0_8
+        uinf2d = 0.0_8
       end if
-    else if (branch .lt. 5) then
-      if (branch .eq. 3) then
+    else if (branch .lt. 6) then
+      if (branch .eq. 4) then
         call popreal8(winf(itu2))
         tmpd = winfd(itu2)
         winfd(itu2) = 0.0_8
@@ -250,7 +263,7 @@ contains
         uinf2d = 1.5_realtype*turbintensityinf**2*winfd(itu1)
         winfd(itu1) = 0.0_8
       end if
-    else if (branch .eq. 5) then
+    else if (branch .eq. 6) then
       call popreal8(winf(itu4))
       winfd(itu4) = 0.0_8
       call popreal8(winf(itu3))
@@ -441,6 +454,10 @@ contains
         winf(itu2) = one
         arg1 = turbintensityinf*100.0_realtype
         winf(itu3) = rethetatcorrelation(arg1, zero)
+!=============================================================
+      case (spalartallmarasnoft2gamma) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2

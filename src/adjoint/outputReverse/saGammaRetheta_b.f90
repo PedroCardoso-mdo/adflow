@@ -1080,6 +1080,7 @@ contains
           result1d = fthetat*tempd2
           fthetatd = result1*tempd2
           max13d = -(result1*fthetat*tempd2/max13)
+          arg1d7 = 0.0_8
           arg1d = 0.0_8
           call smoothminmax_b(arg1, arg1d, arg17, arg1d7, rsagrpmin, &
 &                       result1d)
@@ -1095,12 +1096,14 @@ contains
 &           75.0_realtype*rescfd/0.0125_realtype)
           dhplusd = (2*dhplus*50000.0_realtype+6200.0_realtype)*rescfd
           arg1 = -(rsagrhcfref-hcf*(one+crossflowratio))
+          arg1d6 = 0.0_8
           arg1d = 0.0_8
           call smoothminmax_b(arg1, arg1d, arg16, arg1d6, rsagrpmax, &
 &                       dhminusd)
           hcfd = (one+crossflowratio)*arg1d
           crossflowratiod = hcf*arg1d
           arg1 = rsagrhcfref - hcf*(one+crossflowratio)
+          arg1d5 = 0.0_8
           arg1d = 0.0_8
           call smoothminmax_b(arg1, arg1d, arg15, arg1d5, rsagrpmax, &
 &                       dhplusd)
@@ -1154,6 +1157,7 @@ contains
           if (branch .eq. 0) velmagd = velmagd + max18d
           call popcontrol1b(branch)
           if (branch .eq. 0) velmagd = velmagd + max15d
+          arg1d4 = 0.0_8
           rturbd = 0.0_8
           call smoothminmax_b(rturb, rturbd, arg14, arg1d4, rsagrpmin, &
 &                       crossflowratiod)
@@ -1206,9 +1210,11 @@ contains
         if (branch .eq. 0) then
           lambdathetarawd = lambdathetalocald
         else
+          arg1d3 = 0.0_8
           lambdathetaclampedd = 0.0_8
           call smoothminmax_b(lambdathetaclamped, lambdathetaclampedd, &
 &                       arg13, arg1d3, rsagrpmin, lambdathetalocald)
+          arg1d2 = 0.0_8
           lambdathetarawd = 0.0_8
           call smoothminmax_b(lambdathetaraw, lambdathetarawd, arg12, &
 &                       arg1d2, rsagrpmax, lambdathetaclampedd)
@@ -1278,6 +1284,7 @@ contains
         strainmagd = ydist**2*temp2*res_vald
         wd(i, j, k, irho) = wd(i, j, k, irho) + tempd2
         rlvd(i, j, k) = rlvd(i, j, k) - temp2*tempd2
+        vortlimd = 0.0_8
         call smoothminmax_b(vortmag, vortmagd, vortlim, vortlimd, &
 &                     rsagrpmin, vortmaglimd)
         temp2 = sqrt(max7)
@@ -1311,9 +1318,11 @@ contains
         if (branch .eq. 0) then
           call rethetatcorrelation_b(tupct, lammenterlocal, &
 &                              lammenterlocald, rethetaonsetd)
+          arg1d1 = 0.0_8
           lammenterclampedd = 0.0_8
           call smoothminmax_b(lammenterclamped, lammenterclampedd, arg11&
 &                       , arg1d1, rsagrpmin, lammenterlocald)
+          arg1d0 = 0.0_8
           lambdathetamenterd = 0.0_8
           call smoothminmax_b(lambdathetamenter, lambdathetamenterd, &
 &                       arg10, arg1d0, rsagrpmax, lammenterclampedd)

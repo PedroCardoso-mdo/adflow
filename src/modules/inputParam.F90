@@ -423,6 +423,22 @@ module inputIteration
     ! field stays at its freestream value, trivially converged) so the slow
     ! ReTheta equation costs nothing in the coupled solves.
     logical :: transitionReThetaInert = .false.
+    ! ---- SA-noft2-Gamma (SA-sgamma) options (only read by saGamma.F90) ----
+    ! P&Z vorticity/strain floor phi-(S|Omega, M sqrt(M Re)/20) in P_g and E_g.
+    logical :: sgammaVortLimiter = .false.
+    ! P&Z tanh onset (plan B) instead of the smoothed Menter/Lee min/max F_onset.
+    logical :: sgammaOnsetTanh = .false.
+    ! F_turb = exp(-(R_T/2)^4) (Lee) instead of the P&Z (1 - F_onset) exp(-R_T).
+    logical :: sgammaFturbLee = .false.
+    ! Nichols/Lee coupling: SA destruction scaled by phi+(gamma_s, 0.1). False = production only.
+    logical :: sgammaCoupleDestruction = .true.
+    ! Smoothing parameter |p| of the phi operators inside F_PG (Eq. 7).
+    real(kind=realType) :: sgammaFPGSmoothP = 300.0_realType
+    ! Re_theta_c = C_TU1 + C_TU2 exp(-C_TU3 Tu F_PG). Default Colonia et al. 2016
+    ! (Lee 2021 Eq. 3.12); Menter 2015: 100 / 1000 / 1.
+    real(kind=realType) :: sgammaCTU1 = 163.0_realType
+    real(kind=realType) :: sgammaCTU2 = 1002.25_realType
+    real(kind=realType) :: sgammaCTU3 = 1.0_realType
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic
