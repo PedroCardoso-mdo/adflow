@@ -325,3 +325,13 @@ the BCM — no local, integral or transported modification of the BCM threshold 
 optimised and the validation shapes. **Line closed in all variants.** Kept: `SABCM_PG` (F=2 the least-bad
 local form, off by default), `transitionBCMGamma` (off by default, diagnostic), the complex-build fixes of
 transition-models (`c2e51507`), the one-state adjoint/CS rule, `nWall`.
+
+### 7.2 SA-G-s (one-equation smoothed SA-γ) — tested and closed (2026-09-20 → 22)
+
+Full record in the run tree: `22_sa_g_model/FINDINGS.md` (literature, implementation `transitionLocalReTheta`
+on transition-models `281a6d0a`, sweep / cross / polars / strategy / gate / cost, C2–C3 optimisations, the GR
+evaluation of the G-s optima and the dcp/dx diagnosis). Outcome: G-s reproduces GR on given shapes (cross 6 %,
+gate 0.008 %) but its own optima are rejected by GR (C3 32.6 → 64.4, C2 37.3 → 66.0): the optimiser builds a
+suction peak followed by a mild adverse plateau that a local onset tolerates and the transported R̅eθt trips.
+**Main conclusion (deck 2026-09-18 slides 32–37): for analysis all three models work; for optimisation only
+SA-γ-R̅eθt is reliable — the R̅eθt history is the physics the optimiser cannot game.**
