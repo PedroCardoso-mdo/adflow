@@ -793,6 +793,7 @@ contains
         use residuals, only: initres_block
         use sa, only: sa_block
         use saGammaRetheta, only: saGammaRetheta_block
+        use saGamma, only: saGamma_block
         use adjointExtra, only: sumDwAndFw_block => sumDwAndFw
         use inputDiscretization, only: spaceDiscr
         use flowUtils, only: allNodalGradients_block => allNodalGradients, &
@@ -838,6 +839,8 @@ contains
                 call sa_block(.true.)
             case (spalartallmarasnoft2gammaretheta)
                 call saGammaRetheta_block(.true.)
+            case (spalartallmarasnoft2gamma)
+                call saGamma_block(.true.)
             end select
         end if
 
