@@ -360,4 +360,81 @@ bullets(s, ["S809 (transition by laminar separation): the sensor is neutral — 
         y=4.25, h=2.75, size=11)
 note(s, "Data: 15_sabcm_polars/{results/*_ref11,*_pg,*_pgs2, plot_polars_pg.py}, jobs 1934910/11, 1935125, 1935764, 1935776, 1936549; study 22 PURPOSE.md §5.3, §5.3b.", y=7.05)
 
+# ---------------- 28-31 multipoint C2, GR vs BCM (added 2026-09-22; data 08_optimization/2d_tu05_L0_multipoint)
+s = prs.slides.add_slide(BL); title(s, "28. Multipoint C2: does robustness rescue SA-BCM?",
+                                    "L0, Re 2.9e6; one design, Σ cd/n over the points, one α per point; best feasible point of each history (36 h), counts")
+table(s, [["case", "points (Tu %, cl)", "baseline cd", "SA-γ-R̅eθt optimum", "Δ GR", "SA-BCM optimum", "Δ BCM"],
+          ["single-point C2", "(0.5, 0.3)", "69.4 / 68.2", "34.9", "−49.6 %", "48.7", "−28.6 %"],
+          ["multi-Tu C2", "(0.5, 0.3) + (0.1, 0.3)", "69.4 · 62.7 / 68.2 · 51.4", "34.9 · 34.6", "−49.7 · −44.8 %", "60.2 · 50.9", "−11.7 · −1.0 %"],
+          ["multi-cl C2", "(0.5, 0.2) + (0.5, 0.3) + (0.5, 0.4)", "65.4 · 69.4 · 73.9 / 66.2 · 68.2 · 71.0", "36.4 · 36.7 · 38.4", "−44 · −47 · −48 %", "65.6 · 49.0 · 49.8", "−1 · −28 · −30 %"]],
+      x=0.4, y=1.4, w=12.5, colw=[1.6, 2.4, 2.9, 1.7, 1.5, 1.5, 0.9], size=10.5)
+bullets(s, ["Story: the SA-BCM weakness is its response to pressure gradients (slides 4, 20, 25) — the optimiser can only exploit the nose suction peak. Putting several points in the objective does not cure that: multi-Tu BCM gains 12 % at Tu 0.5 and nothing at Tu 0.1; multi-cl BCM gives up the cl 0.2 point entirely (−1 %) to keep −28/−30 % at 0.3/0.4 — i.e. its single-point gain, no bucket.",
+            "SA-γ-R̅eθt: the multi-Tu optimum IS the single-point optimum (34.9 at Tu 0.5, and 34.6 at Tu 0.1 for free); the multi-cl optimum forms a real drag bucket, 36.4–38.4 counts over cl 0.2–0.4, at a cost of 1.8 counts (5 %) at the design point.",
+            "Why: GR moves transition with the whole pressure distribution (x_tr 0.55–0.63 / 0.9 on every point), so one aft-loaded shape works everywhere; BCM keeps x_tr ≈ 0.3 on the upper surface in every case and trades the points against each other. Same three-family picture as slide 20: GR optima are one family, BCM optima another.",
+            "Baselines per point are cold trims of the NACA 0012 with each model (base 0.1 %: GR −10 %, BCM −25 % vs Tu 0.5). All 5 runs hit the 36 h walltime (SLSQP still running); multi-Tu GR was still creeping (−0.4 counts / 13 evals), the rest flat for > 20 evaluations. Second Tu = 0.1 %: lower end of both models' credible range (Mack correlation valid 0.1–2 %; LM Reθt calibration from ≈ 0.1 %), free-flight vs tunnel."],
+        y=3.55, h=3.5, size=11)
+note(s, "Data: $R/08_optimization/2d_tu05_L0_multipoint/{out_*/opt.hst, logs/opt_*_19308{55,56,57}.log, trim_base_*/trim.json, best_evals.txt}, jobs 1930855/56/57 (3 packed nodes, 32 ranks per point); PURPOSE.md there.", y=7.05)
+
+s = prs.slides.add_slide(BL); title(s, "29. Multi-Tu C2: baselines vs GR and BCM optima",
+                                    "Tu 0.5 % (left), 0.1 % (right), cl 0.3 · dotted = baselines · red GR (eval 111), blue BCM (eval 140) · ▼ x_tr")
+s.shapes.add_picture("../figures/mp_overlay_models_tu.png", Inches(1.6), Inches(1.3), height=Inches(5.7))
+note(s, "08_optimization/2d_tu05_L0_multipoint/plot_mp_overlay_models.py (surfaces of the best evaluations, surf/).", y=7.05)
+
+s = prs.slides.add_slide(BL); title(s, "30. Multi-cl C2: baselines vs GR and BCM optima",
+                                    "Tu 0.5 %, cl 0.2 / 0.3 / 0.4 · dotted = baselines · red GR (eval 124), blue BCM (eval 144) · ▼ x_tr")
+s.shapes.add_picture("../figures/mp_overlay_models_cl.png", Inches(0.3), Inches(1.3), height=Inches(5.7))
+note(s, "GR keeps x_tr ≈ 0.63 / 0.91 at all three cl; BCM ≈ 0.34 upper and, at cl 0.2, 0.29 on the lower surface → that point stays at its baseline. Same script as slide 29.", y=7.05)
+
+s = prs.slides.add_slide(BL); title(s, "31. The optimum airfoils: GR family vs BCM family",
+                                    "top row GR (single / multi-Tu / multi-cl), bottom row BCM · dotted NACA 0012 · thickness and camber under each")
+s.shapes.add_picture("../figures/mp_foils_all.png", Inches(2.9), Inches(1.3), height=Inches(4.2))
+bullets(s, ["GR: t_max 11.6–12.4 % at 0.54–0.58 c, camber 2.5–2.8 % at ≈ 0.5 c, thin nose, positive camber to 0.9 c — the same airfoil whatever the objective. BCM: t_max 13.4–14.3 % at 0.25–0.28 c, camber 0.7–1.7 % at 0.27 c, full nose, S-shaped camber (negative aft) — also the same whatever the objective.",
+            "Conclusion for the article: SA-BCM is not a usable optimisation model; its pressure-gradient weakness is a property of the model, and multipoint formulations do not remove it. Optimise with SA-γ-R̅eθt; SA-BCM stays a cheap analysis model."],
+        y=5.55, h=1.6, size=11)
+note(s, "08_optimization/2d_tu05_L0_multipoint/plot_final_foils.py → foil_*.png; montage figures/mp_foils_all.png.", y=7.05)
+
+# ---------------- 32-35 SA-G-s (one-equation smoothed SA-gamma) and the main conclusion (added 2026-09-22; data 22_sa_g_model)
+s = prs.slides.add_slide(BL); title(s, "32. A third model: SA-G-s (smoothed γ eq., local onset)",
+                                    "transition-models b92746f0/281a6d0a, option transitionLocalReTheta · machV3 · 22_sa_g_model/ · derivative gate adjoint vs CS 0.001 % / 0.008 % (GR 0.000 / 0.012 %)")
+bullets(s, ["Why: the BCM-vs-GR gap could not be closed by any local sensor on the algebraic BCM (slides 22–27) nor by a transported threshold (BCM + R̅eθt: fixes the BCM optima, breaks the GR optima and the NLF polar — user vetoed transport in BCM). Question asked: does a one-equation SA-γ exist and does it work?",
+            "Literature (9-agent sweep, memo in 22_sa_g_model/literature_memo.md): Menter 2015 one-equation γ coupled to SA exists (Nichols 2019 Kestrel, Lee & Baeder 2021, Jung 2022, Liu 2020, D'Alessandro 2025, STAR-CCM+ 'SA Gamma'); none smoothed / adjoint-ready; Jung reports it weaker than γ-R̅eθt for Re ≳ 3e6. P&Z's 'sLM2015' is the two-equation model, not this.",
+            "Implemented: GR-s γ equation unchanged; onset (Re_θc, Flength) from the local LM Re_θt(Tu∞, λ_θL) with Menter's wall-distance λ_θL = 7.57e-3 d²/ν dU/ds + 0.0128 (smooth clip ±0.1); R̅eθt kept as diagnostic (option to make it inert). Naming G / G-s as GR / GR-s.",
+            "Analysis results: NACA α 0–6 mean |Δcd| vs GR 2.5 % with x_tr ≈ GR; NLF0416 polar = GR (57.9/64.5/78.6 vs 57.0/64.4/79.3); S809 +1…+8 %. Convergence: opt ladder 251 its on NLF a4 (GR 604), no coupled ANK needed; NK before 1e-8 stalls (as GR). Cost per evaluation ≈ GR (same 3-eq block; adjoint 2× slower)."],
+        y=1.4, h=5.4, size=12)
+note(s, "Data: 22_sa_g_model/{01_convergence_strategy (jobs 1937426/1937464/1939932), 02_derivative_check (1937469/70/78), 03_naca_sweep (1937402), 05_polars (1937404)}; docs CORE_BASE/CORE_01 option table.", y=7.05)
+
+s = prs.slides.add_slide(BL); title(s, "33. Cross-evaluation: SA-G-s reproduces GR on given shapes",
+                                    "NACA0012 L0, Tu 0.5 %, cl 0.3, cold trims · red GR, blue BCM, green G-s · counts")
+s.shapes.add_picture("../figures/gs_cross.png", Inches(0.3), Inches(1.2), width=Inches(12.7))
+note(s, "GR optima: G-s 34.5 / 33.8 (GR 34.9 / 34.0; BCM 51.4 / 39.2). BCM optima: G-s 68.9 / 62.2 (GR 79.5 / 71.2; BCM 53.5 / 46.4) → the BCM loophole reads +3 % vs NACA in G-s (GR +15 %, BCM −21 %). Cross mean vs GR: BCM 26 %, G-s 6.3 %. 22_sa_g_model/04_cross_eval/plot_cross_gs.py, job 1937403.", y=6.95)
+
+s = prs.slides.add_slide(BL); title(s, "34. SA-G-s C2 / C3 optima: rejected by GR",
+                                    "32 ranks, same problems as GR C2/C3 · left C2 (restart eval 39), right C3 (converged eval 122) · red GR opt · green G-s opt in G-s · grey = G-s opt solved with GR")
+s.shapes.add_picture("../figures/gs_c2_vs_gr.png", Inches(0.3), Inches(1.2), height=Inches(4.55))
+s.shapes.add_picture("../figures/gs_c3_vs_gr.png", Inches(6.75), Inches(1.2), height=Inches(4.55))
+table(s, [["design", "own model", "in GR", "vs NACA in GR (69.4)"], ["G-s C3 optimum", "32.6 (−51 %)", "64.4 (x_tr 0.43/0.51)", "−7 %"], ["G-s C2 best", "37.3 (−44 %)", "66.0 (x_tr 0.39/0.52)", "−5 %"], ["GR C2 / C3 optima", "34.9 / 34.0", "—", "−50 / −51 %"]],
+      x=3.0, y=5.8, w=7.3, colw=[1.9, 1.7, 2.1, 1.6], size=9)
+note(s, "22_sa_g_model/06_optimization/{output_c3 (1937508), output_c2_r1 (1939986), cross_gs_optima (1939938), resolve_now (1941002)}. G-s C3 converged in 65 majors / 35 h; C2 stalled at eval 50 (CANK plateau + adjoint failures) and was restarted with the no-CANK structure.", y=7.1)
+
+s = prs.slides.add_slide(BL); title(s, "35. Why: optimisers exploit models without gradient history",
+                                    "C3: the two optima differ by 1 % of chord (Δy ≤ 0.011) but the sign of dcp/dx on the upper surface flips · cp / dcp/dx (>0 adverse) / Δy")
+s.shapes.add_picture("../figures/gs_c3_why.png", Inches(0.3), Inches(1.2), height=Inches(5.75))
+bullets(s, ["GR optimum: dcp/dx < 0 continuously from 0.05 to 0.65 c — a monotone favourable ramp, transition 0.77.",
+            "G-s optimum: 1 % more thickness at 0.15 c → suction peak at 0.15 (cp −0.55) followed by a mild ADVERSE plateau (dcp/dx +1.7 → 0) to 0.35 c.",
+            "The local onset (λ_θL) only sees the instantaneous gradient: a mild plateau never trips it. GR's transported R̅eθt is pushed down along those 20 % of chord (history) and trips at 0.43 → 64 counts.",
+            "BCM: same story with a stronger nose peak (Cp_min −1.45, slide 20/25) and an instant switch. Both models, both loopholes = 'peak then mild adverse run'.",
+            "C2 (gs_c2_why.png) shows the same signature plus a second peak at 0.55 c and a steep aft recovery."],
+        x=7.3, y=1.3, w=5.8, h=5.6, size=11)
+note(s, "22_sa_g_model/06_optimization/{gs_c3_why.png, gs_c2_why.png} (cp from the opt surface files cruise_130 / cruise_072 and the GR cross trims).", y=7.05)
+
+s = prs.slides.add_slide(BL); title(s, "36. Main conclusion (2026-09-22)",
+                                    "three transition models, one problem: NACA0012 → min cd at cl 0.3, Tu 0.5 %, Re 2.9e6, L0 mesh")
+bullets(s, ["For ANALYSIS of given shapes all three models are fine: SA-BCM, SA-G-s and SA-γ-R̅eθt agree on the NACA polar (2–3 %), on NLF0416 / S809 and on the GR optima; BCM and G-s are cheaper only in code complexity, not in cost per evaluation (G-s ≈ GR; BCM ~1/3).",
+            "For OPTIMISATION only SA-γ-R̅eθt (GR) is reliable: its optima survive every cross-check (cold re-trim, other models, multipoint, restarts); the SA-BCM and SA-G-s optima do NOT — evaluated with GR they are worth −5…−7 % vs the NACA instead of the −44…−51 % they claim.",
+            "Why: an optimiser is a weakness detector. Both BCM (algebraic switch Re_v ≥ 2.19 Re_θc(Tu)) and G-s (local λ_θL onset) judge transition from the LOCAL state; neither carries the upstream pressure-gradient history. The optimiser therefore learns to build a suction peak followed by a mild adverse run — lower cdp, 'laminar' for the model — which a real boundary layer (and GR's transported R̅eθt) does not tolerate. Every fix tried on the local side failed: local sensors (F=1 over-trips NLF, F=2 does not close the peak), integral Thwaites criteria, a transported threshold inside BCM (breaks the GR optima), multipoint objectives, Cp constraints (running).",
+            "The history is the physics: R̅eθt transport is what makes the model see the whole pressure distribution, and it is exactly the term the optimiser cannot game. It costs one more equation and the CANK phase — the price of a trustworthy optimum.",
+            "Recommendation: optimise with SA-γ-R̅eθt; use SA-BCM (and G-s) for cheap polars, screening and cross-checks; never trust an optimum from a local-onset model without re-evaluating it with GR."],
+        y=1.35, h=5.7, size=12.5)
+note(s, "Evidence: slides 20, 25–27 (BCM + sensors), 28–31 (multipoint), 33–35 (G-s); 22_sa_g_model/README.md; adflow_sabcm docs/studies/22 §6–7.", y=7.05)
+
 prs.save("SA-BCM_2D_reruns_and_branches_2026-09-18.pptx"); print("ok")
