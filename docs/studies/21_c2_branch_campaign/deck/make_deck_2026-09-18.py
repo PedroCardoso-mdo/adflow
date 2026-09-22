@@ -393,48 +393,87 @@ bullets(s, ["GR: t_max 11.6–12.4 % at 0.54–0.58 c, camber 2.5–2.8 % at ≈
         y=5.55, h=1.6, size=11)
 note(s, "08_optimization/2d_tu05_L0_multipoint/plot_final_foils.py → foil_*.png; montage figures/mp_foils_all.png.", y=7.05)
 
-# ---------------- 32-35 SA-G-s (one-equation smoothed SA-gamma) and the main conclusion (added 2026-09-22; data 22_sa_g_model)
-s = prs.slides.add_slide(BL); title(s, "32. A third model: SA-G-s (smoothed γ eq., local onset)",
-                                    "transition-models b92746f0/281a6d0a, option transitionLocalReTheta · machV3 · 22_sa_g_model/ · derivative gate adjoint vs CS 0.001 % / 0.008 % (GR 0.000 / 0.012 %)")
-bullets(s, ["Why: the BCM-vs-GR gap could not be closed by any local sensor on the algebraic BCM (slides 22–27) nor by a transported threshold (BCM + R̅eθt: fixes the BCM optima, breaks the GR optima and the NLF polar — user vetoed transport in BCM). Question asked: does a one-equation SA-γ exist and does it work?",
-            "Literature (9-agent sweep, memo in 22_sa_g_model/literature_memo.md): Menter 2015 one-equation γ coupled to SA exists (Nichols 2019 Kestrel, Lee & Baeder 2021, Jung 2022, Liu 2020, D'Alessandro 2025, STAR-CCM+ 'SA Gamma'); none smoothed / adjoint-ready; Jung reports it weaker than γ-R̅eθt for Re ≳ 3e6. P&Z's 'sLM2015' is the two-equation model, not this.",
-            "Implemented: GR-s γ equation unchanged; onset (Re_θc, Flength) from the local LM Re_θt(Tu∞, λ_θL) with Menter's wall-distance λ_θL = 7.57e-3 d²/ν dU/ds + 0.0128 (smooth clip ±0.1); R̅eθt kept as diagnostic (option to make it inert). Naming G / G-s as GR / GR-s.",
-            "Analysis results: NACA α 0–6 mean |Δcd| vs GR 2.5 % with x_tr ≈ GR; NLF0416 polar = GR (57.9/64.5/78.6 vs 57.0/64.4/79.3); S809 +1…+8 %. Convergence: opt ladder 251 its on NLF a4 (GR 604), no coupled ANK needed; NK before 1e-8 stalls (as GR). Cost per evaluation ≈ GR (same 3-eq block; adjoint 2× slower)."],
-        y=1.4, h=5.4, size=12)
-note(s, "Data: 22_sa_g_model/{01_convergence_strategy (jobs 1937426/1937464/1939932), 02_derivative_check (1937469/70/78), 03_naca_sweep (1937402), 05_polars (1937404)}; docs CORE_BASE/CORE_01 option table.", y=7.05)
+# ---------------- 32-38 SA-G-s (one-equation smoothed SA-gamma) and the main conclusion (added 2026-09-22; data 22_sa_g_model)
+def title2(s, t, sub=None):
+    """wrapped title (the plain title() box does not wrap: long titles overflow in LibreOffice)"""
+    tb = s.shapes.add_textbox(Inches(0.4), Inches(0.2), Inches(12.5), Inches(1.0)); tf = tb.text_frame; tf.word_wrap = True
+    p = tf.paragraphs[0]; p.text = t; p.font.size = Pt(20); p.font.bold = True
+    if sub:
+        p2 = tf.add_paragraph(); p2.text = sub; p2.font.size = Pt(11); p2.font.color.rgb = RGBColor(90, 90, 90)
+def pic_fit(s, path, x, y, w, h):
+    from PIL import Image
+    iw, ih = Image.open(path).size; r = min(w / iw, h / ih); pw, ph = iw * r, ih * r
+    s.shapes.add_picture(path, Inches(x + (w - pw) / 2), Inches(y + (h - ph) / 2), width=Inches(pw))
+KPI = RGBColor(0, 90, 160)
+def kpi(s, x, y, w, big, small):
+    tb = s.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(1.1)); tf = tb.text_frame; tf.word_wrap = True
+    p = tf.paragraphs[0]; p.text = big; p.font.size = Pt(30); p.font.bold = True; p.font.color.rgb = KPI
+    p2 = tf.add_paragraph(); p2.text = small; p2.font.size = Pt(11); p2.font.color.rgb = RGBColor(70, 70, 70)
 
-s = prs.slides.add_slide(BL); title(s, "33. Cross-evaluation: SA-G-s reproduces GR on given shapes",
-                                    "NACA0012 L0, Tu 0.5 %, cl 0.3, cold trims · red GR, blue BCM, green G-s · counts")
-s.shapes.add_picture("../figures/gs_cross.png", Inches(0.3), Inches(1.2), width=Inches(12.7))
-note(s, "GR optima: G-s 34.5 / 33.8 (GR 34.9 / 34.0; BCM 51.4 / 39.2). BCM optima: G-s 68.9 / 62.2 (GR 79.5 / 71.2; BCM 53.5 / 46.4) → the BCM loophole reads +3 % vs NACA in G-s (GR +15 %, BCM −21 %). Cross mean vs GR: BCM 26 %, G-s 6.3 %. 22_sa_g_model/04_cross_eval/plot_cross_gs.py, job 1937403.", y=6.95)
+# 32 the model
+s = prs.slides.add_slide(BL); title2(s, "32. A third model: SA-G-s — smoothed γ equation, local onset, no R̅eθt",
+    "transition-models 281a6d0a, option transitionLocalReTheta · machV3 · 22_sa_g_model/ · 2D opts at 32 ranks")
+bullets(s, ["Why: no local sensor on the algebraic BCM closes the BCM-vs-GR gap (slides 22–27), and a transported threshold inside BCM fixes the BCM optima but breaks the GR optima and the NLF polar (transport in BCM vetoed). Question: does a one-equation SA-γ exist, and does it work?",
+            "Literature (9-agent sweep, 22_sa_g_model/literature_memo.md): Menter-2015 one-equation γ + SA exists — Nichols 2019 (Kestrel), Lee & Baeder 2021, Jung 2022, Liu 2020, D'Alessandro 2025, STAR-CCM+ 'SA Gamma'. None smoothed / adjoint-ready; Jung: weaker than γ-R̅eθt at Re ≳ 3e6. P&Z's 'sLM2015' is the TWO-equation model.",
+            "Implemented: the GR-s γ equation unchanged; onset (Re_θc, Flength) from the local LM Re_θt(Tu∞, λ_θL), Menter's wall-distance λ_θL = 7.57e-3 d²/ν dU/ds + 0.0128 (smooth clip ±0.1); R̅eθt kept as a diagnostic (option to make it inert). Names: G / G-s as GR / GR-s. Tapenade regenerated."],
+        x=0.5, y=1.45, w=7.6, h=5.4, size=12)
+kpi(s, 8.5, 1.5, 4.4, "0.008 %", "adjoint vs complex step (cd), GR reference 0.012 % — gate passed at the GR level")
+kpi(s, 8.5, 2.8, 4.4, "251 its", "NLF0416 a4 with the opt ladder (GR 604); converges with no coupled ANK at all")
+kpi(s, 8.5, 4.1, 4.4, "2.5 %", "NACA α 0–6 mean |Δcd| vs GR, x_tr ≈ GR; NLF polar 57.9 / 64.5 / 78.6 vs GR 57.0 / 64.4 / 79.3")
+kpi(s, 8.5, 5.4, 4.4, "≈ GR", "cost per evaluation (same 3-eq block, adjoint 2× slower) — not cheaper as implemented")
+note(s, "Data: 22_sa_g_model/{01_convergence_strategy (jobs 1937426/64/1939932), 02_derivative_check (1937469/70/78), 03_naca_sweep (1937402), 05_polars (1937404)}; docs CORE_BASE/CORE_01 option table.", y=7.0)
 
-s = prs.slides.add_slide(BL); title(s, "34. SA-G-s C2 / C3 optima: rejected by GR",
-                                    "32 ranks, same problems as GR C2/C3 · left C2 (restart eval 39), right C3 (converged eval 122) · red GR opt · green G-s opt in G-s · grey = G-s opt solved with GR")
-s.shapes.add_picture("../figures/gs_c2_vs_gr.png", Inches(0.3), Inches(1.2), height=Inches(4.55))
-s.shapes.add_picture("../figures/gs_c3_vs_gr.png", Inches(6.75), Inches(1.2), height=Inches(4.55))
-table(s, [["design", "own model", "in GR", "vs NACA in GR (69.4)"], ["G-s C3 optimum", "32.6 (−51 %)", "64.4 (x_tr 0.43/0.51)", "−7 %"], ["G-s C2 best", "37.3 (−44 %)", "66.0 (x_tr 0.39/0.52)", "−5 %"], ["GR C2 / C3 optima", "34.9 / 34.0", "—", "−50 / −51 %"]],
-      x=3.0, y=5.8, w=7.3, colw=[1.9, 1.7, 2.1, 1.6], size=9)
-note(s, "22_sa_g_model/06_optimization/{output_c3 (1937508), output_c2_r1 (1939986), cross_gs_optima (1939938), resolve_now (1941002)}. G-s C3 converged in 65 majors / 35 h; C2 stalled at eval 50 (CANK plateau + adjoint failures) and was restarted with the no-CANK structure.", y=7.1)
+# 33 cross on given shapes
+s = prs.slides.add_slide(BL); title2(s, "33. Cross-evaluation: on given shapes SA-G-s reproduces GR",
+    "NACA0012 L0, Tu 0.5 %, cl 0.3, cold trims · red GR · blue BCM · green G-s · counts · job 1937403")
+pic_fit(s, "../figures/gs_cross.png", 0.3, 1.3, 12.7, 5.55)
+note(s, "GR optima: G-s 34.5 / 33.8 (GR 34.9 / 34.0; BCM 51.4 / 39.2). BCM optima: G-s 68.9 / 62.2 (GR 79.5 / 71.2; BCM 53.5 / 46.4) → the BCM loophole reads +3 % vs NACA in G-s (GR +15 %, BCM −21 %). Mean |Δcd| vs GR over the 5 shapes: BCM 26 %, G-s 6.3 %. 22_sa_g_model/04_cross_eval/plot_cross_gs.py.", y=6.9)
 
-s = prs.slides.add_slide(BL); title(s, "35. Why: optimisers exploit models without gradient history",
-                                    "C3: the two optima differ by 1 % of chord (Δy ≤ 0.011) but the sign of dcp/dx on the upper surface flips · cp / dcp/dx (>0 adverse) / Δy")
-s.shapes.add_picture("../figures/gs_c3_why.png", Inches(0.3), Inches(1.2), height=Inches(5.75))
-bullets(s, ["GR optimum: dcp/dx < 0 continuously from 0.05 to 0.65 c — a monotone favourable ramp, transition 0.77.",
-            "G-s optimum: 1 % more thickness at 0.15 c → suction peak at 0.15 (cp −0.55) followed by a mild ADVERSE plateau (dcp/dx +1.7 → 0) to 0.35 c.",
-            "The local onset (λ_θL) only sees the instantaneous gradient: a mild plateau never trips it. GR's transported R̅eθt is pushed down along those 20 % of chord (history) and trips at 0.43 → 64 counts.",
-            "BCM: same story with a stronger nose peak (Cp_min −1.45, slide 20/25) and an instant switch. Both models, both loopholes = 'peak then mild adverse run'.",
-            "C2 (gs_c2_why.png) shows the same signature plus a second peak at 0.55 c and a steep aft recovery."],
-        x=7.3, y=1.3, w=5.8, h=5.6, size=11)
-note(s, "22_sa_g_model/06_optimization/{gs_c3_why.png, gs_c2_why.png} (cp from the opt surface files cruise_130 / cruise_072 and the GR cross trims).", y=7.05)
+# 34 C3
+s = prs.slides.add_slide(BL); title2(s, "34. G-s C3 vs GR C3: same airfoil, opposite verdict",
+    "eval 122, 65 majors, 35 h · red GR opt in GR · green G-s opt in G-s · grey = G-s opt solved with GR (job 1939938)")
+pic_fit(s, "../figures/gs_c3_vs_gr.png", 0.3, 1.35, 7.9, 5.5)
+kpi(s, 8.6, 1.4, 4.4, "32.6 → 64.4", "counts: in G-s → in GR (GR C3 optimum: 34.0)")
+kpi(s, 8.6, 2.7, 4.4, "−51 % → −7 %", "gain vs the NACA claimed by G-s → seen by GR")
+kpi(s, 8.6, 4.0, 4.4, "0.78 → 0.43", "upper-surface x_tr: G-s keeps it laminar, GR trips right after the nose plateau")
+bullets(s, ["The two optima differ by ≤ 1 % of chord; in their own models the cf curves coincide (x_tr 0.78/0.91 vs 0.77/0.90). The difference is entirely in what the other model says."], x=8.6, y=5.3, w=4.4, h=1.5, size=11)
+note(s, "22_sa_g_model/06_optimization/{output_c3 (1937508), cross_gs_optima (1939938)}; surface files from the opt log (cruise_130) and the GR trim.", y=7.0)
 
-s = prs.slides.add_slide(BL); title(s, "36. Main conclusion (2026-09-22)",
-                                    "three transition models, one problem: NACA0012 → min cd at cl 0.3, Tu 0.5 %, Re 2.9e6, L0 mesh")
-bullets(s, ["For ANALYSIS of given shapes all three models are fine: SA-BCM, SA-G-s and SA-γ-R̅eθt agree on the NACA polar (2–3 %), on NLF0416 / S809 and on the GR optima; BCM and G-s are cheaper only in code complexity, not in cost per evaluation (G-s ≈ GR; BCM ~1/3).",
-            "For OPTIMISATION only SA-γ-R̅eθt (GR) is reliable: its optima survive every cross-check (cold re-trim, other models, multipoint, restarts); the SA-BCM and SA-G-s optima do NOT — evaluated with GR they are worth −5…−7 % vs the NACA instead of the −44…−51 % they claim.",
-            "Why: an optimiser is a weakness detector. Both BCM (algebraic switch Re_v ≥ 2.19 Re_θc(Tu)) and G-s (local λ_θL onset) judge transition from the LOCAL state; neither carries the upstream pressure-gradient history. The optimiser therefore learns to build a suction peak followed by a mild adverse run — lower cdp, 'laminar' for the model — which a real boundary layer (and GR's transported R̅eθt) does not tolerate. Every fix tried on the local side failed: local sensors (F=1 over-trips NLF, F=2 does not close the peak), integral Thwaites criteria, a transported threshold inside BCM (breaks the GR optima), multipoint objectives, Cp constraints (running).",
-            "The history is the physics: R̅eθt transport is what makes the model see the whole pressure distribution, and it is exactly the term the optimiser cannot game. It costs one more equation and the CANK phase — the price of a trustworthy optimum.",
+# 35 C2
+s = prs.slides.add_slide(BL); title2(s, "35. SA-G-s C2 vs GR C2 optimum: same verdict",
+    "restart (no-CANK), best so far eval 39 (37.3) · red GR opt · green G-s in G-s · grey = G-s design solved with GR (job 1941002)")
+pic_fit(s, "../figures/gs_c2_vs_gr.png", 0.3, 1.35, 7.9, 5.5)
+kpi(s, 8.6, 1.4, 4.4, "37.3 → 66.0", "counts: in G-s → in GR (GR C2 optimum: 34.9)")
+kpi(s, 8.6, 2.7, 4.4, "−44 % → −5 %", "gain vs the NACA claimed by G-s → seen by GR")
+kpi(s, 8.6, 4.0, 4.4, "0.65 → 0.39", "upper-surface x_tr in G-s → in GR")
+bullets(s, ["The first C2 run stalled at eval 50 (CANK plateau at α 3.9°, 12 adjoint failures; GR had 0); the restart with SANK → NK (no coupled ANK, R̅eθt inert) descends 50 → 37 counts in 40 evaluations. Whatever it reaches, GR will judge it like C3."], x=8.6, y=5.2, w=4.4, h=1.7, size=11)
+note(s, "22_sa_g_model/06_optimization/{output_c2 (1937508), output_c2_r1 (1939986, 32 ranks), resolve_now/gr_on_gs_c2_r1_e39 (1941002)}; 01_convergence_strategy pack 3 (1939932): the stalled design converges with every ladder at fixed α — the stall was the optimiser's trials, not the mesh.", y=6.95)
+
+# 36 why
+s = prs.slides.add_slide(BL); title2(s, "36. Why: optimisers exploit any model without gradient history",
+    "upper-surface cp / dcp/dx (> 0 adverse) / y(G-s) − y(GR) · left C3, right C2")
+pic_fit(s, "../figures/gs_c3_why.png", 0.2, 1.35, 4.6, 5.5); pic_fit(s, "../figures/gs_c2_why.png", 4.7, 1.35, 4.6, 5.5)
+bullets(s, ["GR optimum: dcp/dx < 0 continuously from 0.05 to 0.65 c — one monotone favourable ramp; transition 0.77.",
+            "G-s optimum: 1 % more thickness at 0.15 c → suction peak (cp −0.55 / −0.72) followed by a MILD ADVERSE plateau to 0.35 c.",
+            "A local onset (λ_θL) only sees the instantaneous gradient: a mild plateau never trips it. GR's transported R̅eθt is pushed down along those 20 % of chord (history) and trips at 0.43.",
+            "BCM: same loophole with an instant switch and a stronger nose peak (Cp_min −1.45, slides 20/25). Both = 'peak, then mild adverse run'."],
+        x=9.45, y=1.3, w=3.7, h=5.6, size=10.5)
+note(s, "22_sa_g_model/06_optimization/{gs_c3_why.png, gs_c2_why.png}; cp from the opt surface files (cruise_130 / cruise_072) and the GR cross trims.", y=6.95)
+
+# 37 main conclusion
+s = prs.slides.add_slide(BL); title2(s, "37. Main conclusion: only GR optima can be trusted",
+    "three transition models, one problem: NACA0012 → min cd at cl 0.3, Tu 0.5 %, Re 2.9e6, L0 mesh · what each is good for")
+table(s, [["", "SA-BCM (algebraic)", "SA-G-s (1 eq., local onset)", "SA-γ-R̅eθt = GR (2 eq.)"],
+          ["analysis of given shapes", "OK (NACA 2.4 %, polars = exp.)", "OK (2.5 %, cross 6 %)", "reference"],
+          ["own optimum, in own model", "53.5 (−21 %)", "32.6 (−51 %)", "34.9 (−50 %)"],
+          ["that optimum evaluated with GR", "79.5 → WORSE than NACA (+15 %)", "64.4 → −7 %", "34.9 → −50 % (survives cold re-trim, restarts, multipoint)"],
+          ["cost per evaluation", "≈ 1/3", "≈ 1", "1"],
+          ["usable for optimisation", "no", "no", "yes"]],
+      x=0.4, y=1.35, w=12.5, colw=[2.6, 3.0, 3.0, 3.9], size=11)
+bullets(s, ["The optimiser is a weakness detector. BCM (switch at Re_v ≥ 2.19 Re_θc(Tu)) and G-s (onset from the local λ_θL) both judge transition from the LOCAL state and carry no upstream pressure-gradient history — so the optimiser learns to build a suction peak followed by a mild adverse run: lower cdp, still 'laminar' for the model, tripped by a real boundary layer and by GR's transported R̅eθt.",
+            "Every fix on the local side failed: local sensors on BCM (F=1 over-trips the NLF, F=2 does not close the peak), integral Thwaites criteria, a transported threshold inside BCM (breaks the GR optima), multipoint objectives (slides 28–31), Cp constraints (running). The history is the physics, and it is exactly the term the optimiser cannot game — it costs one more equation and the CANK phase.",
             "Recommendation: optimise with SA-γ-R̅eθt; use SA-BCM (and G-s) for cheap polars, screening and cross-checks; never trust an optimum from a local-onset model without re-evaluating it with GR."],
-        y=1.35, h=5.7, size=12.5)
-note(s, "Evidence: slides 20, 25–27 (BCM + sensors), 28–31 (multipoint), 33–35 (G-s); 22_sa_g_model/README.md; adflow_sabcm docs/studies/22 §6–7.", y=7.05)
+        x=0.5, y=3.85, w=12.3, h=3.1, size=11.5)
+note(s, "Evidence: slides 20, 25–27 (BCM + sensors), 28–31 (multipoint), 33–36 (G-s); 22_sa_g_model/README.md; adflow_sabcm docs/studies/22 §6–7.", y=7.05)
 
 prs.save("SA-BCM_2D_reruns_and_branches_2026-09-18.pptx"); print("ok")
