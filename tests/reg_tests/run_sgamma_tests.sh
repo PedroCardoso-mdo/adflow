@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # run_sgamma_tests.sh -- SA-noft2-Gamma (SA-sgamma) variant of run_sagr_tests.sh (2026-09-22).
-# Real-build stages only are meaningful today (no complex-step build of saGamma.F90 in src_cs).
+# 2026-09-23: complex-step stages enabled (src_cs is complexified from src/build/fileList, which lists saGamma.F90).
 # Original header:
 # derivative regression suite.
 #
@@ -54,7 +54,7 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}   # never oversubscribe (see CLAUDE
 
 FWD=test_jacVecProdFWD_sgamma.py
 BWD=test_jacVecProdBWDFast_sgamma.py
-ADJ=test_adjoint_sagr.py
+ADJ=test_adjoint_sgamma.py
 BLK=test_blockette_sagr.py
 
 hr()  { printf '%.0s-' {1..72}; echo; }
@@ -84,7 +84,7 @@ run_blockette() {
 do_train() {
     head "Retraining JSON reference files (crossflow-converged state)"
     "$PY" -m testflo -n "$NP" "$FWD" "$BWD" "$ADJ" -m "train*" -v
-    echo "refs written: refs/jacvecfwd_sgamma_tut_wing.json  refs/jacvecbwd_sgamma_tut_wing.json  refs/adjoint_sagr_tut_wing.json"
+    echo "refs written: refs/jacvecfwd_sgamma_tut_wing.json  refs/jacvecbwd_sgamma_tut_wing.json  refs/adjoint_sgamma_tut_wing.json"
 }
 
 do_genw() {
