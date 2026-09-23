@@ -232,11 +232,11 @@ sagrBaseOptions = {
     "ankuseturbdadi": True,
     # phase 2 (CANK): validated switch point, NEVER earlier (STRATEGY.md:
     # "coupling before 1e-5 stagnates, with or without LS")
-    "ankcoupledswitchtol": 1e-5,
+    "ankcoupledswitchtol": 1e-20,  # SA-noft2-Gamma: never couple (CANK pins the step, polar 1942269)
     # phase 3 (CSANK): validated switch point. In practice the early NK
     # trigger below (nkswitchtol 1e-5) crosses before this does, so CSANK is
     # typically skipped entirely (see STRATEGY.md "Gatilho NK cedo").
-    "anksecondordswitchtol": 1e-6,
+    "anksecondordswitchtol": 1e-2,  # ANK -> SANK early (segregated 2nd order; polar 1942658 converges)
     # essential -- without ANKUnsteadyLSTol/ANKPhysicalLSTol at these values
     # the coupled phase stagnates at step ~0.01 (STRATEGY.md)
     "ankunsteadylstol": 2.0,
@@ -246,7 +246,7 @@ sagrBaseOptions = {
     "anknsubiterturb": 1,
     # CFL ramp for the pseudo-transient continuation
     "ankcfl0": 5.0,
-    "ankcfllimit": 1e6,  # matched to STRATEGY.md
+    "ankcfllimit": 1e8,
     # use the approximate (first-order) SA Jacobian in the ANK PC — this is
     # what transitionUseApproxSA modifies for the SA-GR source terms
     "ankuseapproxsa": False,
@@ -260,7 +260,7 @@ sagrBaseOptions = {
     # phase 4 (NK): early-engage trigger validated 2026-07-18 (Eq.59/
     # Algorithm 2 reactivation inside NK, NKSolvers.F90) -- 3 orders earlier
     # than the pre-2026-07-18 4.2e-8/8e-8 value
-    "nkswitchtol": 1e-5,
+    "nkswitchtol": 1e-8,  # NK only for the last orders of the restart state
     # Eq. 59 (P&Z) source-dt restriction on the coupled path (already set
     # above too, kept here for the NK-phase reader)
     "transitionsrcdtrestrict": True,
