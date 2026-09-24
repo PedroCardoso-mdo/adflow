@@ -581,12 +581,26 @@ module inputPhysics
     !                      KS-aggregation, but rather an exact max computation.
     ! SAKappa, SAcb1, SAcb2, SAsigma, SAcv1, SAcw2, SAcw3, SAct1, SAct2, SAct3, SAct4, SAcrot
     !                      Spalart-Allmaras turbulence model constants
+    ! useSABCM:            Whether or not to use the BCM algebraic transition model
+    !                      (SA-BCM, Mura & Cakmakcioglu, AIAA 2020-2714). The SA
+    !                      production term is multiplied by an intermittency
+    !                      function gamma and ft2 is switched off. The
+    !                      free-stream turbulence intensity is turbIntensityInf.
+    ! SABCMSmooth:         Whether to use the differentiable reformulation of
+    !                      the intermittency (KS-smoothed max in Term1 and a tanh
+    !                      blend) instead of the original gamma = 1 - exp(-...).
+    ! SABCMChi1, SABCMChi2 SA-BCM calibration constants of Term1 and Term2.
+    ! SABCMRho:            KS aggregation parameter of the smoothed Term1.
+    ! SABCMTanhCenter:     Value of Term1 + Term2 at which the smoothed
+    !                      intermittency equals 0.5.
+    ! SABCMTanhWidth:      Width of the tanh blend of the smoothed intermittency.
 
     integer(kind=intType) :: equations, equationMode, flowType
     integer(kind=intType) :: turbModel, cpModel, turbProd
     integer(kind=intType) :: rvfN
     logical :: rvfB
     logical :: useQCR, useRotationSA, useft2SA
+    logical :: useSABCM, SABCMSmooth
 
     logical :: wallFunctions, wallDistanceNeeded
 
@@ -611,6 +625,8 @@ module inputPhysics
     real(kind=realType), dimension(:), allocatable :: sepSenMaxFamily
     real(kind=realType) :: SAKappa, SAcb1, SAcb2, SAsigma, SAcv1
     real(kind=realType) :: SAcw2, SAcw3, SAct1, SAct2, SAct3, SAct4, SAcrot
+    real(kind=realType) :: SABCMChi1, SABCMChi2, SABCMRho
+    real(kind=realType) :: SABCMTanhCenter, SABCMTanhWidth
 
 #ifndef USE_TAPENADE
     real(kind=realType) :: alphad, betad

@@ -3386,6 +3386,41 @@ contains
 
         end if
         !
+        !       The SA-BCM transition model is implemented in the source term
+        !       of the Spalart-Allmaras model only. Its wall-distance
+        !       sensitivities are propagated through the approximate
+        !       wall-distance routines, so these must be used.
+        !
+        if (useSABCM) then
+            if (equations /= RANSEquations .or. turbModel /= spalartAllmaras) then
+                if (myID == 0) &
+                    call terminate("checkInputParam", &
+                                   "useSABCM requires the RANS equations with the Spalart-Allmaras model")
+                call mpi_barrier(ADflow_comm_world, ierr)
+            end if
+
+            if (.not. useApproxWallDistance) then
+                if (myID == 0) &
+                    call terminate("checkInputParam", &
+                                   "useSABCM requires useApproxWallDistance")
+                call mpi_barrier(ADflow_comm_world, ierr)
+            end if
+
+            ! The SA-BCM intermittency replaces ft2, which is not part of
+            ! the model. Processor 0 prints a warning.
+
+            if (useft2SA) then
+                if (myID == 0) then
+                    print "(a)", "#"
+                    print "(a)", "#                      Warning"
+                    print "(a)", "# useft2SA is ignored with useSABCM: the SA-BCM"
+                    print "(a)", "# intermittency replaces ft2, which is considered off."
+                    print "(a)", "#"
+                end if
+                useft2SA = .false.
+            end if
+        end if
+        !
         !       Parallelization parameters. Set the minimum load imbalance to
         !       3 percent to avoid any problems.
         !

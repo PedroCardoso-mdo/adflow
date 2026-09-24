@@ -242,6 +242,11 @@ eddyVisInfRatio:
     Free stream value of eddy viscosity.
     See `here <https://turbmodels.larc.nasa.gov/spalart.html>`__ for more details.
 
+turbIntensityInf:
+  desc: >
+    Free-stream turbulence intensity, as a fraction (0.01 is 1 %).
+    It sets the free-stream turbulent kinetic energy of the k-omega family of turbulence models and the critical momentum-thickness Reynolds number of the SA-BCM transition model (see ``useSABCM``).
+
 useWallFunctions:
   desc: >
     Flag specifying if wall functions are to be used.
@@ -407,6 +412,40 @@ SAct4:
 
 SAcrot:
   desc: SA model constant crot, scaling factor for the rotation correction term.
+
+useSABCM:
+  desc: >
+    Use the SA-BCM algebraic transition model (Mura and Cakmakcioglu, AIAA 2020-2714).
+    The production term of the Spalart-Allmaras model is multiplied by an intermittency function that depends on the local vorticity Reynolds number and the eddy-viscosity ratio.
+    The free-stream turbulence intensity is set with ``turbIntensityInf``.
+    The ft2 term is not part of the model: it is considered off and ``useft2SA`` is ignored, with a warning.
+    Requires the Spalart-Allmaras turbulence model and ``useApproxWallDistance``.
+    The intermittency can be written to the volume solution with the ``intermittency`` volume variable.
+
+SABCMSmooth:
+  desc: >
+    Use the differentiable reformulation of the SA-BCM intermittency, in which the max function in Term1 is replaced by a KS aggregation and the exponential intermittency function by a tanh blend.
+    This removes the non-differentiable points of the original model and is recommended for adjoint-based optimization.
+    If False, the original model, gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2))), is used.
+
+SABCMChi1:
+  desc: SA-BCM calibration constant chi1 of Term1.
+
+SABCMChi2:
+  desc: SA-BCM calibration constant chi2 of Term2.
+
+SABCMRho:
+  desc: >
+    KS aggregation parameter used to smooth the max function in Term1 when ``SABCMSmooth`` is True.
+    A higher value approaches the original max function more closely, at the cost of a more nonlinear function.
+
+SABCMTanhCenter:
+  desc: >
+    Value of Term1 + Term2 at which the smoothed intermittency equals 0.5, used when ``SABCMSmooth`` is True.
+
+SABCMTanhWidth:
+  desc: >
+    Width of the tanh blend of the smoothed intermittency, used when ``SABCMSmooth`` is True.
 
 nCycles:
   desc: >
@@ -1410,6 +1449,7 @@ volumeVariables:
       * ``resrhoe`` (total energy residual)
       * ``resturb`` (turbulence residuals)
       * ``blank`` (cell iblank values used for visualization or other post-processing)
+      * ``intermittency`` (intermittency of the SA-BCM transition model, see ``useSABCM``)
 
 forcesAsTractions:
   desc: >
