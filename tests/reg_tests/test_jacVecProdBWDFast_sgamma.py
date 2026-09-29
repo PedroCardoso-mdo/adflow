@@ -38,7 +38,7 @@ class TestJacVecBWDFastSGAMMA(reg_test_classes.RegTest):
     (test_jacVecProdBWDFast.py), extended with row-block-seeded checks that
     isolate the transition equations.
 
-    Note (docs/audits/sst_dev_lessons.md, watch item 1): the
+    Note (docs/ADFLOW_BASE/ADFLOW_09_adjoint_trace.md): the
     autoEditReverseFast.py push/pop stripping that broke SST's _fast_b is
     still active on this branch. A failure here that is isolated to the
     gamma/reThetat row seeds is the signature of that stripping bug.

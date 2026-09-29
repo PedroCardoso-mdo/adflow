@@ -14,7 +14,7 @@
 # begins. Never blocks — it only emits an informational systemMessage.
 set -uo pipefail
 
-REPO="${CLAUDE_PROJECT_DIR:-/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver}"
+REPO="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 input=$(cat)
 cmd=$(printf '%s' "$input" | python3 -c 'import sys,json
@@ -34,7 +34,7 @@ printf '%s' "$cmd" | grep -qE '(^|[;&|][[:space:]]*)git([[:space:]]|$)' && exit 
 kind=""
 if printf '%s' "$cmd" | grep -qE 'Makefile_tapenade|AD_I\.sh|build_tapenade\.sh|(^|[;&|][[:space:]]*)tapenade([[:space:]]|$)'; then
     kind="tapenade regeneration"
-elif printf '%s' "$cmd" | grep -qE 'testflo|run_sagr_tests\.sh|(^|[;&|][[:space:]]*)pytest([[:space:]]|$)'; then
+elif printf '%s' "$cmd" | grep -qE 'testflo|run_[a-z]+_tests\.sh|(^|[;&|][[:space:]]*)pytest([[:space:]]|$)'; then
     kind="test run"
 elif printf '%s' "$cmd" | grep -qE 'mpirun' && printf '%s' "$cmd" | grep -qE '\.py([[:space:]]|$)'; then
     kind="simulation"

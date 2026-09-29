@@ -4,8 +4,9 @@
 # mechanically, so it no longer needs to live as prose Claude must remember:
 #
 #   Rule 2  — Do NOT modify the SA model directly. Transition is a modifier;
-#             src/turbulence/sa.F90 (and SA-only code) must never change.
-#             -> hard DENY.
+#             src/turbulence/sa.F90 must not change for GR/SA-sgamma work.
+#             SA-BCM (use_SABCM) lives inside sa.F90, so a hard deny would
+#             lock it out -> ASK: the user approves each edit.
 #
 # (Rule 6 — the Tapenade-generated adjoint files — is enforced separately by
 #  the "ask" permission globs in .claude/settings.json, so it is deliberately
@@ -15,7 +16,7 @@
 # matches nothing falls through to exit 0 (no opinion -> normal permissioning).
 set -uo pipefail
 
-REPO="${CLAUDE_PROJECT_DIR:-/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver}"
+REPO="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 input=$(cat)
 fp=$(printf '%s' "$input" | python3 -c 'import sys,json
@@ -37,15 +38,10 @@ print(json.dumps({"hookSpecificOutput": {
 PY
 }
 
-log() {  # $1 = short tag — no-op (activity log intentionally not kept)
-    :
-}
-
 # --- Rule 2: the SA model itself is off-limits -------------------------------
 case "$fp" in
     */src/turbulence/sa.F90|src/turbulence/sa.F90)
-        log "DENIED edit to SA model (rule 2)"
-        emit deny "CLAUDE.md rule 2: the SA model (src/turbulence/sa.F90) must never be modified. Transition is a modifier — put the change in src/turbulence/saGammaRetheta.F90 instead."
+        emit ask "CLAUDE.md rule 2: src/turbulence/sa.F90 is the SA model. GR / SA-sgamma changes belong in saGammaRetheta.F90 / saGamma.F90. Approve only for SA-BCM (use_SABCM) work, which lives in sa.F90."
         exit 0
         ;;
 esac

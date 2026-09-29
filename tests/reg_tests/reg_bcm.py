@@ -89,7 +89,7 @@ bcmBaseOptions = {
     "gridfile": bcmGridFile,
     "restartfile": bcmRestartFileSmooth,
     "equationtype": "RANS",
-    "turbulencemodel": "SA",  # SA-BCM is not a separate turbulenceModel string, see architecture.md
+    "turbulencemodel": "SA",  # SA-BCM is not a separate turbulenceModel string, see docs/CORE_BASE/CORE_01_architecture.md (SA-BCM)
     "useapproxwalldistance": True,  # required by inputParamRoutines.F90:3413-3423 when use_SABCM=True
     "useft2sa": False,  # ft2 off (SA-BCM overrides ft2=0 internally anyway; matches the AR5 script)
     # blockette.F90 has a hand-synced mirror of saSource (like SA-GR's did before it was force-

@@ -95,7 +95,7 @@ class TestJacVecFwdSGAMMAFD(reg_test_classes.RegTest):
     Tests that given a flow state the FWD jacobian vector products for the
     SA-noft2-Gamma model agree with FD. Mirrors TestJacVecFwdFD.
 
-    Note (audit sst_dev_lessons, watch item 2): the SA-GR residual has
+    Note (docs/VERIFICATION/VERIF_00_three_stage_verification.md): the SA-GR residual has
     one-sided kinks (vorticity cap, smoothMinMax blend points); expect FD
     noise there rather than AD error. Do not loosen tolerances to pass —
     use the CS class below for a decisive check.

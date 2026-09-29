@@ -51,8 +51,7 @@ class TestBlocketteResidualSAGR(unittest.TestCase):
     Regression guard: a sign-flip in the inlined first-order upwind advection
     (blockette saGammaRethetaAdvection) made the transition residuals differ
     from the block path by a factor ~2 while the meanflow stayed correct; the
-    per-variable assert below is what pins that down (see
-    docs/task-log/2026-07-24-blockette-sagr-residual-sync.md).
+    per-variable assert below is what pins that down.
 
     Self-contained (no stored reference) -> inherits unittest.TestCase, not
     RegTest.

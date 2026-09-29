@@ -8,7 +8,7 @@
 > paper equations (which usually assume U∞ = 1 and μ_ref = 1/Re) onto ADflow.
 
 Authoritative source: subroutine `referenceState`
-(`src/initFlow/initializeFlow.F90:10-190`) and the variable comments in
+(`src/initFlow/initializeFlow.F90:10-197`) and the variable comments in
 `src/modules/flowVarRefState.F90`. This document just summarizes them.
 
 ---
@@ -106,18 +106,13 @@ ADflow code:        timeScale = 500·nu/velMag2        ← NO Re factor
                               = 500·rlv/(ρ·|V|²)        (Re = 1 implicit)
 ```
 
-> **Correction (2026-07-06):** earlier revisions of this file (and the
-> since-retired distilled reference) called the paper "velocity-based
-> (U∞ = 1)" and wrote the ADflow timescale with an extra `·Re`. Both were
-> wrong: the paper is a∞-based, and the code carries **no** explicit Re factor.
-
 **Rule of thumb when porting a paper equation:** keep velocities in `uRef` units
 (freestream = M·√γ) and viscosities as ratios to μ_∞, and **drop** the paper's
 explicit `Re`/`1/Re` — it is already absorbed by ADflow's non-dim viscosity.
 Lengths then come out physical (metres) and Reynolds-number groupings come out as
 physical Reynolds numbers, which is exactly what the empirical correlations expect.
 
-> **Exception (2026-07-07) — vorticity limiter, Eqs. 52–53.** The "drop Re" rule
+> **Exception — vorticity limiter, Eqs. 52–53.** The "drop Re" rule
 > only holds where the paper's `Re` is a unit-conversion artifact of a
 > scale-invariant equation. In the vorticity limiter `M·√(M·Re)/20` the √Re is a
 > **physical calibration scale** (BL wall vorticity ∝ √(ρU³/(μ·l))) — the paper
@@ -129,31 +124,29 @@ physical Reynolds numbers, which is exactly what the empirical correlations expe
 > `transitionRefLength` option (auto = AeroProblem `chordRef`; see
 > `../CORE_BASE/CORE_01_architecture.md` Part 2).
 >
-> **Rotating-frame update (2026-07-23).** `uInf` is meaningless on a rotor
+> **Rotating frame.** `uInf` is meaningless on a rotor
 > (hover ⇒ `uInf→0` ⇒ the cap collapses and kills γ). The velocity in the cap is
 > now the blade-element section speed `U_ref = √(uInf² + |Ω×r|²)` (`|Ω×r| = |sc|`,
 > the local rotational grid velocity). It reduces to `uInf` **exactly** when Ω=0
 > (bit-identical no-op for every inertial case) and to the local blade speed in
-> hover. See `VERIFICATION/VERIF_02_rotating_frame_audit.md`.
+> hover. See [`VERIF_02_rotating_frame_audit.md`](../VERIFICATION/VERIF_02_rotating_frame_audit.md).
 >
-> **AD corollary (2026-07-07):** because `uInf`/`muInf` are the code's spelling
-> of the paper's freestream M and Re, the cap makes the *residual* depend on
-> freestream reference state. Consistency check of the identity:
-> `uInf/muInf = ρ∞U∞/μ∞` (since `ρRef·uRef/muRef = 1`), so the code line
-> `vortLim = uInf·√(uInf/(muInf·l))/20 = uInf·√Re_U∞/(20·l)` — exactly the
-> paper's cap in ADflow vorticity units. For derivatives this means `uInf`,
-> `muInf` must be declared active independents of `saGammaRetheta%Source` in
-> `Makefile_tapenade`, else Tapenade emits `vortlimd = 0` and `dR/dMach`-type
-> partials lose the limiter path in capped cells (state partials dR/dw are
-> unaffected). Details + frozen-cap alternative: `ADFLOW_BASE/ADFLOW_09_adjoint_trace.md` header and
-> `../ARCHIVE/ARCHIVE_03_adjoint_audit_2026-07-07.md` §3.
+> **AD corollary.** Because `uInf`/`muInf` are the code's spelling
+> of the paper's freestream M and Re, the cap makes the *residual* depend on the
+> freestream reference state. Identity check: `uInf/muInf = ρ∞U∞/μ∞` (since
+> `ρRef·uRef/muRef = 1`), so `vortLim = uInf·√(uInf/(muInf·l))/20 = uInf·√Re_U∞/(20·l)`
+> — exactly the paper's cap in ADflow vorticity units. For derivatives, `uInf` and
+> `muInf` must be active independents of the source heads in `Makefile_tapenade`
+> — `saGammaRetheta%Source` (SA-GR) **and** `saGamma%sgSource` (SA-sγ, same
+> limiter under `sgammaVortLimiter`) — else Tapenade emits `vortlimd = 0` and
+> `dR/dMach`-type partials lose the limiter path in capped cells (state partials
+> dR/dw are unaffected). See [`ADFLOW_09_adjoint_trace.md`](ADFLOW_09_adjoint_trace.md).
 
 ## 6. Crossflow (D_scf) term dimension status
 
-> Note (2026-08-12): `transitionCrossflow` defaults to **False** since
-> 2026-07-24 (stalls the tutorial-wing case when ON — CLAUDE.md rule 3), so
-> D_scf is not in the default residual. The dimensional analysis below stays
-> valid for runs that enable it.
+> `transitionCrossflow` defaults to **False** (it stalls the tutorial-wing case
+> when ON — CLAUDE.md rule 3), so D_scf is not in the default residual. The
+> dimensional analysis below stays valid for runs that enable it.
 
 The helicity-based crossflow source (Eq. 15–26) was added using the shift above.
 Where each new quantity lands dimensionally in the code:
@@ -162,7 +155,7 @@ Where each new quantity lands dimensionally in the code:
 |---|---|---|---|
 | θt (`thetaBL`) | Re̅θt·μ/(ρU)·(1/Re) (Eq. 4) | `reThetaTilde*nu/velMag` | physical momentum thickness — non-dim by L_ref=1 m ⇒ **value in metres**. `velMag` is now the **relative** velocity `|V_rel|` (rotating-frame; = `|V_abs|` when Ω=0). |
 | h (`transitionRoughnessHeight`) | `h/θt` (Eq. 17) | input, default `3.3e-6` | physical roughness length — **must be in mesh units (metres)**; 3.3e-6 = 3.3 µm |
-| H_cf (`hcf`) | d·Ω_sw/U (Eq. 26) | `yDist*abs(Û_rel·ω_rel)/velMag_rel` | **dimensionless**. Uses **relative** velocity and **relative** vorticity (`vortx = curl − 2Ω`) — helicity `U·ω` is not frame-invariant. = old absolute form when Ω=0. See `VERIFICATION/VERIF_02_rotating_frame_audit.md`. |
+| H_cf (`hcf`) | d·Ω_sw/U (Eq. 26) | `yDist*abs(Û_rel·ω_rel)/velMag_rel` | **dimensionless**. Uses **relative** velocity and **relative** vorticity (`vortx = curl − 2Ω`) — helicity `U·ω` is not frame-invariant. = old absolute form when Ω=0. See [VERIF_02](../VERIFICATION/VERIF_02_rotating_frame_audit.md). |
 | Re_scf (`reScf`) | correlation (Eq. 17) | `-35.088·ln(h/θt)+319.51+f(ΔH⁺)−f(ΔH⁻)` | **physical Reynolds number** (calibrated correlation) |
 | D_scf (`dScf`) | (c_θt/t)·c_cf·min(Re_scf−Re̅θt,0)·F_θt (Eq. 15) | `(rsaGRcthetat/timeScale)*…` | **Re/time**, same units as `P_θt`; no explicit Re |
 

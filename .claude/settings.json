@@ -16,7 +16,6 @@
       "Bash(git restore:*)",
 
       "Read(src/**)",
-      "Read(python/**)",
       "Read(tests/**)",
       "Read(build/**)",
       "Read(config/**)",
@@ -31,7 +30,6 @@
       "Edit(src/NKSolver/**)",
       "Edit(src/solver/**)",
       "Edit(src/preprocessing/**)",
-      "Edit(python/**)",
       "Edit(tests/**)",
       "Edit(*.md)",
 
@@ -77,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver}/.claude/hooks/guard_protected_files.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_protected_files.sh\"",
             "timeout": 15
           }
         ]
@@ -87,7 +85,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver}/.claude/hooks/announce_long_run.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/announce_long_run.sh\"",
             "timeout": 15
           }
         ]
@@ -99,7 +97,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver}/.claude/hooks/auto_pip_after_make.sh\"",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/auto_pip_after_make.sh\"",
             "timeout": 180,
             "statusMessage": "Installing adflow into mach env (post-make)…"
           }

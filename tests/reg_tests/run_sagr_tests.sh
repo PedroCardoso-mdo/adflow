@@ -4,7 +4,7 @@
 # derivative regression suite.
 #
 # The SA-GR partials are validated on three levels (see
-# docs/VERIFICATION/three-stage-verification.md):
+# docs/VERIFICATION/VERIF_00_three_stage_verification.md):
 #   Stage 1  dot-product consistency   forward _d  <->  reverse _b
 #   Stage 2  fast-reverse consistency  reverse _b  <->  reverse-fast _fast_b
 #   Stage 3  ground truth              forward AD  vs  complex-step (CS) / FD

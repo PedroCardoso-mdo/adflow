@@ -40,11 +40,11 @@ class TestJacVecBWDFastBCM(reg_test_classes.RegTest):
     _b vs _fast_b consistency for the SA-BCM case, both SABCM_Exp variants. Mirrors
     test_jacVecProdBWDFast.py.
 
-    NOTE: if a future guard commit (e.g. the divide-by-zero guards on sibling branch
-    sa-bcm-timing, see docs/adjoint-trace.md) went through autoEditReverseFast.py, that script
+    NOTE: if a future guard commit (e.g. the divide-by-zero guards on branch
+    sa-bcm-timing) went through autoEditReverseFast.py, that script
     is known to strip push/pop in ways that broke another model's _fast_b upstream. Treat any
     failure here as an autoEditReverseFast.py stripping suspect *before* suspecting the SA-BCM
-    model itself -- check docs/adjoint-trace.md for the current guard/rerun status first.
+    model itself.
     """
 
     N_PROCS = 2

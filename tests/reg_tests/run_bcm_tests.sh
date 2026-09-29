@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # run_bcm_tests.sh -- one entry point for the SA-BCM derivative regression suite.
-# Mirrors the sibling SA-GR repo's run_sagr_tests.sh 1:1.
+# Mirrors run_sagr_tests.sh 1:1 (docs/VERIFICATION/VERIF_00_three_stage_verification.md).
 #
 # The SA-BCM partials are validated on the same three levels as SA-GR:
 #   Stage 1  dot-product consistency   forward _d  <->  reverse _b

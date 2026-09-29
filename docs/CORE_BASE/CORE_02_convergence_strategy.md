@@ -1,223 +1,141 @@
-# SA-GR convergence strategy (recipe validated 2026-07-15; last updated 2026-08-12)
+# Converging transition cases (SA-GR, SA-sγ)
 
-Current best practice for converging SA-Gamma-Retheta cases, distilled from
-the 2026-07-14→16 campaign (3D plain wing, 175k cells, M=0.2, Tu=0.25%).
+Validated recipes per model/case, the options that must be set, known limits,
+and what has been tried and falsified. Option defaults quoted here are the
+`adflow/pyADflow.py` defaults; code wins if they ever disagree.
 
-> **Scope:** the ladder table's switch tolerances and wall times were measured
-> on that ONE 175k-cell mesh at 12 ranks. The 2026-08-07/08 AR5 corrected-foil
-> sections below (0.46M–7.42M cells, 64 ranks) refine the NK-handover rule —
-> where they disagree with the table, they win.
+Run-side deliverable for the 3D plain wing (recipe, per-phase restarts,
+phase-entry runner `run_strategy.py`):
+`~/Desktop/Run/MDO_PhD/Transition/gama_rethetha/03_convergence_strategy/3d_plain_wing/best_strategy/`.
 
-**Ready-to-use deliverable** (recipe, per-phase restart CGNS files, proof
-logs, phase-entry runner `run_strategy.py`):
-`~/Desktop/Run/MDO_PhD/Transition/gama_rethetha/03_convergence_strategy/3d_plain_wing/best_strategy/`
+## Recipes
 
-Full evidence: `03_convergence_strategy/3d_plain_wing/_old/campaign_2026-07-14_to_16/`
-— master test table in `TESTS_AND_CONCLUSIONS.md`, narrative in
-`long_overnight/DECISIONS.md`, logs in `long_overnight/` (referred to as
-`RUN/` below). Solver background: `ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md` (upstream —
-its NK/EW advice is overridden by the measurements here). Why ADflow differs
-from the paper's solver: `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md`.
+### SA-GR, 3D wing (plain wing, AR5 family, tutorial wing)
 
-## The recipe (phase ladder)
-
-| Phase | Activate at (rel totalRes) | Key options | Measured reliable range |
+| Phase | Enter at (rel totalRes) | Key options | Behaviour |
 |---|---|---|---|
-| ANK segregated | start (freestream) | `ANKUseTurbDADI: True` | -> rel ~1e-5 in ~28 min (flow converges; retheta res parks at ~2e4 — expected). **SANK variant** (`ANKSecondOrdSwitchTol 1e-4`, never couple, 2-leg run): **18 min, -36%** — needs its own leg because secondOrd is one value per run |
-| CANK (coupled) | `ANKCoupledSwitchTol: 1e-5` | `ANKADPC: True`, LS below | full 1.00 steps to rel ~1e-7; kills retheta (1.8e4 -> 1.6e3 in 20 iters, ~1 min) |
-| CSANK (2nd-order) | `ANKSecondOrdSwitchTol: 1e-6` | same LS | -> rel ~3.5e-8 (one order past CANK; ~40 min, iters get costly) |
-| NK | `nkswitchtol` 4.2e-8 (just above CSANK's floor) — **do NOT use 1e-6/1e-7 "if skipping CSANK": falsified 2026-08-07, that engages NK prematurely and stalls at Step=0.00 (see next section)** | `NKADPC: True`, `NKSubspaceSize` 200-300 | engaging at CSANK's max: 3.13 -> 0.94 in ONE 3-eval full step; record rel 3.3e-9 (175k case); **wall below ~5e-9** (lin res -> 0.8). On AR5 L0, NK at the correct rel 5e-8 merely re-attained CSANK's depth (lin res degrading 0.80→0.97) — consider `useNKSolver: False` and letting CSANK finish |
+| ANK segregated | start | `ANKUseTurbDADI: True` | flow converges to rel ~1e-5; Re̅θt residual parks (expected). Faster variant: SANK via `ANKSecondOrdSwitchTol 1e-4`, never couple (needs its own leg) |
+| CANK | `ANKCoupledSwitchTol: 1e-5` | `ANKADPC: True`, LS below | full steps to rel ~1e-7; kills the Re̅θt residual in ~20 iterations |
+| CSANK | `ANKSecondOrdSwitchTol: 1e-6` | same | to rel ~3.5e-8 (one order past CANK) |
+| NK | `nkswitchtol` ≈ 4e-8 (just above CSANK's floor) | `NKADPC: True`, `NKSubspaceSize` 200–300 | one full step at entry, then the deep-NK wall below rel ~5e-9 |
 
-Non-negotiable global options:
-- `ANKUnsteadyLSTol: 1.5`, `ANKPhysicalLSTol: 0.5` — THE fix for coupled-phase
-  step collapse (steps 0.01 -> 1.00). More aggressive (2.0/0.7) gives
-  bit-identical results = no benefit; defaults (1.0/0.2) stagnate.
-- `solutionPrecision: "double"` — single-precision restart files truncate the
-  transition front and poison every restart (~1e-7 noise = the signal at deep
-  residuals).
-- `ANKADPC`/`NKADPC: True` — the FD-colored PC is unusable for SA-GR Newton
-  phases (lin res 0.99); AD-assembled PC is cheaper and stronger.
-- `turbResScale: [1e4, 0.1, 1e-4]`, first-order transition advection.
+On large meshes NK at the correct point merely re-attains CSANK's depth;
+`useNKSolver: False` and letting CSANK finish is equally good.
 
-Fastest verified full path: freestream -> rel 1.8e-8 in ~32 min
-(28 min segregated + ~1 min CANK + 2 NK iters), `RUN/cank_both.log` after
-`RUN/seg_pure.log`. Old reference: 10 h to rel ~1e-5-equivalent (retheta 336).
+### SA-GR, sickle wing (crossflow)
 
-## Engaging NK too early is the most expensive mistake (2026-08-07)
+CANK at rel 1e-2 → CSANK at 1e-4, **no NK**, `eddyVisInfRatio 5e-7`
+(default 0.009). This is the one case where early coupling is validated; the
+"do not couple early" rule below is from the plain wing.
 
-Measured on the AR5 corrected-foil family (5 levels, 0.46M-7.42M cells,
-`11_ar5_corrected_foil/`), launched with the 09 campaign's inherited
-`nkswitchtol = 1e-6`. **Every case where NK actually engaged stalled at rel
-~1e-6**: `Step = 0.00`, CFL `----`, totalRes rising in the 12th digit, hundreds
-of wasted iterations. That is L4 (six Tu-sweep runs plus the refinement leg),
-L3, and L0. That threshold engages NK ~1.5 orders above the validated point
-(CSANK's floor, rel ~3.5e-8 — see the ladder table).
+### SA-GR, 2D optimisation (NACA 0012, L0/L1)
 
-Restarting the identical state with NK simply **disabled** (`useNKSolver: False`,
-letting CSANK finish) closed the gap immediately. Note L2 and L1 were switched
-PRE-EMPTIVELY, before NK engaged at all, so their rows show that CSANK alone
-reaches 1e-8 — not that NK had stalled on them:
+`L2Convergence 1e-8` + `nkswitchtol 1e-8` + `ANKCFLLimit 1e8` (default 1e5).
+CSANK carries every solve to 1e-8 in 230–350 iterations and NK never engages.
+With `nkswitchtol 1e-6` NK pinned at `Step 0.00` on almost every solve and
+the optimiser carried on regardless, because **pySLSQP ignores the `fail`
+flag**. Always check `fail` in the history. The only remaining `fail`s are far
+line-search trials, which the optimiser rejects anyway.
 
-| level | cells | iters after restart | wall | from -> to |
-|---|---:|---:|---:|---|
-| L4 | 459,452 | 2 | 36 s | 6.81 -> 8.00 orders |
-| L3 | 904,134 | 4 | 245 s | 6.89 -> 8.07 orders |
-| L2 | 1,783,442 | 17 | - | -> 8.04 orders |
-| L1 | 3,667,320 | 27 | - | -> 8.05 orders |
+### SA-sγ (`SA-noft2-Gamma`), tutorial wing
 
-So: **if NK pins at `Step = 0.00`, the first thing to test is that it engaged
-too early** — drive CSANK to its own floor instead, and only then hand over.
-Do not restart NK at the same threshold.
+This recipe is used by `tests/reg_tests/reg_sgamma.py`:
+- ANK → SANK early: `ANKSecondOrdSwitchTol 1e-2`.
+- **Never couple** (`ANKCoupledSwitchTol 1e-20`): CANK pins the step.
+- `ANKCFLLimit 1e8`, `ANKCFL0 5`.
+- LS `ANKUnsteadyLSTol 2.0`, `ANKPhysicalLSTol 0.8`, `ANKPhysicalLSTolTurb 0.99`.
+- `ANKADPC`/`NKADPC: True`, `NKSubspaceSize 300`, `nkswitchtol 1e-8`.
 
-Operational note: `scancel --signal=USR2` writes the state and ends the current
-*solve*, not the job. A runner that issues several staged `CFDSolver(ap)` calls
-will simply proceed to the next one; follow with a plain `scancel`.
+## Non-negotiable options (SA-GR)
 
-## Crossflow cases: the plateau can be the front, not the solver (2026-09-01)
+- `ANKUnsteadyLSTol: 1.5`, `ANKPhysicalLSTol: 0.5` (defaults 1.0 / 0.2).
+  These are the fix for coupled-phase step collapse (steps 0.01 → 1.00). The
+  defaults stagnate, and 2.0 / 0.7 gives bit-identical results.
+- `solutionPrecision: "double"`. Single-precision restarts truncate the
+  transition front and poison every restart.
+- `ANKADPC` / `NKADPC: True` (default False). The FD-coloured PC is unusable
+  for SA-GR Newton phases (lin res ~0.99).
+- `turbResScale` is left at its auto value: SA-GR `[1e4, 0.1, 1e-4]`, SA-sγ
+  `[1e4, 0.1]`.
+- First-order transition advection (`transitionFirstOrderUpwind`, default on).
+- `NKLSRelax` (default True): NK cubic line search with Armijo alpha 1e-3
+  and turb-blowup pre-limit factor 3.0. Off gives upstream 1e-2 / 2.0, where
+  NK sits at minlambda on SA-GR. Do not relax further: 1e-4, or a factor of
+  5.0, lets through steps that crash, because NK has no ρ/E physicality check.
 
-Measured on the sickle wing, paper authors' MEDIUM grid (4.40M cells,
-crossflow ON, from freestream — job 1861854, `07_sickle_wing/
-mesh_paper_authors/PURPOSE.md`): totalRes sat flat at ~178 (4.77 orders) for
-**15 h / ~5800 iterations** with every health indicator clean (Step 1.00,
-rise=0, lin res ~0.05), then fell 20× in 80 iterations, entered CSANK and
-went to 6.25 orders. The plateau was the crossflow transition front
-physically settling into position — not a solver stall. **Before killing a
-crossflow run on a flat totalRes, check whether gamma/reTheta are still
-evolving (they were); patience beat every ladder/option permutation tried
-that day (v1–v13).** Conversely, without crossflow the same mesh stalls
-genuinely at ~5.2 orders on a handful of gamma cells pinned at their bound
-(updates deleted by Algorithm-2 damping — `damp=`/`wf=` on STALLDIAG, MPI-
-reduced since 36b01134).
+## Rules and diagnostics
 
-Minor mechanism note, small measured effect: the §IV.B.3 source-dt
-deactivation (`srcDtDeactivateIters`, default 5) never reactivates on a
-*flat* floor (reactivation needs a backtrack or a residual RISE), so the
-Eq. 59 protection is off exactly where the bound-pinning happens. Keeping it
-active (`srcDtDeactivateIters 100000`, v13) was the only lever that moved the
-pinned-gamma residual — but only slightly; it did not break the floor. On
-the crossflow-ON run the restriction stayed active by itself (startup
-backtracks keep resetting the counter), so the flag changed nothing there.
+- **NK engaged too early is the most expensive mistake.** With
+  `nkswitchtol 1e-6`, every AR5 level where NK engaged stalled at rel ~1e-6
+  (`Step = 0.00`, CFL `----`, totalRes creeping up in the 12th digit).
+  Restarting with `useNKSolver: False` reached 8 orders in 2–27 iterations.
+  If NK pins at `Step = 0.00`, suspect early engagement first. Never restart
+  NK at the same threshold.
+- **Do not couple early (plain wing).** CANK at rel 1e-2 or 1e-4 stagnates,
+  even with the LS relaxations, and 1e-5 is optimal there. The sickle recipe
+  above is the exception.
+- **Do not hold CANK past ~1e-7 or CSANK past ~3.5e-8.** A front adjustment
+  kicks the residual and the phase oscillates permanently. Hand over before
+  the kick.
+- **A crossflow plateau can be the front settling, not a stall.** The sickle
+  medium grid sat flat at ~4.8 orders for 15 h with clean health indicators
+  (Step 1.00, lin res ~0.05), then dropped 20× in 80 iterations. Before
+  killing a flat crossflow run, check whether γ and Re̅θt are still
+  evolving.
+- **A genuine stall without crossflow** shows as a few γ cells pinned at their
+  bound, whose updates Algorithm-2 damping deletes (`damp=`/`wf=` on
+  STALLDIAG). `srcDtDeactivateIters` (default 5) never reactivates Eq. 59 on
+  a flat floor. Raising it to 100000 moves the pinned residual slightly but
+  does not break the floor.
+- After a deep restart the ANK CFL re-ramps from
+  `ANKCFLMin·(totalR0/totalR)^0.5`. Raise `ANKCFLMin` if the run is stranded.
+- `ANKNSubiterTurb` only acts in the turbKSP path. With `ANKUseTurbDADI: True`
+  only `nSubiterTurb` (default 3) reaches DADI.
+- `scancel --signal=USR2` ends the current *solve*, not the job. A runner with
+  several staged `CFDSolver(ap)` calls continues to the next one, so follow
+  with a plain `scancel`.
 
-## Known limits / do NOT
+## Known limits
 
-- Do NOT couple early: CANK at rel 1e-2 stagnates (with or without the LS
-  relaxations) — the front is too unconverged and the global lambda throttles
-  the whole field.
-- Do NOT hold CANK past ~1e-7 or CSANK past ~3.5e-8: a front adjustment
-  kicks the residual and the phase enters permanent oscillation (never
-  recovers its best depth). Hand over before the kick.
-- Do NOT restart deep states from single-precision files, and expect ANK CFL
-  to re-ramp after any deep restart (floor = ANKCFLMin*(totalR0/totalR)^0.5;
-  raise `ANKCFLMin` if stranded).
-- `ANKNSubiterTurb` is a DEAD KNOB when `ANKUseTurbDADI=True` (only
-  `nSubiterTurb` reaches DADI).
+- **Deep-NK wall** below rel ~5e-9: the NK linear solve saturates (lin res
+  0.8–0.99, GMRES exhausted, 60–200 evals/iteration). It depends on how
+  settled the field is: a fully settled field reached rel 6.4e-11 before
+  hitting the same wall. No option moves it (table below). It needs PC code
+  work.
+- NK has no ρ/E physicality check (ANK has one); this is what caps `NKLSRelax`.
+- **Memory is driven by ILU fill, not the NK subspace.** At 7.42M cells on one
+  node, ILU(1) fits at 3 GB/rank, while ILU(2) and ILU(3) OOM during CANK,
+  before NK engages. More ranks means more total memory (per-rank PC slices
+  and halos), so scale ranks with nodes.
 
-## Open problem
+## Falsified levers
 
-Deep endgame below rel ~1e-8: the NK linear solve saturates (lin res
-0.8-0.99, GMRES 200-300 exhausted, 60-200 evals/iter) regardless of
-engagement point, JacobianLag, or subspace size. Root causes and code items
-(per-node Alg. 2 damping, source-dt reactivation inside NK, stronger PC) in
-`SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §8 ("Open code items"). Deepest state for PC experiments:
-`best_strategy/restarts/r3_deepest_record_rel3.3e-9_dp.cgns`. Note the
-wall's depth scales with how settled the field is (from the fully-settled
-40k field, NK reached rel 6.4e-11 before the same wall — nk_colscale_test).
+| Lever | Result |
+|---|---|
+| `NKUseEW False` + `NKLinearSolveTol 0.3` | GMRES still returns 0.998. The PC, not EW, starves deep NK |
+| `ANKPCILUFill` / `NKPCILUFill` 3 | Worse. NK stalls (lin res 0.996) where ILU(2) gives 0.76. Keep 2 (ILU(1): slower, no stall) |
+| `NKJacobianLag 5` | No effect. PC quality, not staleness, is the limit |
+| LS 2.0 / 0.7 vs 1.5 / 0.5 (SA-GR) | Bit-identical |
+| Early NK (`nkswitchtol` 1e-5 / 1e-6) | Stalls production runs (see rules) |
+| Bundle of stronger-PC NK knobs at once | First step blew the transition residual up 125×. Change one knob at a time |
+| `transitionRowVolScale` (Eq. 58 S_r) | Stalls the NK linear solve. Keep off |
+| `transitionResidualAutoscale` (Eq. 58 S_a) | Marginal: progresses but noisier. Keep off |
+| `ANKCFLLimit` as a lever on the plain wing | Not one: collapses coincide with front adjustments, not CFL growth |
 
-## vs the old 40k reference (same wing, old binary, pure segregated SANK)
+Untried, no memory cost: `NKOuterPreconIts` / `NKInnerPreconIts`.
 
-`RUN/../Atent_1_Converded/out.txt`: 5284 iters / 10.06 h -> rho 1.06e-6,
-retheta res 336. Milestones: retheta 1.0e4 @ 52 min, 4.6e3 @ 1.8 h, 1.9e3 @
-3.7 h, 638 @ 7.7 h, 336 @ 10 h. The ladder crosses retheta 336 at ~25 min
-total and reaches retheta ~0.1 (3000x deeper) by ~1.1 h. Note the reference
-is deeper on rho (1.06e-6 vs ~5e-4 at that point) — segregated SANK grinds
-the flow forever once turbulence settles; the ladder converges everything
-together and passes that rho once NK runs to target.
+## ADflow vs the paper's solver (P&Z §IV)
 
-## Options analysis — no-run exploration (2026-07-15, from logs + `ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md`)
-
-- `ANKCFLLimit 1e6`: not a lever. Segregated/CSANK ran AT the limit with
-  full steps and lin res ~0.05; every step collapse in the logs coincides
-  with a transition-front adjustment, not with CFL growth. Lowering it would
-  only slow the good phases.
-- `nSubiterTurb` (default 3): the solvers doc recommends 3-7 for RANS ANK.
-  The only datapoint (seg_dadi15_sub8, =8, from a plateau) helped transition
-  mildly. Plausible shortcut for the 28-min segregated leg; UNTESTED in the
-  ladder — try 5-7 if the seg leg ever matters.
-- `ANKLinearSolveTol 0.05`: healthy everywhere in the logs (0.04-0.07);
-  cank_tight (0.005) already shown not to pay. Leave.
-- `NKUseEW True` + weak deep PC = the 100-200-eval stall iterations:
-  Eisenstat-Walker demands tighter linear tolerance as convergence improves,
-  and with the PC saturating (lin res 0.8) GMRES just burns the full
-  subspace. Analysis-based mitigation: `NKUseEW False` + `NKLinearSolveTol 0.3`
-  caps the per-iteration waste (accepts poorer Newton steps, but each costs
-  ~5x less). **TESTED 2026-08-07 — FALSIFIED.** On the AR5 corrected-foil L0
-  (7.42M cells, 64 ranks, at rel 2.5e-8:
-  `11_ar5_corrected_foil/results_refinement/L0`, job 1812053), with EW OFF and
-  the linear tolerance pinned at a slack 0.3, GMRES still returns **0.998** —
-  it cannot reach even that loose target. So EW is not what starves the deep
-  NK iterations; the preconditioner alone is. This kills the last
-  option-level lever: the deep wall is only addressable by the code items in
-  `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §8 ("Open code items"). Same run confirmed the wall is not an
-  engagement-point artefact either — NK entered at the correct rel 5e-8 (not
-  1e-6) and merely re-attained the depth CSANK had already reached, with the
-  linear residual DEGRADING 0.80 -> 0.97 as it went.
-- `ANKPCUpdateTol 0.5` / NKJacobianLag: PC freshness. JacLag 5 tested — no
-  effect on the deep wall; the PC's *quality*, not staleness, is the limit.
-- **`ANKPCILUFill` / `NKPCILUFill` 1 vs 2 vs 3: TESTED 2026-08-12 — keep the
-  default 2; ILU(3) is WORSE, not better.** Measured on the AR5 corrected-foil
-  L0 (7.42M cells, 64 ranks, both options set together;
-  `11_ar5_corrected_foil/results_ilu/PURPOSE.md`). In ANK/CANK/CSANK the fill
-  level is irrelevant — mean linear residual 0.044–0.047 for all three, a 2–5 %
-  spread against a 44 % memory spread. In NK, ILU(3) **stalls**: mean linear
-  residual 0.996 (GMRES achieving nothing), step 0.00, Re_theta residual frozen
-  at its starting value, while ILU(2) gives 0.762 and drives Re_theta 23.9 -> 2.8.
-  ILU(1) costs ~18 % more iterations but does not stall (0.820). This is the
-  classic high-level-ILU failure — more fill, more density, less numerical
-  stability — and it contradicts `ADFLOW_BASE/ADFLOW_06_official_solvers_doc.md`, which
-  recommends raising `NKPCILUFill` to strengthen the PC. On SA-GR it does not.
-  **The deep-NK wall is therefore not the fill level either**: all three variants
-  sit at linear residual 0.76–1.00. With Eisenstat-Walker already falsified, no
-  option-level lever remains; the untried no-memory-cost knobs are
-  `NKOuterPreconIts` / `NKInnerPreconIts`.
-- **Memory: the ILU fill, not the NK subspace, is what forces extra nodes.**
-  Same study: at 7.42M cells on ONE node, ILU(1) survives at 3.03 GB/rank while
-  ILU(2) and ILU(3) both OOM **during CANK — before NK ever engages**, so the
-  Krylov subspace cannot be the driver. Arithmetic agrees: for the 8-variable
-  SA-GR state at 13.7M cells the coupled Jacobian is ~49 GB and ILU(2) on it
-  ~150–250 GB, against ~53 GB for a 60-vector NK subspace. Corollary: **raising
-  the rank count raises total memory** (each rank carries its own PC slice plus
-  duplicated halos) — 128 ranks on 2 nodes OOM'd a case that ran at 128 ranks on
-  4 nodes. Scale ranks with nodes, not within them.
-- Verdict: no remaining option is likely to move the deep-NK wall; the real
-  fixes are the code items in `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §8 ("Open code items").
-
-## Index of everything tested (read the log only if you need the details)
-
-All in `RUN/` (= `03_convergence_strategy/3d_plain_wing/_old/campaign_2026-07-14_to_16/long_overnight/`) unless
-noted; `RUN/DECISIONS.md` has the narrative and
-`claude_attempt/TESTS_AND_CONCLUSIONS.md` the same table in Portuguese
-with more detail.
-
-| Test (log) | Question | Answer |
+| Aspect | Paper (Newton–Krylov–Schur) | ADflow on this branch |
 |---|---|---|
-| archive/ab_matrix/* (7 variants + RESULTS.md) | which solver knobs matter from a plateau | ADPC >> FD PC; tight lin tol & loose LS alone: no effect |
-| archive/ab_matrix seg_dadi5/15/sub8 | does more DADI fix segregated retheta stall | no; ANKNSubiterTurb dead knob; seg-from-plateau degrades |
-| archive/long_overnight_logs/nk1em6*.log | CSANK@1e-5 bridge; deep restarts | CSANK thrash; restarts stranded at CFL floor + SP poison |
-| nk_now.log | NK straight from deep state | works to rel 1e-6 then 200-eval wall |
-| archive/long_overnight_logs/nk_pc1.log | bundle of stronger-PC NK knobs | toxic (first step blew transition 125x) — one knob at a time |
-| full_dp.log | continuous run, couple at 1e-2, DP | CANK oscillates below rel ~1e-5; DP confirmed |
-| seg1em4.log | couple at 1e-4 (no LS) | retheta burst great, rho stagnates (pre-LS) |
-| seg_pure.log | pure segregated, never couple | flow converges, retheta parks at 2e4 — segregated can't finish |
-| **cank_both.log** | LS 1.5/0.5 + coupled restart from seg state | **breakthrough: full steps, NK quadratic to rel 1.8e-8 in ~3 min** |
-| endgame_1em6.log | NK grind below 1e-8 | wall: lin res 0.8, 0.5 order in 90 min (deepest 3.9e-9) |
-| testA_cank1em8.log | hold CANK to 1e-8 | no — reliable to ~1.4e-7 then permanent oscillation |
-| testB_early1em2.log | couple at 1e-2 WITH LS | still fails — 5 orders behind at equal wall time |
-| deep_final.log / deep_final2.log | one-run ladder; NK JacLag5/GMRES300 | ladder works; deep-NK wall unchanged by those knobs |
-| csank_1em6.log | CSANK@1e-6 as deep workhorse | best coupled depth: rel 3.5e-8, then front-kick fallback to CANK |
-| csank_uls2.log | LS 2.0/0.7 vs 1.5/0.5 | bit-identical — LS is not the deep limiter; keep 1.5/0.5 |
-| nk_after_csank.log | NK engaged at CSANK's max depth (rel 4.2e-8) | best deep engagement ever: 3.13 -> 0.94 in ONE 3-eval full step; record depth rel 3.3e-9; same PC wall below ~5e-9 |
-| cank1em4_v2.log | couple at 1e-4 WITH LS (user request, 07-16) | loses decisively: at equal wall time (~38 min) it sits at rel 1.25e-5 / rho 0.73 vs the 1e-5 route's rel 7e-7 / rho 1.6e-3 — coupled global-lambda does the flow 10x slower than segregated; **1e-5 coupling confirmed optimal** |
-| sank1em4.log | SANK (2nd-order segregated) from rel ~1e-4 | wins the segregated leg: rel 1e-5 in 18.0 min vs 28.3 (ANK); early ANK<->SANK flip-flop costs ~3 min |
-| polish_nk.log | segregated polish of the record state + NK re-engage | restart transient (first SANK step) kicks totalRes 0.29 -> 438 — not worth it via restart (would likely work in-run) |
-| sank_ladder.log | CANK/CSANK/NK from the SANK state | CANK full steps, no transient; partial validation (stopped at rel 1.8e-7 for reorganization, no anomalies) |
-| archive/nk_colscale_test/, totalr0_check/, plateau_restart/ | NK column scaling; totalR0 sanity | scaling fixed NK lin solves; totalR0 consistent (8.91e7). Also: NK from the settled 40k field reached rel 6.4e-11 before the same wall — wall depth scales with how settled the underlying field is |
+| Globalisation | Fully coupled approximate Newton from iteration 1 | Segregated ANK (DADI or turbKSP) → coupled CANK at `ANKCoupledSwitchTol` |
+| Endgame | Inexact Newton at rel ~1e-5, to machine zero | Matrix-free NK at `nkswitchtol`; CSANK as an in-ANK second-order mode |
+| Linear PC | Approximate Schur | ILU/ASM, FD-coloured or AD-assembled (`ANKADPC`/`NKADPC`) |
+| Step control | Per-node bounds-triggered damping (Alg. 2) + backtracking | Global λ line search. Alg. 2 per-node damping on γ/Re̅θt in DADI and NK (`applyNKAlgorithm2Damping`); no ρ/E equivalent |
+| Source stiffness | Eq. 59 Δt restriction, off after 5 clean Newton steps, back on after a backtrack | Same (`transitionSrcDtRestrict`, `srcDtDeactivateIters`). Additive in DADI; MAX form in turbKSP/CANK; additive diagonal in NK (`applyNKSrcDtDiagonal`, preconditioner only, not the true residual) |
+| Scaling | Eq. 58 row + column + auto | `turbResScale` rows + NK/turbKSP column scaling. Eq. 58 S_r/S_a exist but stay off |
+| Convection of ν̃/γ/Re̅θt | First-order upwind | Same |
+
+The iteration gap is structural: global λ instead of per-node damping, and a
+weaker PC. One paper iteration is one well-solved Newton step, so compare wall
+time rather than outer iteration counts.

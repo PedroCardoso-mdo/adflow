@@ -9,8 +9,7 @@ state on a real 3D wing rather than the small ANK-only tutorial-wing case.
 2026-07-23: switched BACK to the tutorial-wing grid
 (`mdo_tutorial_rans_scalar_jst.cgns`, the standard ADflow test asset already
 in `input_files/` -- no separate copy needed, unlike the AR5 files). Reason:
-the AR5 case never got past a chronic quasi-stall (`Step` pinned ~0.01,
-`docs/current-task.md`'s "Step 3 (AR5) CS check fails hard") no matter the
+the AR5 case never got past a chronic quasi-stall (`Step` pinned ~0.01) no matter the
 iteration budget. The SAME tutorial-wing mesh, run with the SA-GR model at
 Mach=0.15 (down from the mesh's stock 0.8 -- see run_sagr.py's Reynolds-
 number note in

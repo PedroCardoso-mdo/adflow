@@ -1,482 +1,289 @@
-# ADflow Architecture, Internals & Transition Options
+# Code reference: transition models on this branch
 
-> What Claude needs to know about ADflow internals, user constraints, confirmed
-> facts, and every runtime option added for the SA-γ-Re̅θt transition model.
-> Physics equations live in the full paper, [`SA_GAMMA_RETHETHA_BASE/SAGR_01_paper_piotrowski_zingg_2020.md`](../SA_GAMMA_RETHETHA_BASE/SAGR_01_paper_piotrowski_zingg_2020.md);
-> non-dim conventions in [`ADFLOW_BASE/ADFLOW_08_nondimensionalization.md`](../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md); adjoint/AD
-> touchpoints in [`ADFLOW_BASE/ADFLOW_09_adjoint_trace.md`](../ADFLOW_BASE/ADFLOW_09_adjoint_trace.md).
+The single reference for how the transition code is organised and what every
+branch-specific option does. Physics equations are in
+[`SAGR_01_paper_piotrowski_zingg_2020.md`](../SA_GAMMA_RETHETHA_BASE/SAGR_01_paper_piotrowski_zingg_2020.md)
+(SA-GR) and [`docs/papers/`](../papers/) (SA-BCM). The non-dimensional
+conventions are in
+[`ADFLOW_08_nondimensionalization.md`](../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md),
+and the AD wiring is in
+[`ADFLOW_09_adjoint_trace.md`](../ADFLOW_BASE/ADFLOW_09_adjoint_trace.md).
+Where this file and the code disagree, the code is right.
 
----
+## 1. Models
 
-# Part 1 — Architecture & Internals
+| Model  | Selected by                                   | Turbulent state        | Code                          |
+|--------|-----------------------------------------------|------------------------|-------------------------------|
+| SA-GR  | `turbulenceModel="SA-noft2-Gamma-Retheta"`    | ν̃, γ, Re̅θt (nwt = 3)   | `src/turbulence/saGammaRetheta.F90` |
+| SA-sγ  | `turbulenceModel="SA-noft2-Gamma"`            | ν̃, γ (nwt = 2)         | `src/turbulence/saGamma.F90`  |
+| SA-BCM | `use_SABCM=True` on `turbulenceModel="SA"`    | ν̃ (nwt = 1)            | `use_SABCM` block in `src/turbulence/sa.F90` |
 
-## 1. Solver Architecture
+- **Enum ids.** The enums are `spalartallmarasnoft2gammaretheta` and
+  `spalartallmarasnoft2gamma` (id 9) in `src/modules/constants.F90`. SA-BCM
+  has no enum of its own.
+- **Transition as a modifier.** In SA-GR and SA-sγ, γ multiplies SA
+  production only (P&Z Eq. 41); the SA equation itself is ADflow's.
+- **Additive wiring.** Every code path that is not specific to Re̅θt accepts
+  both enums (`turbModel == …gammaretheta .or. turbModel == …gamma`). The
+  paths that exist only for Re̅θt stay GR-only: Algorithm 2 damping, `cs(3)`,
+  the Re̅θt monitor/output/restart names, and `frozenTransition`.
 
-### ANK (Approximate Newton-Krylov) — startup solver
-- **Coupled mode**: flow + turbulence (all 8 vars) in one PETSc GMRES system
-  - Matrix-free Jv captures γ↔ν̃ coupling through residual evaluation
-  - Preconditioner: approximate first-order Jacobian (block-ILU)
-  - CFL ramps from ANKCFL0 to ANKCFLLimit
-- **Decoupled mode**: flow solved first, then turbulence separately
-  - Turbulence sub-solve options:
-    - **DADI** (DD-ADI block solver): calls `saGammaReThetaSolve`. Coupling set by
-      `TurbDADICoupled` (see Part 2):
-      - `"full"`: 3×3 coupled block (default)
-      - `"transition"`: SA scalar solve + γ-Re̅θt 2×2 block
-      - `"decoupled"`: 3 independent scalar solves
-    - **Turb-ANK**: separate ANK for turbulence equations only
-
-### NK (Newton-Krylov) — terminal solver
-- Fully coupled: matrix-free Jv with exact AD Jacobian
-- Cubic line search, Eisenstat-Walker tolerance
-- Activated when residual drops below NKSwitchTol
-
-### Multigrid (RK/D3ADI smoother) — NOT USED by this user
-- Skip T1.6 (multigrid restriction)
-
----
-
-## 2. State-Vector Layout
+### State vector
 
 ```
-w(i,j,k, 1)   = ρ
-w(i,j,k, 2)   = ρu
-w(i,j,k, 3)   = ρv
-w(i,j,k, 4)   = ρw
-w(i,j,k, 5)   = ρE
-w(i,j,k, itu1) = ρν̃  (SA working variable)
-w(i,j,k, itu2) = γ   (intermittency) — NEW
-w(i,j,k, itu3) = Re̅θt (transition onset Re) — NEW
+w(:,:,:,1:5)   ρ, ρu, ρv, ρw, ρE
+w(:,:,:,itu1)  ν̃     (SA working variable)
+w(:,:,:,itu2)  γ     (SA-GR, SA-sγ)
+w(:,:,:,itu3)  Re̅θt  (SA-GR only)
 ```
 
-All stored as conservative (ρ·φ). Generic nVar extension handles sizing.
+- **Units.** All values are p-ρ non-dimensional: velocity scales with M·√γ,
+  and `rlv`/`rev` are ratios to μ∞ (CLAUDE.md rule 11).
+- **Freestream values.** `initializeFlow` sets γ∞ = 1 and Re̅θt∞ =
+  `reThetaTCorrelation(Tu∞, 0)`.
+- **Interior values.** The interior field starts at γ = 0.02, which keeps SA
+  production suppressed until onset.
+- **Restarts without transition fields.** `transitionRestartAlgebraicInit`
+  instead maps a converged ν̃ field to γ through the SA-BCM term2
+  (`initTransitionAlgebraicWarmStart`).
 
-> Values are non-dimensional. ADflow uses **pressure–density (p-ρ) scaling**, so
-> velocity normalizes to M·√γ (not 1) and viscosities are stored as ratios to
-> μ_∞. See [`ADFLOW_BASE/ADFLOW_08_nondimensionalization.md`](../ADFLOW_BASE/ADFLOW_08_nondimensionalization.md).
-
----
-
-## 3. Key Module Locations
+### Where things live
 
 | What | Where |
-|------|-------|
-| Turbulence model enum | `src/modules/constants.F90:128` |
-| Model constants (ca1,ca2,...) | `src/modules/paramTurb.F90:32-52` |
-| Input parameters | `src/modules/inputParam.F90` (transition options start ~L327) |
-| Block data (transitionDebug array) | `src/modules/block.F90:662`, `blockPointers.F90:156` |
-| Main transition model | `src/turbulence/saGammaRetheta.F90` (~2800 lines) |
-| Smooth helper functions (correlations + `smoothMinMax`) | `src/turbulence/turbUtils.F90:~2290-2438` (`reThetaTCorrelation` 2290, `flengthCorrelation` 2355, `rethetacCorrelation` 2380, `smoothMinMax` 2397) |
-| Initialization | `src/initFlow/initializeFlow.F90:140-146, 2229-2241` |
-| Wall/farfield BCs | `src/turbulence/turbBCRoutines.F90:438-465` (farfield: padrão ADflow, sem caso especial), `888-960` (wall, caso SA-GR) |
-| Dispatch (turbAPI) | `src/turbulence/turbAPI.F90:49,74` |
-| ANK/NK variable bounds | `src/NKSolver/NKSolvers.F90` (`physicalityCheckANKTurb` ~4316, `applyNKAlgorithm2Damping` ~1654) |
-| Preconditioner | `src/NKSolver/blockette.F90:815-816` |
-| AD forward | `src/adjoint/outputForward/saGammaRetheta_d.f90` |
-| AD reverse | `src/adjoint/outputReverse/saGammaRetheta_b.f90` |
-| AD reverse fast | `src/adjoint/outputReverseFast/saGammaRetheta_fast_b.f90` |
-
----
-
-## 4. Key Code Patterns
-
-### Source-term assembly
-In `saGammaRetheta.F90`, subroutine `saGammaReTheta_block(resOnly)` (~line 70):
-- `resOnly = .true.`: compute residual only, don't update w
-- `resOnly = .false.`: compute residual + run DADI solver + update w
-
-Source routine (subroutine `Source`, ~line 212) computes:
-1. SA terms (ν̃): term1, term2_prod, term2_dest → with γ multiplier on production
-2. γ terms: P_γ, E_γ via F_onset, F_turb, vorticity
-3. Re̅θt terms: P_θt via timeScale, F_θt, Re_θt correlation
-
-### DADI solver
-`saGammaReThetaSolve` (~lines 1729-2405):
-- 3×3 block DD-ADI in i,j,k directions
-- Uses qq(i,j,k,row,col) matrix from Source routine
-- Solution damping (Algorithm 2, per-variable exponential back-off with
-  warned last-resort clip) in the update section after the tri-diagonal
-  solves (search `transitionDampMaxIter`)
-- Row/column scaling using turbResScale (~lines 1827-1831)
-
-### Variable references
-- `rlv(i,j,k)` = μ/μ_∞ (laminar viscosity ratio, dimensionless)
-- `rev(i,j,k)` = μ_t/μ_∞ (eddy viscosity ratio, dimensionless)
-- `d2Wall(i,j,k)` = wall distance (pre-computed)
-- `si/sj/sk(i,j,k,1:3)` = face normals
-- `vol(i,j,k)` = cell volume
-
----
-
-## 5. User Constraints
-
-- "No in-place modifications to SA model" — transition is a modifier, not replacement
-- "All coupling strategies selectable at runtime, test all, choose best"
-- "SST exists → 2-eq turb infrastructure exists → mirror it"
-- "ANK must work (more robust for complex geometries)"
-- "Don't care about multigrid"
-- Crossflow transition (D_scf, P&Z Eqs. 15-26): the source code stays live in
-  residual/adjoint work, but **`transitionCrossflow` defaults to OFF since
-  2026-07-24** (commit `a34441c9`): with it ON, the tutorial-wing mesh at
-  M=0.15 stalls at ~3e-2 and never reaches deep convergence — reproduced from
-  the original crossflow commit through HEAD; crossflow was only ever
-  validated on AR5-type cases. Do not flip it back on without explicit user
-  instruction (CLAUDE.md rule 3).
-- "Adjoint: freeze γ-Re̅θt linearization at this stage"
-- Both sLM2015 and LM2015 F_turb forms must be runtime-selectable
-
----
-
-## 6. Confirmed Answers to Open Questions
-
-| Question | Answer |
-|----------|--------|
-| State-vector layout | itu1=ν̃, itu2=γ, itu3=Re̅θt, generic nVar extension |
-| SST pattern | SST uses itu1=k, itu2=ω; our model follows same pattern |
-| ANK modes | Coupled OR decoupled; turb solved with DADI or turb-ANK |
-| Wall distance | `d2Wall(i,j,k)` pre-computed, available everywhere |
-| Metrics | `si/sj/sk(i,j,k,1:3)`, `vol(i,j,k)` in blockPointers |
-| Residual storage | `scratch(i,j,k,idvt+n)` → scaled to `dw(i,j,k,itun)` |
-| LAPACK | Available (linked in build system) |
-| Tu_∞ | `turbIntensityInf` exists in inputParam.F90 (~L702) |
-| Wall BC for γ | zero-gradient (Neumann), Re̅θt=zero-gradient — `turbBCRoutines.F90:931` (`bmt=-1`; commit dc1950ef) |
-| Roughness | Implemented via crossflow D_scf — `transitionRoughnessHeight` (default 3.3e-6 m) |
-
----
-
-# Part 2 — Transition Options Reference
-
-These options do not exist in upstream ADflow. All were added on this branch.
-
-## Python Options
-
-### New transition-specific options
-
-| Option | Type | Default | What it does |
-|---|---|---|---|
-| `"transitionFirstOrderUpwind"` | bool | `True` | First-order upwind for γ and Re̅θt convection. More dissipative but more robust. |
-| `"transitionUseApproxSA"` | bool | `True` | First-order (approximate) SA convection alongside the transition equations (see `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md`). Wired in `.pyf` (L1120). |
-| *(nota 2026-09-22)* | — | — | **As três opções seguintes são flags de investigação do SA-G-s (`22_sa_g_model`) montadas sobre o GR** (estado a 3 variáveis, R̅eθt continua a ser resolvido). O modelo de uma equação passa a ser um modelo de turbulência próprio, SA-sγ (nwt = 2, `saGamma.F90`), em desenho em `~/Desktop/Run/MDO_PhD/Transition/sa_sgamma/`. Quando esse estiver validado, estas flags saem de `saGammaRetheta.F90`, das opções e do Tapenade (GR volta a P&Z puro + crossflow); até lá ficam para reproduzir os runs do 22 e não se constrói nada novo sobre elas. |
-| `"transitionBCMGamma"` | bool | `False` | **SA-BCM intermittency with a transported threshold** (2026-09-19, `e84475f9`). The SA-production multiplier becomes the algebraic Cakmakcioglu (2020) γ_BC in the tanh/KS-smoothed form of `sa.F90`'s SA-BCM (Term1 = (Re_θ − Re_θc)/(Re_θc·`SABCM_Const1`), Re_θ = ρ|ω|d²/(2.193 μ), Term2 = ν̃f_v1/(`SABCM_Const2`·ν), γ = ½(1+tanh((KSmax(Term1,0)+Term2−`SABCM_S0_tanh`)/`SABCM_fsmooth`))), but with **Re_θc = Re_θc^BCM(Tu) · Re̅θt / Re_θt(Tu, λ_θ=0)** — the transported, history-carrying Langtry–Menter threshold normalised by its zero-pressure-gradient value. At ZPG the ratio is 1 ⇒ exactly SA-BCM; under adverse (favourable) pressure gradient the threshold drops (rises) with the lag the Re̅θt equation gives SA-γ-Re̅θt, instead of a local sensor (the local λ_θ sensors tried on `sa-bcm-pg` cannot fit both mild and strong gradients — `adflow_sabcm/docs/studies/22_bcm_pressure_gradient`). Tu is `turbIntensityInf` (fraction→percent), NOT `SABCM_TU`; the other `SABCM_*` constants are reused. ft2 is dropped as in SA-BCM. The γ equation keeps being solved (diagnostic only; `gammaforsa` in the volume output is γ_BC, `intermittency` is the P&Z γ). DADI/PC Jacobian: qq(1,1) gains ∂γ_BC/∂ν̃, qq(1,2)=0, **qq(1,3) = −∂S_ν/∂Re̅θt ≠ 0** (A31=A32=0 and A12=0 ⇒ still block-triangular, `computeSrcLambda` unchanged). Tapenade regenerated (saGammaRetheta `_d/_b/_fast_b` only). Guard: requires this turbulence model and excludes `use_SABCM`. Runner: `08_optimization/2d_tu05_L0/run_trim.py --bcmGamma`. |
-| `"transitionLocalReTheta"` | bool | `False` | **One-equation SA-γ variant** (2026-09-20). The γ-equation onset (Re_θc, F_length correlations) uses the *local* Langtry–Menter Re_θt(Tu∞, λ_θL) instead of the transported Re̅θt, with Menter's (2015 one-equation model) wall-distance-based λ_θL = −7.57e-3 (∂v/∂n) d²/ν + 0.0128, written through BL continuity as +7.57e-3 (dU/ds) d²/ν + 0.0128 (the code's `dUds`, no wall normal needed), clamped to ±0.1 (`rsaGRlambdaTheta*`, smoothMinMax). Everything else of the P&Z γ equation is unchanged; the Re̅θt equation keeps being solved (diagnostic only; `rethetac` in the volume output is the local threshold). No upstream pressure-gradient history in the onset — the point of the test. DADI/PC: qq(2,3)=A(2,3)=0. Tapenade regenerated (saGammaRetheta `_d/_b/_fast_b`, turbUtils `_b/_fast_b`). Guard: GR model only. Runners: `run_trim.py --opt transitionLocalReTheta=True`, `run_case_paper.py --opt …`. |
-| `"transitionReThetaInert"` | bool | `False` | With `transitionLocalReTheta`: drop the Re̅θt source entirely (`scratch(idvt+2)=0`, `qq(3,3)=A(3,3)=0`) — the field stays at its freestream value, trivially converged, so the slow Re̅θt equation costs nothing in the coupled solves (state layout unchanged). Guard: requires `transitionLocalReTheta`. Convergence-structure study: `22_sa_g_model/01_convergence_strategy`. |
-| `"transitionSrcDtRestrict"` | bool | `True` | Enable source-term dt restriction (P&Z Eq. 59). Caps λ_source × dt ≤ 0.9. |
-| `"transitionSrcDtLimit"` | float | `0.9` | Threshold for source-term dt restriction (λ_source × dt ≤ this value). |
-| `"srcDtDeactivateIters"` | int | `5` | Deactivate source-dt restriction after N consecutive clean (no-backtrack) turbKSP iterations **in the second-order regime** (`totalR ≤ ANKSecondOrdSwitchTol·totalR0`, the inexact-Newton analog of P&Z §IV.B.3). Counter resets when backtracking is triggered (even if it succeeds) or when the residual rises back above the switch tolerance. With the default `ANKSecondOrdSwitchTol = 1e-16` the regime is never entered ⇒ restriction never deactivates; set it to ~`1e-5` (paper's phase-switch value) to enable the acceleration. `0` = restriction inactive in turbKSP from the start (**not** "never deactivate"). DADI ignores this option (restriction always on there). Semantics fixed 2026-07-07 (D-A2-3). |
-| `"TurbDADICoupled"` | str | `"full"` | DADI coupling mode: `"decoupled"` (3 scalar solves), `"transition"` (SA alone + γ-Re̅θt 2×2), `"full"` (3×3 block). |
-| `"turbResScale"` | list/None | `None` (auto) | Residual scaling per equation. Auto-set to **`[10000.0, 0.1, 1.0e-4]`** for this model (`pyADflow.py:~6834` — ≈1/state-magnitude per equation, P&Z §IV.1 row scaling; matches the campaign-validated value in `CORE_02_convergence_strategy.md`). Override only to tune convergence balance. |
-| `"transitionDampTheta"` | float | `0.99` | Back-off factor for per-variable γ/Re̅θt update damping in DD-ADI (P&Z Algorithm 2). |
-| `"transitionDampMaxIter"` | int | `10000` | Safety cap on the back-off loop (unbounded in the paper); 10000 ⇒ effectively unbounded (0.99¹⁰⁰⁰⁰ ≈ 0). A hard clip to the bounds remains as **last-resort fallback only**: it can only fire after the loop exhausts, which requires the previous state to already be out of bounds; when it fires, a warning with cell counts prints advising to raise this option or investigate the upstream bound violation. Changed from 40 on 2026-07-07 (D-A2-5). |
-| `"transitionCrossflow"` | bool | **`False`** | Helicity-based crossflow source D_scf (P&Z Eq. 15-26) on the Re̅θt equation. **Default flipped OFF 2026-07-24** (`a34441c9`): ON it stalls the tutorial-wing case (~3e-2 plateau); only ever validated on AR5-type cases. D_scf≡0 in 2D. ⚠️ The **Fortran default** in `inputParam.F90` is still `.true.` — Python always pushes `False`, but any Fortran-only path that never receives a Python `setOption` runs crossflow ON. |
-| `"frozenTransition"` | bool | `False` | **Adjoint-only.** Freeze γ/Re̅θt in the adjoint: transition seeds zeroed and their Jacobian rows made identity in `master_state_b` (matvec), transition `wbar` components zeroed in `master_b` (RHS + spatial products) ⇒ adjoint solves flow+SA with transition states as constants; gradients neglect transition sensitivities. Primal untouched. Only active for `turbModel==SA-noft2-Gamma-Retheta` (unlike `frozenTurbulence`, which demotes to NS and freezes SA too). Hand-written adjoint code only, no Tapenade regen. Added 2026-08-25 (`4f926697`) for the frozen-transition-adjoint opt study (`08_optimization/2d_frozentrans_adjoint`). |
-| `"transitionRoughnessHeight"` | float | `3.3e-6` | Surface roughness height h for the crossflow correlation (Eq. 17), as a physical length in mesh units (metres). 3.3e-6 = 3.3 µm (smooth surface). |
-| `"transitionRefLength"` | float | `-1.0` (auto) | Reference length l [mesh units] in the vorticity limiter (P&Z Eqs. 52-53; paper uses root chord — the physical cap scales as 1/√l, a calibration scale, NOT a unit conversion, so the "drop Re" rule of `ADFLOW_BASE/ADFLOW_08_nondimensionalization.md` does not apply). Negative = auto: uses the AeroProblem `chordRef` (via `inputPhysics%lengthRef`, refreshed at every `setAeroProblem`). Set explicitly to decouple from chordRef; `1.0` recovers the pre-option behavior (l = 1 m). Added 2026-07-07 to close finding D1. |
-| `"transitionNK"` | bool | `True` | Master switch for the NK/ANK/turbKSP column-scaling + Eq. 59 bundle (incl. NK reactivation-on-backtrack, Algorithm 2 in NK) — 2026-07-16. Default preserves existing behavior; still additionally gated on `turbModel==SA-Gamma-Retheta` everywhere. |
-| `"transitionNKAutoDisableTol"` | float | `0.0` | One-way latch, NK phase only: once the Newton residual norm drops below this fraction of `totalR0` (the **freestream** reference residual from `getFreeStreamResidual`, `solvers.F90:972` — NOT the restart-point residual; e.g. ~8.91e7 on `3D_Plain_Wing`), the `transitionNK` bundle (column scaling, Algorithm 2 damping, Eq. 59 reactivation) is turned off for the rest of the NK phase — i.e. "fall back to native NK." Default `0.0` never trips (unchanged behavior). **Tested 2026-07-18, `nk_switch_crossing_test`, and found unsafe at any point in NK**: tripping it either at NK engagement or ~10 outer iterations later (deep past engagement, residual already down 2+ orders) produces the identical catastrophic blowup (nuturb res → O(1e3), totalRes → O(1e9)) both times. Column scaling is load-bearing for the *entire* NK phase for this model — the 13-orders-of-magnitude state spread (ν̃, γ, Re̅θt) doesn't shrink with the residual, so "native NK" is never safe to fall back to. Kept as a diagnostic knob, not a recommended option. |
-| `"transitionRowVolScale"` | bool | `False` | Eq. 58 (P&Z) geometric row-scaling factor on NK's residual rows (`volRef**(5/3)` flow, `volRef**(2/3)` turb, on top of existing `turbResScale`). **Off by default — genuinely tested 2026-07-16 and found to stall NK's linear solve** (lin res pinned ~1.0) on the 3D_Plain_Wing case; see `SA_GAMMA_RETHETHA_BASE/SAGR_02_adflow_vs_paper_solver.md` §5. Not recommended until the volRef-vs-paper's-J correspondence is revisited. |
-| `"transitionNKStallStepTol"` / `"transitionNKStallCountTrigger"` / `"transitionNKStallRtolCap"` | float / int / float | `0.1` / `3` / `1.0` | Attempted NK stall escape (`nk_switch_crossing_test`, 2026-07-18/19) — **NOT validated, do not rely on it.** Motivation: `getEWTol` (`NKSolvers.F90:2174`, standard PETSc EW) computes the Krylov `rtol` as `(norm/oldNorm)^1.618` — when the Newton step is pinned (`Step`~0), the ratio→1 and `rtol` rises to its 0.8 cap, i.e. EW picks the *loosest* linear solve exactly when stalled. This option forces `rtol` down to `transitionNKStallRtolCap` once `Step` has been below `transitionNKStallStepTol` for `transitionNKStallCountTrigger` consecutive NK iterations. `transitionNKStallRtolCap=1.0` (default) disables this (never caps) — pure diagnostic overhead only, no behavior change, safe to leave on any run. **One run with the cap at 0.05 pushed further than one earlier baseline run** (baseline froze at scaledTotalRes~1.7473e-3 for 300+ iterations and drifted up to ~1.79e-3; the capped run reached 1.4772e-3 by iter 308, later 9.4e-4 by iter ~6100 before re-stalling). **However, a same-day repeat of the unmodified baseline (only new, behaviorally-inert `print` diagnostics added elsewhere in this file) converged cleanly past the same point with no fix applied at all** — i.e. this exact case shows run-to-run variance in outcome from logically-identical code, most likely floating-point-order sensitivity in the matrix-free Jacobian (`-ffast-math`, `mpicc`/`mpifort` codegen) on a system that sits on a numerical knife-edge at this residual level. **Conclusion: the one observed improvement cannot be attributed to this option with confidence — it may equally be the same unexplained run-to-run variance.** Needs a controlled re-test (multiple repeats of both baseline and capped, same binary, before/after) to actually validate. |
-| `"transitionResidualAutoscale"` | bool | `False` | Eq. 58 (P&Z) S_a residual-autoscaling proxy — periodically (every NK Jacobian reform) rescales each turbulence variable's row to match the mean-flow block's current residual norm. The paper gives no formula (cites Osusky & Zingg's thesis, unavailable here); this is a same-intent proxy, not verified identical. Off by default — tested 2026-07-16: no stall, real progress, but noisier/smaller steps than baseline; marginal, not clearly better. |
-
-**`transitionRefLength` plumbing & guidance.** No new AeroProblem wiring was
-added: `pyADflow.py` already pushes `ap.chordRef` into `inputPhysics%lengthRef`
-inside `setAeroProblemData` (~line 3608), and every compute entry point calls
-`setAeroProblem` *before* any residual evaluation, so the fallback is always
-fresh (pyADflow errors out if `chordRef` is missing; `setDefaultValues` seeds
-`lengthRef = 1.0` at init as a safety net). Fortran reads the option in
-`saGammaRetheta.F90` (`Source` + `evalSrcJacBlock`): `transitionRefLength > 0`
-wins, else `lengthRef`. **Full aircraft:** no single l is "correct" for all
-components (cap ∝ 1/√c_local); the paper's own prescription (one global root
-chord) is already a compromise — use the MAC or root chord, and remember the
-limiter is a numerical safety net whose failure mode (residual oscillation near
-LSBs) is visible, not a silent physics error.
-
-### Turb-ANK KSP physicality options (transition-specific)
-
-> ⚠️ **Both options below are currently SILENT NO-OPS from Python** — exactly
-> the `.pyf` bug documented at the end of this file (found 2026-08-12): they
-> are mapped to the `ank` module in `pyADflow.py:6521-6522`, but the
-> `module anksolver` block in `src/f2py/adflow.pyf` does not list
-> `ank_physlstolretheta` or `omegamingamma`. The Fortran runs its hard-coded
-> defaults (`omegaMinGamma = 0.05`, `NKSolvers.F90:2382`) regardless of any
-> `setOption`. Fix = add both to the `.pyf` block; until then treat the
-> defaults as the only reachable values.
-
-| Option | Type | Default | What it does |
-|---|---|---|---|
-| `"ANKPhysicalLSTolReTheta"` | float | `0.99` | Relative physicality tolerance for Re̅θt in Turb-ANK (replaces `ANKPhysicalLSTolTurb` for Re̅θt). |
-| `"omegaMinGamma"` | float | `0.05` | Minimum step factor floor for γ. Prevents collapse in laminar regions where γ→0. |
-
-### Existing ADflow options relevant to turbulent solver path
-
-| Option | Type | Default | What it does |
-|---|---|---|---|
-| `"ANKUseTurbDADI"` | bool | `True` | `True` = DADI for turbulence. `False` = Turb-ANK KSP (Newton-Krylov). |
-| `"ANKNSubiterTurb"` | int | `1` | Inner turbulence iterations per outer ANK step. |
-| `"ANKTurbCFLScale"` | float | `1.0` | CFL multiplier for turb equations relative to flow. |
-| `"ANKTurbKSPDebug"` | bool | `False` | Print linear residual, KSP iters, step size each Turb-ANK iteration. |
-| `"ANKPhysicalLSTolTurb"` | float | `0.99` | Physicality line-search tolerance for ν̃ in Turb-ANK (γ uses absolute bounds instead). |
-
-### Matrix-dissipation eigenvalue limiters (2026-08-04)
-
-Swanson & Turkel's Vn / Vl limiters, previously hard-coded Fortran
-`parameter`s duplicated across five hand-written routines. Only active when
-`discretization = "central plus matrix dissipation"` (the scalar/JST default
-does not use them).
-
-| Option | Type | Default | What it does |
-|---|---|---|---|
-| `"epsAcoustic"` | float | `0.25` | Vn — floor on the two acoustic eigenvalues, `λ = max(λ, Vn·rrad)`. Prevents zero dissipation at sonic lines. |
-| `"epsShear"` | float | `0.025` | Vl — floor on the (triple) entropy/vorticity eigenvalue `\|u·n\|`. Prevents zero dissipation where the flow is parallel to the face. |
-
-Why they matter here: inside a boundary layer the flow is parallel to the
-wall, so `|u·n| ≈ 0` on wall-normal faces and `rrad ≈ a`. The shear-wave
-dissipation there is therefore *entirely* set by Vl and is unrelated to the
-local physics. P&Z 2020 §4.1 set **Vl = 0** for exactly this reason
-("overly dissipative in the laminar boundary layer"), keeping Vn = 0.25
-(0.30 for CRM-NLF). The ADflow default Vl = 0.025 is **not** the paper's
-value; it is kept as the default here only for backward compatibility.
-Lowering Vl costs robustness near stagnation points.
-
-Wiring (all five hand-written sites read the same module variables):
-
-| File | Routine |
 |---|---|
-| `src/modules/inputParam.F90:101-120` | `module inputDissipation` — declaration |
-| `src/inputParam/inputParamRoutines.F90:~4306-4307` | defaults |
-| `src/solver/fluxes.F90:419` | `inviscidDissFluxMatrix` |
-| `src/solver/fluxes.F90:4357` | `inviscidDissFluxMatrixApprox` |
-| `src/solver/fluxes.F90:5218` | `inviscidDissFluxMatrixCoarse` |
-| `src/NKSolver/blockette.F90:2476, 4637` | ANK/NK residual path |
-| `src/f2py/adflow.pyf:1024-1028` | `module inputdissipation` block |
-| `adflow/pyADflow.py:~5935-5936, ~6206, ~6362-6363` | option defaults + `moduleMap` + option map |
+| Residual, DADI solve, source Jacobian | `saGammaRetheta.F90`: `saGammaReTheta_block`, `Source`, `Viscous`, `saGammaReThetaSolve`, `evalSrcJacBlock`, `computeSrcLambda` |
+| SA-sγ equivalents | `saGamma.F90`: `sgSource`, `sgViscous`, `sgResScale`, 2×2 DADI via `tdia2x2`, `computeSrcLambdaSaGamma` |
+| Correlations and smooth min/max | `turbUtils.F90`: `reThetaTCorrelation`, `flengthCorrelation`, `rethetacCorrelation`, `smoothMinMax` |
+| Model constants | `src/modules/paramTurb.F90` (`rsaGR*`, `rsaGRclampLambdaTheta`) |
+| Options (Fortran) | `src/modules/inputParam.F90`; defaults in `inputParamRoutines.F90`; f2py exposure in `src/f2py/adflow.pyf` |
+| Dispatch | `turbAPI.F90`; blockette residual `blockette.F90` (`blocketteRes`) |
+| BCs | `turbBCRoutines.F90`: γ and Re̅θt zero-gradient at walls (`bmt = -1`); farfield uses the generic ghost = `wInf` branch |
+| ANK/NK hooks | `NKSolvers.F90`: `computeTimeStepBlock`, `FormJacobianANKTurb`, `physicalityCheckANKTurb`, `applyNKAlgorithm2Damping`, `LSCubic`, `getTurbColScale` |
+| Diagnostics | the `transitionDebug` block array (`block.F90`), written to the volume CGNS |
+| AD output | `src/adjoint/output{Forward,Reverse,ReverseFast}/saGammaRetheta_{d,b,fast_b}.f90` and `saGamma_{d,b,fast_b}.f90` |
 
-They live in their own `inputDissipation` module rather than
-`inputDiscretization` because the Tapenade-generated `fluxes_*.f90` do a
-whole-module `use inputdiscretization`, which collided with their own local
-`parameter` declarations of the same names.
-
-## Examples
-
-### 1. Robust startup (recommended defaults)
-
-```python
-solverOptions = {
-    # Transition-specific (new)
-    "transitionFirstOrderUpwind": True,      # robust convection for γ, Re̅θt
-    "transitionSrcDtRestrict": True,         # source limiting ON
-    "srcDtDeactivateIters": 5,               # deactivate after 5 clean 2nd-order iters
-    # (deactivation only engages if ANKSecondOrdSwitchTol is set, e.g. 1e-5)
-    "TurbDADICoupled": "full",               # 3×3 coupled DADI
-    # turbResScale auto-set to [10000.0, 0.1, 1.0e-4]
-
-    # Solver path (existing ADflow)
-    "ANKUseTurbDADI": True,                  # use DADI for turbulence
-}
-```
-
-### 2. Accuracy run (restarting from converged solution)
-
-```python
-solverOptions = {
-    "transitionFirstOrderUpwind": False,  # second-order convection (sharper transition front)
-    "transitionSrcDtRestrict": False,     # no source limiting (solution already stable)
-    "TurbDADICoupled": "full",
-    "ANKUseTurbDADI": True,
-}
-```
-
-### 3. Debugging convergence — try decoupled DADI
-
-```python
-solverOptions = {
-    "transitionFirstOrderUpwind": True,
-    "transitionSrcDtRestrict": True,
-    "TurbDADICoupled": "decoupled",       # simplest: 3 independent scalar solves
-    "ANKUseTurbDADI": True,
-}
-```
-
-### 4. Debugging convergence — try partial coupling
-
-```python
-solverOptions = {
-    "transitionFirstOrderUpwind": True,
-    "transitionSrcDtRestrict": True,
-    "TurbDADICoupled": "transition",      # SA alone, γ-Re̅θt coupled as 2×2 block
-    "ANKUseTurbDADI": True,
-}
-```
-
-### 5. Turb-ANK KSP path (Newton-Krylov for turbulence)
-
-```python
-solverOptions = {
-    "transitionFirstOrderUpwind": True,
-    "transitionSrcDtRestrict": True,
-    # TurbDADICoupled ignored when ANKUseTurbDADI=False
-
-    "ANKUseTurbDADI": False,              # switch to Turb-ANK KSP
-    "ANKNSubiterTurb": 3,                 # more inner Newton iters
-    "ANKTurbCFLScale": 0.5,              # lower CFL for turb if unstable
-    "ANKTurbKSPDebug": True,             # print convergence info
-}
-```
-
-### 6. Custom residual scaling
-
-```python
-solverOptions = {
-    "turbResScale": [5000.0, 1.0, 5000.0],  # [ν̃, γ, Re̅θt] — lower γ scaling
-    "TurbDADICoupled": "full",
-    "ANKUseTurbDADI": True,
-}
-```
-
-## Solver Path Summary
+## 2. Solver paths
 
 ```
-ANKUseTurbDADI = True ──┬── TurbDADICoupled = "decoupled"   → 3 scalar solves
-                        ├── TurbDADICoupled = "transition"  → SA scalar + γ-Re̅θt 2×2 block
-                        └── TurbDADICoupled = "full"        → 3×3 coupled block (default)
-
-ANKUseTurbDADI = False ──── Turb-ANK KSP (Newton-Krylov, GMRES)
+ANK (startup)
+├─ coupled (ANKCoupledSwitchTol) ── flow + turbulence in one Krylov system
+└─ decoupled: flow ANK, then turbulence by
+   ├─ ANKUseTurbDADI = True ──┬─ TurbDADICoupled = "decoupled"  → 3 scalar solves
+   │                          ├─ TurbDADICoupled = "transition" → SA scalar + γ-Re̅θt 2×2
+   │                          └─ TurbDADICoupled = "full"       → 3×3 block (default)
+   └─ ANKUseTurbDADI = False ── turb-ANK (turbKSP, GMRES)
+NK (terminal, NKSwitchTol) ── fully coupled, matrix-free, LSCubic line search
 ```
 
-## Source-Term Eigenvalue Control (P&Z 2020, Eq. 59)
+Multigrid is not used with the transition models.
 
-The source-term dt restriction prevents unbounded solution updates by limiting:
+### Source-term time-step restriction (P&Z Eq. 59)
 
-```
-λ_source × Δt ≤ transitionSrcDtLimit  (default 0.9)
-```
+The restriction is λ_source·Δt ≤ `transitionSrcDtLimit`, where λ_source is the
+largest positive eigenvalue of the source Jacobian. That Jacobian is
+block-triangular (A13 = A31 = A32 = 0), so λ is exact: λ₃ = A33, and λ₁,₂ come
+from the 2×2 block. Each path applies it differently:
 
-where `λ_source` is the **largest positive eigenvalue** of the 3×3 source-term Jacobian:
+- **DADI:** additive form, `qq(m,m) += srcLambda/limit`. DD-ADI has no Δt to
+  take a max against. It never deactivates, because DADI *is* the
+  globalization phase.
+- **turbKSP, coupled ANK and NK** (when `transitionNK` is on): max form,
+  `max(dtInv, srcLambda/limit)` on the turbulent diagonal.
+- **Deactivation (turbKSP):** the restriction switches off after
+  `srcDtDeactivateIters` clean iterations inside the second-order regime
+  (`totalR ≤ ANKSecondOrdSwitchTol·totalR0`). It re-arms on any backtrack or
+  when the residual rises. With the default `ANKSecondOrdSwitchTol = 1e-16`
+  it never deactivates.
+- **Converged solution:** both forms touch only the LHS diagonal, so the
+  converged solution is the same either way.
 
-```
-            ⎡ ∂S_ν̃/∂ν̃      ∂S_ν̃/∂γ      0           ⎤
-A_source =  ⎢ ∂S_γ/∂ν̃      ∂S_γ/∂γ      ∂S_γ/∂Re̅θt   ⎥
-            ⎣ 0            0            ∂S_Re̅θt/∂Re̅θt ⎦
-```
+### Physicality and damping
 
-### Key points
+- **DADI (Algorithm 2):** γ and Re̅θt are damped *independently*. Each has its
+  own θ^m back-off loop (`transitionDampTheta`), capped at
+  `transitionDampMaxIter`. ν̃ only gets `max(w, 0)`. A hard clip to the bounds
+  is a warned last resort that fires only when a loop exhausts.
+- **turb-ANK:** γ uses absolute bounds [`rsaGRgammaLo`, `rsaGRgammaHi`]. The
+  full step is taken unless it violates them, and `omegaMinGamma` floors the
+  step where γ → 0. A relative check would collapse the step in laminar
+  regions. ν̃ and Re̅θt use relative tolerances (`ANKPhysicalLSTolTurb`,
+  `ANKPhysicalLSTolReTheta`).
+- **Coupled path:** the same bounds act through `physicalityCheckANK*`, which
+  limits the global λ. `ANKTransitionGlobalLambda` / `ANKAlgorithm2Damping`
+  move γ/Re̅θt to per-node damping instead.
 
-1. **Block-triangular structure**: A13=A31=A32=0 (P&Z §7.1), so eigenvalues are computed exactly without a cubic solver:
-   - λ₃ = A33 (Re̅θt diagonal)
-   - λ₁,₂ from 2×2 block [A11,A12; A21,A22] via quadratic formula
-   - `λ_source = max(0, λ₁, λ₂, λ₃)`
+## 3. Options (SA-GR / SA-sγ)
 
-2. **Independent of `TurbDADICoupled` mode** — coupling mode only affects how DADI solves the system, not eigenvalue computation.
+The values below were checked against `_getDefaultOptions` in
+`adflow/pyADflow.py`.
 
-3. **Auto-deactivation** (turbKSP only; P&Z §IV.B.3): after `srcDtDeactivateIters` consecutive clean iterations in the second-order regime (`totalR ≤ ANKSecondOrdSwitchTol·totalR0` — the inexact-Newton analog), the restriction turns off. The counter resets (restriction reactivates) when backtracking is triggered — even if the backtrack succeeds — or when the residual rises back above the switch tolerance. With the default `ANKSecondOrdSwitchTol = 1e-16`, deactivation never engages. DADI has no deactivation: the restriction stays on, matching the paper's approximate-Newton (globalization) phase where it is never deactivated.
+| Option | Default | Meaning |
+|---|---|---|
+| `transitionFirstOrderUpwind` | `True` | First-order upwind convection for γ and Re̅θt (paper §IV.A). Keep it on. |
+| `transitionUseApproxSA` | `True` | First-order (approximate) SA convection alongside the transition equations. |
+| `transitionCrossflow` | `False` | Helicity crossflow source D_scf on Re̅θt (P&Z Eqs. 15-26). It is ≡0 in 2-D. With it on, the tutorial wing plateaus at ~3e-2. The Fortran default is also `.false.`. |
+| `transitionRoughnessHeight` | `3.3e-6` | Roughness h used by the crossflow correlation, in mesh units. |
+| `transitionRefLength` | `-1.0` | Reference length l of the vorticity limiter (Eqs. 52-53). A value ≤ 0 means use the AeroProblem `chordRef`, which is refreshed on every `setAeroProblem`. This is a calibration scale, not a unit conversion. |
+| `transitionSrcDtRestrict` | `True` | Enables the Eq. 59 restriction. |
+| `transitionSrcDtLimit` | `0.9` | The limit in λ·Δt ≤ limit. |
+| `srcDtDeactivateIters` | `5` | Clean second-order iterations before turbKSP deactivates the restriction. `0` means inactive from the start, not "never". DADI ignores it. |
+| `TurbDADICoupled` | `"full"` | DADI coupling: `decoupled` / `transition` / `full`. |
+| `transitionDampTheta` | `0.99` | Back-off factor of Algorithm 2 (DADI). |
+| `transitionDampMaxIter` | `10000` | Back-off cap; effectively unbounded. The hard clip follows only if it exhausts. |
+| `turbResScale` | `None` → auto | Row scaling of about 1/state magnitude. SA-GR `[1e4, 0.1, 1e-4]`, SA-sγ `[1e4, 0.1]`. A tuning knob, not physics. |
+| `transitionNK` | `True` | Master switch for column scaling, Eq. 59 and Algorithm 2 in ANK/NK/turbKSP. Column scaling is needed for the whole NK phase, because the state spans about 13 orders of magnitude. |
+| `transitionNKAutoDisableTol` | `0.0` | Latch that turns `transitionNK` off below this fraction of `totalR0` in NK. Unsafe at any depth; diagnostic only. |
+| `transitionNKStallStepTol` / `…CountTrigger` / `…RtolCap` | `0.1` / `3` / `1.0` | Caps the Eisenstat-Walker `rtol` after repeated tiny NK steps. Inactive at `RtolCap = 1.0`; not validated. |
+| `transitionRowVolScale` | `False` | Eq. 58 volume row scaling in NK. Stalls the NK linear solve; leave it off. |
+| `transitionResidualAutoscale` | `False` | Eq. 58 S_a proxy. Marginal. |
+| `transitionRestartAlgebraicInit` | `False` | Algebraic γ warm start for a restart that has no transition fields. |
+| `ANKPhysicalLSTolReTheta` | `0.99` | Relative physicality tolerance for Re̅θt in turb-ANK. |
+| `omegaMinGamma` | `0.05` | Step-factor floor for γ in turb-ANK. |
+| `ANKNSubiterTurb` | `1` | Inner turbulence iterations. Applies to turbKSP only; DADI makes a single call. |
+| `sgamma{VortLimiter, OnsetTanh, FturbLee}` | `False` | SA-sγ formulation switches. |
+| `sgammaCoupleDestruction` | `True` | Couples γ into SA destruction (φ⁺(γ, 0.1)). |
+| `sgammaFPGSmoothP` / `sgammaCTU1..3` | `300` / `163, 1002.25, 1.0` | φ± sharpness at the F_PG kink, and the Colonia C_TU constants. |
 
-### Examples
+**Deprecated research flags (SA-GR):** `transitionBCMGamma`,
+`transitionLocalReTheta` and `transitionReThetaInert` belong to the SA-G-s
+study (`22_sa_g_model`). They remain only so those runs can be reproduced, so
+build nothing new on them.
 
-#### 7. Conservative eigenvalue control (stiff cases)
+**Solver-fidelity options** (tags F1-F10 in the code comments, explained in
+[`VERIF_06`](../VERIFICATION/VERIF_06_solver_fidelity_audit.md)):
 
-```python
-solverOptions = {
-    "transitionSrcDtRestrict": True,
-    "transitionSrcDtLimit": 0.7,             # stricter than default 0.9
-    "srcDtDeactivateIters": 10,              # wait longer before deactivating
-}
-```
+- `ANKCFLMinCap`
+- `ANKUnsteadyLSFactor`, `ANKUnsteadyLSMaxIter`, `ANKRejectOnLSExhausted`
+- `ANKAlgorithm2Damping`
+- `ANKTransitionGlobalLambda` (`True`)
+- `MFFDFunctionError`, `MFFDType`
+- `ANKColScaleUnit`
+- `solverStallDiag`, `solverStallDiagStep`
 
-#### 8. Debug eigenvalue issues
+**NK line search:** `NKLSRelax` (default `True`) runs `LSCubic` with Armijo
+α = 1e-3 and a turbulence blow-up pre-limit factor of 3.0. With `False` it
+reverts to upstream's 1e-2 and 2.0. The upstream α was almost never satisfied
+on SA-GR. Looser values (α = 1e-4, factor 5.0) diverged, because NK has no
+ρ/E physicality check.
 
-```python
-solverOptions = {
-    "transitionSrcDtRestrict": True,
-    # leave ANKSecondOrdSwitchTol at its default (1e-16): the restriction
-    # then never deactivates. (Do NOT use srcDtDeactivateIters = 0 for this —
-    # 0 means the restriction is inactive in turbKSP from the start.)
-    "ANKTurbKSPDebug": True,                 # print iteration info
-}
-```
+**Matrix dissipation:** `epsAcoustic` (Vn, `0.25`) and `epsShear` (Vl,
+`0.025`) live in `module inputDissipation`. They apply only with
+`discretization="central plus matrix dissipation"`. P&Z use Vl = 0, because
+the shear-wave dissipation inside a boundary layer is set entirely by Vl. They
+have their own module because the Tapenade `fluxes_*` routines `use` all of
+`inputDiscretization`.
 
-#### 9. Disable source-dt restriction entirely
+**Monitor:** add `"scaledtotalr"` to `monitorVariables` to print the
+S_r/S_a-scaled residual. It is for display only and never feeds `totalR` or
+the switch tolerances.
 
-```python
-solverOptions = {
-    "transitionSrcDtRestrict": False,        # no eigenvalue computation, no restriction
-}
-```
+### Adjoint options
 
-## γ Physicality Check in Turb-ANK (Redesigned)
+- **Defaults** (all models): `adjointSolver="LGMRES"` (`adjointLGMRESAugDim=2`),
+  `adjointSubspaceSize=400`, `ILUFill=3`, `ASMOverlap=3`. GMRES/LGMRES
+  stagnate with a subspace of 200 or less on transition cases.
+- **Field split, set automatically:** when `"gamma"` appears in
+  `turbulenceModel` (SA-GR and SA-sγ) and the user did not set
+  `globalPreconditioner`, the constructor sets it to `"field split"`. The
+  split is PCFIELDSPLIT over {flow}{ν̃}{transition}; for plain SA the
+  monolithic ASM is better.
+  - `adjointFieldSplitType`: `multiplicative` / `additive`.
+  - `adjointFieldSplitBlocks`: `3`, or 4 to split γ from Re̅θt.
+- `frozenTransition` (`False`, SA-GR only): the adjoint treats γ and Re̅θt as
+  constants. Their seeds are zeroed and their rows become identity in
+  `master_state_b` / `master_b`. The primal is untouched, and no Tapenade
+  regeneration is involved.
+- `storePsiHistory` / `psiHistoryStep` / `psiHistoryMax`: write the ψ history
+  of each adjoint solve to JSON (a convergence diagnostic).
+- **Complex build:** it has no AD preconditioner, so CS re-converges need
+  `ANKADPC`/`NKADPC=False` and the decoupled path.
 
-In the Turb-ANK KSP path (`ANKUseTurbDADI = False`), γ uses **absolute bound enforcement** instead of a relative tolerance:
+### Input guards (`pyADflow.py`, transition models)
 
-- **Full step allowed** if result stays in [gammaLo, gammaHi] (~[1e-10, 2.0])
-- **Only reduced** when full step would violate bounds
-- **`omegaMinGamma`** (default 0.05) prevents step collapse in laminar regions where γ→0
+- `useWallFunctions` raises an error, because the transition model needs a
+  resolved boundary layer.
+- `useft2SA=True` only warns: the model is calibrated on SA-noft2.
+- `turbIntensityInf ≤ 0` is rejected.
+- `useBlockettes` is forced off. The transition kernels exist in
+  `blocketteResCore` and `test_blockette_sagr.py` checks them, but every
+  validated solve used the block path.
 
-This differs from ν̃ and Re̅θt which use relative tolerances (`ANKPhysicalLSTolTurb`, `ANKPhysicalLSTolReTheta`).
+## 4. SA-BCM (`use_SABCM`)
 
-**Why**: In laminar flow, γ≈0. The old relative check `ratio = γ/update × tol` collapses to near-zero, killing the transition front before it can develop.
+SA-BCM is an algebraic intermittency that multiplies SA production, inside
+`saSource` in `sa.F90`. There is no new equation and `nw` is unchanged.
 
-## Internal State (not user-settable)
+- **Implementation:**
+  - The multiplier is `tTgamma` (= 1 when off, which reproduces plain SA
+    exactly), stored per cell in the block array `Tgamma` for output.
+  - `ft2` is forced to 0.
+  - The hand Jacobian adds `dtTgamma` to the `qq` diagonal, inside
+    `#ifndef USE_TAPENADE`.
+  - The non-Tapenade mirror in `blockette.F90` must be kept in sync by hand.
+    `test_blockette_bcm.py` checks this; unlike SA-GR, blockettes stay on for
+    BCM.
+- **Formulation (source: `docs/papers/`).**
+  - The Appendix of AIAA 2020-2714 is the reference formulation.
+  - Term1 compares the vorticity Re_θ = ρ|ω|d²/μ against
+    Re_θc(Tu) = 803.73(Tu+0.6067)^-1.027, scaled by χ₁.
+  - Term2 = (fv1·χ)/χ₂, which is the eddy-viscosity ratio, not raw χ.
+  - max(Term1, 0) is replaced by a KS smooth max.
+  - A "hard" and a "smooth" blend are selected by `SABCM_Exp` (see the
+    table).
+- **Units:** vorticity is in p-ρ units and ν̃/ν are ratios to μ∞, so no extra
+  1/Re appears (see ADFLOW_08).
+- **Required option:** `useApproxWallDistance=True`. `inputParamRoutines`
+  terminates otherwise.
+- **Hook:** `sa.F90` is guarded by a hook, so each edit asks for approval.
+  Approve only for SA-BCM work.
 
-These are managed automatically by the solver when `transitionSrcDtRestrict = True`:
+| Option | Default | Meaning |
+|---|---|---|
+| `use_SABCM` | `False` | Master switch. |
+| `SABCM_Exp` | `False` | `True` = the paper's γ = 1 − exp(−(√T1 + √T2)) ("hard"). `False` = the tanh blend ("smooth"), a deliberate smoothing that is not in the papers. |
+| `SABCM_Const1` / `SABCM_Const2` | `0.002` / `0.02` | χ₁ and χ₂. |
+| `SABCM_TU` | `0.5` | Tu∞ in percent, used by the Re_θc correlation. |
+| `SABCM_S0_tanh` / `SABCM_fsmooth` | `0.5` / `0.08` | Centre and width of the tanh blend (smooth variant). |
+| `SABCM_maxsmooth` | `50.0` | KS sharpness replacing max(Term1, 0). Used by both variants. |
 
-- `srcDtRestrictActive`: starts `True`, flips to `False` after `srcDtDeactivateIters` consecutive clean turbKSP iterations in the second-order regime. Returns to `True` when backtracking is triggered or when `totalR` rises back above `ANKSecondOrdSwitchTol·totalR0`.
-- `noBacktrackCount`: counter driving the above (module variable, `inputParam.F90`; persists across solves — self-corrects via the residual condition on the first iteration of each solve).
+The Tapenade output `sa_{d,b,fast_b}` is in sync with `sa.F90`. In `saSource`
+and in `blockette.F90`, the comment "external module not seen by Tapenade"
+does not describe the inline code; ignore it.
 
-## Monitor variable: `"scaledtotalr"` (2026-07-16)
+## 5. Design rationale (why the code looks like this)
 
-Add `"scaledtotalr"` to `monitorVariables` to print an additional column
-showing the Eq. 58 S_r/S_a-scaled residual (`sumAllResidualsScaled`,
-`src/utils/utils.F90`) alongside the unchanged `"totalr"` column. Purely
-for visibility — it does **not** feed `totalR`/switch tolerances the way
-`"totalr"` does (see the `'scaledtotalR'` case in `solvers.F90`, which
-computes but never assigns the module-level `totalR`). Reflects whatever
-`transitionRowVolScale`/`transitionResidualAutoscale` are currently set to;
-identical to `"totalr"` when both are off.
+- **Safeguards not written in P&Z.** The λ_θ clamp to [−0.1, 0.1] and the Tu
+  floor of 0.027 % (`rsaGRtuFloor`) come from Langtry–Menter 2009. Without the
+  clamp, exp(−35 λ_θ) overflows near stagnation. The clamp is a compile-time
+  switch (`rsaGRclampLambdaTheta`); with it off, S809 stalls. The Jacobian
+  treats the clamped target as constant.
+- **Diagonal clips `qq(1,1)`, `qq(2,2)`, `qq(3,3) ≥ 0`.** They mirror SA's
+  DDADI clip; `qq(2,2)` goes negative routinely before transition. They are
+  LHS-only, inside `#ifndef USE_TAPENADE`.
+- **ν̃ row scale 1e4, not the paper's 1e3.** ν̃'s residual is exactly
+  ADflow's SA residual, so it keeps SA's scaling; γ and Re̅θt use about
+  1/state magnitude.
+- **Primal code is written without in-place `x = smoothMinMax(x, …)`.**
+  `autoEditReverseFast.py` strips the push/pop that such a line needs, which
+  breaks `_fast_b`. Use distinct targets, as in
+  `lambdaThetaRaw → lambdaThetaClamped → lambdaThetaLocal`.
+- **Option plumbing.** `src/f2py/adflow.pyf` is maintained by hand. A module
+  variable missing from its block makes the Python `setOption` a silent no-op:
+  the value reads back fine in Python, but Fortran sees the default. Grep the
+  module block in `adflow.pyf` before trusting a new option.
 
-## Known infra bug: `.pyf` option wiring (2026-07-16, recurring — not module-specific)
+## 6. Known limitations
 
-`src/f2py/adflow.pyf` is a **hand-maintained** f2py interface file, not
-auto-regenerated from Fortran source on every build. Any Fortran module
-variable (new option, new diagnostic array, anything) not explicitly listed
-in its `.pyf` module block is invisible to real Python↔Fortran
-communication — but f2py's `fortran`-type Python objects silently accept
-**arbitrary attribute names** with no backing memory, so `setOption`/reading
-the value back gives no error and no warning, and reads whatever phantom
-Python attribute was last set instead of the (uninitialized/default)
-Fortran memory. This has now bitten **three separate modules**, confirming
-it's a structural hazard, not a one-off stale-file issue:
-
-- `module inputiteration`: `transitionSrcDtRestrict`, `transitionSrcDtLimit`,
-  `srcDtDeactivateIters`, `transitionDampTheta`, `transitionDampMaxIter`
-  (**fixed — all five are now in `adflow.pyf` L1129-1133**; the earlier
-  "still not fixed" status here was stale, corrected 2026-08-12).
-  `transitionNK`/`transitionRowVolScale`/`transitionResidualAutoscale`
-  (added 2026-07-16 — **fixed**). `transitionSrcDtEigMode` has since been
-  removed from the codebase entirely (no longer a live bug).
-- `module inputadjoint`: `storePsiHistory`, `psiHistoryStep`,
-  `psiHistoryMax` (added 2026-07-24 for the psi-history adjoint-convergence
-  diagnostic, see `ADFLOW_BASE/ADFLOW_09_adjoint_trace.md` — **fixed** same day,
-  after ~3 hours of debugging a silent no-op that looked like a Fortran
-  module-memory corruption bug before the real cause was found).
-- `module adjointpetsc`: `psiHistory`, `psiHistoryIters`, `psiHistoryResid`,
-  `psiHistoryCount` (same feature, same date — **fixed**).
-- `module inputdissipation`: `epsAcoustic`, `epsShear` (added 2026-08-04 —
-  **fixed at the time of writing**; the `.pyf` block was added in the same
-  change, and `libadflow.inputdissipation.epsacoustic` was verified readable
-  and writable from Python before the feature was declared done).
-- `module anksolver`: `ank_physlstolretheta`, `omegamingamma` — **OPEN as of
-  2026-08-12**: mapped in `pyADflow.py:6521-6522` but absent from the `.pyf`
-  `module anksolver` block, so `ANKPhysicalLSTolReTheta` and `omegaMinGamma`
-  are silent no-ops (Fortran hard-codes `omegaMinGamma = 0.05`,
-  `NKSolvers.F90:2382`). See the warning in the Turb-ANK options table above.
-
-**Before trusting any Python-side setting of ANY option or diagnostic
-array that isn't already validated working — regardless of which Fortran
-module it lives in — grep `adflow.pyf` for that module's block first** (`grep
--n "module <modulename>"` then check the variable is listed inside it). If
-it's missing, the option/array is a no-op from Python regardless of what
-`setOption`/read-back or even a direct `self.adflow.<module>.<var>` read
-suggests — that read is reading the phantom Python attribute, not Fortran
-memory. Symptom to recognize this by: a value reads back correctly in
-Python right after `setOption`, but a Fortran-side `write(*,*)` of the
-*same* variable inside a routine that runs later shows the type's zero
-value (`.False.`/`0`/`0.0`) — that mismatch is the signature of this bug,
-not memory corruption.
+- **Deep-NK wall.** Below a relative residual of about 5e-9, NK's linear
+  residual sits at 0.8-0.99 with GMRES exhausted. The limit is the
+  preconditioner; no option moves it.
+- **No ρ/E physicality check in NK** (ANK has one). This is why the
+  line-search settings in `LSCubic` cannot be loosened further.
+- **Blockettes are forced off** for SA-GR and SA-sγ (§3). This costs
+  performance, not correctness.
+- **Crossflow.** With `transitionCrossflow=True` the tutorial-wing case does
+  not converge deeply.
+- **Rotating frames.** The rotating-frame path (`rotRate ≠ 0`) has never been
+  exercised numerically (see
+  [`VERIF_02`](../VERIFICATION/VERIF_02_rotating_frame_audit.md)).
+- **Initial γ.** The interior initial γ = 0.02 has never been tuned.

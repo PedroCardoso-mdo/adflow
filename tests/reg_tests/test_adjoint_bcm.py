@@ -147,7 +147,7 @@ class TestCmplxStepBCM(reg_test_classes.CmplxRegTest):
     """
     Decisive check for the manuscript's caveat: adjoint totals (trained by TestAdjointBCM)
     compared against complex-step re-convergence, for both variants. This is the check that
-    either confirms the fix or reproduces the reported bug -- see docs/current-task.md.
+    either confirms the fix or reproduces the reported bug.
     """
 
     N_PROCS = 2

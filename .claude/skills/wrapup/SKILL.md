@@ -25,7 +25,7 @@ mid-task check-in, not just because you're about to stop talking.
    If clean, there's nothing to wrap up — say so briefly and stop.
 
 2. If there are changes, decide whether `CLAUDE.md` or the docs (e.g.
-   `docs/README.md`, task logs) need updating to reflect what changed. If so,
+   `docs/README.md`, `CORE_01`) need updating to reflect what changed. If so,
    propose the specific edits and apply them.
 
 3. Ask the user whether to commit (and push). Only commit/push after they say

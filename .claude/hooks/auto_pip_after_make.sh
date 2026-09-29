@@ -9,7 +9,7 @@
 # Reads the PostToolUse JSON on stdin; acts only when the command ran `make`.
 set -uo pipefail
 
-REPO="${CLAUDE_PROJECT_DIR:-/home/mdo/MDOLab_3_v2/adflow_sa_gamma_rethetha_paper_solver}"
+REPO="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "$0")/../.." && pwd)}"
 PIP="${ADFLOW_MACH_PIP:-/home/mdo/packages_v2/mach/bin/pip}"
 
 input=$(cat)
@@ -32,6 +32,9 @@ else
 fi
 
 cd "$REPO" 2>/dev/null || exit 0
+# setuptools reuses ./build/lib: a stale copy there wins over ./adflow and the
+# install silently ships old Python files. Always build from scratch.
+rm -rf build
 if "$PIP" install . --no-deps -q >/tmp/adflow_pip_install.log 2>&1; then
     printf '{"systemMessage":"✔ auto-installed adflow (%s build) into mach env (post-make) — site-packages now matches ./adflow"}\n' "$kind"
 else

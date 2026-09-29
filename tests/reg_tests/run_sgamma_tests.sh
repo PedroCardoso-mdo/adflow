@@ -1,46 +1,25 @@
 #!/usr/bin/env bash
 #
-# run_sgamma_tests.sh -- SA-noft2-Gamma (SA-sgamma) variant of run_sagr_tests.sh (2026-09-22).
-# 2026-09-23: complex-step stages enabled (src_cs is complexified from src/build/fileList, which lists saGamma.F90).
-# Original header:
-# derivative regression suite.
-#
-# The SA-GR partials are validated on three levels (see
-# docs/VERIFICATION/three-stage-verification.md):
+# run_sgamma_tests.sh -- one entry point for the SA-noft2-Gamma (SA-sgamma)
+# derivative regression suite. Same ladder as run_sagr_tests.sh, see
+# docs/VERIFICATION/VERIF_00_three_stage_verification.md:
 #   Stage 1  dot-product consistency   forward _d  <->  reverse _b
 #   Stage 2  fast-reverse consistency  reverse _b  <->  reverse-fast _fast_b
 #   Stage 3  ground truth              forward AD  vs  complex-step (CS) / FD
-#
-# Stages 1-2 and the AD/FD half of Stage 3 run on the REAL build; the decisive
-# CS half of Stage 3 runs on the COMPLEX build (ADFLOW_C). This script drives
-# both and prints a compact per-stage summary.
-#
-# On top of the partials (dR/dw, dR/dXv Jacobian-vector products) the suite
-# also validates the FULL TOTAL derivatives df/dx -- the complete adjoint,
-# exactly like the SA test_adjoint.py: TestAdjointSAGR solves the SA-GR
-# adjoint (reverse _b, 8-state) for df/d{alpha,mach,twist,span,shape} and
-# TestCmplxStepSAGR re-converges the complex build and checks it by CS. This
-# is the "adjoint" stage below (test_adjoint_sagr.py).
-#
-# On top of the derivatives, the suite also checks the PRIMAL residual operator
-# itself: test_blockette_sagr.py asserts the cache-blocked "blockette" residual
-# (blocketteResCore) equals the reference "block" residual (saGammaReTheta_block)
-# for the same state w, across all 8 variables -- guarding the inlined SA-GR
-# kernels in blockette.F90 against drift (this is the "blockette" stage below).
+# plus the full total derivatives df/dx (adjoint vs CS, test_adjoint_sgamma.py).
+# Stages 1-2 and AD/FD run on the REAL build, CS on the COMPLEX build.
+# There is no SA-sgamma blockette test (blockettes are forced off for this model).
 #
 # Usage:
-#   ./run_sagr_tests.sh              run the whole suite (real + complex)
-#   ./run_sagr_tests.sh real        real-build stages only (1, 2, AD/FD)
-#   ./run_sagr_tests.sh cs          complex-build CS ground truth only
-#   ./run_sagr_tests.sh adjoint     full total-derivative adjoint vs CS
-#   ./run_sagr_tests.sh blockette   blockette residual == block residual
-#   ./run_sagr_tests.sh train       regenerate the JSON reference files
-#   ./run_sagr_tests.sh genw        regenerate the converged restart state (w)
+#   ./run_sgamma_tests.sh           run the whole suite (real + complex)
+#   ./run_sgamma_tests.sh real      real-build stages only (1, 2, AD/FD)
+#   ./run_sgamma_tests.sh cs        complex-build CS ground truth only
+#   ./run_sgamma_tests.sh adjoint   full total-derivative adjoint vs CS
+#   ./run_sgamma_tests.sh train     regenerate the JSON reference files
+#   ./run_sgamma_tests.sh genw      regenerate the converged restart state (w)
 #
-# Everything the case depends on -- mesh, restart (w), AeroProblem, options,
-# crossflow on/off -- lives in reg_sagr.py. To move to a different mesh: point
-# sagrGridFile/sagrRestartFile there at the new CGNS, run `genw` if you need a
-# fresh converged state, then `train` to rebuild the JSON, then run the suite.
+# Everything the case depends on -- mesh, restart (w), AeroProblem, options --
+# lives in reg_sgamma.py.
 #
 set -uo pipefail
 
@@ -55,7 +34,6 @@ export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}   # never oversubscribe (see CLAUDE
 FWD=test_jacVecProdFWD_sgamma.py
 BWD=test_jacVecProdBWDFast_sgamma.py
 ADJ=test_adjoint_sgamma.py
-BLK=test_blockette_sagr.py
 
 hr()  { printf '%.0s-' {1..72}; echo; }
 head() { hr; echo ">>> $*"; hr; }
@@ -76,13 +54,8 @@ run_adjoint() {
     "$PY" -m testflo -n "$NP" "$ADJ" -m "cmplx_test_*" -v
 }
 
-run_blockette() {
-    head "Blockette residual == block residual (SA-GR, same w, all 8 vars)"
-    "$PY" -m testflo -n "$NP" "$BLK" -v
-}
-
 do_train() {
-    head "Retraining JSON reference files (crossflow-converged state)"
+    head "Retraining JSON reference files"
     "$PY" -m testflo -n "$NP" "$FWD" "$BWD" "$ADJ" -m "train*" -v
     echo "refs written: refs/jacvecfwd_sgamma_tut_wing.json  refs/jacvecbwd_sgamma_tut_wing.json  refs/adjoint_sgamma_tut_wing.json"
 }
@@ -97,25 +70,22 @@ case "${1:-all}" in
     real)      run_real ;;
     cs)        run_cs ;;
     adjoint)   run_adjoint ;;
-    blockette) run_blockette ;;
     train)     do_train ;;
     genw)      do_genw "$@" ;;
     all)
         run_real;     rc_real=$?
         run_cs;       rc_cs=$?
         run_adjoint;  rc_adj=$?
-        run_blockette; rc_blk=$?
         hr
         echo "SUMMARY"
         echo "  real build (Stage 1/2/3-AD-FD): $([ $rc_real -eq 0 ] && echo PASS || echo FAIL)"
         echo "  complex build (Stage 3 CS)    : $([ $rc_cs   -eq 0 ] && echo PASS || echo FAIL)"
         echo "  full adjoint df/dx (real + CS): $([ $rc_adj  -eq 0 ] && echo PASS || echo FAIL)"
-        echo "  blockette == block residual   : $([ $rc_blk  -eq 0 ] && echo PASS || echo FAIL)"
         echo "  FD residual tests are @expectedFailure (metric noise on the"
         echo "  13-order residual); CS is the enforced ground truth."
         hr
-        [ $rc_real -eq 0 ] && [ $rc_cs -eq 0 ] && [ $rc_adj -eq 0 ] && [ $rc_blk -eq 0 ]
+        [ $rc_real -eq 0 ] && [ $rc_cs -eq 0 ] && [ $rc_adj -eq 0 ]
         ;;
     *)
-        echo "usage: $0 [all|real|cs|adjoint|blockette|train|genw]" >&2; exit 2 ;;
+        echo "usage: $0 [all|real|cs|adjoint|train|genw]" >&2; exit 2 ;;
 esac

@@ -4,15 +4,12 @@ SA-sLM2015) derivative regression tests.
 This module plays the role reg_default_options.py / reg_aeroproblems.py /
 reg_test_utils.py play for the SA and Euler cases, plus SA-GR-specific
 helpers that isolate the transition state variables (gamma, Re_theta_t) and
-the SA<->transition coupling blocks flagged in docs/audits/06_adjoint_wiring.md.
+the SA<->transition coupling blocks (see docs/ADFLOW_BASE/ADFLOW_09_adjoint_trace.md).
 
 State-vector layout (verified against NKSolvers.F90:getStates): the flattened
 state/residual vectors are variable-fastest, w(i,j,k,1:nw), so python offset
 ``iCell*nw + l`` holds variable l (0-based). For SA-GR nw = 8 with
 itu1/itu2/itu3 = 6/7/8 (Fortran, 1-based) = nuTilde/gamma/reThetat.
-
-The grid/restart/FFD files below are placeholders until the user supplies a
-converged transition case (see docs/audits/08_test_prep.md, checklist).
 """
 
 import os
@@ -32,8 +29,7 @@ baseDir = os.path.dirname(os.path.abspath(__file__))
 #   on a real 3D wing rather than the small ANK-only tutorial-wing case.
 #   2026-07-23: switched BACK to the tutorial-wing grid. The AR5 case never
 #   got past a chronic quasi-stall (`Step` pinned ~0.01) no matter the
-#   iteration budget -- see docs/current-task.md, "Step 3 (AR5) CS check
-#   fails hard". The SAME tutorial-wing mesh, SA-GR model, Mach=0.15 (down
+#   iteration budget. The SAME tutorial-wing mesh, SA-GR model, Mach=0.15 (down
 #   from the mesh's stock 0.8 -- Re_chord ~4.2e6 puts natural transition
 #   onset around mid-chord instead of full-laminar/full-turbulent; see
 #   `.../3D_Plain_Wing/pedro_test/run_sagr.py`'s Reynolds-number note and
@@ -102,7 +98,7 @@ sagrAeroDVs = ["alpha", "mach", "P", "T"]
 # changed to match the tutorial-wing/M=0.15 run
 # (`.../3D_Plain_Wing/pedro_test/run_sagr.py`). Every SA-GR-model-specific
 # option (transition* etc.) is kept explicit with its rationale. Option
-# semantics: docs/architecture.md Part 2.
+# semantics: docs/CORE_BASE/CORE_01_architecture.md.
 sagrBaseOptions = {
     # ---- case ----
     "gridfile": sagrGridFile,
@@ -169,7 +165,7 @@ sagrBaseOptions = {
     "transitionsrcdtlimit": 0.9,
     # deactivate the source-dt restriction after N clean turbKSP iterations
     # in the second-order regime (only engages if ANKSecondOrdSwitchTol is
-    # raised from its 1e-16 default; see architecture.md D-A2-3)
+    # raised from its 1e-16 default; see docs/CORE_BASE/CORE_01_architecture.md)
     "srcdtdeactivateiters": 5,
     # per-variable gamma/reThetat update damping in DD-ADI (P&Z Alg. 2):
     # back-off factor and safety cap on the back-off loop (LHS-only)
@@ -321,8 +317,7 @@ def getStateBlocks(CFDSolver):
       - nw=8, nt2-nt1=2: SA-noft2-Gamma-Retheta (meanflow/nuTilde/gamma/reThetat)
       - nw=6, nt2-nt1=0: plain SA (meanflow/nuTilde only, no transition vars)
     The nw=6 case exists so the same block-splitting helpers used by the
-    SA-GR tests can also run, unmodified, against a plain-SA build/mesh --
-    see docs/current-task.md's script/mesh isolation ladder.
+    SA-GR tests can also run, unmodified, against a plain-SA build/mesh.
     """
     nw = int(CFDSolver.adflow.flowvarrefstate.nw)
     nt1 = int(CFDSolver.adflow.flowvarrefstate.nt1)  # Fortran 1-based
@@ -440,7 +435,7 @@ def assert_bwdfast_blocks_allclose(CFDSolver, seed=314, atol=1e-16):
     Seeding one residual row block at a time checks each transposed coupling
     column separately; a failure isolated to the gamma/reThetat seeds is the
     signature of the autoEditReverseFast.py push/pop stripping hazard flagged
-    in docs/audits/sst_dev_lessons.md (watch item 1).
+    in docs/ADFLOW_BASE/ADFLOW_09_adjoint_trace.md.
     """
     nw, blocks = getStateBlocks(CFDSolver)
     dwBarFull = CFDSolver.getStatePerturbation(seed)
