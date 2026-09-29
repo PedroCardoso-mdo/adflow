@@ -58,10 +58,9 @@ module NKSolver
     real(kind=realType) :: NK_rtolInit
     real(kind=realType) :: NK_divTol = 10
     real(kind=realType) :: NK_fixedStep
-    ! NK_LSRelax: off by default, matches ADflow's original LSCubic tuning
-    ! (alpha=1e-2, turb-blowup pre-limit factor=2.0). When True, LSCubic uses
-    ! alpha=1e-3 and factor=3.0 instead -- see LSCubic for the rationale.
-    logical :: NK_LSRelax = .False.
+    ! NK_LSRelax (default on): LSCubic uses alpha=1e-3 and a turb-blowup
+    ! pre-limit factor of 3.0. Off = ADflow's original tuning (1e-2, 2.0).
+    logical :: NK_LSRelax = .True.
 
     ! Misc variables
     logical :: NK_solverSetup = .False.
@@ -888,23 +887,15 @@ contains
         ! Call to get the split norms
         call setRVec(g, flowRes1, turbRes1, totalRes1)
 
-        ! Set some defaults:
-        ! alpha relaxed 1e-2 -> 1e-3 (2026-07-16): the production run
-        ! (best_strategie/logs/3_NK_paper_faithful.log) pinned step at
-        ! minlambda for 1000+ consecutive iterations -- the Armijo test
-        ! was essentially never satisfied at any lambda above the floor.
-        ! A smaller alpha accepts a step with a weaker guarantee of
-        ! decrease, trading some robustness for actually taking full-ish
-        ! steps (same idea as relaxing ANKUnsteadyLSTol/ANKPhysicalLSTol
-        ! for CANK -- see docs/ADFLOW_BASE/ADFLOW_04_debugging_playbook.md
-        ! E1, which explicitly warns "more aggressive rho/E ... risks
-        ! negative rho/E"). 1e-4 was tried first and SEGV'd after ~23
-        ! iterations (see logs/3b_NK_paper_faithful_alpha_relaxed.log) --
-        ! NK has no physicality check at all (unlike ANK), so an
-        ! over-permissive alpha can accept a step that drives density/
-        ! energy unphysical with nothing to catch it. 1e-3 is the
-        ! compromise; revert to 1e-2 if this still diverges/crashes.
-        alpha = 1.e-3_realType
+        ! Armijo alpha. NK_LSRelax (default): 1e-3 -- the upstream 1e-2 was
+        ! essentially never satisfied on SA-GR, so NK stalled at minlambda.
+        ! 1e-4 SEGV'd: NK has no rho/E physicality check to catch an
+        ! over-permissive step.
+        if (NK_LSRelax) then
+            alpha = 1.e-3_realType
+        else
+            alpha = 1.e-2_realType
+        end if
         minlambda = .01
         nfevals = 0
         flag = .True.
@@ -957,24 +948,16 @@ contains
         ! might lower the total residual, but the turb res could go up an
         ! order of magnitude or more.
 
-        ! Turb-blowup pre-limit threshold relaxed 2.0 -> 5.0 (2026-07-16,
-        ! same investigation as the alpha change above): a factor of 2.0
-        ! was tripping on essentially every full step in the production
-        ! run, forcing the special backtrack path (which itself floors
-        ! near minlambda) instead of letting the normal Armijo-based
-        ! cubic backtrack (now much more permissive via the lower alpha)
-        ! handle it. Dialed back from 5.0 to 3.0 after alpha=1e-4+5.0
-        ! together SEGV'd (see alpha comment above).
-        ! Retried at 5.0 with alpha still at 1e-3 (2026-07-18,
-        ! nk_switch_crossing_test): confirmed unsafe even at alpha=1e-3 --
-        ! the very next NK iteration after entry let a step through that
-        ! blew nuturb res up to O(1e3) and totalRes to O(1e9), and the
-        ! solve never recovered (diverged in ANK for 1000+ iters
-        ! afterward). Reverted to 3.0. Do not raise this again without a
-        ! physicality check to back it up; the stall investigation should
-        ! go through transitionNKAutoDisableTol instead (see inputParam.F90).
+        ! NK_LSRelax (default): factor 3.0 -- at 2.0 nearly every full step
+        ! tripped the pre-limit; 5.0 let steps through that blew the turb
+        ! residual up and diverged. Do not raise it without a physicality check.
+        if (NK_LSRelax) then
+            turbBlowupFactor = 3.0_alwaysRealType
+        else
+            turbBlowupFactor = 2.0_alwaysRealType
+        end if
         hadANan = .False.
-        if (myisnan(gnorm) .or. turbRes2 > 3.0 * turbRes1) then
+        if (myisnan(gnorm) .or. turbRes2 > turbBlowupFactor * turbRes1) then
             ! Special testing for nans
 
             if (myisnan(gnorm)) then
@@ -3355,7 +3338,8 @@ contains
         ! diag(1/cs) makes it a consistent preconditioner for
         ! S_row * dRdw * diag(1/cs). Skipped entirely for models other
         ! than SA-Gamma-Retheta (cs = 1 there).
-        if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
             call applyTurbPCColumnScaling()
         end if
 
@@ -4047,7 +4031,8 @@ contains
         real(kind=realType), intent(out) :: cs(nState)
 
         cs = one
-        if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
             cs(1:nState) = turbResScale(1:nState)
         end if
     end subroutine getTurbColScale
@@ -4147,7 +4132,8 @@ contains
         integer(kind=intType) :: l
 
         fac = one
-        if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
+        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+             turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
             do l = max(lStart, nt1), min(lEnd, nt2)
                 fac(l) = turbResScale(l - nt1 + 1)
             end do

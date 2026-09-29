@@ -1243,19 +1243,6 @@ class ADFLOW(AeroSolver):
                     "requires. Set useWallFunctions to False."
                 )
 
-            # The SA-GR transition source terms do not carry the source-term
-            # time-step restriction (P&Z Eq. 59) inside the coupled ANK solver;
-            # only the decoupled turbulence solvers (DADI / turb-ANK) apply it.
-            if self.getOption("useANKSolver") and self.getOption("ANKCoupledSwitchTol") > 1e-15:
-                ADFLOWWarning(
-                    "The SA-noft2-Gamma-Retheta transition model is used with the "
-                    "coupled ANK solver (ANKCoupledSwitchTol > 1e-15). The coupled "
-                    "ANK path does not apply the transition source-term time-step "
-                    "restriction and may diverge on the stiff transition sources. "
-                    "Use the decoupled turbulence solvers (ANKUseTurbDADI or "
-                    "turb-ANK) instead."
-                )
-
             # The model is calibrated on the SA-noft2 variant: the ft2 laminar
             # suppression term competes with the gamma intermittency coupling.
             if self.getOption("useft2SA"):
@@ -6131,14 +6118,11 @@ class ADFLOW(AeroSolver):
             "NKAMGNSmooth": [int, 1],
             "NKLS": [str, ["cubic", "none", "non-monotone"]],
             "NKFixedStep": [float, 0.25],
-            # NK line-search relaxation: off by default (alpha=1e-2, turb-blowup
-            # pre-limit factor=2.0, ADflow's original values). When True, LSCubic
-            # uses alpha=1e-3 and factor=3.0 instead -- a generic Newton-globalization
-            # relaxation (not tied to any specific turbulence model) found to help when
-            # NK's Armijo step gets pinned at minlambda for many consecutive iterations
-            # on a stiff production term (e.g. SA-BCM's intermittency blend near the
-            # transition front). See src/NKSolver/NKSolvers.F90:LSCubic.
-            "NKLSRelax": [bool, False],
+            # NK line-search relaxation, on by default: LSCubic uses Armijo alpha=1e-3
+            # and a turb-blowup pre-limit factor of 3.0. False restores ADflow's
+            # original 1e-2 / 2.0, under which NK's step stays pinned at minlambda on
+            # stiff transition sources. See src/NKSolver/NKSolvers.F90:LSCubic.
+            "NKLSRelax": [bool, True],
             "RKReset": [bool, False],
             "nRKReset": [int, 5],
             # Approximate Newton-Krylov Parameters
@@ -6991,8 +6975,9 @@ class ADFLOW(AeroSolver):
 
         turbModel = self.getOption("turbulencemodel")
 
-        # SA-GR model is not implemented in blocketteResCore,
-        # so always force blockResCore path for correct residual computation.
+        # The transition kernels do exist in blocketteResCore (test_blockette_sagr.py
+        # checks they match the block residual), but every validated transition
+        # solve used the blockResCore path, so it stays forced for now.
         if turbModel in ("SA-noft2-Gamma-Retheta", "SA-noft2-Gamma"):
             self.setOption("useBlockettes", False)
 

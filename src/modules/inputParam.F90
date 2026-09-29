@@ -324,7 +324,7 @@ module inputIteration
     real(kind=realType) :: dissContMagnitude, dissContMidpoint, dissContSharpness
     integer(kind=intType) :: TurbDADICoupled = 2
     logical :: transitionFirstOrderUpwind = .true.
-    logical :: transitionCrossflow = .true.
+    logical :: transitionCrossflow = .false.  ! matches pyADflow default
     real(kind=realType) :: transitionRoughnessHeight = 3.3e-6_realType
     ! Master switch for the NK/ANK/turbKSP convergence-acceleration bundle
     ! (column scaling + Eq. 59 source-dt restriction, incl. NK reactivation-
