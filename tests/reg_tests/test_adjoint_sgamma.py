@@ -220,8 +220,26 @@ class TestCmplxStepSGAMMA(reg_test_classes.CmplxRegTest):
         # job 1952265 (2026-09-28): 20000 "Tot" = 553 outer SANK iterations, rho residual 527 -> 4e-6 in 87 min, still
         # short of 1e-12 -> routineFailed. The CS derivative is what matters, so the cmplx tests below no longer
         # assert on the solver flag: they print the residual reached and compare CS with the adjoint refs.
-        options["ncycles"] = 40000
-        options["l2convergence"] = 1e-12
+        # 2026-09-30 (24_minmodel_2d/03_derivatives, diag jobs 1961561/1961575): the cold path above can NOT work for
+        # SA-noft2-Gamma -- the REAL build with these same options (FD PC, no ADPC) also stalls with the gamma residual at
+        # 1e2-1e3 and lands on a different state (cd 0.012945 vs the restart's 0.012841); along that unconverged path the
+        # imaginary part is amplified ~10x per SANK iteration up to CS/h ~ 1e33 on every DV. Complexify is not at fault
+        # (h = 0 keeps Im exactly 0; real and complex cold paths coincide). Fix: re-converge the complex system from the
+        # converged restart state (the CS derivative is the fixed point of R(w) = 0 in complex arithmetic, whatever the
+        # starting point) with a tight Newton: NK linear tol 1e-4, no Eisenstat-Walker, L2 target far below the restart
+        # level so the solver keeps iterating until ncycles -- the real part is already converged, it is the IMAGINARY part
+        # that must converge, and that is checked explicitly (_reportSolve prints ||Im R||). Diagnostic: dcd/dalpha
+        # 2.583739e-3 vs adjoint 2.583740e-3, ||Im R|| 1e-41 -> 1e-46 in 4 full NK steps.
+        # Each NK step costs ~110-230 "Tot" at lin tol 1e-4 (job 1961594: ncycles 300 = 2 steps, ||Im R||/h 0.1-0.9, not
+        # enough), and the NK line search judges the step on the REAL residual, which is already at its floor, so it cut
+        # the 2nd step to 0.49: full Newton steps (NKLS none + NKFixedStep 1; NKLS none alone uses the 0.25 default,
+        # job 1961597: ||Im R|| only 1e-43 -> 3e-45 in 17 steps), 6000 "Tot" (~40 steps).
+        options["nkls"] = "none"
+        options["nkfixedstep"] = 1.0
+        options["ncycles"] = 6000
+        options["l2convergence"] = 1e-30
+        options["nklinearsolvetol"] = 1e-4
+        options["nkuseew"] = False
 
         self.CFDSolver = ADFLOW_C(options=options, debug=True)
 
@@ -230,6 +248,26 @@ class TestCmplxStepSGAMMA(reg_test_classes.CmplxRegTest):
 
         # propagates the values from the restart file throughout the code
         self.CFDSolver.getResidual(self.ap)
+        # converged restart state: every complex re-converge starts from it (see the ncycles note above)
+        self.w0 = self.CFDSolver.getStates().copy()
+
+    def _warmStart(self):
+        self.CFDSolver.setStates(self.w0)
+
+    def _table(self, dv, dvKey, funcs):
+        """Print CS vs adjoint ref for EVERY function of this DV before asserting (an assert stops at the first)."""
+        if MPI.COMM_WORLD.rank != 0:
+            return
+        for f in self.ap.evalFuncs:
+            key = self.ap.name + "_" + f
+            cs = numpy.imag(funcs[key]) / self.h
+            try:
+                ref = self.handler.db["Eval Functions Sens:"][key][dvKey]
+                ref = ref if isinstance(ref, float) else numpy.asarray(ref).flatten()[0]
+                print("[CS table] d%-4s/d%-6s CS=% .10e  adjoint=% .10e  rel=%.2e"
+                      % (f, dv, cs, ref, abs(cs - ref) / max(abs(ref), 1e-30)))
+            except (KeyError, TypeError) as e:
+                print("[CS table] d%-4s/d%-6s CS=% .10e  (no ref: %s)" % (f, dv, cs, e))
 
     def _reportSolve(self, dv):
         """Print (do not assert) whether the complex re-converge hit its iteration cap; the CS-vs-adjoint
@@ -238,6 +276,10 @@ class TestCmplxStepSGAMMA(reg_test_classes.CmplxRegTest):
         self.CFDSolver.checkSolutionFailure(self.ap, funcs)
         if MPI.COMM_WORLD.rank == 0:
             print("[CS solve] dv=%s  fail=%s  (iteration cap reached = derivative from the last iterate)" % (dv, funcs.get("fail")))
+        imR = numpy.imag(self.CFDSolver.getResidual(self.ap))
+        imR = numpy.sqrt(MPI.COMM_WORLD.allreduce(float(numpy.sum(imR**2)), op=MPI.SUM))
+        if MPI.COMM_WORLD.rank == 0:
+            print("[CS solve] dv=%s  ||Im R||/h = %.3e  (converged imaginary part: should be << 1)" % (dv, imR / self.h))
 
     def cmplx_test_aero_dvs(self):
         if not hasattr(self, "name"):
@@ -259,11 +301,12 @@ class TestCmplxStepSGAMMA(reg_test_classes.CmplxRegTest):
         # --- alpha: BLOCKING (asserted) --------------------------------------
         dv = "alpha"
         setattr(self.ap, dv, getattr(self.ap, dv) + self.h * 1j)
-        self.CFDSolver.resetFlow(self.ap)
+        self._warmStart()
         self.CFDSolver(self.ap, writeSolution=False)
         self._reportSolve(dv)
         funcs = {}
         self.CFDSolver.evalFunctions(self.ap, funcs)
+        self._table(dv, dv + "_" + self.ap.name, funcs)
         setattr(self.ap, dv, getattr(self.ap, dv) - self.h * 1j)
         for f in self.ap.evalFuncs:
             key = self.ap.name + "_" + f
@@ -287,7 +330,7 @@ class TestCmplxStepSGAMMA(reg_test_classes.CmplxRegTest):
         # to do with mach.
         dv = "mach"
         setattr(self.ap, dv, getattr(self.ap, dv) + self.h * 1j)
-        self.CFDSolver.resetFlow(self.ap)
+        self._warmStart()
         self.CFDSolver(self.ap, writeSolution=False)
         machFuncs = {}
         self.CFDSolver.evalFunctions(self.ap, machFuncs)
@@ -331,13 +374,14 @@ class TestCmplxStepSGAMMA(reg_test_classes.CmplxRegTest):
         for dv in os.environ.get("SGAMMA_CS_GEOM_DVS", "shape,span,twist").split(","):
             xRef[dv][0] += self.h * 1j
 
-            self.CFDSolver.resetFlow(self.ap)
+            self._warmStart()
             self.CFDSolver.DVGeo.setDesignVars(xRef)
             self.CFDSolver(self.ap, writeSolution=False)
             self._reportSolve(dv)
 
             funcs = {}
             self.CFDSolver.evalFunctions(self.ap, funcs)
+            self._table(dv, dv, funcs)
 
             xRef[dv][0] -= self.h * 1j
 
