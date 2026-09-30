@@ -48,7 +48,6 @@ contains
     real(kind=realtype) :: rrd, ggd, gg6d, termfwd, fwsad, term1d, &
 &   term2d
     real(kind=realtype) :: dfv1, dfv2, dft2, drr, dgg, dfw
-    real(kind=realtype) :: dtterm2, darg_gamma, dttgamma
     real(kind=realtype) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
     real(kind=realtype) :: uuxd, uuyd, uuzd, vvxd, vvyd, vvzd, wwxd, &
 &   wwyd, wwzd
@@ -59,16 +58,15 @@ contains
     real(kind=realtype) :: vortxd, vortyd, vortzd
     real(kind=realtype) :: omegax, omegay, omegaz
     real(kind=realtype) :: omegaxd, omegayd, omegazd
+    real(kind=realtype) :: vortmag, rethetac, revort, rethetav, term1raw&
+&   , term1bcm, term2bcm
+    real(kind=realtype) :: vortmagd, revortd, rethetavd, term1rawd, &
+&   term1bcmd, term2bcmd
+    real(kind=realtype) :: ksarg, ksmax, gammaarg, gammabcm, dterm2bcm, &
+&   dgammabcm
+    real(kind=realtype) :: ksargd, ksmaxd, gammaargd, gammabcmd
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype) :: strainmag2d, strainprodd, vortprodd
-    real(kind=realtype) :: tterm2, re_theta_c, re_vorty, re_theta, &
-&   tterm1, ttgamma
-    real(kind=realtype) :: tterm2d, re_vortyd, re_thetad, tterm1d, &
-&   ttgammad
-    real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
-&   arg_gamma
-    real(kind=realtype) :: sqrtvortd, stransitiond, k_maxd, arg_tanhd, &
-&   arg_gammad
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic sqrt
     intrinsic exp
@@ -78,14 +76,10 @@ contains
     intrinsic tanh
     real(kind=realtype) :: y1
     real(kind=realtype) :: y1d
-    real(kind=realtype) :: x1
-    real(kind=realtype) :: x1d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
-    real(kind=realtype) :: max2
-    real(kind=realtype) :: max2d
     real(kind=realtype) :: arg1
     real(kind=realtype) :: arg1d
     real(kind=realtype) :: result1
@@ -472,10 +466,12 @@ contains
             termfw = temp10**sixth
             fwsad = termfw*ggd + gg*termfwd
             fwsa = gg*termfw
-            ttgamma = one
-            if (use_sabcm) then
-! compute the three components of the vorticity vector.
-! substract the part coming from the rotating frame.
+! sa-bcm transition model (mura and cakmakcioglu, aiaa
+! 2020-2714). the production term is multiplied by the
+! intermittency gammabcm and ft2 is switched off.
+            gammabcm = one
+            if (usesabcm) then
+! vorticity magnitude, independent of turbprod.
               vortxd = two*((wwy-vvz)*factd+fact*(wwyd-vvzd)) - two*&
 &               omegaxd
               vortx = two*fact*(wwy-vvz) - two*omegax
@@ -485,116 +481,95 @@ contains
               vortzd = two*((vvx-uuy)*factd+fact*(vvxd-uuyd)) - two*&
 &               omegazd
               vortz = two*fact*(vvx-uuy) - two*omegaz
-! compute the vorticity production term
               vortprodd = 2*vortx*vortxd + 2*vorty*vortyd + 2*vortz*&
 &               vortzd
               vortprod = vortx**2 + vorty**2 + vortz**2
-! first take the square root of the production term to
-! obtain the correct production term for spalart-allmaras.
-! we do this to avoid if statements.
               temp10 = sqrt(vortprod)
               if (vortprod .eq. 0.0_8) then
-                sqrtvortd = 0.0_8
+                vortmagd = 0.0_8
               else
-                sqrtvortd = vortprodd/(2.0*temp10)
+                vortmagd = vortprodd/(2.0*temp10)
               end if
-              sqrtvort = temp10
-! tterm2 (small values ~0.01)
-              tterm2d = (chi*fv1d+fv1*chid)/sabcm_const2
-              tterm2 = fv1*chi/sabcm_const2
-! re_theta critical
-              re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(&
-&               -1.027_realtype)
-! re_theta actual
-              temp10 = sqrtvort/rlv(i, j, k)
+              vortmag = temp10
+! critical momentum-thickness reynolds number from the
+! free-stream turbulence intensity (in percent) and its local
+! estimate from the vorticity reynolds number, re_v / 2.193.
+              rethetac = 803.73_realtype*(100.0_realtype*&
+&               turbintensityinf+0.6067_realtype)**(-1.027_realtype)
+              temp10 = vortmag/rlv(i, j, k)
               temp9 = d2wall(i, j, k)
               temp8 = w(i, j, k, irho)
               temp7 = temp8*(temp9*temp9)
-              re_vortyd = temp10*(temp9**2*wd(i, j, k, irho)+temp8*2*&
-&               temp9*d2walld(i, j, k)) + temp7*(sqrtvortd-temp10*rlvd(i&
-&               , j, k))/rlv(i, j, k)
-              re_vorty = temp7*temp10
-              re_thetad = re_vortyd/2.193_realtype
-              re_theta = re_vorty/2.193_realtype
-! tterm1 (can be huge ~1e5)
-              tterm1d = re_thetad/(re_theta_c*sabcm_const1)
-              tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
-              stransitiond = sabcm_maxsmooth*tterm1d
-              stransition = sabcm_maxsmooth*tterm1
-              if (stransition .lt. xminn) then
-                k_max = xminn
-                k_maxd = 0.0_8
+              revortd = temp10*(temp9**2*wd(i, j, k, irho)+temp8*2*temp9&
+&               *d2walld(i, j, k)) + temp7*(vortmagd-temp10*rlvd(i, j, k&
+&               ))/rlv(i, j, k)
+              revort = temp7*temp10
+              rethetavd = revortd/2.193_realtype
+              rethetav = revort/2.193_realtype
+              term1rawd = rethetavd/(rethetac*sabcmchi1)
+              term1raw = (rethetav-rethetac)/(rethetac*sabcmchi1)
+              term2bcmd = (chi*fv1d+fv1*chid)/sabcmchi2
+              term2bcm = fv1*chi/sabcmchi2
+              if (sabcmsmooth) then
+! differentiable reformulation: ks-smoothed
+! max(term1raw, 0) and a tanh intermittency.
+                ksargd = sabcmrho*term1rawd
+                ksarg = sabcmrho*term1raw
+                if (ksarg .lt. xminn) then
+                  ksmax = xminn
+                  ksmaxd = 0.0_8
+                else
+                  ksmaxd = ksargd
+                  ksmax = ksarg
+                end if
+                arg1d = exp(ksarg-ksmax)*(ksargd-ksmaxd) - exp(-ksmax)*&
+&                 ksmaxd
+                arg1 = exp(ksarg - ksmax) + exp(-ksmax)
+                term1bcmd = (ksmaxd+arg1d/arg1)/sabcmrho
+                term1bcm = (ksmax+log(arg1))/sabcmrho
+                gammaargd = (term1bcmd+term2bcmd)/sabcmtanhwidth
+                gammaarg = (term1bcm+term2bcm-sabcmtanhcenter)/&
+&                 sabcmtanhwidth
+                gammabcmd = half*(1.0-tanh(gammaarg)**2)*gammaargd
+                gammabcm = half*(one+tanh(gammaarg))
               else
-                k_maxd = stransitiond
-                k_max = stransition
-              end if
-              arg1d = exp(stransition-k_max)*(stransitiond-k_maxd) - exp&
-&               (-k_max)*k_maxd
-              arg1 = exp(stransition - k_max) + exp(-k_max)
-              tterm1d = (k_maxd+arg1d/arg1)/sabcm_maxsmooth
-              tterm1 = (k_max+log(arg1))/sabcm_maxsmooth
-! choose between tanh (current) and reference exp-sqrt formula
-              if (sabcm_exp) then
-                if (tterm1 .lt. zero) then
+                if (term1raw .lt. zero) then
+                  term1bcm = zero
+                  term1bcmd = 0.0_8
+                else
+                  term1bcmd = term1rawd
+                  term1bcm = term1raw
+                end if
+                if (term2bcm .lt. zero) then
                   max1 = zero
                   max1d = 0.0_8
                 else
-                  max1d = tterm1d
-                  max1 = tterm1
+                  max1d = term2bcmd
+                  max1 = term2bcm
                 end if
-                if (tterm2 .lt. zero) then
-                  max2 = zero
-                  max2d = 0.0_8
-                else
-                  max2d = tterm2d
-                  max2 = tterm2
-                end if
-! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-                temp10 = sqrt(max1)
-                if (max1 .eq. 0.0_8) then
+                temp10 = sqrt(term1bcm)
+                if (term1bcm .eq. 0.0_8) then
                   result1d = 0.0_8
                 else
-                  result1d = max1d/(2.0*temp10)
+                  result1d = term1bcmd/(2.0*temp10)
                 end if
                 result1 = temp10
-                temp10 = sqrt(max2)
-                if (max2 .eq. 0.0_8) then
+                temp10 = sqrt(max1)
+                if (max1 .eq. 0.0_8) then
                   result2d = 0.0_8
                 else
-                  result2d = max2d/(2.0*temp10)
+                  result2d = max1d/(2.0*temp10)
                 end if
                 result2 = temp10
-                arg_gammad = result1d + result2d
-                arg_gamma = result1 + result2
-                ttgammad = exp(-arg_gamma)*arg_gammad
-                ttgamma = one - exp(-arg_gamma)
-                if (ttgamma .lt. zero) then
-                  x1 = zero
-                  x1d = 0.0_8
-                else
-                  x1d = ttgammad
-                  x1 = ttgamma
-                end if
-                if (x1 .gt. one) then
-                  ttgamma = one
-                  ttgammad = 0.0_8
-                else
-                  ttgammad = x1d
-                  ttgamma = x1
-                end if
-              else
-! current tanh-based formula
-                arg_tanhd = (tterm1d+tterm2d)/sabcm_fsmooth
-                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
-                ttgammad = 0.5_realtype*(1.0-tanh(arg_tanh)**2)*&
-&                 arg_tanhd
-                ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                gammaargd = result1d + result2d
+                gammaarg = result1 + result2
+                gammabcmd = exp(-gammaarg)*gammaargd
+                gammabcm = one - exp(-gammaarg)
               end if
-              tgamma(i, j, k) = ttgamma
               ft2 = zero
               ft2d = 0.0_8
             else
-              ttgammad = 0.0_8
+              gammabcmd = 0.0_8
             end if
 ! compute the source term; some terms are saved for the
 ! linearization. the source term is stored in dvt.
@@ -602,15 +577,15 @@ contains
               term1 = zero
               term1d = 0.0_8
             else
-              term1d = rsacb1*((one-ft2)*(ss*ttgammad+ttgamma*ssd)-&
-&               ttgamma*ss*ft2d)
-              term1 = ttgamma*rsacb1*(one-ft2)*ss
+              term1d = rsacb1*((one-ft2)*(ss*gammabcmd+gammabcm*ssd)-&
+&               gammabcm*ss*ft2d)
+              term1 = gammabcm*rsacb1*(one-ft2)*ss
             end if
             temp10 = (one-ft2)*fv2 + ft2
-            temp9 = kar2inv*rsacb1*ttgamma*temp10 - rsacw1*fwsa
+            temp9 = kar2inv*rsacb1*gammabcm*temp10 - rsacw1*fwsa
             term2d = temp9*dist2invd + dist2inv*(kar2inv*rsacb1*(temp10*&
-&             ttgammad+ttgamma*((one-ft2)*fv2d-(fv2-1.0)*ft2d))-rsacw1*&
-&             fwsad)
+&             gammabcmd+gammabcm*((one-ft2)*fv2d-(fv2-1.0)*ft2d))-rsacw1&
+&             *fwsad)
             term2 = dist2inv*temp9
             temp10 = w(i, j, k, itu1)
             temp9 = w(i, j, k, itu1)
@@ -645,16 +620,15 @@ contains
     real(kind=realtype) :: ss, sst, nu, dist2inv, chi, chi2, chi3
     real(kind=realtype) :: rr, gg, gg6, termfw, fwsa, term1, term2
     real(kind=realtype) :: dfv1, dfv2, dft2, drr, dgg, dfw
-    real(kind=realtype) :: dtterm2, darg_gamma, dttgamma
     real(kind=realtype) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
     real(kind=realtype) :: div2, fact, sxx, syy, szz, sxy, sxz, syz
     real(kind=realtype) :: vortx, vorty, vortz
     real(kind=realtype) :: omegax, omegay, omegaz
+    real(kind=realtype) :: vortmag, rethetac, revort, rethetav, term1raw&
+&   , term1bcm, term2bcm
+    real(kind=realtype) :: ksarg, ksmax, gammaarg, gammabcm, dterm2bcm, &
+&   dgammabcm
     real(kind=realtype) :: strainmag2, strainprod, vortprod
-    real(kind=realtype) :: tterm2, re_theta_c, re_vorty, re_theta, &
-&   tterm1, ttgamma
-    real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
-&   arg_gamma
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic sqrt
     intrinsic exp
@@ -663,10 +637,8 @@ contains
     intrinsic log
     intrinsic tanh
     real(kind=realtype) :: y1
-    real(kind=realtype) :: x1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
-    real(kind=realtype) :: max2
     real(kind=realtype) :: arg1
     real(kind=realtype) :: result1
     real(kind=realtype) :: result2
@@ -812,71 +784,57 @@ contains
             gg6 = gg**6
             termfw = ((one+cw36)/(gg6+cw36))**sixth
             fwsa = gg*termfw
-            ttgamma = one
-            if (use_sabcm) then
-! compute the three components of the vorticity vector.
-! substract the part coming from the rotating frame.
+! sa-bcm transition model (mura and cakmakcioglu, aiaa
+! 2020-2714). the production term is multiplied by the
+! intermittency gammabcm and ft2 is switched off.
+            gammabcm = one
+            if (usesabcm) then
+! vorticity magnitude, independent of turbprod.
               vortx = two*fact*(wwy-vvz) - two*omegax
               vorty = two*fact*(uuz-wwx) - two*omegay
               vortz = two*fact*(vvx-uuy) - two*omegaz
-! compute the vorticity production term
               vortprod = vortx**2 + vorty**2 + vortz**2
-! first take the square root of the production term to
-! obtain the correct production term for spalart-allmaras.
-! we do this to avoid if statements.
-              sqrtvort = sqrt(vortprod)
-! tterm2 (small values ~0.01)
-              tterm2 = fv1*chi/sabcm_const2
-! re_theta critical
-              re_theta_c = 803.73_realtype*(sabcm_tu+0.6067_realtype)**(&
-&               -1.027_realtype)
-! re_theta actual
-              re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i&
-&               , j, k)**2
-              re_theta = re_vorty/2.193_realtype
-! tterm1 (can be huge ~1e5)
-              tterm1 = (re_theta-re_theta_c)/(re_theta_c*sabcm_const1)
-              stransition = sabcm_maxsmooth*tterm1
-              if (stransition .lt. xminn) then
-                k_max = xminn
+              vortmag = sqrt(vortprod)
+! critical momentum-thickness reynolds number from the
+! free-stream turbulence intensity (in percent) and its local
+! estimate from the vorticity reynolds number, re_v / 2.193.
+              rethetac = 803.73_realtype*(100.0_realtype*&
+&               turbintensityinf+0.6067_realtype)**(-1.027_realtype)
+              revort = vortmag*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
+&               , k)**2
+              rethetav = revort/2.193_realtype
+              term1raw = (rethetav-rethetac)/(rethetac*sabcmchi1)
+              term2bcm = fv1*chi/sabcmchi2
+              if (sabcmsmooth) then
+! differentiable reformulation: ks-smoothed
+! max(term1raw, 0) and a tanh intermittency.
+                ksarg = sabcmrho*term1raw
+                if (ksarg .lt. xminn) then
+                  ksmax = xminn
+                else
+                  ksmax = ksarg
+                end if
+                arg1 = exp(ksarg - ksmax) + exp(-ksmax)
+                term1bcm = (ksmax+log(arg1))/sabcmrho
+                gammaarg = (term1bcm+term2bcm-sabcmtanhcenter)/&
+&                 sabcmtanhwidth
+                gammabcm = half*(one+tanh(gammaarg))
               else
-                k_max = stransition
-              end if
-              arg1 = exp(stransition - k_max) + exp(-k_max)
-              tterm1 = (k_max+log(arg1))/sabcm_maxsmooth
-! choose between tanh (current) and reference exp-sqrt formula
-              if (sabcm_exp) then
-                if (tterm1 .lt. zero) then
+                if (term1raw .lt. zero) then
+                  term1bcm = zero
+                else
+                  term1bcm = term1raw
+                end if
+                if (term2bcm .lt. zero) then
                   max1 = zero
                 else
-                  max1 = tterm1
+                  max1 = term2bcm
                 end if
-                if (tterm2 .lt. zero) then
-                  max2 = zero
-                else
-                  max2 = tterm2
-                end if
-! reference formula: gamma = 1 - exp(-(sqrt(term1) + sqrt(term2)))
-                result1 = sqrt(max1)
-                result2 = sqrt(max2)
-                arg_gamma = result1 + result2
-                ttgamma = one - exp(-arg_gamma)
-                if (ttgamma .lt. zero) then
-                  x1 = zero
-                else
-                  x1 = ttgamma
-                end if
-                if (x1 .gt. one) then
-                  ttgamma = one
-                else
-                  ttgamma = x1
-                end if
-              else
-! current tanh-based formula
-                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
-                ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                result1 = sqrt(term1bcm)
+                result2 = sqrt(max1)
+                gammaarg = result1 + result2
+                gammabcm = one - exp(-gammaarg)
               end if
-              tgamma(i, j, k) = ttgamma
               ft2 = zero
             end if
 ! compute the source term; some terms are saved for the
@@ -884,10 +842,10 @@ contains
             if (approxsa) then
               term1 = zero
             else
-              term1 = ttgamma*rsacb1*(one-ft2)*ss
+              term1 = gammabcm*rsacb1*(one-ft2)*ss
             end if
-            term2 = dist2inv*(kar2inv*ttgamma*rsacb1*((one-ft2)*fv2+ft2)&
-&             -rsacw1*fwsa)
+            term2 = dist2inv*(kar2inv*gammabcm*rsacb1*((one-ft2)*fv2+ft2&
+&             )-rsacw1*fwsa)
             scratch(i, j, k, idvt) = (term1+term2*w(i, j, k, itu1))*w(i&
 &             , j, k, itu1)
           end do

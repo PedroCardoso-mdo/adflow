@@ -853,15 +853,15 @@ contains
               rethetat0bc = rethetatcorrelation(tupct, zero)
               rethetacbcd = rethetac0bc*rethetabctilded/rethetat0bc
               rethetacbc = rethetac0bc*rethetabctilde/rethetat0bc
-              temp10 = (rethetabc-rethetacbc)/(sabcm_const1*rethetacbc)
-              bcterm1rawd = (rethetabcd-(temp10*sabcm_const1+1.0)*&
-&               rethetacbcd)/(sabcm_const1*rethetacbc)
+              temp10 = (rethetabc-rethetacbc)/(sabcmchi1*rethetacbc)
+              bcterm1rawd = (rethetabcd-(temp10*sabcmchi1+1.0)*&
+&               rethetacbcd)/(sabcmchi1*rethetacbc)
               bcterm1raw = temp10
-              bcterm2d = (chi*fv1d+fv1*chid)/sabcm_const2
-              bcterm2 = fv1*chi/sabcm_const2
+              bcterm2d = (chi*fv1d+fv1*chid)/sabcmchi2
+              bcterm2 = fv1*chi/sabcmchi2
 ! ks-smoothed max(term1, 0) (shift by kmax for overflow safety)
-              bcsd = sabcm_maxsmooth*bcterm1rawd
-              bcs = sabcm_maxsmooth*bcterm1raw
+              bcsd = sabcmrho*bcterm1rawd
+              bcs = sabcmrho*bcterm1raw
               if (bcs .lt. xminn) then
                 bckmax = xminn
                 bckmaxd = 0.0_8
@@ -872,10 +872,10 @@ contains
               arg1d = exp(bcs-bckmax)*(bcsd-bckmaxd) - exp(-bckmax)*&
 &               bckmaxd
               arg1 = exp(bcs - bckmax) + exp(-bckmax)
-              bcterm1d = (bckmaxd+arg1d/arg1)/sabcm_maxsmooth
-              bcterm1 = (bckmax+log(arg1))/sabcm_maxsmooth
-              bcargd = (bcterm1d+bcterm2d)/sabcm_fsmooth
-              bcarg = (bcterm1+bcterm2-sabcm_s0_tanh)/sabcm_fsmooth
+              bcterm1d = (bckmaxd+arg1d/arg1)/sabcmrho
+              bcterm1 = (bckmax+log(arg1))/sabcmrho
+              bcargd = (bcterm1d+bcterm2d)/sabcmtanhwidth
+              bcarg = (bcterm1+bcterm2-sabcmtanhcenter)/sabcmtanhwidth
               gammabcd = half*(1.0-tanh(bcarg)**2)*bcargd
               gammabc = half*(one+tanh(bcarg))
               ft2 = zero
@@ -1892,19 +1892,18 @@ contains
 &               1.027_realtype)
               rethetat0bc = rethetatcorrelation(tupct, zero)
               rethetacbc = rethetac0bc*rethetabctilde/rethetat0bc
-              bcterm1raw = (rethetabc-rethetacbc)/(rethetacbc*&
-&               sabcm_const1)
-              bcterm2 = fv1*chi/sabcm_const2
+              bcterm1raw = (rethetabc-rethetacbc)/(rethetacbc*sabcmchi1)
+              bcterm2 = fv1*chi/sabcmchi2
 ! ks-smoothed max(term1, 0) (shift by kmax for overflow safety)
-              bcs = sabcm_maxsmooth*bcterm1raw
+              bcs = sabcmrho*bcterm1raw
               if (bcs .lt. xminn) then
                 bckmax = xminn
               else
                 bckmax = bcs
               end if
               arg1 = exp(bcs - bckmax) + exp(-bckmax)
-              bcterm1 = (bckmax+log(arg1))/sabcm_maxsmooth
-              bcarg = (bcterm1+bcterm2-sabcm_s0_tanh)/sabcm_fsmooth
+              bcterm1 = (bckmax+log(arg1))/sabcmrho
+              bcarg = (bcterm1+bcterm2-sabcmtanhcenter)/sabcmtanhwidth
               gammabc = half*(one+tanh(bcarg))
               ft2 = zero
             end if
@@ -4445,25 +4444,25 @@ contains
 &       1.027_realtype)
       rethetat0bc = rethetatcorrelation(tupct, zero)
       rethetacbc = rethetac0bc*rethetabctilde/rethetat0bc
-      bcterm1raw = (rethetabc-rethetacbc)/(rethetacbc*sabcm_const1)
-      bcterm2 = fv1*chi/sabcm_const2
-      bcs = sabcm_maxsmooth*bcterm1raw
+      bcterm1raw = (rethetabc-rethetacbc)/(rethetacbc*sabcmchi1)
+      bcterm2 = fv1*chi/sabcmchi2
+      bcs = sabcmrho*bcterm1raw
       if (bcs .lt. xminn) then
         bckmax = xminn
       else
         bckmax = bcs
       end if
       arg1 = exp(bcs - bckmax) + exp(-bckmax)
-      bcterm1 = (bckmax+log(arg1))/sabcm_maxsmooth
-      bcarg = (bcterm1+bcterm2-sabcm_s0_tanh)/sabcm_fsmooth
+      bcterm1 = (bckmax+log(arg1))/sabcmrho
+      bcarg = (bcterm1+bcterm2-sabcmtanhcenter)/sabcmtanhwidth
       gammabc = half*(one+tanh(bcarg))
       ft2 = zero
       sech2bc = one - tanh(bcarg)**2
       sigbc = exp(bcs-bckmax)/(exp(bcs-bckmax)+exp(-bckmax))
-      dbcterm2 = (chi*dfv1+fv1)/(nu*sabcm_const2)
-      dgammabc_dnu = half*sech2bc*dbcterm2/sabcm_fsmooth
-      dgammabc_dret = -(half*sech2bc*sigbc/sabcm_fsmooth*rethetabc/(&
-&       rethetacbc*sabcm_const1*rethetabctilde))
+      dbcterm2 = (chi*dfv1+fv1)/(nu*sabcmchi2)
+      dgammabc_dnu = half*sech2bc*dbcterm2/sabcmtanhwidth
+      dgammabc_dret = -(half*sech2bc*sigbc/sabcmtanhwidth*rethetabc/(&
+&       rethetacbc*sabcmchi1*rethetabctilde))
       gammaforsa = gammabc
     else
       if (w(i, j, k, itu2) .lt. xminn) then
