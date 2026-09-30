@@ -16,7 +16,7 @@ Where this file and the code disagree, the code is right.
 |--------|-----------------------------------------------|------------------------|-------------------------------|
 | SA-GR  | `turbulenceModel="SA-noft2-Gamma-Retheta"`    | ν̃, γ, Re̅θt (nwt = 3)   | `src/turbulence/saGammaRetheta.F90` |
 | SA-sγ  | `turbulenceModel="SA-noft2-Gamma"`            | ν̃, γ (nwt = 2)         | `src/turbulence/saGamma.F90`  |
-| SA-BCM | `use_SABCM=True` on `turbulenceModel="SA"`    | ν̃ (nwt = 1)            | `use_SABCM` block in `src/turbulence/sa.F90` |
+| SA-BCM | `useSABCM=True` on `turbulenceModel="SA"`     | ν̃ (nwt = 1)            | `useSABCM` block in `src/turbulence/sa.F90` |
 
 - **Enum ids.** The enums are `spalartallmarasnoft2gammaretheta` and
   `spalartallmarasnoft2gamma` (id 9) in `src/modules/constants.F90`. SA-BCM
@@ -208,47 +208,48 @@ the switch tolerances.
   `blocketteResCore` and `test_blockette_sagr.py` checks them, but every
   validated solve used the block path.
 
-## 4. SA-BCM (`use_SABCM`)
+## 4. SA-BCM (`useSABCM`)
 
 SA-BCM is an algebraic intermittency that multiplies SA production, inside
-`saSource` in `sa.F90`. There is no new equation and `nw` is unchanged.
+`saSource` in `sa.F90`. There is no new equation and `nw` is unchanged. The
+code is the upstream PR version (mdolab/adflow#410, branch `sabcm-upstream`).
 
 - **Implementation:**
-  - The multiplier is `tTgamma` (= 1 when off, which reproduces plain SA
-    exactly), stored per cell in the block array `Tgamma` for output.
-  - `ft2` is forced to 0.
-  - The hand Jacobian adds `dtTgamma` to the `qq` diagonal, inside
+  - The multiplier is the local `gammaBCM` (= 1 when off, which reproduces
+    plain SA exactly). It is **not stored**: `saBCMIntermittency` (sa.F90,
+    outside Tapenade) recomputes it from the state for the `intermittency`
+    volume / isosurface variable.
+  - `ft2` is forced to 0; `useft2SA=True` is ignored with a warning.
+  - The hand Jacobian adds `dGammaBCM` to the `qq` diagonal, inside
     `#ifndef USE_TAPENADE`.
-  - The non-Tapenade mirror in `blockette.F90` must be kept in sync by hand.
-    `test_blockette_bcm.py` checks this; unlike SA-GR, blockettes stay on for
-    BCM.
+  - The residual is mirrored in `blockette.F90` (blockettes stay on for BCM).
 - **Formulation (source: `docs/papers/`).**
   - The Appendix of AIAA 2020-2714 is the reference formulation.
-  - Term1 compares the vorticity Re_θ = ρ|ω|d²/μ against
-    Re_θc(Tu) = 803.73(Tu+0.6067)^-1.027, scaled by χ₁.
+  - Term1 compares the vorticity Re_θ = ρ|ω|d²/(2.193 μ) against
+    Re_θc(Tu) = 803.73(100·Tu+0.6067)^-1.027, scaled by χ₁.
   - Term2 = (fv1·χ)/χ₂, which is the eddy-viscosity ratio, not raw χ.
-  - max(Term1, 0) is replaced by a KS smooth max.
-  - A "hard" and a "smooth" blend are selected by `SABCM_Exp` (see the
-    table).
+  - `SABCMSmooth=True` (default): KS smooth max of Term1 + tanh blend.
+    `SABCMSmooth=False`: the paper's γ = 1 − exp(−(√max(T1,0) + √T2)),
+    no KS (the old `SABCM_Exp=True` KS-smoothed T1 first; not bit-equal).
 - **Units:** vorticity is in p-ρ units and ν̃/ν are ratios to μ∞, so no extra
   1/Re appears (see ADFLOW_08).
-- **Required option:** `useApproxWallDistance=True`. `inputParamRoutines`
-  terminates otherwise.
+- **Required:** RANS + SA, and `useApproxWallDistance=True`;
+  `inputParamRoutines` terminates otherwise.
 - **Hook:** `sa.F90` is guarded by a hook, so each edit asks for approval.
   Approve only for SA-BCM work.
 
-| Option | Default | Meaning |
-|---|---|---|
-| `use_SABCM` | `False` | Master switch. |
-| `SABCM_Exp` | `False` | `True` = the paper's γ = 1 − exp(−(√T1 + √T2)) ("hard"). `False` = the tanh blend ("smooth"), a deliberate smoothing that is not in the papers. |
-| `SABCM_Const1` / `SABCM_Const2` | `0.002` / `0.02` | χ₁ and χ₂. |
-| `SABCM_TU` | `0.5` | Tu∞ in percent, used by the Re_θc correlation. |
-| `SABCM_S0_tanh` / `SABCM_fsmooth` | `0.5` / `0.08` | Centre and width of the tanh blend (smooth variant). |
-| `SABCM_maxsmooth` | `50.0` | KS sharpness replacing max(Term1, 0). Used by both variants. |
+| Option | Default | Meaning | Old name (before 2026-09-30) |
+|---|---|---|---|
+| `useSABCM` | `False` | Master switch. | `use_SABCM` |
+| `SABCMSmooth` | `True` | Smooth (KS + tanh) vs original exp form. | `SABCM_Exp` (inverted) |
+| `SABCMChi1` / `SABCMChi2` | `0.002` / `0.02` | χ₁ and χ₂. | `SABCM_Const1` / `SABCM_Const2` |
+| `turbIntensityInf` | `0.001` | Tu∞ as a **fraction** (0.005 = 0.5 %). Shared with SA-GR. | `SABCM_TU` (percent) |
+| `SABCMTanhCenter` / `SABCMTanhWidth` | `0.5` / `0.08` | Centre and width of the tanh blend. | `SABCM_S0_tanh` / `SABCM_fsmooth` |
+| `SABCMRho` | `50.0` | KS sharpness replacing max(Term1, 0) (smooth form only). | `SABCM_maxsmooth` |
 
-The Tapenade output `sa_{d,b,fast_b}` is in sync with `sa.F90`. In `saSource`
-and in `blockette.F90`, the comment "external module not seen by Tapenade"
-does not describe the inline code; ignore it.
+`transitionBCMGamma` (SA-GR modifier) reuses `SABCMChi1/Chi2/Rho/TanhCenter/
+TanhWidth`. Volume variable `tgamma` is gone: use `intermittency`.
+The SA-BCM derivative tests are upstream's `tests/reg_tests/test_sabcm.py`.
 
 ## 5. Design rationale (why the code looks like this)
 

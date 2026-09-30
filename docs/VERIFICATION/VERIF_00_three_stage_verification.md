@@ -18,9 +18,9 @@ prints the fix for anything missing; then run the stages in order.
 |----------------------------------|-----------------------|----------------|---------------------------------------------------------------------|------------------------------------------|
 | SA-GR (`SA-noft2-Gamma-Retheta`) | `run_sagr_tests.sh`   | `reg_sagr.py`  | `test_{jacVecProdFWD,jacVecProdBWDFast,adjoint,blockette}_sagr.py`  | `mdo_tutorial_sagr_dp.cgns`              |
 | SA-sγ (`SA-noft2-Gamma`)         | `run_sgamma_tests.sh` | `reg_sgamma.py`| `test_{jacVecProdFWD,jacVecProdBWDFast,adjoint}_sgamma.py`          | `mdo_tutorial_sgamma_dp.cgns`            |
-| SA-BCM (`use_SABCM`, smooth+hard)| `run_bcm_tests.sh`    | `reg_bcm.py`   | `test_{jacVecProdFWD,jacVecProdBWDFast,adjoint,blockette}_bcm.py`   | `mdo_tutorial_bcm_{smooth,hard}_dp.cgns` |
+| SA-BCM (`useSABCM`, smooth+orig.)| `testflo test_sabcm.py` | (in the test) | `test_sabcm.py` (upstream: residual, fwd jac-vec vs CS, bwd dot product) | `mdo_tutorial_rans_scalar_jst.cgns`      |
 
-Driver arguments (all three): `all` (default) · `real` · `cs` · `adjoint` ·
+Driver arguments (SA-GR, SA-sγ): `all` (default) · `real` · `cs` · `adjoint` ·
 `blockette` (not SA-sγ) · `train` · `genw`. Knobs: `PY`, `NP` (default 2),
 `NP_CS` (default 1).
 
@@ -98,7 +98,7 @@ exact — validated partials ≠ validated gradient.
 | Stage 3b fails, 1–2 pass                        | Differentiated code out of sync with the primal → `TAPENADE NEEDED`, or a missing active input |
 | FD fails, CS passes                             | FD kink/cancellation noise, not an AD bug |
 | Stages 4–5 fail, 3b passes                      | Primal or adjoint convergence depth, complex re-converge floor |
-| SA-BCM: one variant (smooth/hard) fails         | The `SABCM_Exp`-gated blend branch |
+| SA-BCM: one variant (smooth/original) fails     | The `SABCMSmooth`-gated blend branch |
 
 ## Complex build
 

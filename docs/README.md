@@ -34,4 +34,4 @@ Load only the file(s) the routing row names, in order.
 | `papers/`                                              | SA-BCM papers (Mura & Cakmakcioglu 2020; Çakmakçıoğlu et al. 2020)     |
 | `MICHAEL_PIOTROWSKI/MP_0{1,3,4,5,6}_*_full.md`         | Transcripts of the later Piotrowski/Zingg papers and thesis (only local copies) |
 
-Test-suite READMEs: `../tests/reg_tests/README_SAGR.md`, `README_BCM.md`, `dev/README.md`.
+Test-suite READMEs: `../tests/reg_tests/README_SAGR.md`, `dev/README.md` (SA-BCM: `test_sabcm.py`).
