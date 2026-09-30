@@ -44,6 +44,7 @@ PY=${PY:-/home/mdo/packages_v2/mach/bin/python}
 NP=${NP:-2}          # MPI ranks for the real-build stages
 NP_CS=${NP_CS:-1}    # MPI ranks for the complex CS stage
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}   # never oversubscribe
+export BCM_VARIANTS=${BCM_VARIANTS:-smooth}
 
 FWD=test_jacVecProdFWD_bcm.py
 BWD=test_jacVecProdBWDFast_bcm.py
@@ -76,15 +77,19 @@ run_blockette() {
 
 do_train() {
     head "Retraining JSON reference files (smooth+hard)"
-    "$PY" -m testflo -n "$NP" "$FWD" "$BWD" "$ADJ" -m "train*" -v
+    "$PY" -m testflo -n "$NP" "$FWD" "$BWD" "$ADJ" -m "train*" -v; local rc=$?
     echo "refs written: refs/jacvecfwd_bcm_{smooth,hard}_tut_wing.json  refs/jacvecbwd_bcm_{smooth,hard}_tut_wing.json  refs/adjoint_bcm_{smooth,hard}_tut_wing.json"
+    return $rc   # 2026-09-30: train with FAILs used to return 0 (echo) and let the chain continue
 }
 
 do_genw() {
     head "Regenerating converged restart states (w) via generate_bcm_restart.py, both variants"
     echo "NOTE: expect this NOT to converge cleanly first try -- use dev/run_bcm_case.py to iterate first"
-    mpirun -np "$NP" --bind-to core "$PY" generate_bcm_restart.py --variant smooth "${@:2}"
-    mpirun -np "$NP" --bind-to core "$PY" generate_bcm_restart.py --variant hard "${@:2}"
+    local rc=0 v
+    for v in ${BCM_VARIANTS//,/ }; do   # default smooth only (see test files)
+        mpirun -np "$NP" --bind-to core "$PY" generate_bcm_restart.py --variant $v "${@:2}" || rc=1
+    done
+    return $rc
 }
 
 case "${1:-all}" in

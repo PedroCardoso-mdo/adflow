@@ -196,7 +196,8 @@ class TestJacVecFwdSGAMMAFD(reg_test_classes.RegTest):
                 err_msg="residual wrt %s" % colName,
             )
 
-    @unittest.expectedFailure  # FD noise on the 13-order residual -- see test_wDot note
+    # expectedFailure dropped 2026-09-30: the FD of xDvDot PASSES for SA-noft2-Gamma ("unexpected success", jobs
+    # 1961096 and earlier SA_SGAMMA runs) -- per the ladder rule an unexpected success means the decorator goes.
     def test_xDvDot(self):
         # perturb each input and check that the outputs match the FD to with in reason
         step_size = {

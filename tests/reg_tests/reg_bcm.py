@@ -269,6 +269,6 @@ def assert_bcm_xdvdot_allclose(handler, CFDSolver, ap, seed=1.0, mode=None, h=No
         if key not in bcmAeroDVs:
             continue
         resDot = CFDSolver.computeJacobianVectorProductFwd(xDvDot={key: seed}, residualDeriv=True, **extraArgs)
-        name = "||dR/d%s||" % key
+        name = "||dR/d%s|| (bcm rows)" % key   # unique key: test_xDvDot already stores "||dR/d<dv>||" (train KeyError, 1961096)
         handler.root_print(name)
         handler.par_add_norm(name, resDot, rtol=rtol, atol=atol)
