@@ -1237,14 +1237,13 @@ python module libadflow
          logical :: userotationsa
          logical :: useft2sa
          logical :: wallfunctions
-         logical :: use_sabcm
-         logical :: sabcm_exp
-         real(kind=realtype) :: sabcm_const1
-         real(kind=realtype) :: sabcm_const2
-         real(kind=realtype) :: sabcm_tu
-         real(kind=realtype) :: sabcm_s0_tanh
-         real(kind=realtype) :: sabcm_fsmooth
-         real(kind=realtype) :: sabcm_maxsmooth
+         logical :: usesabcm
+         logical :: sabcmsmooth
+         real(kind=realtype) :: sabcmchi1
+         real(kind=realtype) :: sabcmchi2
+         real(kind=realtype) :: sabcmrho
+         real(kind=realtype) :: sabcmtanhcenter
+         real(kind=realtype) :: sabcmtanhwidth
          real(kind=realtype) :: mach
          real(kind=realtype) :: machcoef
          real(kind=realtype) :: machgrid

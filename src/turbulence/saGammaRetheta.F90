@@ -564,13 +564,13 @@ contains
                             reThetaC0BC = 803.73_realType * (tuPct + 0.6067_realType)**(-1.027_realType)
                             reThetaT0BC = reThetaTCorrelation(tuPct, zero)
                             reThetaCBC = reThetaC0BC * reThetaBCtilde / reThetaT0BC
-                            bcTerm1Raw = (reThetaBC - reThetaCBC) / (reThetaCBC * SABCM_Const1)
-                            bcTerm2 = fv1 * chi / SABCM_Const2
+                            bcTerm1Raw = (reThetaBC - reThetaCBC) / (reThetaCBC * SABCMChi1)
+                            bcTerm2 = fv1 * chi / SABCMChi2
                             ! KS-smoothed max(Term1, 0) (shift by kmax for overflow safety)
-                            bcS = SABCM_maxsmooth * bcTerm1Raw
+                            bcS = SABCMRho * bcTerm1Raw
                             bcKmax = max(bcS, xminn)
-                            bcTerm1 = (bcKmax + log(exp(bcS - bcKmax) + exp(-bcKmax))) / SABCM_maxsmooth
-                            bcArg = (bcTerm1 + bcTerm2 - SABCM_S0_tanh) / SABCM_fsmooth
+                            bcTerm1 = (bcKmax + log(exp(bcS - bcKmax) + exp(-bcKmax))) / SABCMRho
+                            bcArg = (bcTerm1 + bcTerm2 - SABCMTanhCenter) / SABCMTanhWidth
                             gammaBC = half * (one + tanh(bcArg))
                             ft2 = zero
                         end if
@@ -951,10 +951,10 @@ contains
                         if (transitionBCMGamma) then
                             sech2BC = one - tanh(bcArg)**2
                             sigBC = exp(bcS - bcKmax) / (exp(bcS - bcKmax) + exp(-bcKmax))
-                            dbcTerm2 = (chi * dfv1 + fv1) / (nu * SABCM_Const2)
-                            dgammaBC_dnu = half * sech2BC * dbcTerm2 / SABCM_fsmooth
-                            dgammaBC_dReT = -half * sech2BC * sigBC / SABCM_fsmooth &
-                                            * reThetaBC / (reThetaCBC * SABCM_Const1 * reThetaBCtilde)
+                            dbcTerm2 = (chi * dfv1 + fv1) / (nu * SABCMChi2)
+                            dgammaBC_dnu = half * sech2BC * dbcTerm2 / SABCMTanhWidth
+                            dgammaBC_dReT = -half * sech2BC * sigBC / SABCMTanhWidth &
+                                            * reThetaBC / (reThetaCBC * SABCMChi1 * reThetaBCtilde)
                         end if
 
                         ! Compute the source term jacobian.
@@ -2708,20 +2708,20 @@ contains
             reThetaC0BC = 803.73_realType * (tuPct + 0.6067_realType)**(-1.027_realType)
             reThetaT0BC = reThetaTCorrelation(tuPct, zero)
             reThetaCBC = reThetaC0BC * reThetaBCtilde / reThetaT0BC
-            bcTerm1Raw = (reThetaBC - reThetaCBC) / (reThetaCBC * SABCM_Const1)
-            bcTerm2 = fv1 * chi / SABCM_Const2
-            bcS = SABCM_maxsmooth * bcTerm1Raw
+            bcTerm1Raw = (reThetaBC - reThetaCBC) / (reThetaCBC * SABCMChi1)
+            bcTerm2 = fv1 * chi / SABCMChi2
+            bcS = SABCMRho * bcTerm1Raw
             bcKmax = max(bcS, xminn)
-            bcTerm1 = (bcKmax + log(exp(bcS - bcKmax) + exp(-bcKmax))) / SABCM_maxsmooth
-            bcArg = (bcTerm1 + bcTerm2 - SABCM_S0_tanh) / SABCM_fsmooth
+            bcTerm1 = (bcKmax + log(exp(bcS - bcKmax) + exp(-bcKmax))) / SABCMRho
+            bcArg = (bcTerm1 + bcTerm2 - SABCMTanhCenter) / SABCMTanhWidth
             gammaBC = half * (one + tanh(bcArg))
             ft2 = zero
             sech2BC = one - tanh(bcArg)**2
             sigBC = exp(bcS - bcKmax) / (exp(bcS - bcKmax) + exp(-bcKmax))
-            dbcTerm2 = (chi * dfv1 + fv1) / (nu * SABCM_Const2)
-            dgammaBC_dnu = half * sech2BC * dbcTerm2 / SABCM_fsmooth
-            dgammaBC_dReT = -half * sech2BC * sigBC / SABCM_fsmooth &
-                            * reThetaBC / (reThetaCBC * SABCM_Const1 * reThetaBCtilde)
+            dbcTerm2 = (chi * dfv1 + fv1) / (nu * SABCMChi2)
+            dgammaBC_dnu = half * sech2BC * dbcTerm2 / SABCMTanhWidth
+            dgammaBC_dReT = -half * sech2BC * sigBC / SABCMTanhWidth &
+                            * reThetaBC / (reThetaCBC * SABCMChi1 * reThetaBCtilde)
             gammaForSA = gammaBC
         else
             gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)

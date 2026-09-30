@@ -273,7 +273,6 @@ contains
         if (volWriteGC) nVolSolvar = nVolSolvar + 1
         if (volWriteStatus) nVolSolvar = nVolSolvar + 1
         if (volWriteIntermittency) nVolDiscrVar = nVolDiscrVar + 1
-        if (volWriteTgamma) nVolDiscrVar = nVolDiscrVar + 1
         if (volWriteFonset) nVolSolvar = nVolSolvar + 1
         if (volWriteFlength) nVolSolvar = nVolSolvar + 1
         if (volWriteRturb) nVolSolvar = nVolSolvar + 1
@@ -696,11 +695,6 @@ contains
             solNames(nn) = cgnsIntermittency
         end if
 
-        if (volWriteTgamma) then
-            nn = nn + 1
-            solNames(nn) = cgnsTgamma
-        end if
-
         if (volWriteFonset) then
             nn = nn + 1
             solNames(nn) = cgnsFonset
@@ -1097,6 +1091,7 @@ contains
                              rsaGRfonsetS
         use turbUtils, only: flengthCorrelation, rethetacCorrelation, &
                              reThetaTCorrelation
+        use sa, only: saBCMIntermittency
         implicit none
         !
         !      Subroutine arguments.
@@ -1135,6 +1130,7 @@ contains
         real(kind=realType) :: vortMag_loc
 
         real(kind=realType), dimension(:, :, :, :), pointer :: wIO
+        real(kind=realType), dimension(:, :, :), allocatable :: gammaBCM
 
         ! Set the pointer to the correct entry of IOVar. I'm cheating a
         ! bit here, because I know that only memory has been allocated
@@ -1661,23 +1657,25 @@ contains
                 end do
             end do
 
-        case (cgnstgamma)
-            ! SA-BCM algebraic intermittency, plain volume output like any
-            ! other transition diagnostic (refactor 2026-08-22: replaces the
-            ! old always-on write + near-wall surface columns).
-            do k = kBeg, kEnd
-                kk = max(2_intType, k); kk = min(kl, kk)
-                do j = jBeg, jEnd
-                    jj = max(2_intType, j); jj = min(jl, jj)
-                    do i = iBeg, iEnd
-                        ii = max(2_intType, i); ii = min(il, ii)
-                        wIO(i, j, k, 1) = Tgamma(ii, jj, kk)
+        case (cgnsintermittency)
+            if (useSABCM) then
+
+                ! SA-BCM intermittency, recomputed from the state.
+
+                allocate (gammaBCM(2:il, 2:jl, 2:kl))
+                call saBCMIntermittency(gammaBCM)
+                do k = kBeg, kEnd
+                    kk = max(2_intType, k); kk = min(kl, kk)
+                    do j = jBeg, jEnd
+                        jj = max(2_intType, j); jj = min(jl, jj)
+                        do i = iBeg, iEnd
+                            ii = max(2_intType, i); ii = min(il, ii)
+                            wIO(i, j, k, 1) = gammaBCM(ii, jj, kk)
+                        end do
                     end do
                 end do
-            end do
-
-        case (cgnsintermittency)
-            if (laminartoturbulent) then
+                deallocate (gammaBCM)
+            else if (laminartoturbulent) then
                 do k = kBeg, kEnd
                     kk = max(2_intType, k); kk = min(kl, kk)
                     do j = jBeg, jEnd
@@ -1699,15 +1697,10 @@ contains
                     end do
                 end do
             else
-                ! No intermittency for this model; zero the buffer so the
-                ! previous variable's data is not written out stale.
-                do k = kBeg, kEnd
-                    do j = jBeg, jEnd
-                        do i = iBeg, iEnd
-                            wIO(i, j, k, 1) = zero
-                        end do
-                    end do
-                end do
+
+                ! Fully turbulent model: the intermittency is one.
+
+                wIO(iBeg:iEnd, jBeg:jEnd, kBeg:kEnd, 1) = one
             end if
 
         case (cgnsFonset, cgnsFlength, cgnsRturb, cgnsReThetaTarget, &
@@ -2880,42 +2873,6 @@ contains
             !       The local velocity term includes the rotational components!
         end subroutine computeCoeffPressure
 
-        real(kind=realType) function getTgammaAtSurfaceOffset(faceI, faceJ, cellOffset)
-            implicit none
-
-            integer(kind=intType), intent(in) :: faceI, faceJ, cellOffset
-
-            integer(kind=intType) :: iCell, jCell, kCell
-
-            select case (faceID)
-            case (iMin)
-                iCell = min(max(1_intType + cellOffset, 2_intType), il)
-                jCell = faceI
-                kCell = faceJ
-            case (iMax)
-                iCell = max(min(il - cellOffset + 1_intType, il), 2_intType)
-                jCell = faceI
-                kCell = faceJ
-            case (jMin)
-                iCell = faceI
-                jCell = min(max(1_intType + cellOffset, 2_intType), jl)
-                kCell = faceJ
-            case (jMax)
-                iCell = faceI
-                jCell = max(min(jl - cellOffset + 1_intType, jl), 2_intType)
-                kCell = faceJ
-            case (kMin)
-                iCell = faceI
-                jCell = faceJ
-                kCell = min(max(1_intType + cellOffset, 2_intType), kl)
-            case (kMax)
-                iCell = faceI
-                jCell = faceJ
-                kCell = max(min(kl - cellOffset + 1_intType, kl), 2_intType)
-            end select
-
-            getTgammaAtSurfaceOffset = Tgamma(iCell, jCell, kCell)
-        end function getTgammaAtSurfaceOffset
 
     end subroutine storeSurfsolInBuffer
 

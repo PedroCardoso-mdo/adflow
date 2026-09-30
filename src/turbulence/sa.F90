@@ -110,14 +110,13 @@ contains
         real(kind=realType) :: ss, sst, nu, dist2Inv, chi, chi2, chi3
         real(kind=realType) :: rr, gg, gg6, termFw, fwSa, term1, term2
         real(kind=realType) :: dfv1, dfv2, dft2, drr, dgg, dfw
-        real(kind=realType) :: dtterm2, darg_gamma, dtTgamma
         real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
         real(kind=realType) :: div2, fact, sxx, syy, szz, sxy, sxz, syz
         real(kind=realType) :: vortx, vorty, vortz
         real(kind=realType) :: omegax, omegay, omegaz
-        real(kind=realType) :: strainMag2, strainProd, vortProd 
-        real(kind=realType) :: tterm2, Re_theta_c, Re_vorty, Re_theta, tterm1, tTgamma
-        real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma
+        real(kind=realType) :: vortMag, reThetaC, reVort, reThetaV, term1Raw, term1BCM, term2BCM
+        real(kind=realType) :: ksArg, ksMax, gammaArg, gammaBCM, dTerm2BCM, dGammaBCM
+        real(kind=realType) :: strainMag2, strainProd, vortProd
         real(kind=realType), parameter :: xminn = 1.e-10_realType
 
         ! Set model constants
@@ -291,62 +290,52 @@ contains
                         termFw = ((one + cw36) / (gg6 + cw36))**sixth
                         fwSa = gg * termFw
 
-                        tTgamma = one
+                        ! SA-BCM transition model (Mura and Cakmakcioglu, AIAA
+                        ! 2020-2714). The production term is multiplied by the
+                        ! intermittency gammaBCM and ft2 is switched off.
 
-                        if (use_SABCM) then
-                           
-                            ! Compute the three components of the vorticity vector.
-                            ! Substract the part coming from the rotating frame.
+                        gammaBCM = one
+                        if (useSABCM) then
+
+                            ! Vorticity magnitude, independent of turbProd.
 
                             vortx = two * fact * (wwy - vvz) - two * omegax
                             vorty = two * fact * (uuz - wwx) - two * omegay
                             vortz = two * fact * (vvx - uuy) - two * omegaz
-
-                            ! Compute the vorticity production term
-
                             vortProd = vortx**2 + vorty**2 + vortz**2
+                            vortMag = sqrt(vortProd)
 
-                            ! First take the square root of the production term to
-                            ! obtain the correct production term for spalart-allmaras.
-                            ! We do this to avoid if statements.
+                            ! Critical momentum-thickness Reynolds number from the
+                            ! free-stream turbulence intensity (in percent) and its local
+                            ! estimate from the vorticity Reynolds number, Re_v / 2.193.
 
-                            
-                            sqrtVort = sqrt(vortProd)
-                                               
-                           ! tterm2 (small values ~0.01)
-                            tterm2 = fv1*chi / SABCM_Const2
-                            
-                            ! Re_theta critical
-                            Re_theta_c = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
+                            reThetaC = 803.73_realType &
+                                       * (100.0_realType * turbIntensityInf + 0.6067_realType)**(-1.027_realType)
+                            reVort = vortMag * w(i, j, k, irho) / rlv(i, j, k) * (d2Wall(i, j, k)**2)
+                            reThetaV = reVort / 2.193_realType
 
-                            ! Re_theta actual
-                            Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
-                            Re_theta = Re_vorty / 2.193_realType
+                            term1Raw = (reThetaV - reThetaC) / (reThetaC * SABCMChi1)
+                            term2BCM = fv1 * chi / SABCMChi2
 
-                            ! tterm1 (can be huge ~1e5)
-                            tterm1 = (Re_theta - Re_theta_c) / (Re_theta_c * SABCM_Const1)
+                            if (SABCMSmooth) then
 
+                                ! Differentiable reformulation: KS-smoothed
+                                ! max(term1Raw, 0) and a tanh intermittency.
 
-                            stransition =  SABCM_maxsmooth* tterm1
-                            ! Store k_max in external module not seen by Tapenade
-                            ! This breaks the derivative chain
-
-                            k_max = max(stransition, xminn)
-                            tterm1 = ((k_max + log(exp(stransition - k_max) + exp(- k_max))) / SABCM_maxsmooth)   
-
-                            ! Choose between tanh (current) and reference exp-sqrt formula
-                            if (SABCM_Exp) then
-                                ! Reference formula: gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2)))
-                                arg_gamma = sqrt(max(tterm1, zero)) + sqrt(max(tterm2, zero))
-                                tTgamma = one - exp(-arg_gamma)
-                                tTgamma = min(max(tTgamma, zero), one)
+                                ksArg = SABCMRho * term1Raw
+                                ksMax = max(ksArg, xminn)
+                                term1BCM = (ksMax + log(exp(ksArg - ksMax) + exp(-ksMax))) / SABCMRho
+                                gammaArg = (term1BCM + term2BCM - SABCMTanhCenter) / SABCMTanhWidth
+                                gammaBCM = half * (one + tanh(gammaArg))
                             else
-                                ! Current tanh-based formula
-                                arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
-                                tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+
+                                ! Original model: gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2))).
+
+                                term1BCM = max(term1Raw, zero)
+                                gammaArg = sqrt(term1BCM) + sqrt(max(term2BCM, zero))
+                                gammaBCM = one - exp(-gammaArg)
                             end if
-                                                                              
-                            Tgamma(i, j, k) = tTgamma
+
                             ft2 = zero
                         end if
 
@@ -356,9 +345,9 @@ contains
                         if (approxSA) then
                             term1 = zero
                         else
-                            term1 = tTgamma * rsaCb1 * (one - ft2) * ss
+                            term1 = gammaBCM * rsaCb1 * (one - ft2) * ss
                         end if
-                        term2 = dist2Inv * (kar2Inv * tTgamma * rsaCb1 * ((one - ft2) * fv2 + ft2) &
+                        term2 = dist2Inv * (kar2Inv * gammaBCM * rsaCb1 * ((one - ft2) * fv2 + ft2) &
                                             - rsaCw1 * fwSa)
 
                         scratch(i, j, k, idvt) = (term1 + term2 * w(i, j, k, itu1)) * w(i, j, k, itu1)
@@ -372,19 +361,16 @@ contains
                         dfv2 = (chi2 * dfv1 - one) / (nu * ((one + chi * fv1)**2))
                         dft2 = -two * rsaCt4 * chi * ft2 / nu
 
-                        dtTgamma = zero
-                        if (use_SABCM) then
-                            dtterm2 = (chi * dfv1 + fv1) / (nu * SABCM_Const2)
-                            if (SABCM_Exp) then
-                                darg_gamma = zero
-                                if (tterm2 > xminn) darg_gamma = half * dtterm2 / sqrt(tterm2)
+                        ! Derivative of the SA-BCM intermittency, which depends on
+                        ! nuTilde only through term2BCM = chi * fv1 / chi2.
 
-                                ! tTgamma is clipped to [0,1], so enforce zero slope at the clipped limits.
-                                if (tTgamma > zero .and. tTgamma < one) then
-                                    dtTgamma = exp(-arg_gamma) * darg_gamma
-                                end if
-                            else
-                                dtTgamma = half * (one - tanh(arg_tanh)**2) * dtterm2 / SABCM_fsmooth
+                        dGammaBCM = zero
+                        if (useSABCM) then
+                            dTerm2BCM = (chi * dfv1 + fv1) / (nu * SABCMChi2)
+                            if (SABCMSmooth) then
+                                dGammaBCM = half * (one - tanh(gammaArg)**2) * dTerm2BCM / SABCMTanhWidth
+                            else if (term2BCM > xminn .and. gammaBCM < one) then
+                                dGammaBCM = exp(-gammaArg) * (half * dTerm2BCM / sqrt(term2BCM))
                             end if
                         end if
 
@@ -402,8 +388,8 @@ contains
                         ! Note that -dsource/dnu is stored.
                         qq(i, j, k) = -two * term2 * w(i, j, k, itu1) &
                                       - dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
-                                                  * (dtTgamma * rsaCb1 * kar2Inv * ((one - ft2) * fv2 + ft2) &
-                                         + tTgamma * rsaCb1 * kar2Inv * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
+                                      * (dGammaBCM * rsaCb1 * kar2Inv * ((one - ft2) * fv2 + ft2) &
+                                         + gammaBCM * rsaCb1 * kar2Inv * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
                                          - rsaCw1 * dfw)
 
                         ! A couple of terms in qq may lead to a negative
@@ -419,6 +405,102 @@ contains
         end do
 #endif
     end subroutine saSource
+
+#ifndef USE_TAPENADE
+    subroutine saBCMIntermittency(gammaBCM)
+        !
+        !  Intermittency of the SA-BCM transition model in the owned cells
+        !  of the current block. Post-processing only: it is recomputed from
+        !  the state with the same expressions as in saSource, so it is not
+        !  stored during the solve.
+        !
+        use blockPointers
+        use constants
+        use paramTurb
+        use section
+        use inputPhysics
+        use flowVarRefState
+        implicit none
+
+        ! Subroutine arguments
+        real(kind=realType), dimension(2:il, 2:jl, 2:kl), intent(out) :: gammaBCM
+
+        ! Local variables
+        integer(kind=intType) :: i, j, k
+        real(kind=realType) :: uuy, uuz, vvx, vvz, wwx, wwy, fact
+        real(kind=realType) :: omegax, omegay, omegaz, vortx, vorty, vortz, vortProd, vortMag
+        real(kind=realType) :: nu, chi, chi2, chi3, fv1
+        real(kind=realType) :: reThetaC, reVort, reThetaV, term1Raw, term1BCM, term2BCM
+        real(kind=realType) :: ksArg, ksMax, gammaArg
+        real(kind=realType), parameter :: xminn = 1.e-10_realType
+
+        cv13 = rsaCv1**3
+
+        omegax = timeRef * sections(sectionID)%rotRate(1)
+        omegay = timeRef * sections(sectionID)%rotRate(2)
+        omegaz = timeRef * sections(sectionID)%rotRate(3)
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    uuy = w(i + 1, j, k, ivx) * si(i, j, k, 2) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 2) &
+                          + w(i, j + 1, k, ivx) * sj(i, j, k, 2) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 2) &
+                          + w(i, j, k + 1, ivx) * sk(i, j, k, 2) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 2)
+                    uuz = w(i + 1, j, k, ivx) * si(i, j, k, 3) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 3) &
+                          + w(i, j + 1, k, ivx) * sj(i, j, k, 3) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 3) &
+                          + w(i, j, k + 1, ivx) * sk(i, j, k, 3) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 3)
+                    vvx = w(i + 1, j, k, ivy) * si(i, j, k, 1) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 1) &
+                          + w(i, j + 1, k, ivy) * sj(i, j, k, 1) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 1) &
+                          + w(i, j, k + 1, ivy) * sk(i, j, k, 1) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 1)
+                    vvz = w(i + 1, j, k, ivy) * si(i, j, k, 3) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 3) &
+                          + w(i, j + 1, k, ivy) * sj(i, j, k, 3) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 3) &
+                          + w(i, j, k + 1, ivy) * sk(i, j, k, 3) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 3)
+                    wwx = w(i + 1, j, k, ivz) * si(i, j, k, 1) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 1) &
+                          + w(i, j + 1, k, ivz) * sj(i, j, k, 1) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 1) &
+                          + w(i, j, k + 1, ivz) * sk(i, j, k, 1) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 1)
+                    wwy = w(i + 1, j, k, ivz) * si(i, j, k, 2) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 2) &
+                          + w(i, j + 1, k, ivz) * sj(i, j, k, 2) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 2) &
+                          + w(i, j, k + 1, ivz) * sk(i, j, k, 2) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 2)
+
+                    fact = fourth / vol(i, j, k)
+
+                    vortx = two * fact * (wwy - vvz) - two * omegax
+                    vorty = two * fact * (uuz - wwx) - two * omegay
+                    vortz = two * fact * (vvx - uuy) - two * omegaz
+                    vortProd = vortx**2 + vorty**2 + vortz**2
+                    vortMag = sqrt(vortProd)
+
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    chi = w(i, j, k, itu1) / nu
+                    chi2 = chi * chi
+                    chi3 = chi * chi2
+                    fv1 = chi3 / (chi3 + cv13)
+
+                    reThetaC = 803.73_realType &
+                               * (100.0_realType * turbIntensityInf + 0.6067_realType)**(-1.027_realType)
+                    reVort = vortMag * w(i, j, k, irho) / rlv(i, j, k) * (d2Wall(i, j, k)**2)
+                    reThetaV = reVort / 2.193_realType
+
+                    term1Raw = (reThetaV - reThetaC) / (reThetaC * SABCMChi1)
+                    term2BCM = fv1 * chi / SABCMChi2
+
+                    if (SABCMSmooth) then
+                        ksArg = SABCMRho * term1Raw
+                        ksMax = max(ksArg, xminn)
+                        term1BCM = (ksMax + log(exp(ksArg - ksMax) + exp(-ksMax))) / SABCMRho
+                        gammaArg = (term1BCM + term2BCM - SABCMTanhCenter) / SABCMTanhWidth
+                        gammaBCM(i, j, k) = half * (one + tanh(gammaArg))
+                    else
+                        term1BCM = max(term1Raw, zero)
+                        gammaArg = sqrt(term1BCM) + sqrt(max(term2BCM, zero))
+                        gammaBCM(i, j, k) = one - exp(-gammaArg)
+                    end if
+                end do
+            end do
+        end do
+
+    end subroutine saBCMIntermittency
+#endif
 
     subroutine saViscous
         !

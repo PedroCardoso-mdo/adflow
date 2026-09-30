@@ -512,7 +512,6 @@ module block
         real(kind=realType), dimension(:, :, :, :, :), pointer :: wOld
         real(kind=realType), dimension(:, :, :), pointer :: p, gamma, aa
         real(kind=realType), dimension(:, :, :), pointer :: rlv, rev
-        real(kind=realType), dimension(:, :, :), pointer :: Tgamma
         real(kind=realType), dimension(:, :, :, :), pointer :: s
         real(kind=realType), dimension(:, :, :), pointer :: shockSensor
 

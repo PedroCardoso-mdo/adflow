@@ -769,7 +769,6 @@ contains
         volWriteResRho = .true.
         volWriteResMom = .false.
         volWriteResRhoe = .false.
-        volWriteTgamma = .false.
 
         ! Set the values which depend on the equations to be solved.
 
@@ -2879,7 +2878,6 @@ contains
         volWriteTransQQ33 = .false.
         volWriteTransDScf = .false.; volWriteTransReScf = .false.
         volWriteTransHcf = .false.
-        volWriteTgamma = .false.
 
         ! Initialize nVarSpecified to 0. This serves as a test
         ! later on.
@@ -3229,10 +3227,6 @@ contains
 
             case ("hcf")
                 volWriteTransHcf = .true.
-                nVarSpecified = nVarSpecified + 1
-
-            case ("tgamma")
-                volWriteTgamma = .true.
                 nVarSpecified = nVarSpecified + 1
 
             case default
@@ -3898,7 +3892,7 @@ contains
         ! through Re_theta. In the current adjoint implementation this path
         ! is propagated through the approximate wall-distance reverse routine.
         if (equations == RANSEquations .and. turbModel == spalartAllmaras .and. &
-            use_SABCM .and. .not. useApproxWallDistance) then
+            useSABCM .and. .not. useApproxWallDistance) then
             if (myID == 0) then
                 call terminate("checkInputParam", &
                                "SABCM requires useApproxWallDistance=.true. for consistent wall-distance adjoint sensitivities")
@@ -3932,12 +3926,38 @@ contains
             end if
             call mpi_barrier(ADflow_comm_world, ierr)
         end if
-        if (transitionBCMGamma .and. use_SABCM) then
+        if (transitionBCMGamma .and. useSABCM) then
             if (myID == 0) then
                 call terminate("checkInputParam", &
-                               "transitionBCMGamma and use_SABCM are mutually exclusive")
+                               "transitionBCMGamma and useSABCM are mutually exclusive")
             end if
             call mpi_barrier(ADflow_comm_world, ierr)
+        end if
+        !
+        !       The SA-BCM transition model is implemented in the source term
+        !       of the Spalart-Allmaras model only.
+        !
+        if (useSABCM) then
+            if (equations /= RANSEquations .or. turbModel /= spalartAllmaras) then
+                if (myID == 0) &
+                    call terminate("checkInputParam", &
+                                   "useSABCM requires the RANS equations with the Spalart-Allmaras model")
+                call mpi_barrier(ADflow_comm_world, ierr)
+            end if
+
+            ! The SA-BCM intermittency replaces ft2, which is not part of
+            ! the model. Processor 0 prints a warning.
+
+            if (useft2SA) then
+                if (myID == 0) then
+                    print "(a)", "#"
+                    print "(a)", "#                      Warning"
+                    print "(a)", "# useft2SA is ignored with useSABCM: the SA-BCM"
+                    print "(a)", "# intermittency replaces ft2, which is considered off."
+                    print "(a)", "#"
+                end if
+                useft2SA = .false.
+            end if
         end if
         !
         !       Parallelization parameters. Set the minimum load imbalance to
@@ -4750,6 +4770,8 @@ contains
             isoSurfaceNames(iVar) = cgnsShock
         case ("filteredShock")
             isoSurfaceNames(iVar) = cgnsFilteredShock
+        case ("intermittency")
+            isoSurfaceNames(iVar) = cgnsIntermittency
         case default
 
             if (myID == 0) Then

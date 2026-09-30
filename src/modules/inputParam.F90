@@ -411,7 +411,7 @@ module inputIteration
     ! gradient this is exactly SA-BCM; under a pressure gradient the threshold
     ! follows the lagged, history-carrying ReTheta transport equation instead
     ! of a local sensor. The gamma equation keeps being solved (diagnostic
-    ! only). Tu is turbIntensityInf (fraction), NOT SABCM_TU.
+    ! only). Tu is turbIntensityInf (fraction), as in SA-BCM.
     logical :: transitionBCMGamma = .false.
     ! One-equation variant of SA-gamma-ReTheta: the gamma-equation onset
     ! (Re_theta_c, Flength) uses the LOCAL Langtry-Menter correlation
@@ -871,18 +871,21 @@ module inputPhysics
     ! sepSenMaxRho           The rho parameter used with the KS-based separation sensor.
     ! sepSenMaxFamily     The maximum sepsensor value for a given surface family that does not use
     !                      KS-aggregation, but rather an exact max computation.
+    ! useSABCM:            Whether or not to use the SA-BCM transition model.
+    ! SABCMSmooth:         Whether or not to use the differentiable form of SA-BCM.
+    ! SABCMChi1, SABCMChi2, SABCMRho, SABCMTanhCenter, SABCMTanhWidth
+    !                      SA-BCM transition model constants
 
     integer(kind=intType) :: equations, equationMode, flowType
     integer(kind=intType) :: turbModel, cpModel, turbProd
     integer(kind=intType) :: rvfN
     logical :: rvfB
-    logical :: useQCR, useRotationSA, useft2SA, use_SABCM
-    logical :: SABCM_Exp
+    logical :: useQCR, useRotationSA, useft2SA
+    logical :: useSABCM, SABCMSmooth
 
     logical :: wallFunctions, wallDistanceNeeded
 
     real(kind=realType) :: alpha, beta
-    real(kind=realType) :: SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_S0_tanh, SABCM_fsmooth,SABCM_maxsmooth
     integer(kind=intType) :: liftIndex
     real(kind=realType) :: Mach, MachCoef, MachGrid
     real(kind=realType) :: Reynolds, ReynoldsLength
@@ -901,6 +904,8 @@ module inputPhysics
     real(kind=realType), dimension(:), allocatable :: cpmin_family
     real(kind=realType) :: sepSenMaxRho
     real(kind=realType), dimension(:), allocatable :: sepSenMaxFamily
+    real(kind=realType) :: SABCMChi1, SABCMChi2, SABCMRho
+    real(kind=realType) :: SABCMTanhCenter, SABCMTanhWidth
 
 #ifndef USE_TAPENADE
     real(kind=realType) :: alphad, betad

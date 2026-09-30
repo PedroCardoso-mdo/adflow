@@ -1010,12 +1010,10 @@ contains
 
         use constants
         use paramTurb
-        use blockPointers, only: sectionID, Tgamma
-        use communication, only: myID
+        use blockPointers, only: sectionID
         use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, &
-                    SABCM_Const1, SABCM_Const2, SABCM_TU, &
-                    SABCM_S0_tanh, SABCM_fsmooth, SABCM_maxsmooth, &
-                    use_SABCM, SABCM_Exp
+                                useSABCM, SABCMSmooth, turbIntensityInf, SABCMChi1, SABCMChi2, SABCMRho, &
+                                SABCMTanhCenter, SABCMTanhWidth
         use inputDiscretization, only: approxSA
         use section, only: sections
         use sa, only: cv13, kar2Inv, cw36, cb3Inv
@@ -1033,13 +1031,12 @@ contains
         real(kind=realType) :: vortx, vorty, vortz
         real(kind=realType) :: omegax, omegay, omegaz
         real(kind=realType) :: strainMag2, prod
-        real(kind=realType) :: tterm2, Re_theta_c, Re_vorty, Re_theta, tterm1, tTgamma
-        real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma, vortProd
+        real(kind=realType) :: vortProd, vortMag, reThetaC, reVort, reThetaV, term1Raw, term1BCM, term2BCM
+        real(kind=realType) :: ksArg, ksMax, gammaArg, gammaBCM
         real(kind=realType), parameter :: xminn = 1.e-10_realType
         real(kind=realType), parameter :: f23 = two * third
         integer(kind=intType) :: i, j, k
         real(kind=realType) :: term1Fact
-        logical, save :: printedInputPhysics = .false.
 
         ! Set model constants
         cv13 = rsaCv1**3
@@ -1189,73 +1186,54 @@ contains
                     termFw = ((one + cw36) / (gg6 + cw36))**sixth
                     fwSa = gg * termFw
 
-                    tTgamma = one
+                    ! SA-BCM transition model (Mura and Cakmakcioglu, AIAA
+                    ! 2020-2714). The production term is multiplied by the
+                    ! intermittency gammaBCM and ft2 is switched off.
 
-                    if (use_SABCM) then
-                        if (.not. printedInputPhysics) then
-                            if (myID == 0) print *, 'SABCM_Exp =', SABCM_Exp
-                            printedInputPhysics = .true.
-                        end if
-                        ! Compute the three components of the vorticity vector.
-                        ! Substract the part coming from the rotating frame.
+                    gammaBCM = one
+                    if (useSABCM) then
 
-                        vortx = two * fact * (wwy - vvz) - two * omegax
-                        vorty = two * fact * (uuz - wwx) - two * omegay
-                        vortz = two * fact * (vvx - uuy) - two * omegaz
-
-                        ! Compute the vorticity production term
+                        ! Critical momentum-thickness Reynolds number from the
+                        ! free-stream turbulence intensity (in percent) and its local
+                        ! estimate from the vorticity Reynolds number, Re_v / 2.193.
 
                         vortProd = vortx**2 + vorty**2 + vortz**2
+                        vortMag = sqrt(vortProd)
+                        reThetaC = 803.73_realType &
+                                   * (100.0_realType * turbIntensityInf + 0.6067_realType)**(-1.027_realType)
+                        reVort = vortMag * w(i, j, k, irho) / rlv(i, j, k) * (d2Wall(i, j, k)**2)
+                        reThetaV = reVort / 2.193_realType
 
-                        ! First take the square root of the production term to
-                        ! obtain the correct production term for spalart-allmaras.
-                        ! We do this to avoid if statements.
+                        term1Raw = (reThetaV - reThetaC) / (reThetaC * SABCMChi1)
+                        term2BCM = fv1 * chi / SABCMChi2
 
-                        
-                        sqrtVort = sqrt(vortProd)
-                                            
-                        ! tterm2 (small values ~0.01)
-                        tterm2 = fv1*chi / SABCM_Const2
-                        
-                        ! Re_theta critical
-                        Re_theta_c = 803.73_realType * (SABCM_TU + 0.6067_realType)**(-1.027_realType)
+                        if (SABCMSmooth) then
 
-                        ! Re_theta actual
-                        Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
-                        Re_theta = Re_vorty / 2.193_realType
+                            ! Differentiable reformulation: KS-smoothed
+                            ! max(term1Raw, 0) and a tanh intermittency.
 
-                        ! tterm1 (can be huge ~1e5)
-                        tterm1 = (Re_theta - Re_theta_c) / (Re_theta_c * SABCM_Const1)
-
-
-                        stransition =  SABCM_maxsmooth* tterm1
-                        ! Store k_max in external module not seen by Tapenade
-                        ! This breaks the derivative chain
-
-                        k_max = max(stransition, xminn)
-                        tterm1 = ((k_max + log(exp(stransition - k_max) + exp(- k_max))) / SABCM_maxsmooth)   
-
-                        ! Choose between tanh (current) and reference exp-sqrt formula
-                        if (SABCM_Exp) then
-                            ! Reference formula: gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2)))
-                            arg_gamma = sqrt(max(tterm1, zero)) + sqrt(max(tterm2, zero))
-                            tTgamma = one - exp(-arg_gamma)
-                            tTgamma = min(max(tTgamma, zero), one)
+                            ksArg = SABCMRho * term1Raw
+                            ksMax = max(ksArg, xminn)
+                            term1BCM = (ksMax + log(exp(ksArg - ksMax) + exp(-ksMax))) / SABCMRho
+                            gammaArg = (term1BCM + term2BCM - SABCMTanhCenter) / SABCMTanhWidth
+                            gammaBCM = half * (one + tanh(gammaArg))
                         else
-                            ! Current tanh-based formula
-                            arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
-                            tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+
+                            ! Original model: gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2))).
+
+                            term1BCM = max(term1Raw, zero)
+                            gammaArg = sqrt(term1BCM) + sqrt(max(term2BCM, zero))
+                            gammaBCM = one - exp(-gammaArg)
                         end if
-                                                                            
-                        Tgamma(i, j, k) = tTgamma
+
                         ft2 = zero
                     end if
 
                     ! Compute the source term; some terms are saved for the
                     ! linearization. The source term is stored in dvt.
 
-                    term1 = tTgamma * rsaCb1 * (one - ft2) * sqrtProd * term1Fact
-                    term2 = dist2Inv * (kar2Inv * tTgamma * rsaCb1 * ((one - ft2) * fv2 + ft2) &
+                    term1 = gammaBCM * rsaCb1 * (one - ft2) * sqrtProd * term1Fact
+                    term2 = dist2Inv * (kar2Inv * gammaBCM * rsaCb1 * ((one - ft2) * fv2 + ft2) &
                                         - rsaCw1 * fwSa)
 
                     dw(i, j, k, itu1) = dw(i, j, k, itu1) + (term1 + term2 * w(i, j, k, itu1)) * w(i, j, k, itu1)
