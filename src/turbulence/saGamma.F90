@@ -15,7 +15,7 @@ module saGamma
     !   2  P_g = Flength * S * g (1 - g) * F_onset,  Flength = 100
     !   3  E_g = c_a2 * Omega * g * F_turb * (c_e2 g - 1),  c_a2 = 0.06, c_e2 = 50
     !   4  F_onset1 = Re_v/(2.2 Re_theta_c); F2 = phi-(F1, 2); F3 = phi+(1-(R_T/3.5)^3, 0);
-    !      F_onset = phi+(F2 - F3, 0)          [option sgammamaOnsetTanh: P&Z tanh form]
+    !      F_onset = phi+(F2 - F3, 0)          [option sgammamaOnsetTanh: P&Z tanh form, k/s = sgammaTanhK/S]
     !   5  F_turb = (1 - F_onset) exp(-R_T)   [option sgammamaFturbLee: exp(-(R_T/2)^4)]
     !   6  Flength = 100
     !   7  Re_theta_c = C_TU1 + C_TU2 exp(-C_TU3 Tu F_PG),
@@ -66,9 +66,6 @@ module saGamma
     real(kind=realType), parameter :: sgLamOffset = 0.0128_realType
     real(kind=realType), parameter :: sgLamClip = 1.0_realType
     real(kind=realType), parameter :: sgDestFloor = 0.1_realType
-    ! P&Z tanh onset (plan B, option sgammaOnsetTanh)
-    real(kind=realType), parameter :: sgTanhK = 6.0_realType
-    real(kind=realType), parameter :: sgTanhS = 1.35_realType
 
 contains
 
@@ -108,7 +105,7 @@ contains
     subroutine cellSources(nuTilde, gam, nu, dist2Inv, ss, strainMag, vortMag, &
                            yDist, dUds, rho, mu, tuPct, vortLim, ft2, approxTerm1, &
                            useLimiter, onsetTanh, fturbLee, coupleDest, pSmooth, &
-                           cTU1, cTU2, cTU3, &
+                           cTU1, cTU2, cTU3, tanhK, tanhS, &
                            sNu, sGamma, gammaS, destMult, term2prod, term2dest, &
                            fv1, fv2, sst, rr, gg, gg6, termFw, fwSa, &
                            reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb, &
@@ -130,7 +127,7 @@ contains
         real(kind=realType), intent(in) :: nuTilde, gam, nu, dist2Inv, ss, strainMag, vortMag
         real(kind=realType), intent(in) :: yDist, dUds, rho, mu, tuPct, vortLim, ft2
         logical, intent(in) :: approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest
-        real(kind=realType), intent(in) :: pSmooth, cTU1, cTU2, cTU3
+        real(kind=realType), intent(in) :: pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS
         real(kind=realType), intent(out) :: sNu, sGamma, gammaS, destMult, term2prod, term2dest
         real(kind=realType), intent(out) :: fv1, fv2, sst, rr, gg, gg6, termFw, fwSa
         real(kind=realType), intent(out) :: reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb
@@ -209,7 +206,7 @@ contains
         if (onsetTanh) then
             fOnset1t = sqrt((reVort / (sgFonsetC * reThetaC))**2 + rTurb**2)
             fOnset1 = fOnset1t
-            fOnset = (tanh(sgTanhK * (fOnset1t - sgTanhS)) + one) * half
+            fOnset = (tanh(tanhK * (fOnset1t - tanhS)) + one) * half
         else
             fOnset1 = reVort / (sgFonsetC * reThetaC)
             fOnset2 = smoothMinMax(fOnset1, two, rsaGRpmin)
@@ -387,7 +384,7 @@ contains
         use flowVarRefState
         use inputIteration, only: transitionUseApproxSA, sgammaVortLimiter, sgammaOnsetTanh, &
                                   sgammaFturbLee, sgammaCoupleDestruction, sgammaFPGSmoothP, &
-                                  sgammaCTU1, sgammaCTU2, sgammaCTU3
+                                  sgammaCTU1, sgammaCTU2, sgammaCTU3, sgammaTanhK, sgammaTanhS
         implicit none
 
         integer(kind=intType), parameter :: dbgFonset = 1_intType
@@ -444,7 +441,7 @@ contains
         real(kind=realType) :: reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb
         real(kind=realType) :: pGamma, eGamma, gammaLocal, sEff, omEff, rTurb, nutSA
         logical :: approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest
-        real(kind=realType) :: pSmooth, cTU1, cTU2, cTU3
+        real(kind=realType) :: pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS
         ! FD Jacobian scratch (LHS only)
         real(kind=realType) :: epsNu, epsG, sNuP, sGamP
         real(kind=realType) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14
@@ -460,6 +457,8 @@ contains
         cTU1 = sgammaCTU1
         cTU2 = sgammaCTU2
         cTU3 = sgammaCTU3
+        tanhK = sgammaTanhK
+        tanhS = sgammaTanhS
         tuPct = turbIntensityInf * 100.0_realType
 
 #ifndef USE_TAPENADE
@@ -501,7 +500,7 @@ contains
                         call cellSources(nuTilde, gam, nu, dist2Inv, ss, strainMag, vortMag, &
                                          yDist, dUds, w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, &
                                          ft2, approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest, &
-                                         pSmooth, cTU1, cTU2, cTU3, &
+                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, &
                                          sNu, sGamma, gammaS, destMult, term2prod, term2dest, &
                                          fv1, fv2, sst, rr, gg, gg6, termFw, fwSa, &
                                          reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb, &
@@ -563,7 +562,7 @@ contains
                         call cellSources(nuTilde + epsNu, gam, nu, dist2Inv, ss, strainMag, vortMag, &
                                          yDist, dUds, w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, &
                                          ft2, approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest, &
-                                         pSmooth, cTU1, cTU2, cTU3, &
+                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, &
                                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
                         qq(i, j, k, 1, 1) = -(sNuP - sNu) / epsNu
@@ -571,7 +570,7 @@ contains
                         call cellSources(nuTilde, gam + epsG, nu, dist2Inv, ss, strainMag, vortMag, &
                                          yDist, dUds, w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, &
                                          ft2, approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest, &
-                                         pSmooth, cTU1, cTU2, cTU3, &
+                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, &
                                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
                         qq(i, j, k, 1, 2) = -(sNuP - sNu) / epsG
@@ -1340,7 +1339,7 @@ contains
         use inputDiscretization, only: approxSA
         use inputIteration, only: transitionUseApproxSA, sgammaVortLimiter, sgammaOnsetTanh, &
                                   sgammaFturbLee, sgammaCoupleDestruction, sgammaFPGSmoothP, &
-                                  sgammaCTU1, sgammaCTU2, sgammaCTU3
+                                  sgammaCTU1, sgammaCTU2, sgammaCTU3, sgammaTanhK, sgammaTanhS
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -1376,6 +1375,7 @@ contains
                          w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, ft2, approxTerm1, &
                          sgammaVortLimiter, sgammaOnsetTanh, sgammaFturbLee, sgammaCoupleDestruction, &
                          sgammaFPGSmoothP, sgammaCTU1, sgammaCTU2, sgammaCTU3, &
+                         sgammaTanhK, sgammaTanhS, &
                          sNu, sGamma, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
         epsNu = max(1.0e-6_realType * abs(nuTilde), 1.0e-12_realType * nu)
@@ -1384,6 +1384,7 @@ contains
                          w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, ft2, approxTerm1, &
                          sgammaVortLimiter, sgammaOnsetTanh, sgammaFturbLee, sgammaCoupleDestruction, &
                          sgammaFPGSmoothP, sgammaCTU1, sgammaCTU2, sgammaCTU3, &
+                         sgammaTanhK, sgammaTanhS, &
                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
         A(1, 1) = (sNuP - sNu) / epsNu
@@ -1392,6 +1393,7 @@ contains
                          w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, ft2, approxTerm1, &
                          sgammaVortLimiter, sgammaOnsetTanh, sgammaFturbLee, sgammaCoupleDestruction, &
                          sgammaFPGSmoothP, sgammaCTU1, sgammaCTU2, sgammaCTU3, &
+                         sgammaTanhK, sgammaTanhS, &
                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
         A(1, 2) = (sNuP - sNu) / epsG

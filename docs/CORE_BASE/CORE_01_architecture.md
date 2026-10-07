@@ -143,6 +143,7 @@ The values below were checked against `_getDefaultOptions` in
 | `sgamma{VortLimiter, OnsetTanh, FturbLee}` | `False` | SA-sγ formulation switches. |
 | `sgammaCoupleDestruction` | `True` | Couples γ into SA destruction (φ⁺(γ, 0.1)). |
 | `sgammaFPGSmoothP` / `sgammaCTU1..3` | `300` / `163, 1002.25, 1.0` | φ± sharpness at the F_PG kink, and the Colonia C_TU constants. |
+| `sgammaTanhK` / `sgammaTanhS` | `6.0` / `1.35` | k, s of the tanh onset (only with `sgammaOnsetTanh`); default P&Z. A-priori fit to the φ form: k 2.68, s 1.55 (`sa_sgamma/07_tanh_calibration`). |
 
 **Deprecated research flags (SA-GR):** `transitionBCMGamma`,
 `transitionLocalReTheta` and `transitionReThetaInert` belong to the SA-G-s

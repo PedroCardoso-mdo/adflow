@@ -439,6 +439,9 @@ module inputIteration
     real(kind=realType) :: sgammaCTU1 = 163.0_realType
     real(kind=realType) :: sgammaCTU2 = 1002.25_realType
     real(kind=realType) :: sgammaCTU3 = 1.0_realType
+    ! sgammaOnsetTanh: F_onset = [tanh(k (F1t - s)) + 1] / 2. Default P&Z k = 6, s = 1.35.
+    real(kind=realType) :: sgammaTanhK = 6.0_realType
+    real(kind=realType) :: sgammaTanhS = 1.35_realType
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic
