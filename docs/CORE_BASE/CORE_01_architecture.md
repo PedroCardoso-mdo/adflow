@@ -144,6 +144,7 @@ The values below were checked against `_getDefaultOptions` in
 | `sgammaCoupleDestruction` | `True` | Couples γ into SA destruction (φ⁺(γ, 0.1)). |
 | `sgammaFPGSmoothP` / `sgammaCTU1..3` | `300` / `163, 1002.25, 1.0` | φ± sharpness at the F_PG kink, and the Colonia C_TU constants. |
 | `sgammaTanhK` / `sgammaTanhS` | `6.0` / `1.35` | k, s of the tanh onset (only with `sgammaOnsetTanh`); default P&Z. A-priori fit to the φ form: k 2.68, s 1.55 (`sa_sgamma/07_tanh_calibration`). |
+| `sgammaTanhAmp` | `1.0` | Amplitude A of the tanh onset, F_onset = A[tanh(·)+1]/2. A = 2 matches the max of the original F_onset; use with `sgammaFturbLee` (P&Z F_turb goes negative for F_onset > 1). |
 
 **Deprecated research flags (SA-GR):** `transitionBCMGamma`,
 `transitionLocalReTheta` and `transitionReThetaInert` belong to the SA-G-s

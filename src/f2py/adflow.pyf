@@ -1148,6 +1148,7 @@ python module libadflow
          real(kind=realtype) :: sgammactu3
          real(kind=realtype) :: sgammatanhk
          real(kind=realtype) :: sgammatanhs
+         real(kind=realtype) :: sgammatanhamp
          logical :: transitionrestartalgebraicinit
          real(kind=realtype) :: transitionreflength
          logical :: transitionnk

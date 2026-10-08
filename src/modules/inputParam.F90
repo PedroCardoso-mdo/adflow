@@ -442,6 +442,10 @@ module inputIteration
     ! sgammaOnsetTanh: F_onset = [tanh(k (F1t - s)) + 1] / 2. Default P&Z k = 6, s = 1.35.
     real(kind=realType) :: sgammaTanhK = 6.0_realType
     real(kind=realType) :: sgammaTanhS = 1.35_realType
+    ! Amplitude A of the tanh onset: F_onset = A [tanh(k (F1t - s)) + 1] / 2. P&Z: 1. A = 2 matches the
+    ! maximum of the original Menter/Lee F_onset = max(min(F1, 2) - F3, 0). Use with sgammaFturbLee: the
+    ! P&Z F_turb = (1 - F_onset) exp(-R_T) goes negative for F_onset > 1.
+    real(kind=realType) :: sgammaTanhAmp = 1.0_realType
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic

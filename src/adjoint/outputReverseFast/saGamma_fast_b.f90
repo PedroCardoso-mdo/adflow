@@ -17,7 +17,7 @@ module sagamma_fast_b
 !   2  p_g = flength * s * g (1 - g) * f_onset,  flength = 100
 !   3  e_g = c_a2 * omega * g * f_turb * (c_e2 g - 1),  c_a2 = 0.06, c_e2 = 50
 !   4  f_onset1 = re_v/(2.2 re_theta_c); f2 = phi-(f1, 2); f3 = phi+(1-(r_t/3.5)^3, 0);
-!      f_onset = phi+(f2 - f3, 0)          [option sgammamaonsettanh: p&z tanh form, k/s = sgammatanhk/s]
+!      f_onset = phi+(f2 - f3, 0)          [option sgammamaonsettanh: p&z tanh form, k/s/amplitude = sgammatanhk/s/amp]
 !   5  f_turb = (1 - f_onset) exp(-r_t)   [option sgammamafturblee: exp(-(r_t/2)^4)]
 !   6  flength = 100
 !   7  re_theta_c = c_tu1 + c_tu2 exp(-c_tu3 tu f_pg),
@@ -104,10 +104,10 @@ contains
 &   dist2inv, ss, ssd, strainmag, strainmagd, vortmag, vortmagd, ydist, &
 &   duds, dudsd, rho, rhod, mu, mud, tupct, vortlim, ft2, ft2d, &
 &   approxterm1, uselimiter, onsettanh, fturblee, coupledest, psmooth, &
-&   ctu1, ctu2, ctu3, tanhk, tanhs, snu, snud, sgamma, sgammad, gammas, &
-&   destmult, term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, &
-&   fwsa, revort, laml, fpg, rethetac, fonset1, fonset, fturb, pgamma, &
-&   egamma, gammalocal, seff, omeff, rturb, nutsa)
+&   ctu1, ctu2, ctu3, tanhk, tanhs, tanhamp, snu, snud, sgamma, sgammad&
+&   , gammas, destmult, term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6&
+&   , termfw, fwsa, revort, laml, fpg, rethetac, fonset1, fonset, fturb&
+&   , pgamma, egamma, gammalocal, seff, omeff, rturb, nutsa)
 !
 ! per-cell sa and gam sources of sa-sgamma from the state
 ! (nutilde, gam) and the cell kinematics. used by source (residual,
@@ -132,7 +132,7 @@ contains
     logical, intent(in) :: approxterm1, uselimiter, onsettanh, fturblee&
 &   , coupledest
     real(kind=realtype), intent(in) :: psmooth, ctu1, ctu2, ctu3, tanhk&
-&   , tanhs
+&   , tanhs, tanhamp
     real(kind=realtype) :: snu, sgamma, gammas, destmult, term2prod, &
 &   term2dest
     real(kind=realtype) :: snud, sgammad
@@ -321,7 +321,7 @@ myIntPtr = myIntPtr + 1
     revort = rho*ydist**2*strainmag/mu
     if (onsettanh) then
       fonset1t = sqrt((revort/(sgfonsetc*rethetac))**2 + rturb**2)
-      fonset = (tanh(tanhk*(fonset1t-tanhs))+one)*half
+      fonset = tanhamp*(tanh(tanhk*(fonset1t-tanhs))+one)*half
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
     else
@@ -395,8 +395,8 @@ branch = myIntStack(myIntPtr)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
     if (branch .eq. 0) then
-      fonset1td = tanhk*(1.0-tanh(tanhk*(fonset1t-tanhs))**2)*half*&
-&       fonsetd
+      fonset1td = tanhk*(1.0-tanh(tanhk*(fonset1t-tanhs))**2)*tanhamp*&
+&       half*fonsetd
       temp = revort/(sgfonsetc*rethetac)
       if (temp**2 + rturb**2 .eq. 0.0_8) then
         tempd = 0.0_8
@@ -541,10 +541,10 @@ branch = myIntStack(myIntPtr)
   subroutine cellsources(nutilde, gam, nu, dist2inv, ss, strainmag, &
 &   vortmag, ydist, duds, rho, mu, tupct, vortlim, ft2, approxterm1, &
 &   uselimiter, onsettanh, fturblee, coupledest, psmooth, ctu1, ctu2, &
-&   ctu3, tanhk, tanhs, snu, sgamma, gammas, destmult, term2prod, &
-&   term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, fwsa, revort, laml, &
-&   fpg, rethetac, fonset1, fonset, fturb, pgamma, egamma, gammalocal, &
-&   seff, omeff, rturb, nutsa)
+&   ctu3, tanhk, tanhs, tanhamp, snu, sgamma, gammas, destmult, &
+&   term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, fwsa, &
+&   revort, laml, fpg, rethetac, fonset1, fonset, fturb, pgamma, egamma&
+&   , gammalocal, seff, omeff, rturb, nutsa)
 !
 ! per-cell sa and gam sources of sa-sgamma from the state
 ! (nutilde, gam) and the cell kinematics. used by source (residual,
@@ -566,7 +566,7 @@ branch = myIntStack(myIntPtr)
     logical, intent(in) :: approxterm1, uselimiter, onsettanh, fturblee&
 &   , coupledest
     real(kind=realtype), intent(in) :: psmooth, ctu1, ctu2, ctu3, tanhk&
-&   , tanhs
+&   , tanhs, tanhamp
     real(kind=realtype), intent(out) :: snu, sgamma, gammas, destmult, &
 &   term2prod, term2dest
     real(kind=realtype), intent(out) :: fv1, fv2, sst, rr, gg, gg6, &
@@ -665,7 +665,7 @@ branch = myIntStack(myIntPtr)
     if (onsettanh) then
       fonset1t = sqrt((revort/(sgfonsetc*rethetac))**2 + rturb**2)
       fonset1 = fonset1t
-      fonset = (tanh(tanhk*(fonset1t-tanhs))+one)*half
+      fonset = tanhamp*(tanh(tanhk*(fonset1t-tanhs))+one)*half
     else
       fonset1 = revort/(sgfonsetc*rethetac)
       fonset2 = smoothminmax(fonset1, two, rsagrpmin)
@@ -1271,7 +1271,7 @@ branch = myIntStack(myIntPtr)
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
 &   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
 &   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs
+&   sgammatanhs, sgammatanhamp
     implicit none
     integer(kind=inttype), parameter :: dbgfonset=1_inttype
     integer(kind=inttype), parameter :: dbgfonset1=2_inttype
@@ -1333,7 +1333,8 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: pgamma, egamma, gammalocal, seff, omeff, &
 &   rturb, nutsa
     logical :: approxterm1, uselimiter, onsettanh, fturblee, coupledest
-    real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs
+    real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
+&   tanhamp
 ! fd jacobian scratch (lhs only)
     real(kind=realtype) :: epsnu, epsg, snup, sgamp
     real(kind=realtype) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
@@ -1357,6 +1358,7 @@ branch = myIntStack(myIntPtr)
     ctu3 = sgammactu3
     tanhk = sgammatanhk
     tanhs = sgammatanhs
+    tanhamp = sgammatanhamp
     tupct = turbintensityinf*100.0_realtype
     if (turbprod .eq. katolaunder) then
       stop
@@ -1396,11 +1398,12 @@ myIntPtr = myIntPtr + 1
 &                         rlvd(i, j, k), tupct, vortlim, ft2, ft2d, &
 &                         approxterm1, uselimiter, onsettanh, fturblee, &
 &                         coupledest, psmooth, ctu1, ctu2, ctu3, tanhk, &
-&                         tanhs, snu, snud, sgamma, sgammad, gammas, &
-&                         destmult, term2prod, term2dest, fv1, fv2, sst&
-&                         , rr, gg, gg6, termfw, fwsa, revort, laml, fpg&
-&                         , rethetac, fonset1, fonset, fturb, pgamma, &
-&                         egamma, gammalocal, seff, omeff, rturb, nutsa)
+&                         tanhs, tanhamp, snu, snud, sgamma, sgammad, &
+&                         gammas, destmult, term2prod, term2dest, fv1, &
+&                         fv2, sst, rr, gg, gg6, termfw, fwsa, revort, &
+&                         laml, fpg, rethetac, fonset1, fonset, fturb, &
+&                         pgamma, egamma, gammalocal, seff, omeff, rturb&
+&                         , nutsa)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .eq. 0) then
@@ -1439,7 +1442,7 @@ branch = myIntStack(myIntPtr)
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
 &   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
 &   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs
+&   sgammatanhs, sgammatanhamp
     implicit none
     integer(kind=inttype), parameter :: dbgfonset=1_inttype
     integer(kind=inttype), parameter :: dbgfonset1=2_inttype
@@ -1497,7 +1500,8 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: pgamma, egamma, gammalocal, seff, omeff, &
 &   rturb, nutsa
     logical :: approxterm1, uselimiter, onsettanh, fturblee, coupledest
-    real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs
+    real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
+&   tanhamp
 ! fd jacobian scratch (lhs only)
     real(kind=realtype) :: epsnu, epsg, snup, sgamp
     real(kind=realtype) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
@@ -1519,6 +1523,7 @@ branch = myIntStack(myIntPtr)
     ctu3 = sgammactu3
     tanhk = sgammatanhk
     tanhs = sgammatanhs
+    tanhamp = sgammatanhamp
     tupct = turbintensityinf*100.0_realtype
     if (turbprod .eq. katolaunder) then
       print*, 'katolaunder production term not supported for sa'
@@ -1548,11 +1553,11 @@ branch = myIntStack(myIntPtr)
 &                  vortmag, ydist, duds, w(i, j, k, irho), rlv(i, j, k)&
 &                  , tupct, vortlim, ft2, approxterm1, uselimiter, &
 &                  onsettanh, fturblee, coupledest, psmooth, ctu1, ctu2&
-&                  , ctu3, tanhk, tanhs, snu, sgamma, gammas, destmult, &
-&                  term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, &
-&                  termfw, fwsa, revort, laml, fpg, rethetac, fonset1, &
-&                  fonset, fturb, pgamma, egamma, gammalocal, seff, &
-&                  omeff, rturb, nutsa)
+&                  , ctu3, tanhk, tanhs, tanhamp, snu, sgamma, gammas, &
+&                  destmult, term2prod, term2dest, fv1, fv2, sst, rr, gg&
+&                  , gg6, termfw, fwsa, revort, laml, fpg, rethetac, &
+&                  fonset1, fonset, fturb, pgamma, egamma, gammalocal, &
+&                  seff, omeff, rturb, nutsa)
         scratch(i, j, k, idvt) = snu
         scratch(i, j, k, idvt+1) = sgamma
         if (associated(transitiondebug)) then
@@ -3021,7 +3026,7 @@ branch = myIntStack(myIntPtr)
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
 &   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
 &   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs
+&   sgammatanhs, sgammatanhamp
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(2, 2)
@@ -3064,9 +3069,10 @@ branch = myIntStack(myIntPtr)
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
 &              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
 &              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
-&              sgammatanhk, sgammatanhs, snu, sgamma, d1, d2, d3, d4, d5&
-&              , d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17&
-&              , d18, d19, d20, d21, d22, d23, d24, d25, d26)
+&              sgammatanhk, sgammatanhs, sgammatanhamp, snu, sgamma, d1&
+&              , d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14&
+&              , d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
+&              d26)
     if (nutilde .ge. 0.) then
       abs0 = nutilde
     else
@@ -3085,9 +3091,10 @@ branch = myIntStack(myIntPtr)
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
 &              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
 &              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
-&              sgammatanhk, sgammatanhs, snup, sgamp, d1, d2, d3, d4, d5&
-&              , d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17&
-&              , d18, d19, d20, d21, d22, d23, d24, d25, d26)
+&              sgammatanhk, sgammatanhs, sgammatanhamp, snup, sgamp, d1&
+&              , d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14&
+&              , d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
+&              d26)
     a(1, 1) = (snup-snu)/epsnu
     a(2, 1) = (sgamp-sgamma)/epsnu
     arg1 = gam + epsg
@@ -3096,9 +3103,10 @@ branch = myIntStack(myIntPtr)
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
 &              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
 &              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
-&              sgammatanhk, sgammatanhs, snup, sgamp, d1, d2, d3, d4, d5&
-&              , d6, d7, d8, d9, d10, d11, d12, d13, d14, d15, d16, d17&
-&              , d18, d19, d20, d21, d22, d23, d24, d25, d26)
+&              sgammatanhk, sgammatanhs, sgammatanhamp, snup, sgamp, d1&
+&              , d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14&
+&              , d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
+&              d26)
     a(1, 2) = (snup-snu)/epsg
     a(2, 2) = (sgamp-sgamma)/epsg
   end subroutine evalsrcjacblocksagamma
