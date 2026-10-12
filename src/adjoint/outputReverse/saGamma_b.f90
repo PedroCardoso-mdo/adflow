@@ -17,7 +17,8 @@ module sagamma_b
 !   2  p_g = flength * s * g (1 - g) * f_onset,  flength = 100
 !   3  e_g = c_a2 * omega * g * f_turb * (c_e2 g - 1),  c_a2 = 0.06, c_e2 = 50
 !   4  f_onset1 = re_v/(2.2 re_theta_c); f2 = phi-(f1, 2); f3 = phi+(1-(r_t/3.5)^3, 0);
-!      f_onset = phi+(f2 - f3, 0)          [option sgammamaonsettanh: p&z tanh form, k/s/amplitude = sgammatanhk/s/amp]
+!      f_onset = phi+(f2 - f3, 0)          [option sgammamaonsettanh: p&z tanh form, k/s/amplitude/r_t scale = sgammatanhk/s/amp/
+!rt]
 !   5  f_turb = (1 - f_onset) exp(-r_t)   [option sgammamafturblee: exp(-(r_t/2)^4)]
 !   6  flength = 100
 !   7  re_theta_c = c_tu1 + c_tu2 exp(-c_tu3 tu f_pg),
@@ -105,10 +106,10 @@ contains
 &   vortmagd, ydist, ydistd, duds, dudsd, rho, rhod, mu, mud, tupct, &
 &   vortlim, vortlimd, ft2, ft2d, approxterm1, uselimiter, onsettanh, &
 &   fturblee, coupledest, psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
-&   tanhamp, snu, snud, sgamma, sgammad, gammas, destmult, term2prod, &
-&   term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, fwsa, revort, laml, &
-&   fpg, rethetac, fonset1, fonset, fturb, pgamma, egamma, gammalocal, &
-&   seff, omeff, rturb, nutsa)
+&   tanhamp, tanhrt, snu, snud, sgamma, sgammad, gammas, destmult, &
+&   term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, fwsa, &
+&   revort, laml, fpg, rethetac, fonset1, fonset, fturb, pgamma, egamma&
+&   , gammalocal, seff, omeff, rturb, nutsa)
 !
 ! per-cell sa and gam sources of sa-sgamma from the state
 ! (nutilde, gam) and the cell kinematics. used by source (residual,
@@ -133,7 +134,7 @@ contains
     logical, intent(in) :: approxterm1, uselimiter, onsettanh, fturblee&
 &   , coupledest
     real(kind=realtype), intent(in) :: psmooth, ctu1, ctu2, ctu3, tanhk&
-&   , tanhs, tanhamp
+&   , tanhs, tanhamp, tanhrt
     real(kind=realtype) :: snu, sgamma, gammas, destmult, term2prod, &
 &   term2dest
     real(kind=realtype) :: snud, sgammad
@@ -308,7 +309,8 @@ contains
 ! eq. 4: onset
     revort = rho*ydist**2*strainmag/mu
     if (onsettanh) then
-      fonset1t = sqrt((revort/(sgfonsetc*rethetac))**2 + rturb**2)
+      fonset1t = sqrt((revort/(sgfonsetc*rethetac))**2 + (rturb/tanhrt)&
+&       **2)
       fonset = tanhamp*(tanh(tanhk*(fonset1t-tanhs))+one)*half
       call pushcontrol1b(0)
     else
@@ -379,13 +381,13 @@ contains
       fonset1td = tanhk*(1.0-tanh(tanhk*(fonset1t-tanhs))**2)*tanhamp*&
 &       half*fonsetd
       temp = revort/(sgfonsetc*rethetac)
-      if (temp**2 + rturb**2 .eq. 0.0_8) then
+      if (temp**2 + (rturb/tanhrt)**2 .eq. 0.0_8) then
         tempd = 0.0_8
       else
-        tempd = fonset1td/(2.0*sqrt(temp**2+rturb**2))
+        tempd = fonset1td/(2.0*sqrt(temp**2+(rturb/tanhrt)**2))
       end if
       tempd0 = 2*temp*tempd/(sgfonsetc*rethetac)
-      rturbd = rturbd + 2*rturb*tempd
+      rturbd = rturbd + 2*rturb*tempd/tanhrt**2
       revortd = tempd0
       rethetacd = -(sgfonsetc*temp*tempd0)
     else
@@ -532,7 +534,7 @@ contains
   subroutine cellsources(nutilde, gam, nu, dist2inv, ss, strainmag, &
 &   vortmag, ydist, duds, rho, mu, tupct, vortlim, ft2, approxterm1, &
 &   uselimiter, onsettanh, fturblee, coupledest, psmooth, ctu1, ctu2, &
-&   ctu3, tanhk, tanhs, tanhamp, snu, sgamma, gammas, destmult, &
+&   ctu3, tanhk, tanhs, tanhamp, tanhrt, snu, sgamma, gammas, destmult, &
 &   term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, fwsa, &
 &   revort, laml, fpg, rethetac, fonset1, fonset, fturb, pgamma, egamma&
 &   , gammalocal, seff, omeff, rturb, nutsa)
@@ -557,7 +559,7 @@ contains
     logical, intent(in) :: approxterm1, uselimiter, onsettanh, fturblee&
 &   , coupledest
     real(kind=realtype), intent(in) :: psmooth, ctu1, ctu2, ctu3, tanhk&
-&   , tanhs, tanhamp
+&   , tanhs, tanhamp, tanhrt
     real(kind=realtype), intent(out) :: snu, sgamma, gammas, destmult, &
 &   term2prod, term2dest
     real(kind=realtype), intent(out) :: fv1, fv2, sst, rr, gg, gg6, &
@@ -654,7 +656,8 @@ contains
 ! eq. 4: onset
     revort = rho*ydist**2*strainmag/mu
     if (onsettanh) then
-      fonset1t = sqrt((revort/(sgfonsetc*rethetac))**2 + rturb**2)
+      fonset1t = sqrt((revort/(sgfonsetc*rethetac))**2 + (rturb/tanhrt)&
+&       **2)
       fonset1 = fonset1t
       fonset = tanhamp*(tanh(tanhk*(fonset1t-tanhs))+one)*half
     else
@@ -1382,7 +1385,7 @@ contains
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
 &   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
 &   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs, sgammatanhamp
+&   sgammatanhs, sgammatanhamp, sgammatanhrt
     implicit none
     integer(kind=inttype), parameter :: dbgfonset=1_inttype
     integer(kind=inttype), parameter :: dbgfonset1=2_inttype
@@ -1445,7 +1448,7 @@ contains
 &   rturb, nutsa
     logical :: approxterm1, uselimiter, onsettanh, fturblee, coupledest
     real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
-&   tanhamp
+&   tanhamp, tanhrt
 ! fd jacobian scratch (lhs only)
     real(kind=realtype) :: epsnu, epsg, snup, sgamp
     real(kind=realtype) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
@@ -1470,6 +1473,7 @@ contains
     tanhk = sgammatanhk
     tanhs = sgammatanhs
     tanhamp = sgammatanhamp
+    tanhrt = sgammatanhrt
     tupct = turbintensityinf*100.0_realtype
     if (turbprod .eq. katolaunder) then
       stop
@@ -1510,10 +1514,10 @@ contains
 &                    rlvd(i, j, k), tupct, vortlim, vortlimd, ft2, ft2d&
 &                    , approxterm1, uselimiter, onsettanh, fturblee, &
 &                    coupledest, psmooth, ctu1, ctu2, ctu3, tanhk, tanhs&
-&                    , tanhamp, snu, snud, sgamma, sgammad, gammas, &
-&                    destmult, term2prod, term2dest, fv1, fv2, sst, rr, &
-&                    gg, gg6, termfw, fwsa, revort, laml, fpg, rethetac&
-&                    , fonset1, fonset, fturb, pgamma, egamma, &
+&                    , tanhamp, tanhrt, snu, snud, sgamma, sgammad, &
+&                    gammas, destmult, term2prod, term2dest, fv1, fv2, &
+&                    sst, rr, gg, gg6, termfw, fwsa, revort, laml, fpg, &
+&                    rethetac, fonset1, fonset, fturb, pgamma, egamma, &
 &                    gammalocal, seff, omeff, rturb, nutsa)
         call popcontrol1b(branch)
         if (branch .eq. 0) then
@@ -1555,7 +1559,7 @@ contains
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
 &   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
 &   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs, sgammatanhamp
+&   sgammatanhs, sgammatanhamp, sgammatanhrt
     implicit none
     integer(kind=inttype), parameter :: dbgfonset=1_inttype
     integer(kind=inttype), parameter :: dbgfonset1=2_inttype
@@ -1614,7 +1618,7 @@ contains
 &   rturb, nutsa
     logical :: approxterm1, uselimiter, onsettanh, fturblee, coupledest
     real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
-&   tanhamp
+&   tanhamp, tanhrt
 ! fd jacobian scratch (lhs only)
     real(kind=realtype) :: epsnu, epsg, snup, sgamp
     real(kind=realtype) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
@@ -1637,6 +1641,7 @@ contains
     tanhk = sgammatanhk
     tanhs = sgammatanhs
     tanhamp = sgammatanhamp
+    tanhrt = sgammatanhrt
     tupct = turbintensityinf*100.0_realtype
     if (turbprod .eq. katolaunder) then
       print*, 'katolaunder production term not supported for sa'
@@ -1666,11 +1671,11 @@ contains
 &                  vortmag, ydist, duds, w(i, j, k, irho), rlv(i, j, k)&
 &                  , tupct, vortlim, ft2, approxterm1, uselimiter, &
 &                  onsettanh, fturblee, coupledest, psmooth, ctu1, ctu2&
-&                  , ctu3, tanhk, tanhs, tanhamp, snu, sgamma, gammas, &
-&                  destmult, term2prod, term2dest, fv1, fv2, sst, rr, gg&
-&                  , gg6, termfw, fwsa, revort, laml, fpg, rethetac, &
-&                  fonset1, fonset, fturb, pgamma, egamma, gammalocal, &
-&                  seff, omeff, rturb, nutsa)
+&                  , ctu3, tanhk, tanhs, tanhamp, tanhrt, snu, sgamma, &
+&                  gammas, destmult, term2prod, term2dest, fv1, fv2, sst&
+&                  , rr, gg, gg6, termfw, fwsa, revort, laml, fpg, &
+&                  rethetac, fonset1, fonset, fturb, pgamma, egamma, &
+&                  gammalocal, seff, omeff, rturb, nutsa)
         scratch(i, j, k, idvt) = snu
         scratch(i, j, k, idvt+1) = sgamma
         if (associated(transitiondebug)) then
@@ -3238,7 +3243,7 @@ contains
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
 &   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
 &   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs, sgammatanhamp
+&   sgammatanhs, sgammatanhamp, sgammatanhrt
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(2, 2)
@@ -3281,10 +3286,10 @@ contains
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
 &              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
 &              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
-&              sgammatanhk, sgammatanhs, sgammatanhamp, snu, sgamma, d1&
-&              , d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14&
-&              , d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
-&              d26)
+&              sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
+&              snu, sgamma, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
+&              , d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, &
+&              d23, d24, d25, d26)
     if (nutilde .ge. 0.) then
       abs0 = nutilde
     else
@@ -3303,10 +3308,10 @@ contains
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
 &              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
 &              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
-&              sgammatanhk, sgammatanhs, sgammatanhamp, snup, sgamp, d1&
-&              , d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14&
-&              , d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
-&              d26)
+&              sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
+&              snup, sgamp, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
+&              , d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, &
+&              d23, d24, d25, d26)
     a(1, 1) = (snup-snu)/epsnu
     a(2, 1) = (sgamp-sgamma)/epsnu
     arg1 = gam + epsg
@@ -3315,10 +3320,10 @@ contains
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
 &              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
 &              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
-&              sgammatanhk, sgammatanhs, sgammatanhamp, snup, sgamp, d1&
-&              , d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14&
-&              , d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
-&              d26)
+&              sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
+&              snup, sgamp, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
+&              , d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, &
+&              d23, d24, d25, d26)
     a(1, 2) = (snup-snu)/epsg
     a(2, 2) = (sgamp-sgamma)/epsg
   end subroutine evalsrcjacblocksagamma

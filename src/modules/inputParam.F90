@@ -446,6 +446,10 @@ module inputIteration
     ! maximum of the original Menter/Lee F_onset = max(min(F1, 2) - F3, 0). Use with sgammaFturbLee: the
     ! P&Z F_turb = (1 - F_onset) exp(-R_T) goes negative for F_onset > 1.
     real(kind=realType) :: sgammaTanhAmp = 1.0_realType
+    ! R_T scale c in the tanh onset argument: F1t = sqrt((Re_v/(2.2 Re_theta_c))^2 + (R_T/c)^2). P&Z: 1.
+    ! c ~ 2.4 delays the near-wall R_T activation to R_T ~ s c ~ 3.5, the R_T at which the original
+    ! F3 = phi+(1 - (R_T/3.5)^3, 0) lets F_onset turn on; keeps the near-wall gamma dip of the original.
+    real(kind=realType) :: sgammaTanhRT = 1.0_realType
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic

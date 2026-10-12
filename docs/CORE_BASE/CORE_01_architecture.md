@@ -145,6 +145,7 @@ The values below were checked against `_getDefaultOptions` in
 | `sgammaFPGSmoothP` / `sgammaCTU1..3` | `300` / `163, 1002.25, 1.0` | φ± sharpness at the F_PG kink, and the Colonia C_TU constants. |
 | `sgammaTanhK` / `sgammaTanhS` | `6.0` / `1.35` | k, s of the tanh onset (only with `sgammaOnsetTanh`); default P&Z. A-priori fit to the φ form: k 2.68, s 1.55 (`sa_sgamma/07_tanh_calibration`). |
 | `sgammaTanhAmp` | `1.0` | Amplitude A of the tanh onset, F_onset = A[tanh(·)+1]/2. A = 2 matches the max of the original F_onset; use with `sgammaFturbLee` (P&Z F_turb goes negative for F_onset > 1). |
+| `sgammaTanhRT` | `1.0` | R_T scale c in the tanh onset, F1t = √[(Re_v/2.2Re_θc)² + (R_T/c)²]. With P&Z c = 1 the onset turns on at R_T ≈ s near the wall, which thins the near-wall γ dip and gives a turbulent Cf ~5 % below the original. c ≈ 2.4 moves it to R_T ≈ 3.5, as the original F3 does. |
 
 **Deprecated research flags (SA-GR):** `transitionBCMGamma`,
 `transitionLocalReTheta` and `transitionReThetaInert` belong to the SA-G-s

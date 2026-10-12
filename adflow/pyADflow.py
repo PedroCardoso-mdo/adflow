@@ -5947,6 +5947,7 @@ class ADFLOW(AeroSolver):
             "sgammaTanhK": [float, 6.0],
             "sgammaTanhS": [float, 1.35],
             "sgammaTanhAmp": [float, 1.0],
+            "sgammaTanhRT": [float, 1.0],
             "transitionRestartAlgebraicInit": [bool, False],
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
@@ -6448,6 +6449,7 @@ class ADFLOW(AeroSolver):
             "sgammatanhk": ["iter", "sgammatanhk"],
             "sgammatanhs": ["iter", "sgammatanhs"],
             "sgammatanhamp": ["iter", "sgammatanhamp"],
+            "sgammatanhrt": ["iter", "sgammatanhrt"],
             "transitionrestartalgebraicinit": ["iter", "transitionrestartalgebraicinit"],
             "transitionreflength": ["iter", "transitionreflength"],
             "solverstalldiag": ["iter", "solverstalldiag"],
