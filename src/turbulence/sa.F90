@@ -120,7 +120,7 @@ contains
         ! NOTE: no local may end in _c: Tapenade names its derivative <name>_cd/_cb and the
         ! autoEdit scripts strip those suffixes (=> duplicate declaration). Hence ReThetaCrit.
         real(kind=realType) :: tterm2, ReThetaBase, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
-        real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma
+        real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma, tRamp, pReg1, pReg2, gOnset, gLatch
         real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
                             real(kind=realType) :: uMap, uMapLo, vAdv, vFav, wMap, lamMapped
                             real(kind=realType) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, ppy, ppz
@@ -458,7 +458,7 @@ contains
                             ReThetaCrit = ReThetaBase * Flam
 
                             ! Re_theta actual
-                            Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
+                            Re_vorty = sqrt(vortProd + SABCM_Omega0**2) * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
                             Re_theta = Re_vorty / 2.193_realType
 
                             ! tterm1 (can be huge ~1e5)
@@ -472,16 +472,43 @@ contains
                                 arg_gamma = sqrt(tterm1) + sqrt(max(tterm2, zero))
                                 tTgamma = one - exp(-arg_gamma)
                                 tTgamma = min(max(tTgamma, zero), one)
+                            else if (SABCM_regExp) then
+                                ! Regularised original BCM: gamma = 1 - exp(-(s(Term1) + s(Term2))) with s(T) a smooth sqrt of the
+                                ! positive part, s = sqrt(p + eps^2) - eps, p = (T + sqrt(T^2 + delta^2))/2. Same calibrated response
+                                ! as the original away from T = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
+                                pReg1 = half * (tterm1 + sqrt(tterm1**2 + SABCM_delta**2))
+                                pReg2 = half * (tterm2 + sqrt(tterm2**2 + SABCM_delta**2))
+                                arg_gamma = sqrt(pReg1 + SABCM_eps**2) + sqrt(pReg2 + SABCM_eps**2) - two * SABCM_eps
+                                tTgamma = one - exp(-arg_gamma)
                             else
                                 ! Differentiable reformulation: KS-smoothed max in Term1, tanh intermittency
                                 stransition =  SABCM_maxsmooth* tterm1
                                 k_max = max(stransition, xminn)
                                 tterm1 = ((k_max + log(exp(stransition - k_max) + exp(- k_max))) / SABCM_maxsmooth)
                                 ! Current tanh-based formula
-                                arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
-                                tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+                                if (SABCM_latch) then
+                                    ! Onset and latch split: tanh on Term1 alone (calibrated onset unchanged), the nu_t latch is a quintic
+                                    ! smoothstep in chi on [chiA, chiB] (exactly 0 in the free stream), combined as gamma = 1 - (1-g1)(1-g2)
+                                    arg_tanh = (tterm1 - SABCM_S0_tanh) / SABCM_fsmooth
+                                    gOnset = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+                                    tRamp = min(max((chi - SABCM_chiA) / (SABCM_chiB - SABCM_chiA), zero), one)
+                                    gLatch = tRamp**3 * (10.0_realType - 15.0_realType * tRamp + 6.0_realType * tRamp**2)
+                                    tTgamma = one - (one - gOnset) * (one - gLatch)
+                                else if (SABCM_ramp) then
+                                    ! Quintic smoothstep on [0, rampW]: gamma is exactly 0 below the onset (no trip floor) and
+                                    ! its peak slope 1.875/rampW is set apart from the floor, unlike the tanh where both follow fsmooth
+                                    tRamp = min(max((tterm1 + tterm2) / SABCM_rampW, zero), one)
+                                    tTgamma = tRamp**3 * (10.0_realType - 15.0_realType * tRamp + 6.0_realType * tRamp**2)
+                                else
+                                    arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
+                                    tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+                                end if
                             end if
                                                                               
+#ifndef USE_TAPENADE
+                            ! NK test (SABCM_freezeJac): Jacobian/PC evaluations reuse the gamma of the base state
+                            if (bcmGammaFrozen) tTgamma = Tgamma(i, j, k)
+#endif
                             Tgamma(i, j, k) = tTgamma
                             bcmLambda(i, j, k) = lamL
                             bcmFlam(i, j, k) = Flam
@@ -521,6 +548,14 @@ contains
                                 if (tTgamma > zero .and. tTgamma < one) then
                                     dtTgamma = exp(-arg_gamma) * darg_gamma
                                 end if
+                            else if (SABCM_latch) then
+                                dtTgamma = (one - gOnset) * 30.0_realType * tRamp**2 * (one - tRamp)**2 &
+                                           / ((SABCM_chiB - SABCM_chiA) * nu)
+                            else if (SABCM_regExp) then
+                                dtTgamma = exp(-arg_gamma) * half * (one + tterm2 / sqrt(tterm2**2 + SABCM_delta**2)) &
+                                           / (two * sqrt(pReg2 + SABCM_eps**2)) * dtterm2
+                            else if (SABCM_ramp) then
+                                dtTgamma = 30.0_realType * tRamp**2 * (one - tRamp)**2 * dtterm2 / SABCM_rampW
                             else
                                 dtTgamma = half * (one - tanh(arg_tanh)**2) * dtterm2 / SABCM_fsmooth
                             end if

@@ -1008,8 +1008,9 @@ contains
         use blockPointers, only: sectionID, Tgamma, bcmLambda, bcmFlam
         use communication, only: myID
         use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, &
-                    SABCM_Const1, SABCM_Const2, SABCM_TU, &
-                    SABCM_S0_tanh, SABCM_fsmooth, SABCM_maxsmooth, &
+                    SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_Omega0, &
+                    SABCM_S0_tanh, SABCM_fsmooth, SABCM_maxsmooth, SABCM_ramp, SABCM_rampW, &
+                    SABCM_regExp, SABCM_eps, SABCM_delta, SABCM_latch, SABCM_chiA, SABCM_chiB, bcmGammaFrozen, &
                     use_SABCM, SABCM_Exp, &
                     SABCM_PG, SABCM_PG_map, SABCM_PG_coef, SABCM_PG_off, SABCM_PG_gain, SABCM_PG_lamMax, SABCM_PG_p, &
                     SABCM_PG_sensor, SABCM_PG_sdir, SABCM_PG_F, SABCM_PG_K, gammaConstant, velDirFreestream
@@ -1032,7 +1033,7 @@ contains
         real(kind=realType) :: omegax, omegay, omegaz
         real(kind=realType) :: strainMag2, prod
         real(kind=realType) :: tterm2, ReThetaBase, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
-        real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma, vortProd
+        real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma, vortProd, tRamp, pReg1, pReg2, gOnset, gLatch
         real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
                         real(kind=realType) :: uMap, uMapLo, vAdv, vFav, wMap, lamMapped
                         real(kind=realType) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, ppy, ppz
@@ -1354,7 +1355,7 @@ contains
                         ReThetaCrit = ReThetaBase * Flam
 
                         ! Re_theta actual
-                        Re_vorty = sqrtVort * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
+                        Re_vorty = sqrt(vortProd + SABCM_Omega0**2) * w(i, j, k, irho) / rlv(i, j, k) * (d2wall(i, j, k)**2)
                         Re_theta = Re_vorty / 2.193_realType
 
                         ! tterm1 (can be huge ~1e5)
@@ -1368,16 +1369,41 @@ contains
                             arg_gamma = sqrt(tterm1) + sqrt(max(tterm2, zero))
                             tTgamma = one - exp(-arg_gamma)
                             tTgamma = min(max(tTgamma, zero), one)
+                        else if (SABCM_regExp) then
+                            ! Regularised original BCM: gamma = 1 - exp(-(s(Term1) + s(Term2))) with s(T) a smooth sqrt of the
+                            ! positive part, s = sqrt(p + eps^2) - eps, p = (T + sqrt(T^2 + delta^2))/2. Same calibrated response
+                            ! as the original away from T = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
+                            pReg1 = half * (tterm1 + sqrt(tterm1**2 + SABCM_delta**2))
+                            pReg2 = half * (tterm2 + sqrt(tterm2**2 + SABCM_delta**2))
+                            arg_gamma = sqrt(pReg1 + SABCM_eps**2) + sqrt(pReg2 + SABCM_eps**2) - two * SABCM_eps
+                            tTgamma = one - exp(-arg_gamma)
                         else
                             ! Differentiable reformulation: KS-smoothed max in Term1, tanh intermittency
                             stransition =  SABCM_maxsmooth* tterm1
                             k_max = max(stransition, xminn)
                             tterm1 = ((k_max + log(exp(stransition - k_max) + exp(- k_max))) / SABCM_maxsmooth)
                             ! Current tanh-based formula
-                            arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
-                            tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+                            if (SABCM_latch) then
+                                ! Onset and latch split: tanh on Term1 alone (calibrated onset unchanged), the nu_t latch is a quintic
+                                ! smoothstep in chi on [chiA, chiB] (exactly 0 in the free stream), combined as gamma = 1 - (1-g1)(1-g2)
+                                arg_tanh = (tterm1 - SABCM_S0_tanh) / SABCM_fsmooth
+                                gOnset = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+                                tRamp = min(max((chi - SABCM_chiA) / (SABCM_chiB - SABCM_chiA), zero), one)
+                                gLatch = tRamp**3 * (10.0_realType - 15.0_realType * tRamp + 6.0_realType * tRamp**2)
+                                tTgamma = one - (one - gOnset) * (one - gLatch)
+                            else if (SABCM_ramp) then
+                                ! Quintic smoothstep on [0, rampW]: gamma is exactly 0 below the onset (no trip floor) and
+                                ! its peak slope 1.875/rampW is set apart from the floor, unlike the tanh where both follow fsmooth
+                                tRamp = min(max((tterm1 + tterm2) / SABCM_rampW, zero), one)
+                                tTgamma = tRamp**3 * (10.0_realType - 15.0_realType * tRamp + 6.0_realType * tRamp**2)
+                            else
+                                arg_tanh = (tterm1 + tterm2 - SABCM_S0_tanh) / SABCM_fsmooth
+                                tTgamma = 0.5_realType * (1.0_realType + tanh(arg_tanh))
+                            end if
                         end if
                                                                             
+                        ! NK test (SABCM_freezeJac): Jacobian evaluations reuse the gamma of the base state
+                        if (bcmGammaFrozen) tTgamma = Tgamma(i + ii - 2, j + jj - 2, k + kk - 2)
                         ! block-array write: the blockette (i,j,k) is offset by (ii,jj,kk)
                         Tgamma(i + ii - 2, j + jj - 2, k + kk - 2) = tTgamma
                         bcmLambda(i + ii - 2, j + jj - 2, k + kk - 2) = lamL

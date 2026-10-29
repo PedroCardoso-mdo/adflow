@@ -71,9 +71,9 @@ contains
     real(kind=realtype) :: tterm2d, rethetacritd, re_vortyd, re_thetad, &
 &   tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
-&   arg_gamma
+&   arg_gamma, tramp, preg1, preg2, gonset, glatch
     real(kind=realtype) :: sqrtvortd, stransitiond, k_maxd, arg_tanhd, &
-&   arg_gammad
+&   arg_gammad, trampd, preg1d, preg2d, gonsetd, glatchd
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
@@ -118,6 +118,10 @@ contains
     real(kind=realtype) :: y1d
     real(kind=realtype) :: x1
     real(kind=realtype) :: x1d
+    real(kind=realtype) :: x2
+    real(kind=realtype) :: x2d
+    real(kind=realtype) :: x3
+    real(kind=realtype) :: x3d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -134,6 +138,8 @@ contains
     real(kind=realtype) :: result1d
     real(kind=realtype) :: result2
     real(kind=realtype) :: result2d
+    real(kind=realtype) :: arg2
+    real(kind=realtype) :: arg2d
     real(kind=realtype) :: temp
     real(kind=realtype) :: temp0
     real(kind=realtype) :: temp1
@@ -146,6 +152,7 @@ contains
     real(kind=realtype) :: temp8
     real(kind=realtype) :: temp9
     real(kind=realtype) :: temp10
+    real(realtype) :: temp11
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -921,6 +928,54 @@ contains
                   ttgammad = x1d
                   ttgamma = x1
                 end if
+              else if (sabcm_regexp) then
+! regularised original bcm: gamma = 1 - exp(-(s(term1) + s(term2))) with s(t) a smooth sqrt of the
+! positive part, s = sqrt(p + eps^2) - eps, p = (t + sqrt(t^2 + delta^2))/2. same calibrated response
+! as the original away from t = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
+                arg1d = 2*tterm1*tterm1d
+                arg1 = tterm1**2 + sabcm_delta**2
+                temp10 = sqrt(arg1)
+                if (arg1 .eq. 0.0_8) then
+                  result1d = 0.0_8
+                else
+                  result1d = arg1d/(2.0*temp10)
+                end if
+                result1 = temp10
+                preg1d = half*(tterm1d+result1d)
+                preg1 = half*(tterm1+result1)
+                arg1d = 2*tterm2*tterm2d
+                arg1 = tterm2**2 + sabcm_delta**2
+                temp10 = sqrt(arg1)
+                if (arg1 .eq. 0.0_8) then
+                  result1d = 0.0_8
+                else
+                  result1d = arg1d/(2.0*temp10)
+                end if
+                result1 = temp10
+                preg2d = half*(tterm2d+result1d)
+                preg2 = half*(tterm2+result1)
+                arg1d = preg1d
+                arg1 = preg1 + sabcm_eps**2
+                temp10 = sqrt(arg1)
+                if (arg1 .eq. 0.0_8) then
+                  result1d = 0.0_8
+                else
+                  result1d = arg1d/(2.0*temp10)
+                end if
+                result1 = temp10
+                arg2d = preg2d
+                arg2 = preg2 + sabcm_eps**2
+                temp10 = sqrt(arg2)
+                if (arg2 .eq. 0.0_8) then
+                  result2d = 0.0_8
+                else
+                  result2d = arg2d/(2.0*temp10)
+                end if
+                result2 = temp10
+                arg_gammad = result1d + result2d
+                arg_gamma = result1 + result2 - two*sabcm_eps
+                ttgammad = exp(-arg_gamma)*arg_gammad
+                ttgamma = one - exp(-arg_gamma)
               else
 ! differentiable reformulation: ks-smoothed max in term1, tanh intermittency
                 stransitiond = sabcm_maxsmooth*tterm1d
@@ -938,11 +993,66 @@ contains
                 tterm1d = (k_maxd+arg1d/arg1)/sabcm_maxsmooth
                 tterm1 = (k_max+log(arg1))/sabcm_maxsmooth
 ! current tanh-based formula
-                arg_tanhd = (tterm1d+tterm2d)/sabcm_fsmooth
-                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
-                ttgammad = 0.5_realtype*(1.0-tanh(arg_tanh)**2)*&
-&                 arg_tanhd
-                ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                if (sabcm_latch) then
+! onset and latch split: tanh on term1 alone (calibrated onset unchanged), the nu_t latch is a quintic
+! smoothstep in chi on [chia, chib] (exactly 0 in the free stream), combined as gamma = 1 - (1-g1)(1-g2)
+                  arg_tanhd = tterm1d/sabcm_fsmooth
+                  arg_tanh = (tterm1-sabcm_s0_tanh)/sabcm_fsmooth
+                  gonsetd = 0.5_realtype*(1.0-tanh(arg_tanh)**2)*&
+&                   arg_tanhd
+                  gonset = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                  if ((chi-sabcm_chia)/(sabcm_chib-sabcm_chia) .lt. zero&
+&                 ) then
+                    x2 = zero
+                    x2d = 0.0_8
+                  else
+                    x2d = chid/(sabcm_chib-sabcm_chia)
+                    x2 = (chi-sabcm_chia)/(sabcm_chib-sabcm_chia)
+                  end if
+                  if (x2 .gt. one) then
+                    tramp = one
+                    trampd = 0.0_8
+                  else
+                    trampd = x2d
+                    tramp = x2
+                  end if
+                  temp11 = 6.0_realtype*(tramp*tramp) - 15.0_realtype*&
+&                   tramp + 10.0_realtype
+                  temp10 = tramp*tramp*tramp
+                  glatchd = (temp11*3*tramp**2+temp10*(6.0_realtype*2*&
+&                   tramp-15.0_realtype))*trampd
+                  glatch = temp10*temp11
+                  ttgammad = -(-((one-glatch)*gonsetd)-(one-gonset)*&
+&                   glatchd)
+                  ttgamma = one - (one-gonset)*(one-glatch)
+                else if (sabcm_ramp) then
+                  if ((tterm1+tterm2)/sabcm_rampw .lt. zero) then
+                    x3 = zero
+                    x3d = 0.0_8
+                  else
+                    x3d = (tterm1d+tterm2d)/sabcm_rampw
+                    x3 = (tterm1+tterm2)/sabcm_rampw
+                  end if
+                  if (x3 .gt. one) then
+                    tramp = one
+                    trampd = 0.0_8
+                  else
+                    trampd = x3d
+                    tramp = x3
+                  end if
+                  temp11 = 6.0_realtype*(tramp*tramp) - 15.0_realtype*&
+&                   tramp + 10.0_realtype
+                  temp10 = tramp*tramp*tramp
+                  ttgammad = (temp11*3*tramp**2+temp10*(6.0_realtype*2*&
+&                   tramp-15.0_realtype))*trampd
+                  ttgamma = temp10*temp11
+                else
+                  arg_tanhd = (tterm1d+tterm2d)/sabcm_fsmooth
+                  arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+                  ttgammad = 0.5_realtype*(1.0-tanh(arg_tanh)**2)*&
+&                   arg_tanhd
+                  ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                end if
               end if
               tgamma(i, j, k) = ttgamma
               bcmlambda(i, j, k) = laml
@@ -1013,7 +1123,7 @@ contains
     real(kind=realtype) :: tterm2, rethetabase, rethetacrit, re_vorty, &
 &   re_theta, tterm1, ttgamma
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
-&   arg_gamma
+&   arg_gamma, tramp, preg1, preg2, gonset, glatch
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
@@ -1047,6 +1157,8 @@ contains
     intrinsic log
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
+    real(kind=realtype) :: x2
+    real(kind=realtype) :: x3
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1055,6 +1167,7 @@ contains
     real(kind=realtype) :: arg1
     real(kind=realtype) :: result1
     real(kind=realtype) :: result2
+    real(kind=realtype) :: arg2
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -1390,6 +1503,22 @@ contains
                 else
                   ttgamma = x1
                 end if
+              else if (sabcm_regexp) then
+! regularised original bcm: gamma = 1 - exp(-(s(term1) + s(term2))) with s(t) a smooth sqrt of the
+! positive part, s = sqrt(p + eps^2) - eps, p = (t + sqrt(t^2 + delta^2))/2. same calibrated response
+! as the original away from t = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
+                arg1 = tterm1**2 + sabcm_delta**2
+                result1 = sqrt(arg1)
+                preg1 = half*(tterm1+result1)
+                arg1 = tterm2**2 + sabcm_delta**2
+                result1 = sqrt(arg1)
+                preg2 = half*(tterm2+result1)
+                arg1 = preg1 + sabcm_eps**2
+                result1 = sqrt(arg1)
+                arg2 = preg2 + sabcm_eps**2
+                result2 = sqrt(arg2)
+                arg_gamma = result1 + result2 - two*sabcm_eps
+                ttgamma = one - exp(-arg_gamma)
               else
 ! differentiable reformulation: ks-smoothed max in term1, tanh intermittency
                 stransition = sabcm_maxsmooth*tterm1
@@ -1401,8 +1530,42 @@ contains
                 arg1 = exp(stransition - k_max) + exp(-k_max)
                 tterm1 = (k_max+log(arg1))/sabcm_maxsmooth
 ! current tanh-based formula
-                arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
-                ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                if (sabcm_latch) then
+! onset and latch split: tanh on term1 alone (calibrated onset unchanged), the nu_t latch is a quintic
+! smoothstep in chi on [chia, chib] (exactly 0 in the free stream), combined as gamma = 1 - (1-g1)(1-g2)
+                  arg_tanh = (tterm1-sabcm_s0_tanh)/sabcm_fsmooth
+                  gonset = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                  if ((chi-sabcm_chia)/(sabcm_chib-sabcm_chia) .lt. zero&
+&                 ) then
+                    x2 = zero
+                  else
+                    x2 = (chi-sabcm_chia)/(sabcm_chib-sabcm_chia)
+                  end if
+                  if (x2 .gt. one) then
+                    tramp = one
+                  else
+                    tramp = x2
+                  end if
+                  glatch = tramp**3*(10.0_realtype-15.0_realtype*tramp+&
+&                   6.0_realtype*tramp**2)
+                  ttgamma = one - (one-gonset)*(one-glatch)
+                else if (sabcm_ramp) then
+                  if ((tterm1+tterm2)/sabcm_rampw .lt. zero) then
+                    x3 = zero
+                  else
+                    x3 = (tterm1+tterm2)/sabcm_rampw
+                  end if
+                  if (x3 .gt. one) then
+                    tramp = one
+                  else
+                    tramp = x3
+                  end if
+                  ttgamma = tramp**3*(10.0_realtype-15.0_realtype*tramp+&
+&                   6.0_realtype*tramp**2)
+                else
+                  arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+                  ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+                end if
               end if
               tgamma(i, j, k) = ttgamma
               bcmlambda(i, j, k) = laml

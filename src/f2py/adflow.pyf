@@ -224,6 +224,12 @@ python module libadflow
            real(kind=realtype) dimension(3,n),intent(out),depend(n) :: xcen
          end subroutine getcellcenters
 
+         subroutine getcelltgamma(level,n,gam) ! in :test:utils.F90:utils
+           integer(kind=inttype) intent(in) :: level
+           integer(kind=inttype) intent(in) :: n
+           real(kind=realtype) dimension(n),intent(out),depend(n) :: gam
+         end subroutine getcelltgamma
+
          subroutine getcellcgnsblockids(level,n,cellid) ! in :test:utils.F90:utils
            integer(kind=inttype) intent(in) :: level
            integer(kind=inttype) intent(in) :: n
@@ -1183,6 +1189,18 @@ python module libadflow
          real(kind=realtype) :: sabcm_s0_tanh
          real(kind=realtype) :: sabcm_fsmooth
          real(kind=realtype) :: sabcm_maxsmooth
+         logical :: sabcm_ramp
+         real(kind=realtype) :: sabcm_rampw
+         logical :: sabcm_regexp
+         real(kind=realtype) :: sabcm_eps
+         real(kind=realtype) :: sabcm_delta
+         logical :: sabcm_latch
+         real(kind=realtype) :: sabcm_chia
+         real(kind=realtype) :: sabcm_chib
+         logical :: sabcm_freezejac
+         integer(kind=inttype) :: sabcm_gammalag
+         real(kind=realtype) :: sabcm_omega0
+         real(kind=realtype) :: sabcm_gammarelax
          logical :: sabcm_pg
          integer(kind=inttype) :: sabcm_pg_map
          integer(kind=inttype) :: sabcm_pg_sensor

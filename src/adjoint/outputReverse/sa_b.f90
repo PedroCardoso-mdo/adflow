@@ -74,9 +74,9 @@ contains
     real(kind=realtype) :: tterm2d, rethetacritd, re_vortyd, re_thetad, &
 &   tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
-&   arg_gamma
+&   arg_gamma, tramp, preg1, preg2, gonset, glatch
     real(kind=realtype) :: sqrtvortd, stransitiond, k_maxd, arg_tanhd, &
-&   arg_gammad
+&   arg_gammad, trampd, preg1d, preg2d, gonsetd, glatchd
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
@@ -122,6 +122,10 @@ contains
     real(kind=realtype) :: y1d
     real(kind=realtype) :: x1
     real(kind=realtype) :: x1d
+    real(kind=realtype) :: x2
+    real(kind=realtype) :: x2d
+    real(kind=realtype) :: x3
+    real(kind=realtype) :: x3d
     real(kind=realtype) :: min1
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
@@ -142,6 +146,7 @@ contains
     real(kind=realtype) :: tempd2
     real(kind=realtype) :: temp3
     real(kind=realtype) :: tempd3
+    real(realtype) :: tempd4
     integer :: branch
 ! set model constants
     cv13 = rsacv1**3
@@ -517,11 +522,21 @@ contains
             end if
             if (x1 .gt. one) then
               ttgamma = one
-              call pushcontrol2b(2)
+              call pushcontrol3b(5)
             else
               ttgamma = x1
-              call pushcontrol2b(1)
+              call pushcontrol3b(4)
             end if
+          else if (sabcm_regexp) then
+! regularised original bcm: gamma = 1 - exp(-(s(term1) + s(term2))) with s(t) a smooth sqrt of the
+! positive part, s = sqrt(p + eps^2) - eps, p = (t + sqrt(t^2 + delta^2))/2. same calibrated response
+! as the original away from t = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
+            preg1 = half*(tterm1+sqrt(tterm1**2+sabcm_delta**2))
+            preg2 = half*(tterm2+sqrt(tterm2**2+sabcm_delta**2))
+            arg_gamma = sqrt(preg1 + sabcm_eps**2) + sqrt(preg2 + &
+&             sabcm_eps**2) - two*sabcm_eps
+            ttgamma = one - exp(-arg_gamma)
+            call pushcontrol3b(0)
           else
 ! differentiable reformulation: ks-smoothed max in term1, tanh intermittency
             stransition = sabcm_maxsmooth*tterm1
@@ -535,13 +550,57 @@ contains
             tterm1 = (k_max+log(exp(stransition-k_max)+exp(-k_max)))/&
 &             sabcm_maxsmooth
 ! current tanh-based formula
-            arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
-            ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
-            call pushcontrol2b(0)
+            if (sabcm_latch) then
+! onset and latch split: tanh on term1 alone (calibrated onset unchanged), the nu_t latch is a quintic
+! smoothstep in chi on [chia, chib] (exactly 0 in the free stream), combined as gamma = 1 - (1-g1)(1-g2)
+              arg_tanh = (tterm1-sabcm_s0_tanh)/sabcm_fsmooth
+              gonset = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+              if ((chi-sabcm_chia)/(sabcm_chib-sabcm_chia) .lt. zero) &
+&             then
+                x2 = zero
+                call pushcontrol1b(0)
+              else
+                x2 = (chi-sabcm_chia)/(sabcm_chib-sabcm_chia)
+                call pushcontrol1b(1)
+              end if
+              if (x2 .gt. one) then
+                tramp = one
+                call pushcontrol1b(0)
+              else
+                tramp = x2
+                call pushcontrol1b(1)
+              end if
+              glatch = tramp**3*(10.0_realtype-15.0_realtype*tramp+&
+&               6.0_realtype*tramp**2)
+              ttgamma = one - (one-gonset)*(one-glatch)
+              call pushcontrol3b(1)
+            else if (sabcm_ramp) then
+              if ((tterm1+tterm2)/sabcm_rampw .lt. zero) then
+                x3 = zero
+                call pushcontrol1b(0)
+              else
+                x3 = (tterm1+tterm2)/sabcm_rampw
+                call pushcontrol1b(1)
+              end if
+              if (x3 .gt. one) then
+                tramp = one
+                call pushcontrol1b(0)
+              else
+                tramp = x3
+                call pushcontrol1b(1)
+              end if
+              ttgamma = tramp**3*(10.0_realtype-15.0_realtype*tramp+&
+&               6.0_realtype*tramp**2)
+              call pushcontrol3b(2)
+            else
+              arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+              ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+              call pushcontrol3b(3)
+            end if
           end if
           ft2 = zero
         else
-          call pushcontrol2b(3)
+          call pushcontrol3b(6)
         end if
 ! compute the source term; some terms are saved for the
 ! linearization. the source term is stored in dvt.
@@ -576,69 +635,143 @@ contains
           ttgammad = ttgammad + ss*tempd3
           ssd = ssd + ttgamma*tempd3
         end if
-        call popcontrol2b(branch)
-        if (branch .lt. 2) then
+        call popcontrol3b(branch)
+        if (branch .lt. 3) then
           if (branch .eq. 0) then
-            arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*ttgammad
-            tterm1d = arg_tanhd/sabcm_fsmooth
-            tterm2d = arg_tanhd/sabcm_fsmooth
-            tempd3 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
-&             sabcm_maxsmooth)
-            tempd1 = exp(stransition-k_max)*tempd3
-            k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd3 - &
-&             tempd1
-            stransitiond = tempd1
+            arg_gammad = exp(-arg_gamma)*ttgammad
+            if (sabcm_eps**2 + preg1 .eq. 0.0_8) then
+              preg1d = 0.0_8
+            else
+              preg1d = arg_gammad/(2.0*sqrt(sabcm_eps**2+preg1))
+            end if
+            if (sabcm_eps**2 + preg2 .eq. 0.0_8) then
+              preg2d = 0.0_8
+            else
+              preg2d = arg_gammad/(2.0*sqrt(sabcm_eps**2+preg2))
+            end if
+            if (sabcm_delta**2 + tterm2**2 .eq. 0.0_8) then
+              tterm2d = half*preg2d
+            else
+              tterm2d = (half+2*tterm2*half/(2.0*sqrt(sabcm_delta**2+&
+&               tterm2**2)))*preg2d
+            end if
+            if (sabcm_delta**2 + tterm1**2 .eq. 0.0_8) then
+              tterm1d = half*preg1d
+            else
+              tterm1d = (half+2*tterm1*half/(2.0*sqrt(sabcm_delta**2+&
+&               tterm1**2)))*preg1d
+            end if
+            chid = 0.0_8
+            goto 120
+          else if (branch .eq. 1) then
+            gonsetd = (one-glatch)*ttgammad
+            glatchd = (one-gonset)*ttgammad
+            tempd4 = tramp**3*glatchd
+            trampd = 3*tramp**2*(6.0_realtype*tramp**2-15.0_realtype*&
+&             tramp+10.0_realtype)*glatchd + (2*tramp*6.0_realtype-&
+&             15.0_realtype)*tempd4
             call popcontrol1b(branch)
-            if (branch .ne. 0) stransitiond = stransitiond + k_maxd
-            tterm1d = sabcm_maxsmooth*stransitiond
-            goto 100
+            if (branch .eq. 0) then
+              x2d = 0.0_8
+            else
+              x2d = trampd
+            end if
+            call popcontrol1b(branch)
+            if (branch .eq. 0) then
+              chid = 0.0_8
+            else
+              chid = x2d/(sabcm_chib-sabcm_chia)
+            end if
+            arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*gonsetd
+            tterm1d = arg_tanhd/sabcm_fsmooth
+            tterm2d = 0.0_8
+            goto 110
           else
-            x1d = ttgammad
+            tempd4 = tramp**3*ttgammad
+            trampd = 3*tramp**2*(6.0_realtype*tramp**2-15.0_realtype*&
+&             tramp+10.0_realtype)*ttgammad + (2*tramp*6.0_realtype-&
+&             15.0_realtype)*tempd4
+            call popcontrol1b(branch)
+            if (branch .eq. 0) then
+              x3d = 0.0_8
+            else
+              x3d = trampd
+            end if
+            call popcontrol1b(branch)
+            if (branch .eq. 0) then
+              tterm1d = 0.0_8
+              tterm2d = 0.0_8
+            else
+              tterm1d = x3d/sabcm_rampw
+              tterm2d = x3d/sabcm_rampw
+            end if
           end if
-        else if (branch .eq. 2) then
-          x1d = 0.0_8
         else
-          nud = 0.0_8
-          fv1d = 0.0_8
-          wwxd = 0.0_8
+          if (branch .lt. 5) then
+            if (branch .eq. 3) then
+              arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*ttgammad
+              tterm1d = arg_tanhd/sabcm_fsmooth
+              tterm2d = arg_tanhd/sabcm_fsmooth
+              goto 100
+            else
+              x1d = ttgammad
+            end if
+          else if (branch .eq. 5) then
+            x1d = 0.0_8
+          else
+            nud = 0.0_8
+            fv1d = 0.0_8
+            wwxd = 0.0_8
+            chid = 0.0_8
+            wwyd = 0.0_8
+            wwzd = 0.0_8
+            vvxd = 0.0_8
+            vvyd = 0.0_8
+            vvzd = 0.0_8
+            factd = 0.0_8
+            uuxd = 0.0_8
+            uuyd = 0.0_8
+            uuzd = 0.0_8
+            goto 150
+          end if
+          call popcontrol1b(branch)
+          if (branch .eq. 0) then
+            ttgammad = 0.0_8
+          else
+            ttgammad = x1d
+          end if
+          arg_gammad = exp(-arg_gamma)*ttgammad
+          if (tterm1 .eq. 0.0_8) then
+            tterm1d = 0.0_8
+          else
+            tterm1d = arg_gammad/(2.0*sqrt(tterm1))
+          end if
+          if (max4 .eq. 0.0_8) then
+            max4d = 0.0_8
+          else
+            max4d = arg_gammad/(2.0*sqrt(max4))
+          end if
+          call popcontrol1b(branch)
+          if (branch .eq. 0) then
+            tterm2d = 0.0_8
+          else
+            tterm2d = max4d
+          end if
+          call popcontrol1b(branch)
+          if (branch .eq. 0) tterm1d = 0.0_8
           chid = 0.0_8
-          wwyd = 0.0_8
-          wwzd = 0.0_8
-          vvxd = 0.0_8
-          vvyd = 0.0_8
-          vvzd = 0.0_8
-          factd = 0.0_8
-          uuxd = 0.0_8
-          uuyd = 0.0_8
-          uuzd = 0.0_8
-          goto 130
+          goto 120
         end if
+ 100    chid = 0.0_8
+ 110    tempd3 = tterm1d/((exp(stransition-k_max)+exp(-k_max))*&
+&         sabcm_maxsmooth)
+        tempd1 = exp(stransition-k_max)*tempd3
+        k_maxd = tterm1d/sabcm_maxsmooth - exp(-k_max)*tempd3 - tempd1
+        stransitiond = tempd1
         call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          ttgammad = 0.0_8
-        else
-          ttgammad = x1d
-        end if
-        arg_gammad = exp(-arg_gamma)*ttgammad
-        if (tterm1 .eq. 0.0_8) then
-          tterm1d = 0.0_8
-        else
-          tterm1d = arg_gammad/(2.0*sqrt(tterm1))
-        end if
-        if (max4 .eq. 0.0_8) then
-          max4d = 0.0_8
-        else
-          max4d = arg_gammad/(2.0*sqrt(max4))
-        end if
-        call popcontrol1b(branch)
-        if (branch .eq. 0) then
-          tterm2d = 0.0_8
-        else
-          tterm2d = max4d
-        end if
-        call popcontrol1b(branch)
-        if (branch .eq. 0) tterm1d = 0.0_8
- 100    tempd3 = tterm1d/(sabcm_const1*rethetacrit)
+        if (branch .ne. 0) stransitiond = stransitiond + k_maxd
+        tterm1d = sabcm_maxsmooth*stransitiond
+ 120    tempd3 = tterm1d/(sabcm_const1*rethetacrit)
         re_thetad = tempd3
         rethetacritd = -(((re_theta-rethetacrit)/rethetacrit+1.0)*tempd3&
 &         )
@@ -670,7 +803,7 @@ contains
           uuxd = 0.0_8
           uuyd = 0.0_8
           uuzd = 0.0_8
-          goto 120
+          goto 140
         end if
         lamlod = 0.0_8
         call smoothminmax_b(lamlo, lamlod, plammax, mp, lamd)
@@ -721,7 +854,7 @@ contains
           nwyd = 0.0_8
           nwzd = 0.0_8
           factd = 0.0_8
-          goto 110
+          goto 130
         end if
         tempd3 = -(duedsd/(rhoinf*ue))
         dpdsd = tempd3
@@ -916,7 +1049,7 @@ contains
         wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp0*tempd3
         wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp1*tempd3
         snnd = 0.0_8
- 110    temp0 = nwx*wwx + nwy*wwy + nwz*wwz
+ 130    temp0 = nwx*wwx + nwy*wwy + nwz*wwz
         temp = nwx*vvx + nwy*vvy + nwz*vvz
         temp1 = nwx*uux + nwy*uuy + nwz*uuz
         factd = factd + (nwx*temp1+nwy*temp+nwz*temp0)*two*snnd
@@ -939,8 +1072,8 @@ contains
         nwalld(3, i, j, k) = nwalld(3, i, j, k) + nwzd
         nwalld(2, i, j, k) = nwalld(2, i, j, k) + nwyd
         nwalld(1, i, j, k) = nwalld(1, i, j, k) + nwxd
- 120    fv1d = chi*tterm2d/sabcm_const2
-        chid = fv1*tterm2d/sabcm_const2
+ 140    fv1d = chi*tterm2d/sabcm_const2
+        chid = chid + fv1*tterm2d/sabcm_const2
         if (vortprod .eq. 0.0_8) then
           vortprodd = 0.0_8
         else
@@ -965,7 +1098,7 @@ contains
         wwyd = wwyd + fact*tempd0
         vvzd = vvzd - fact*tempd0
         ft2d = 0.0_8
- 130    termfwd = gg*fwsad
+ 150    termfwd = gg*fwsad
         temp0 = (one+cw36)/(cw36+gg6)
         if (temp0 .le. 0.0_8 .and. (sixth .eq. 0.0_8 .or. sixth .ne. int&
 &           (sixth))) then
@@ -1214,7 +1347,7 @@ contains
     real(kind=realtype) :: tterm2, rethetabase, rethetacrit, re_vorty, &
 &   re_theta, tterm1, ttgamma
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
-&   arg_gamma
+&   arg_gamma, tramp, preg1, preg2, gonset, glatch
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
@@ -1249,6 +1382,8 @@ contains
     intrinsic log
     real(kind=realtype) :: y1
     real(kind=realtype) :: x1
+    real(kind=realtype) :: x2
+    real(kind=realtype) :: x3
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
     real(kind=realtype) :: max2
@@ -1586,6 +1721,15 @@ contains
             else
               ttgamma = x1
             end if
+          else if (sabcm_regexp) then
+! regularised original bcm: gamma = 1 - exp(-(s(term1) + s(term2))) with s(t) a smooth sqrt of the
+! positive part, s = sqrt(p + eps^2) - eps, p = (t + sqrt(t^2 + delta^2))/2. same calibrated response
+! as the original away from t = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
+            preg1 = half*(tterm1+sqrt(tterm1**2+sabcm_delta**2))
+            preg2 = half*(tterm2+sqrt(tterm2**2+sabcm_delta**2))
+            arg_gamma = sqrt(preg1 + sabcm_eps**2) + sqrt(preg2 + &
+&             sabcm_eps**2) - two*sabcm_eps
+            ttgamma = one - exp(-arg_gamma)
           else
 ! differentiable reformulation: ks-smoothed max in term1, tanh intermittency
             stransition = sabcm_maxsmooth*tterm1
@@ -1597,8 +1741,42 @@ contains
             tterm1 = (k_max+log(exp(stransition-k_max)+exp(-k_max)))/&
 &             sabcm_maxsmooth
 ! current tanh-based formula
-            arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
-            ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+            if (sabcm_latch) then
+! onset and latch split: tanh on term1 alone (calibrated onset unchanged), the nu_t latch is a quintic
+! smoothstep in chi on [chia, chib] (exactly 0 in the free stream), combined as gamma = 1 - (1-g1)(1-g2)
+              arg_tanh = (tterm1-sabcm_s0_tanh)/sabcm_fsmooth
+              gonset = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+              if ((chi-sabcm_chia)/(sabcm_chib-sabcm_chia) .lt. zero) &
+&             then
+                x2 = zero
+              else
+                x2 = (chi-sabcm_chia)/(sabcm_chib-sabcm_chia)
+              end if
+              if (x2 .gt. one) then
+                tramp = one
+              else
+                tramp = x2
+              end if
+              glatch = tramp**3*(10.0_realtype-15.0_realtype*tramp+&
+&               6.0_realtype*tramp**2)
+              ttgamma = one - (one-gonset)*(one-glatch)
+            else if (sabcm_ramp) then
+              if ((tterm1+tterm2)/sabcm_rampw .lt. zero) then
+                x3 = zero
+              else
+                x3 = (tterm1+tterm2)/sabcm_rampw
+              end if
+              if (x3 .gt. one) then
+                tramp = one
+              else
+                tramp = x3
+              end if
+              ttgamma = tramp**3*(10.0_realtype-15.0_realtype*tramp+&
+&               6.0_realtype*tramp**2)
+            else
+              arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
+              ttgamma = 0.5_realtype*(1.0_realtype+tanh(arg_tanh))
+            end if
           end if
           tgamma(i, j, k) = ttgamma
           bcmlambda(i, j, k) = laml

@@ -6547,6 +6547,34 @@ contains
         end do
     end subroutine getCellCenters
 
+    subroutine getCellTgamma(level, n, gam)
+        ! SA-BCM intermittency per owned cell (getCellCenters ordering), from the last residual evaluation
+        use constants
+        use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use blockPointers, only: nDom, il, jl, kl, Tgamma
+
+        implicit none
+
+        integer(kind=intType), intent(in) :: level, n
+        real(kind=realType), dimension(n), intent(out) :: gam
+        integer(kind=intType) :: i, j, k, ii, nn, sps
+
+        ii = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, level, sps)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            ii = ii + 1
+                            gam(ii) = Tgamma(i, j, k)
+                        end do
+                    end do
+                end do
+            end do
+        end do
+    end subroutine getCellTgamma
+
     subroutine getCellCGNSBlockIDs(level, n, cellID)
 
         use constants

@@ -585,7 +585,17 @@ module inputPhysics
     integer(kind=intType) :: rvfN
     logical :: rvfB
     logical :: useQCR, useRotationSA, useft2SA, use_SABCM
-    logical :: SABCM_Exp, SABCM_PG
+    logical :: SABCM_Exp, SABCM_PG, SABCM_ramp, SABCM_regExp, SABCM_latch
+    ! NK test: freeze gamma (stored Tgamma) in the Jacobian products and FD PC of each NK step; residual keeps gamma
+    logical :: SABCM_freezeJac = .false., bcmGammaFrozen = .false.
+    ! SABCM_gammaLag > 0: gamma frozen in the whole NK residual, refreshed every gammaLag NK steps (or after a 3-order
+    ! drop, and always before declaring convergence)
+    integer(kind=intType) :: SABCM_gammaLag = 0
+    ! SABCM_Omega0 > 0: Re_v uses sqrt(|Omega|^2 + Omega0^2): far-field roundoff vorticity times d^2 made gamma a
+    ! step function of the state there (NK stall, 2026-10-28); 0 = original
+    real(kind=realType) :: SABCM_Omega0 = 0.0_realType
+    ! SABCM_gammaRelax < 1: under-relaxed gamma refresh in the lagged NK loop (gamma_frozen += relax * dgamma)
+    real(kind=realType) :: SABCM_gammaRelax = 1.0_realType
     integer(kind=intType) :: SABCM_PG_map   ! 1 = linear gain, 2 = Falkner-Skan similarity map
     integer(kind=intType) :: SABCM_PG_F      ! gradient response: 1 = Langtry-Menter 2009 F(lambda_theta), 2 = Menter 2015 F_PG ratio (adverse) + LM F1 (favourable)
     integer(kind=intType) :: SABCM_PG_sdir   ! streamwise direction for dp/ds: 1 = local velocity, 2 = wall tangent oriented by the free stream
@@ -593,7 +603,8 @@ module inputPhysics
     logical :: wallFunctions, wallDistanceNeeded
 
     real(kind=realType) :: alpha, beta
-    real(kind=realType) :: SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_S0_tanh, SABCM_fsmooth,SABCM_maxsmooth
+    real(kind=realType) :: SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_S0_tanh, SABCM_fsmooth,SABCM_maxsmooth, &
+                           SABCM_rampW, SABCM_eps, SABCM_delta, SABCM_chiA, SABCM_chiB
     ! SA-BCM pressure-gradient sensor (Menter 2015 lambda_thetaL + Langtry F(lambda)):
     ! lamL = -coef*(d^2/nu)*n.grad(u).n + off ; lam = clip(gain*lamL, +-lamMax) ; Re_theta_c *= F(lam)
     real(kind=realType) :: SABCM_PG_coef, SABCM_PG_off, SABCM_PG_gain, SABCM_PG_lamMax, SABCM_PG_p, SABCM_PG_K

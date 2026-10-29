@@ -58,6 +58,9 @@ module NKSolver
 
     ! Misc variables
     logical :: NK_solverSetup = .False.
+    ! SABCM_gammaLag diagnostics: frozen gamma of the previous refresh and the previous refresh jump (owned cells)
+    real(kind=realType), allocatable, dimension(:) :: bcmGOld, bcmGDprev
+    integer(kind=intType) :: bcmRefreshCount = 0
     integer(kind=intType) :: NK_iter
 
     ! Eisenstat-Walker Parameters
@@ -464,6 +467,111 @@ contains
 
     end subroutine FormFunction_mf
 
+    subroutine bcmGammaRefresh(xVec, fVec, normBefore, ierr)
+
+        ! SABCM_gammaLag: refresh the frozen SA-BCM gamma at the state xVec and print the jump statistics of the outer
+        ! gamma fixed point (|dgamma|, cells switching, Rayleigh estimate lambda of the Picard map from two consecutive
+        ! jumps). With SABCM_gammaRelax < 1 the stored gamma is under-relaxed, gamma_frozen = gamma_old + relax*dgamma.
+        ! On exit fVec is the residual with the (relaxed) frozen gamma and bcmGammaFrozen is .true.
+
+        use constants
+        use communication, only: myid, adflow_comm_world
+        use inputPhysics, only: SABCM_gammaRelax, bcmGammaFrozen
+        use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use blockPointers, only: nDom, il, jl, kl, Tgamma
+        use utils, only: setPointers, EChk
+        implicit none
+
+        Vec xVec, fVec
+        real(kind=alwaysRealType), intent(in) :: normBefore
+        integer(kind=intType), intent(out) :: ierr
+
+        integer(kind=intType) :: nn, sps, i, j, k, ii, n
+        real(kind=alwaysRealType) :: normAfter, normRelax
+        real(kind=realType) :: dg, lambda, locSum(4), globSum(4), locMax, globMax
+
+        ! Owned-cell count and the stored arrays (first call)
+        n = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1, sps)
+                n = n + (il - 1) * (jl - 1) * (kl - 1)
+            end do
+        end do
+        if (.not. allocated(bcmGOld)) then
+            allocate (bcmGOld(n), bcmGDprev(n))
+            bcmGDprev = zero
+        end if
+
+        ! Keep the frozen gamma, then evaluate the residual with gamma free (this rewrites Tgamma)
+        ii = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1, sps)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            ii = ii + 1
+                            bcmGOld(ii) = Tgamma(i, j, k)
+                        end do
+                    end do
+                end do
+            end do
+        end do
+        bcmGammaFrozen = .false.
+        call FormFunction_mf(ctx, xVec, fVec, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call VecNorm(fVec, NORM_2, normAfter, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        ! Jump statistics, then the (relaxed) frozen gamma
+        locSum = zero; locMax = zero; ii = 0
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1, sps)
+                do k = 2, kl
+                    do j = 2, jl
+                        do i = 2, il
+                            ii = ii + 1
+                            dg = Tgamma(i, j, k) - bcmGOld(ii)
+                            locSum(1) = locSum(1) + dg**2
+                            locMax = max(locMax, abs(dg))
+                            if (abs(dg) > 0.1_realType) locSum(2) = locSum(2) + one
+                            locSum(3) = locSum(3) + dg * bcmGDprev(ii)
+                            locSum(4) = locSum(4) + bcmGDprev(ii)**2
+                            bcmGDprev(ii) = dg
+                            Tgamma(i, j, k) = bcmGOld(ii) + SABCM_gammaRelax * dg
+                        end do
+                    end do
+                end do
+            end do
+        end do
+        call mpi_allreduce(locSum, globSum, 4, adflow_real, mpi_sum, adflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call mpi_allreduce(locMax, globMax, 1, adflow_real, mpi_max, adflow_comm_world, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        lambda = zero
+        if (globSum(4) > zero) lambda = globSum(3) / globSum(4)
+
+        bcmGammaFrozen = .true.
+        normRelax = normAfter
+        if (SABCM_gammaRelax < one) then
+            call FormFunction_mf(ctx, xVec, fVec, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call VecNorm(fVec, NORM_2, normRelax, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+        end if
+
+        bcmRefreshCount = bcmRefreshCount + 1
+        if (myid == 0) then
+            write (*, '(a,i4,a,es10.3,a,es10.3,a,es10.3,a,es10.3,a,es9.2,a,i8,a,f8.3)') &
+                '# GLAG', bcmRefreshCount, ' res frozen ', normBefore, ' -> free gamma ', normAfter, &
+                ' -> relaxed ', normRelax, ' | |dg|2 ', sqrt(globSum(1)), ' max ', globMax, &
+                ' n>0.1 ', int(globSum(2)), ' lambda ', lambda
+        end if
+
+    end subroutine bcmGammaRefresh
+
     subroutine destroyNKsolver
 
         ! Destroy all the PETSc objects for the Newton-Krylov solver.
@@ -517,7 +625,7 @@ contains
 
         use constants
         use flowVarRefState, only: nw
-        use inputPhysics, only: equations
+        use inputPhysics, only: equations, SABCM_freezeJac, SABCM_gammaLag, bcmGammaFrozen
         use flowVarRefState, only: nw, nwf
         use inputIteration, only: L2conv
         use iteration, only: approxTotalIts, totalR0, stepMonitor, LinResMonitor, iterType
@@ -535,6 +643,8 @@ contains
         real(kind=alwaysrealType) :: fnorm, ynorm, gnorm
         logical :: flag
         real(kind=alwaysRealType) :: resHist(NK_subspace + 1)
+        real(kind=alwaysRealType), save :: lagNorm0 = -1.0
+        integer(kind=intType), save :: lagCount = 0
 
         if (firstCall) then
             call setupNKSolver()
@@ -555,9 +665,31 @@ contains
             iter_k = iter_k + 1
         end if
 
+        ! NK test (SABCM_gammaLag): gamma frozen in the whole NK residual, refreshed every gammaLag steps or once the
+        ! frozen residual has dropped 3 orders since the last refresh; rVec is then the residual with the new gamma
+        if (SABCM_gammaLag > 0) then
+            call VecNorm(rVec, NORM_2, norm, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            if (firstCall .or. lagCount >= SABCM_gammaLag .or. norm < 1.0e-3 * lagNorm0) then
+                call bcmGammaRefresh(wVec, rVec, norm, ierr)
+                call VecNorm(rVec, NORM_2, lagNorm0, ierr)
+                lagCount = 0
+            end if
+            lagCount = lagCount + 1
+            bcmGammaFrozen = .true.
+        end if
+
         ! Compute the norm of rVec for use in EW Criteria
         call VecNorm(rVec, NORM_2, norm, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! NK test (SABCM_freezeJac): refresh the stored gamma at the base state, then freeze it for the PC
+        ! assembly and the Krylov solve (inexact Newton without dgamma/dw); unfrozen again for the line search
+        if (SABCM_freezeJac .and. SABCM_gammaLag <= 0) then
+            bcmGammaFrozen = .false.
+            call formFunction_mf(ctx, wVec, baseRes, ierr)
+            bcmGammaFrozen = .true.
+        end if
 
         ! Determine if if we need to form the Preconditioner
         if (mod(NK_iter, NK_jacobianLag) == 0) then
@@ -636,6 +768,7 @@ contains
 
         ! Actually do the Linear Krylov Solve
         call KSPSolve(NK_KSP, rVec, deltaW, ierr)
+        if (SABCM_gammaLag <= 0) bcmGammaFrozen = .false.
 
         ! DON'T just check the error. We want to catch error code 72
         ! which is a floating point error. This is ok, we just reset and
@@ -665,6 +798,17 @@ contains
         ! Copy the work vector to wVec. This is our new state vector
         call VecCopy(work, wVec, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! SABCM_gammaLag: never declare convergence on a frozen-gamma residual -- refresh gamma at the new state first
+        if (SABCM_gammaLag > 0) then
+            call VecNorm(g, NORM_2, gnorm, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            if (gnorm < 10.0 * totalR0 * L2Conv) then
+                call bcmGammaRefresh(work, g, gnorm, ierr)
+                call VecNorm(g, NORM_2, lagNorm0, ierr)
+                lagCount = 0
+            end if
+        end if
 
         ! Use the result from the line sesarch for the residual
         call vecCopy(g, rVec, ierr)
