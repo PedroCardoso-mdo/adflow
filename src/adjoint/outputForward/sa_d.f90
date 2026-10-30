@@ -72,8 +72,8 @@ contains
 &   tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma, tramp, preg1, preg2, gonset, glatch
-    real(kind=realtype) :: sqrtvortd, stransitiond, k_maxd, arg_tanhd, &
-&   arg_gammad, trampd, preg1d, preg2d, gonsetd, glatchd
+    real(kind=realtype) :: stransitiond, k_maxd, arg_tanhd, arg_gammad, &
+&   trampd, preg1d, preg2d, gonsetd, glatchd
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
@@ -541,13 +541,7 @@ contains
 ! first take the square root of the production term to
 ! obtain the correct production term for spalart-allmaras.
 ! we do this to avoid if statements.
-              temp10 = sqrt(vortprod)
-              if (vortprod .eq. 0.0_8) then
-                sqrtvortd = 0.0_8
-              else
-                sqrtvortd = vortprodd/(2.0*temp10)
-              end if
-              sqrtvort = temp10
+              sqrtvort = sqrt(vortprod)
 ! tterm2 (small values ~0.01)
               tterm2d = (chi*fv1d+fv1*chid)/sabcm_const2
               tterm2 = fv1*chi/sabcm_const2
@@ -867,12 +861,21 @@ contains
               rethetacritd = rethetabase*flamd
               rethetacrit = rethetabase*flam
 ! re_theta actual
-              temp10 = sqrtvort/rlv(i, j, k)
+              arg1d = vortprodd
+              arg1 = vortprod + sabcm_omega0**2
+              temp10 = sqrt(arg1)
+              if (arg1 .eq. 0.0_8) then
+                result1d = 0.0_8
+              else
+                result1d = arg1d/(2.0*temp10)
+              end if
+              result1 = temp10
+              temp10 = result1/rlv(i, j, k)
               temp9 = d2wall(i, j, k)
               temp8 = w(i, j, k, irho)
               temp7 = temp8*(temp9*temp9)
               re_vortyd = temp10*(temp9**2*wd(i, j, k, irho)+temp8*2*&
-&               temp9*d2walld(i, j, k)) + temp7*(sqrtvortd-temp10*rlvd(i&
+&               temp9*d2walld(i, j, k)) + temp7*(result1d-temp10*rlvd(i&
 &               , j, k))/rlv(i, j, k)
               re_vorty = temp7*temp10
               re_thetad = re_vortyd/2.193_realtype
@@ -1473,7 +1476,9 @@ contains
 ! flam = one when sabcm_pg is off: the product is exact, pg-off stays bit-identical.
               rethetacrit = rethetabase*flam
 ! re_theta actual
-              re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i&
+              arg1 = vortprod + sabcm_omega0**2
+              result1 = sqrt(arg1)
+              re_vorty = result1*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i&
 &               , j, k)**2
               re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)

@@ -75,8 +75,8 @@ contains
 &   tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma, tramp, preg1, preg2, gonset, glatch
-    real(kind=realtype) :: sqrtvortd, stransitiond, k_maxd, arg_tanhd, &
-&   arg_gammad, trampd, preg1d, preg2d, gonsetd, glatchd
+    real(kind=realtype) :: stransitiond, k_maxd, arg_tanhd, arg_gammad, &
+&   trampd, preg1d, preg2d, gonsetd, glatchd
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
@@ -324,7 +324,6 @@ contains
 ! first take the square root of the production term to
 ! obtain the correct production term for spalart-allmaras.
 ! we do this to avoid if statements.
-          sqrtvort = sqrt(vortprod)
 ! tterm2 (small values ~0.01)
           tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
@@ -491,8 +490,8 @@ contains
 ! flam = one when sabcm_pg is off: the product is exact, pg-off stays bit-identical.
           rethetacrit = rethetabase*flam
 ! re_theta actual
-          re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
-&           , k)**2
+          re_vorty = sqrt(vortprod+sabcm_omega0**2)*w(i, j, k, irho)/rlv&
+&           (i, j, k)*d2wall(i, j, k)**2
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
           tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
@@ -776,15 +775,19 @@ contains
         rethetacritd = -(((re_theta-rethetacrit)/rethetacrit+1.0)*tempd3&
 &         )
         re_vortyd = re_thetad/2.193_realtype
-        temp3 = sqrtvort/rlv(i, j, k)
-        temp2 = d2wall(i, j, k)
-        temp1 = w(i, j, k, irho)
-        wd(i, j, k, irho) = wd(i, j, k, irho) + temp2**2*temp3*re_vortyd
-        d2walld(i, j, k) = d2walld(i, j, k) + 2*temp2*temp1*temp3*&
+        temp3 = d2wall(i, j, k)
+        temp2 = w(i, j, k, irho)/rlv(i, j, k)
+        temp1 = sqrt(sabcm_omega0*sabcm_omega0 + vortprod)
+        if (sabcm_omega0**2 + vortprod .eq. 0.0_8) then
+          vortprodd = 0.0_8
+        else
+          vortprodd = temp2*temp3**2*re_vortyd/(2.0*temp1)
+        end if
+        tempd1 = temp3**2*temp1*re_vortyd/rlv(i, j, k)
+        d2walld(i, j, k) = d2walld(i, j, k) + 2*temp3*temp2*temp1*&
 &         re_vortyd
-        tempd3 = temp1*temp2**2*re_vortyd/rlv(i, j, k)
-        sqrtvortd = tempd3
-        rlvd(i, j, k) = rlvd(i, j, k) - temp3*tempd3
+        wd(i, j, k, irho) = wd(i, j, k, irho) + tempd1
+        rlvd(i, j, k) = rlvd(i, j, k) - temp2*tempd1
         flamd = rethetabase*rethetacritd
         call popcontrol2b(branch)
         if (branch .eq. 0) then
@@ -1074,11 +1077,6 @@ contains
         nwalld(1, i, j, k) = nwalld(1, i, j, k) + nwxd
  140    fv1d = chi*tterm2d/sabcm_const2
         chid = chid + fv1*tterm2d/sabcm_const2
-        if (vortprod .eq. 0.0_8) then
-          vortprodd = 0.0_8
-        else
-          vortprodd = sqrtvortd/(2.0*sqrt(vortprod))
-        end if
         vortxd = 2*vortx*vortprodd
         vortyd = 2*vorty*vortprodd
         vortzd = 2*vortz*vortprodd
@@ -1693,8 +1691,8 @@ contains
 ! flam = one when sabcm_pg is off: the product is exact, pg-off stays bit-identical.
           rethetacrit = rethetabase*flam
 ! re_theta actual
-          re_vorty = sqrtvort*w(i, j, k, irho)/rlv(i, j, k)*d2wall(i, j&
-&           , k)**2
+          re_vorty = sqrt(vortprod+sabcm_omega0**2)*w(i, j, k, irho)/rlv&
+&           (i, j, k)*d2wall(i, j, k)**2
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
           tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
