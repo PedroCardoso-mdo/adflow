@@ -1008,7 +1008,7 @@ contains
         use blockPointers, only: sectionID, Tgamma, bcmLambda, bcmFlam
         use communication, only: myID
         use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, &
-                    SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_Omega0, &
+                    SABCM_Const1, SABCM_Const2, SABCM_TU, SABCM_Omega0, SABCM_T2dead, &
                     SABCM_S0_tanh, SABCM_fsmooth, SABCM_maxsmooth, SABCM_ramp, SABCM_rampW, &
                     SABCM_regExp, SABCM_eps, SABCM_delta, SABCM_latch, SABCM_chiA, SABCM_chiB, bcmGammaFrozen, &
                     use_SABCM, SABCM_Exp, &
@@ -1034,6 +1034,7 @@ contains
         real(kind=realType) :: strainMag2, prod
         real(kind=realType) :: tterm2, ReThetaBase, ReThetaCrit, Re_vorty, Re_theta, tterm1, tTgamma
         real(kind=realType) :: sqrtVort, stransition, k_max, arg_tanh, arg_gamma, vortProd, tRamp, pReg1, pReg2, gOnset, gLatch
+        real(kind=realType) :: tterm2d
         real(kind=realType) :: nwx, nwy, nwz, Snn, lamL, lam, lamLo, Flam, mlamMax, plamMax, mp
                         real(kind=realType) :: uMap, uMapLo, vAdv, vFav, wMap, lamMapped
                         real(kind=realType) :: gm1, pc, pip, pim, pjp, pjm, pkp, pkm, ppx, ppy, ppz
@@ -1362,11 +1363,12 @@ contains
                         tterm1 = (Re_theta - ReThetaCrit) / (ReThetaCrit * SABCM_Const1)
 
 
+                        tterm2d = tterm2 - SABCM_T2dead
                         if (SABCM_Exp) then
                             ! Original BCM (Mura & Cakmakcioglu 2020, Eq. 4): hard max in Term1,
                             ! gamma = 1 - exp(-(sqrt(Term1) + sqrt(Term2)))
                             tterm1 = max(tterm1, zero)
-                            arg_gamma = sqrt(tterm1) + sqrt(max(tterm2, zero))
+                            arg_gamma = sqrt(tterm1) + sqrt(max(tterm2d, zero))
                             tTgamma = one - exp(-arg_gamma)
                             tTgamma = min(max(tTgamma, zero), one)
                         else if (SABCM_regExp) then
@@ -1374,7 +1376,7 @@ contains
                             ! positive part, s = sqrt(p + eps^2) - eps, p = (T + sqrt(T^2 + delta^2))/2. Same calibrated response
                             ! as the original away from T = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
                             pReg1 = half * (tterm1 + sqrt(tterm1**2 + SABCM_delta**2))
-                            pReg2 = half * (tterm2 + sqrt(tterm2**2 + SABCM_delta**2))
+                            pReg2 = half * (tterm2d + sqrt(tterm2d**2 + SABCM_delta**2))
                             arg_gamma = sqrt(pReg1 + SABCM_eps**2) + sqrt(pReg2 + SABCM_eps**2) - two * SABCM_eps
                             tTgamma = one - exp(-arg_gamma)
                         else

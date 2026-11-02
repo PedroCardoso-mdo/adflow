@@ -68,12 +68,14 @@ contains
 ! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
     real(kind=realtype) :: tterm2, rethetabase, rethetacrit, re_vorty, &
 &   re_theta, tterm1, ttgamma
-    real(kind=realtype) :: tterm2d, rethetacritd, re_vortyd, re_thetad, &
-&   tterm1d, ttgammad
+    real(kind=realtype) :: tterm2d0, rethetacritd, re_vortyd, re_thetad&
+&   , tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma, tramp, preg1, preg2, gonset, glatch
     real(kind=realtype) :: stransitiond, k_maxd, arg_tanhd, arg_gammad, &
 &   trampd, preg1d, preg2d, gonsetd, glatchd
+    real(kind=realtype) :: tterm2d
+    real(kind=realtype) :: tterm2dd
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: nwxd, nwyd, nwzd, snnd, lamld, lamd, lamlod, &
@@ -543,7 +545,7 @@ contains
 ! we do this to avoid if statements.
               sqrtvort = sqrt(vortprod)
 ! tterm2 (small values ~0.01)
-              tterm2d = (chi*fv1d+fv1*chid)/sabcm_const2
+              tterm2d0 = (chi*fv1d+fv1*chid)/sabcm_const2
               tterm2 = fv1*chi/sabcm_const2
 ! re_theta critical
               rethetabase = 803.73_realtype*(sabcm_tu+0.6067_realtype)**&
@@ -885,6 +887,9 @@ contains
               tterm1d = (re_thetad-(temp10*sabcm_const1+1.0)*&
 &               rethetacritd)/(sabcm_const1*rethetacrit)
               tterm1 = temp10
+! nu_t latch dead zone (sabcm_t2dead = 0: tterm2d = tterm2, original unchanged)
+              tterm2dd = tterm2d0
+              tterm2d = tterm2 - sabcm_t2dead
               if (sabcm_exp) then
                 if (tterm1 .lt. zero) then
                   tterm1 = zero
@@ -892,12 +897,12 @@ contains
                 else
                   tterm1 = tterm1
                 end if
-                if (tterm2 .lt. zero) then
+                if (tterm2d .lt. zero) then
                   max4 = zero
                   max4d = 0.0_8
                 else
-                  max4d = tterm2d
-                  max4 = tterm2
+                  max4d = tterm2dd
+                  max4 = tterm2d
                 end if
                 temp10 = sqrt(tterm1)
                 if (tterm1 .eq. 0.0_8) then
@@ -946,8 +951,8 @@ contains
                 result1 = temp10
                 preg1d = half*(tterm1d+result1d)
                 preg1 = half*(tterm1+result1)
-                arg1d = 2*tterm2*tterm2d
-                arg1 = tterm2**2 + sabcm_delta**2
+                arg1d = 2*tterm2d*tterm2dd
+                arg1 = tterm2d**2 + sabcm_delta**2
                 temp10 = sqrt(arg1)
                 if (arg1 .eq. 0.0_8) then
                   result1d = 0.0_8
@@ -955,8 +960,8 @@ contains
                   result1d = arg1d/(2.0*temp10)
                 end if
                 result1 = temp10
-                preg2d = half*(tterm2d+result1d)
-                preg2 = half*(tterm2+result1)
+                preg2d = half*(tterm2dd+result1d)
+                preg2 = half*(tterm2d+result1)
                 arg1d = preg1d
                 arg1 = preg1 + sabcm_eps**2
                 temp10 = sqrt(arg1)
@@ -1033,7 +1038,7 @@ contains
                     x3 = zero
                     x3d = 0.0_8
                   else
-                    x3d = (tterm1d+tterm2d)/sabcm_rampw
+                    x3d = (tterm1d+tterm2d0)/sabcm_rampw
                     x3 = (tterm1+tterm2)/sabcm_rampw
                   end if
                   if (x3 .gt. one) then
@@ -1050,7 +1055,7 @@ contains
 &                   tramp-15.0_realtype))*trampd
                   ttgamma = temp10*temp11
                 else
-                  arg_tanhd = (tterm1d+tterm2d)/sabcm_fsmooth
+                  arg_tanhd = (tterm1d+tterm2d0)/sabcm_fsmooth
                   arg_tanh = (tterm1+tterm2-sabcm_s0_tanh)/sabcm_fsmooth
                   ttgammad = 0.5_realtype*(1.0-tanh(arg_tanh)**2)*&
 &                   arg_tanhd
@@ -1127,6 +1132,7 @@ contains
 &   re_theta, tterm1, ttgamma
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma, tramp, preg1, preg2, gonset, glatch
+    real(kind=realtype) :: tterm2d
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
@@ -1483,16 +1489,18 @@ contains
               re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
               tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
+! nu_t latch dead zone (sabcm_t2dead = 0: tterm2d = tterm2, original unchanged)
+              tterm2d = tterm2 - sabcm_t2dead
               if (sabcm_exp) then
                 if (tterm1 .lt. zero) then
                   tterm1 = zero
                 else
                   tterm1 = tterm1
                 end if
-                if (tterm2 .lt. zero) then
+                if (tterm2d .lt. zero) then
                   max4 = zero
                 else
-                  max4 = tterm2
+                  max4 = tterm2d
                 end if
                 result1 = sqrt(tterm1)
                 result2 = sqrt(max4)
@@ -1515,9 +1523,9 @@ contains
                 arg1 = tterm1**2 + sabcm_delta**2
                 result1 = sqrt(arg1)
                 preg1 = half*(tterm1+result1)
-                arg1 = tterm2**2 + sabcm_delta**2
+                arg1 = tterm2d**2 + sabcm_delta**2
                 result1 = sqrt(arg1)
-                preg2 = half*(tterm2+result1)
+                preg2 = half*(tterm2d+result1)
                 arg1 = preg1 + sabcm_eps**2
                 result1 = sqrt(arg1)
                 arg2 = preg2 + sabcm_eps**2

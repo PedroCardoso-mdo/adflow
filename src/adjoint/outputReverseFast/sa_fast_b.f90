@@ -61,12 +61,14 @@ contains
 ! autoedit scripts strip those suffixes (=> duplicate declaration). hence rethetacrit.
     real(kind=realtype) :: tterm2, rethetabase, rethetacrit, re_vorty, &
 &   re_theta, tterm1, ttgamma
-    real(kind=realtype) :: tterm2d, rethetacritd, re_vortyd, re_thetad, &
-&   tterm1d, ttgammad
+    real(kind=realtype) :: tterm2d0, rethetacritd, re_vortyd, re_thetad&
+&   , tterm1d, ttgammad
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma, tramp, preg1, preg2, gonset, glatch
     real(kind=realtype) :: stransitiond, k_maxd, arg_tanhd, arg_gammad, &
 &   trampd, preg1d, preg2d, gonsetd, glatchd
+    real(kind=realtype) :: tterm2d
+    real(kind=realtype) :: tterm2dd
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: snnd, lamld, lamd, lamlod, flamd
@@ -498,6 +500,8 @@ myIntPtr = myIntPtr + 1
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
           tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
+! nu_t latch dead zone (sabcm_t2dead = 0: tterm2d = tterm2, original unchanged)
+          tterm2d = tterm2 - sabcm_t2dead
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
               tterm1 = zero
@@ -508,12 +512,12 @@ myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
               tterm1 = tterm1
             end if
-            if (tterm2 .lt. zero) then
+            if (tterm2d .lt. zero) then
               max4 = zero
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 0
             else
-              max4 = tterm2
+              max4 = tterm2d
 myIntPtr = myIntPtr + 1
  myIntStack(myIntPtr) = 1
             end if
@@ -540,7 +544,7 @@ myIntPtr = myIntPtr + 1
 ! positive part, s = sqrt(p + eps^2) - eps, p = (t + sqrt(t^2 + delta^2))/2. same calibrated response
 ! as the original away from t = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
             preg1 = half*(tterm1+sqrt(tterm1**2+sabcm_delta**2))
-            preg2 = half*(tterm2+sqrt(tterm2**2+sabcm_delta**2))
+            preg2 = half*(tterm2d+sqrt(tterm2d**2+sabcm_delta**2))
             arg_gamma = sqrt(preg1 + sabcm_eps**2) + sqrt(preg2 + &
 &             sabcm_eps**2) - two*sabcm_eps
             ttgamma = one - exp(-arg_gamma)
@@ -668,11 +672,11 @@ branch = myIntStack(myIntPtr)
             else
               preg2d = arg_gammad/(2.0*sqrt(sabcm_eps**2+preg2))
             end if
-            if (sabcm_delta**2 + tterm2**2 .eq. 0.0_8) then
-              tterm2d = half*preg2d
+            if (sabcm_delta**2 + tterm2d**2 .eq. 0.0_8) then
+              tterm2dd = half*preg2d
             else
-              tterm2d = (half+2*tterm2*half/(2.0*sqrt(sabcm_delta**2+&
-&               tterm2**2)))*preg2d
+              tterm2dd = (half+2*tterm2d*half/(2.0*sqrt(sabcm_delta**2+&
+&               tterm2d**2)))*preg2d
             end if
             if (sabcm_delta**2 + tterm1**2 .eq. 0.0_8) then
               tterm1d = half*preg1d
@@ -680,6 +684,7 @@ branch = myIntStack(myIntPtr)
               tterm1d = (half+2*tterm1*half/(2.0*sqrt(sabcm_delta**2+&
 &               tterm1**2)))*preg1d
             end if
+            tterm2d0 = 0.0_8
             chid = 0.0_8
             goto 120
           else if (branch .eq. 1) then
@@ -705,7 +710,7 @@ branch = myIntStack(myIntPtr)
             end if
             arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*gonsetd
             tterm1d = arg_tanhd/sabcm_fsmooth
-            tterm2d = 0.0_8
+            tterm2d0 = 0.0_8
             goto 110
           else
             tempd4 = tramp**3*ttgammad
@@ -723,10 +728,10 @@ branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
             if (branch .eq. 0) then
               tterm1d = 0.0_8
-              tterm2d = 0.0_8
+              tterm2d0 = 0.0_8
             else
               tterm1d = x3d/sabcm_rampw
-              tterm2d = x3d/sabcm_rampw
+              tterm2d0 = x3d/sabcm_rampw
             end if
           end if
         else
@@ -734,7 +739,7 @@ branch = myIntStack(myIntPtr)
             if (branch .eq. 3) then
               arg_tanhd = (1.0-tanh(arg_tanh)**2)*0.5_realtype*ttgammad
               tterm1d = arg_tanhd/sabcm_fsmooth
-              tterm2d = arg_tanhd/sabcm_fsmooth
+              tterm2d0 = arg_tanhd/sabcm_fsmooth
               goto 100
             else
               x1d = ttgammad
@@ -777,13 +782,14 @@ branch = myIntStack(myIntPtr)
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
           if (branch .eq. 0) then
-            tterm2d = 0.0_8
+            tterm2dd = 0.0_8
           else
-            tterm2d = max4d
+            tterm2dd = max4d
           end if
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
           if (branch .eq. 0) tterm1d = 0.0_8
+          tterm2d0 = 0.0_8
           chid = 0.0_8
           goto 120
         end if
@@ -797,7 +803,9 @@ branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
         if (branch .ne. 0) stransitiond = stransitiond + k_maxd
         tterm1d = sabcm_maxsmooth*stransitiond
- 120    tempd3 = tterm1d/(sabcm_const1*rethetacrit)
+        tterm2dd = 0.0_8
+ 120    tterm2d0 = tterm2d0 + tterm2dd
+        tempd3 = tterm1d/(sabcm_const1*rethetacrit)
         re_thetad = tempd3
         rethetacritd = -(((re_theta-rethetacrit)/rethetacrit+1.0)*tempd3&
 &         )
@@ -1035,8 +1043,8 @@ branch = myIntStack(myIntPtr)
         uuxd = nwx*tempd
         uuyd = nwy*tempd
         uuzd = nwz*tempd
- 140    fv1d = chi*tterm2d/sabcm_const2
-        chid = chid + fv1*tterm2d/sabcm_const2
+ 140    fv1d = chi*tterm2d0/sabcm_const2
+        chid = chid + fv1*tterm2d0/sabcm_const2
         vortxd = 2*vortx*vortprodd
         vortyd = 2*vorty*vortprodd
         vortzd = 2*vortz*vortprodd
@@ -1234,6 +1242,7 @@ branch = myIntStack(myIntPtr)
 &   re_theta, tterm1, ttgamma
     real(kind=realtype) :: sqrtvort, stransition, k_max, arg_tanh, &
 &   arg_gamma, tramp, preg1, preg2, gonset, glatch
+    real(kind=realtype) :: tterm2d
     real(kind=realtype) :: nwx, nwy, nwz, snn, laml, lam, lamlo, flam, &
 &   mlammax, plammax, mp
     real(kind=realtype) :: umap, umaplo, vadv, vfav, wmap, lammapped
@@ -1584,16 +1593,18 @@ branch = myIntStack(myIntPtr)
           re_theta = re_vorty/2.193_realtype
 ! tterm1 (can be huge ~1e5)
           tterm1 = (re_theta-rethetacrit)/(rethetacrit*sabcm_const1)
+! nu_t latch dead zone (sabcm_t2dead = 0: tterm2d = tterm2, original unchanged)
+          tterm2d = tterm2 - sabcm_t2dead
           if (sabcm_exp) then
             if (tterm1 .lt. zero) then
               tterm1 = zero
             else
               tterm1 = tterm1
             end if
-            if (tterm2 .lt. zero) then
+            if (tterm2d .lt. zero) then
               max4 = zero
             else
-              max4 = tterm2
+              max4 = tterm2d
             end if
             arg_gamma = sqrt(tterm1) + sqrt(max4)
             ttgamma = one - exp(-arg_gamma)
@@ -1612,7 +1623,7 @@ branch = myIntStack(myIntPtr)
 ! positive part, s = sqrt(p + eps^2) - eps, p = (t + sqrt(t^2 + delta^2))/2. same calibrated response
 ! as the original away from t = 0; slope bounded by 1/(2 eps) instead of the infinite sqrt slope.
             preg1 = half*(tterm1+sqrt(tterm1**2+sabcm_delta**2))
-            preg2 = half*(tterm2+sqrt(tterm2**2+sabcm_delta**2))
+            preg2 = half*(tterm2d+sqrt(tterm2d**2+sabcm_delta**2))
             arg_gamma = sqrt(preg1 + sabcm_eps**2) + sqrt(preg2 + &
 &             sabcm_eps**2) - two*sabcm_eps
             ttgamma = one - exp(-arg_gamma)

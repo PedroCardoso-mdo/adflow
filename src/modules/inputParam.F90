@@ -596,6 +596,10 @@ module inputPhysics
     real(kind=realType) :: SABCM_Omega0 = 0.0_realType
     ! SABCM_gammaRelax < 1: under-relaxed gamma refresh in the lagged NK loop (gamma_frozen += relax * dgamma)
     real(kind=realType) :: SABCM_gammaRelax = 1.0_realType
+    ! SABCM_T2dead > 0: dead zone in the nu_t latch, Term2 -> max(Term2 - T2dead, 0) (SABCM_Exp: hard; SABCM_regExp:
+    ! regularised). Removes the sqrt(Term2) response to infinitesimal nu_t (the slow self-trip loop of the original
+    ! in the halo / wing tip); onset (Term1) untouched. 0 = original bit for bit.
+    real(kind=realType) :: SABCM_T2dead = 0.0_realType
     integer(kind=intType) :: SABCM_PG_map   ! 1 = linear gain, 2 = Falkner-Skan similarity map
     integer(kind=intType) :: SABCM_PG_F      ! gradient response: 1 = Langtry-Menter 2009 F(lambda_theta), 2 = Menter 2015 F_PG ratio (adverse) + LM F1 (favourable)
     integer(kind=intType) :: SABCM_PG_sdir   ! streamwise direction for dp/ds: 1 = local velocity, 2 = wall tangent oriented by the free stream

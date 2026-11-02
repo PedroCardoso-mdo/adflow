@@ -1200,6 +1200,7 @@ python module libadflow
          logical :: sabcm_freezejac
          integer(kind=inttype) :: sabcm_gammalag
          real(kind=realtype) :: sabcm_omega0
+         real(kind=realtype) :: sabcm_t2dead
          real(kind=realtype) :: sabcm_gammarelax
          logical :: sabcm_pg
          integer(kind=inttype) :: sabcm_pg_map
