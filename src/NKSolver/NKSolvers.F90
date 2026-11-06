@@ -4776,8 +4776,35 @@ contains
                                     end if
 
                                     if (ratio .lt. ANK_stepFactor * ANK_stepMin) then
-                                        if (ratio .gt. zero) &
+                                        if ((turbModel == spalartallmarasnoft2gammaretheta .or. &
+                                             turbModel == spalartallmarasnoft2gamma)) then
+                                            ! Same relative clip as the generic branch, but measured
+                                            ! from the bound: the cell moves at most a fraction
+                                            ! physLSTolTurb of its distance to the bound. The generic
+                                            ! clip skipped cells already at or under the bound
+                                            ! (ratio = 0): their full update was applied and gamma
+                                            ! went negative, a dead cell the sources cannot recover
+                                            ! (S809 L0 a7 matrix, 2026-11-05). Here w - lambda*d
+                                            ! stays in [lo, hi] for lambda in [0, 1], and a cell
+                                            ! below lo is pushed back towards it.
+                                            ! Only a full step that would leave the bounds is clipped;
+                                            ! an increase that stays below the upper bound is kept.
+                                            if (l == nt1 + 1) then
+                                                if (wval - dval < rsaGRgammaLo * turbResScale(2)) then
+                                                    dvec_pointer(ii) = (wvec_pointer(ii) - rsaGRgammaLo * turbResScale(2)) &
+                                                                       * ANK_physLSTolTurb
+                                                else if (wval - dval > rsaGRgammaHi * turbResScale(2)) then
+                                                    dvec_pointer(ii) = (wvec_pointer(ii) - rsaGRgammaHi * turbResScale(2)) &
+                                                                       * ANK_physLSTolTurb
+                                                end if
+                                            else if (l == nt1 + 2) then
+                                                if (wval - dval < rsaGRreThetaLo * turbResScale(3)) &
+                                                    dvec_pointer(ii) = (wvec_pointer(ii) - rsaGRreThetaLo * turbResScale(3)) &
+                                                                       * ANK_physLSTolTurb
+                                            end if
+                                        else if (ratio .gt. zero) then
                                             dvec_pointer(ii) = wvec_pointer(ii) * ANK_physLSTolTurb
+                                        end if
                                         ratio = one
                                     end if
                                     if (solverStallDiag .and. ratio < lambdaL) then
