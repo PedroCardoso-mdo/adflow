@@ -1947,6 +1947,10 @@ contains
         if (myid == 0) then
             gSlc%nNodes = sum(sliceNodeSizes)
             allocate (gSlc%vars(iSize, gSlc%nNodes))
+        else
+            ! Non-root procs don't use this buffer, but it must be allocated
+            ! since it is passed as the recvbuf actual argument to mpi_gatherv.
+            allocate (gSlc%vars(iSize, 0))
         end if
 
         call mpi_gatherv(localVals, iSize * lSlc%nNodes, adflow_real, gSlc%vars, sliceNodeSizes * iSize, &
@@ -1969,6 +1973,10 @@ contains
                     cellDisps(iProc) = cellDisps(iProc - 1) + sliceCellSizes(iProc) * 2
                 end do
                 allocate (gSlc%conn(2, sum(sliceCellSizes)))
+            else
+                ! Non-root procs don't use this buffer, but it must be allocated
+                ! since it is passed as the recvbuf actual argument to mpi_gatherv.
+                allocate (gSlc%conn(2, 0))
             end if
 
             ! We offset the conn array by nodeDisps(iProc) which

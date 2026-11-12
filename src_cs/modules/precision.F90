@@ -14,10 +14,10 @@ module precision
     !       omitted the default integer and double precision are used.
     !
     !
-
-    use complexify
     use mpi
+       use complexify 
     implicit none
+
     save
 
     !
@@ -59,7 +59,7 @@ module precision
     complex(kind=4), private :: dummyReal
     integer, parameter :: adflow_real = MPI_DOUBLE_COMPLEX
     integer, parameter :: sizeOfReal = 4
-    real(kind=4), private :: dummyCGNSReal
+    complex(kind=4), private :: dummyCGNSReal
 
 #elif USE_QUADRUPLE_PRECISION
 
@@ -69,9 +69,9 @@ module precision
     ! precision is used instead.
 
     complex(kind=16), private :: dummyReal
-    integer, parameter :: adflow_real = mpi_DOUBLE_COMPLE16
+    integer, parameter :: adflow_real = MPI_DOUBLE_COMPLEX16
     integer, parameter :: sizeOfReal = 16
-    real(kind=8), private :: dummyCGNSReal
+    complex(kind=8), private :: dummyCGNSReal
 
 #else
 
@@ -80,7 +80,7 @@ module precision
     complex(kind=8), private :: dummyReal
     integer, parameter :: adflow_real = MPI_DOUBLE_COMPLEX
     integer, parameter :: sizeOfReal = 8
-    real(kind=8), private :: dummyCGNSReal
+    complex(kind=8), private :: dummyCGNSReal
 
 #endif
 
@@ -103,7 +103,7 @@ module precision
 
     !       Definition of the cgns periodic type.
     !
-    real(kind=4), private :: dummyCGNSPer
+    complex(kind=4), private :: dummyCGNSPer
     !
     !       Definition of the kind parameters for the integer and real
     !       types.
@@ -114,10 +114,17 @@ module precision
     integer, parameter :: adtElementType = kind(adtDummyElementInt)
     integer, parameter :: cgnsRealType = kind(dummyCGNSReal)
     integer, parameter :: cgnsPerType = kind(dummyCGNSPer)
+    ! Same kind as cgnsPerType, for LOCAL temporaries handed to the CGNS
+    ! periodic-read calls. complexify (complex-step build) turns every
+    ! `real(kind=...)` declaration into complex except those whose kind name
+    ! starts with cgnsRealType / alwaysRealType, so a `real(kind=cgnsPerType)`
+    ! local became COMPLEX(4) and broke cg_conn_periodic_read_f
+    ! (readCGNSGrid.F90, "passed COMPLEX(4) to REAL(4)"). Declaring those
+    ! temporaries with this name keeps them real*4 in both builds.
+    integer, parameter :: cgnsRealTypePer = kind(dummyCGNSPer)
     integer, parameter :: alwaysRealType = kind(dummyReal)
     integer, parameter :: singleType = kind(dummySingle)
     integer, parameter :: doubleType = kind(dummyDouble)
-
     !
     !       Set the parameter debug, depending on the compiler option.
     !
