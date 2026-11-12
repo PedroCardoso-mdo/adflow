@@ -1374,7 +1374,7 @@ loopbocos:do mm=1,nbocos
 !   with respect to varying inputs: *dw
 !   rw status of diff variables: *dw:in-out
 !   plus diff mem management of: dw:in
-  subroutine resscale_d()
+  subroutine resscale_d0()
     use constants
     use blockpointers, only : il, jl, kl, nx, ny, nz, volref, dw, dwd
     use flowvarrefstate, only : nwf, nt1, nt2
@@ -1398,7 +1398,7 @@ loopbocos:do mm=1,nbocos
         end do
       end do
     end do
-  end subroutine resscale_d
+  end subroutine resscale_d0
 
   subroutine resscale()
     use constants

@@ -20,6 +20,10 @@ contains
         use section, only: sections, nSections
         use monitor, only: timeUnsteadyRestart
         use sa, only: saSource, saViscous, saResScale, qq
+        use saGammaRetheta, only: saGRSource => Source, saGRViscous => Viscous, &
+                                   saGRResScale => ResScale, qqGR => qq
+        use saGamma, only: saSGSource => sgSource, saSGViscous => sgViscous, &
+                           saSGResScale => sgResScale, qqSG => qq
         use haloExchange, only: exchangeCoor, whalo2
         use wallDistance, only: updateWallDistancesQuickly
         use solverUtils, only: timeStep_block
@@ -200,6 +204,20 @@ contains
                         call saViscous
                         call saResScale
                         deallocate (qq)
+                    case (spalartallmarasnoft2gammaretheta)
+                        allocate (qqGR(2:il, 2:jl, 2:kl, 3, 3))
+                        call saGRSource
+                        call turbAdvection(3_intType, 3_intType, itu1 - 1, qqGR)
+                        call saGRViscous
+                        call saGRResScale
+                        deallocate (qqGR)
+                    case (spalartallmarasnoft2gamma)
+                        allocate (qqSG(2:il, 2:jl, 2:kl, 2, 2))
+                        call saSGSource
+                        call turbAdvection(2_intType, 2_intType, itu1 - 1, qqSG)
+                        call saSGViscous
+                        call saSGResScale
+                        deallocate (qqSG)
                     end select
                 end if
 
@@ -276,6 +294,10 @@ contains
         use monitor, only: timeUnsteadyRestart
         use utils, only: isWallType, setPointers, setPointers_d, EChk
         use sa_d, only: saSource_d, saViscous_d, saResScale_d, qq
+        use saGammaRetheta_d, only: saGRSource_d => Source_d, saGRViscous_d => Viscous_d, &
+                         saGRResScale_d => ResScale_d, qqGR => qq
+        use saGamma_d, only: saSGSource_d => sgSource_d, saSGViscous_d => sgViscous_d, &
+                             saSGResScale_d => sgResScale_d, qqSG => qq
         use turbutils_d, only: turbAdvection_d, computeEddyViscosity_d
         use fluxes_d, only: inviscidDissFluxScalarApprox_d, inviscidDissFluxMatrixApprox_d, &
                             inviscidUpwindFlux_d, inviscidDissFluxScalar_d, inviscidDissFluxMatrix_d, &
@@ -293,7 +315,7 @@ contains
         use initializeflow_d, only: referenceState_d
         use surfaceIntegrations, only: getSolution_d
         use adjointExtra_d, only: xhalo_block_d, volume_block_d, metric_BLock_d, boundarynormals_d
-        use adjointextra_d, only: resscale_D, sumdwandfw_d
+        use adjointextra_d, only: resscale_d => resscale_d0, sumdwandfw_d
         use bcdata, only: setBCData_d, setBCDataFineGrid_d
         use oversetData, only: oversetPresent
         use inputOverset, only: oversetUpdateMode
@@ -536,6 +558,16 @@ contains
                 !!call unsteadyTurbTerm_d(1_intType, 1_intType, itu1-1, qq)
                         call saViscous_d
                         call saResScale_d
+                    case (spalartallmarasnoft2gammaretheta)
+                        call saGRSource_d
+                        call turbAdvection_d(3_intType, 3_intType, itu1 - 1, qqGR)
+                        call saGRViscous_d
+                        call saGRResScale_d
+                    case (spalartallmarasnoft2gamma)
+                        call saSGSource_d
+                        call turbAdvection_d(2_intType, 2_intType, itu1 - 1, qqSG)
+                        call saSGViscous_d
+                        call saSGResScale_d
                     end select
                 end if
 
@@ -641,7 +673,7 @@ contains
         use wallDistanceData, only: xSurfVec, xSurfVecd, xSurf, xSurfd, wallScatter
         use surfaceIntegrations, only: getSolution_b
         use flowUtils, only: fixAllNodalGradientsFromAD
-        use adjointextra_b, only: resscale_B, sumdwandfw_b
+        use adjointextra_b, only: resscale_b => resscale_b0, sumdwandfw_b
         use adjointExtra_b, only: xhalo_block_b, volume_block_b, metric_block_b, boundarynormals_b
         use flowutils_b, only: computePressureSimple_b, computeLamViscosity_b, &
                                computeSpeedOfSoundSquared_b, allNodalGradients_b, adjustInflowAngle_b
@@ -651,6 +683,10 @@ contains
         use initializeflow_b, only: referenceState_b
         use wallDistance_b, only: updateWallDistancesQuickly_b
         use sa_b, only: saSource_b, saViscous_b, saResScale_b, qq
+        use saGammaRetheta_b, only: saGRSource_b => Source_b, saGRViscous_b => Viscous_b, &
+                                     saGRResScale_b => ResScale_b, qqGR => qq
+        use saGamma_b, only: saSGSource_b => sgSource_b, saSGViscous_b => sgViscous_b, &
+                             saSGResScale_b => sgResScale_b, qqSG => qq
         use turbutils_b, only: turbAdvection_b, computeEddyViscosity_b
         use residuals_b, only: sourceTerms_block_b, initRes_block_b
         use fluxes_b, only: inviscidUpwindFlux_b, inviscidDissFluxScalar_b, &
@@ -786,6 +822,16 @@ contains
                         ! it presumably is the last call in master using faceid and
                         ! therefore should be the first call in master_b to use faceid
                         call saSource_b
+                    case (spalartallmarasnoft2gammaretheta)
+                        call saGRResScale_b
+                        call saGRViscous_b
+                        call turbAdvection_b(3_intType, 3_intType, itu1 - 1, qqGR)
+                        call saGRSource_b
+                    case (spalartallmarasnoft2gamma)
+                        call saSGResScale_b
+                        call saSGViscous_b
+                        call turbAdvection_b(2_intType, 2_intType, itu1 - 1, qqSG)
+                        call saSGSource_b
                     end select
 
                     !call unsteadyTurbSpectral_block_b(itu1, itu1, nn, sps)
@@ -1044,7 +1090,7 @@ contains
         use utils, only: setPointers_d
         use haloExchange, only: whalo2_b
         use flowUtils, only: fixAllNodalGradientsFromAD
-        use adjointextra_b, only: resscale_B, sumdwandfw_b
+        use adjointextra_b, only: resscale_b => resscale_b0, sumdwandfw_b
         use flowutils_b, only: computePressureSimple_b, computeLamViscosity_b, &
                                computeSpeedOfSoundSquared_b
         use turbbcroutines_b, only: applyAllTurbBCthisblock_b, bcTurbTreatment_b
@@ -1053,6 +1099,12 @@ contains
 
         use sa_fast_b, only: saresscale_fast_b, saviscous_fast_b, &
                              sasource_fast_b, qq
+        use saGammaRetheta_fast_b, only: saGRResScale_fast_b => ResScale_fast_b, &
+                                         saGRViscous_fast_b => Viscous_fast_b, &
+                                         saGRSource_fast_b => Source_fast_b, qqGR => qq
+        use saGamma_fast_b, only: saSGResScale_fast_b => sgResScale_fast_b, &
+                                  saSGViscous_fast_b => sgViscous_fast_b, &
+                                  saSGSource_fast_b => sgSource_fast_b, qqSG => qq
         use turbutils_fast_b, only: turbAdvection_fast_b
         use fluxes_fast_b, only: inviscidUpwindFlux_fast_b, inviscidDissFluxScalar_fast_b, &
                                  inviscidDissFluxMatrix_fast_b, viscousFlux_fast_b, inviscidCentralFlux_fast_b
@@ -1137,6 +1189,16 @@ contains
                         !call unsteadyTurbTerm_b(1_intType, 1_intType, itu1-1, qq)
                         call turbAdvection_fast_b(1_intType, 1_intType, itu1 - 1, qq)
                         call saSource_fast_b
+                    case (spalartallmarasnoft2gammaretheta)
+                        call saGRResScale_fast_b
+                        call saGRViscous_fast_b
+                        call turbAdvection_fast_b(3_intType, 3_intType, itu1 - 1, qqGR)
+                        call saGRSource_fast_b
+                    case (spalartallmarasnoft2gamma)
+                        call saSGResScale_fast_b
+                        call saSGViscous_fast_b
+                        call turbAdvection_fast_b(2_intType, 2_intType, itu1 - 1, qqSG)
+                        call saSGSource_fast_b
                     end select
 
                     !call unsteadyTurbSpectral_block_b(itu1, itu1, nn, sps)
@@ -1241,6 +1303,10 @@ contains
         integer(kind=intType) :: ierr, mm, i, j, k, l, fSize, ii, jj, iRegion
         real(kind=realType) :: pLocal
         logical :: dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall
+        integer(kind=intType) :: callContext
+        real(kind=alwaysRealType) :: tStart, totalTime
+
+        callContext = -1_intType
 
         flowRes = .True.
         if (present(useFlowRes)) then
@@ -1280,6 +1346,7 @@ contains
         end do
         call resscale
 
+
     end subroutine block_res_state
 #ifndef USE_COMPLEX
     subroutine block_res_state_d(nn, sps)
@@ -1296,6 +1363,10 @@ contains
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers_d, EChk
         use sa_d, only: saSource_d, saViscous_d, saResScale_d, qq
+        use saGammaRetheta_d, only: saGRSource_d => Source_d, saGRViscous_d => Viscous_d, &
+                                     saGRResScale_d => ResScale_d, qqGR => qq
+        use saGamma_d, only: saSGSource_d => sgSource_d, saSGViscous_d => sgViscous_d, &
+                             saSGResScale_d => sgResScale_d, qqSG => qq
         use turbutils_d, only: turbAdvection_d, computeEddyViscosity_d
         use fluxes_d, only: inviscidDissFluxScalarApprox_d, inviscidDissFluxMatrixApprox_d, &
                             inviscidUpwindFlux_d, inviscidDissFluxScalar_d, inviscidDissFluxMatrix_d, &
@@ -1304,7 +1375,7 @@ contains
                                computeSpeedOfSoundSquared_d, allNodalGradients_d
         use solverutils_d, only: timeStep_Block_d
         use turbbcroutines_d, only: applyAllTurbBCthisblock_d, bcTurbTreatment_d
-        use adjointextra_d, only: resscale_D, sumdwandfw_d
+        use adjointextra_d, only: resscale_d => resscale_d0, sumdwandfw_d
         use residuals_d, only: sourceterms_block_d
         use actuatorRegionData, only: nActuatorRegions
         implicit none
@@ -1349,6 +1420,16 @@ contains
           !!call unsteadyTurbTerm_d(1_intType, 1_intType, itu1-1, qq)
                 call saViscous_d
                 call saResScale_d
+            case (spalartallmarasnoft2gammaretheta)
+                call saGRSource_d
+                call turbAdvection_d(3_intType, 3_intType, itu1 - 1, qqGR)
+                call saGRViscous_d
+                call saGRResScale_d
+            case (spalartallmarasnoft2gamma)
+                call saSGSource_d
+                call turbAdvection_d(2_intType, 2_intType, itu1 - 1, qqSG)
+                call saSGViscous_d
+                call saSGResScale_d
             end select
         end if
 

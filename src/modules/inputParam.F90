@@ -1018,6 +1018,18 @@ module inputADjoint
     character(maxStringLen) :: adjointPCSide
     character(maxStringLen) :: LocalPCType
 
+    ! fieldSplitType : PCFieldSplit composition ('multiplicative' or
+    !                  'additive') across the physical blocks
+    !                  {flow, SA, transition} when PreCondType is
+    !                  'fieldsplit'. Unused otherwise.
+    character(maxStringLen) :: fieldSplitType
+
+    ! fieldSplitBlocks : 3 = {flow, SA, gamma+ReThetaTilde} (transition pair
+    !                    kept coupled inside one split); 4 = {flow, SA,
+    !                    gamma, ReThetaTilde} (maximum scale separation,
+    !                    gamma-ReThetaTilde coupling left to the Krylov).
+    integer(kind=intType) :: fieldSplitBlocks
+
     ! FillLevel     : Number of levels of fill for the ILU local PC
     ! Overlap       : Amount of overlap in the ASM PC
     integer(kind=intType) :: fillLevel, overlap
@@ -1039,6 +1051,11 @@ module inputADjoint
     integer(kind=intType) :: adjMaxIter
     integer(kind=intType) :: adjRestart
     integer(kind=intType) :: adjMonStep
+
+    ! adjLGMRESAugDim : Number of augmented (approximate error) vectors
+    !                   LGMRES carries across GMRES restarts. Only used
+    !                   when ADjointSolverType is 'lgmres'.
+    integer(kind=intType) :: adjLGMRESAugDim
 
     ! outerPCIts : Number of iterations to run for on (global) preconditioner
     ! intterPCIts : Number of iterations to run on local preconditioner
