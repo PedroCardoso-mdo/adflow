@@ -759,6 +759,7 @@ contains
         use utils, only: terminate
         use oversetData, only: oversetPresent
         use inputIO, only: laminarToTurbulent
+        use sa, only: saBCMIntermittency
         implicit none
         !
         !      Subroutine arguments.
@@ -785,6 +786,7 @@ contains
         real(kind=realType) :: a, UovA(3), gradP(3)
 
         real(kind=realType), dimension(:, :, :, :), pointer :: wIO
+        real(kind=realType), dimension(:, :, :), allocatable :: gammaBCM
 
         ! Set the pointer to the correct entry of IOVar. I'm cheating a
         ! bit here, because I know that only memory has been allocated
@@ -1312,7 +1314,24 @@ contains
             end do
 
         case (cgnsintermittency)
-            if (laminartoturbulent) then
+            if (useSABCM) then
+
+                ! SA-BCM intermittency, recomputed from the state.
+
+                allocate (gammaBCM(2:il, 2:jl, 2:kl))
+                call saBCMIntermittency(gammaBCM)
+                do k = kBeg, kEnd
+                    kk = max(2_intType, k); kk = min(kl, kk)
+                    do j = jBeg, jEnd
+                        jj = max(2_intType, j); jj = min(jl, jj)
+                        do i = iBeg, iEnd
+                            ii = max(2_intType, i); ii = min(il, ii)
+                            wIO(i, j, k, 1) = gammaBCM(ii, jj, kk)
+                        end do
+                    end do
+                end do
+                deallocate (gammaBCM)
+            else if (laminartoturbulent) then
                 do k = kBeg, kEnd
                     kk = max(2_intType, k); kk = min(kl, kk)
                     do j = jBeg, jEnd
@@ -1323,6 +1342,11 @@ contains
                         end do
                     end do
                 end do
+            else
+
+                ! Fully turbulent model: the intermittency is one.
+
+                wIO(iBeg:iEnd, jBeg:jEnd, kBeg:kEnd, 1) = one
             end if
 
         case (cgnsShock)
