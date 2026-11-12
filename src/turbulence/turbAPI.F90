@@ -18,6 +18,7 @@ contains
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use sa
         use saGammaRetheta, only: saGammaRetheta_block, computeSrcLambda
+        use saGamma, only: saGamma_block, computeSrcLambdaSaGamma
         use kw
         use kt
         use SST
@@ -48,6 +49,8 @@ contains
                 call unsteadyTurbSpectral(itu1, itu1)
             case (spalartallmarasnoft2gammaretheta)
                 call unsteadyTurbSpectral(itu1, itu3)
+            case (spalartallmarasnoft2gamma)
+                call unsteadyTurbSpectral(itu1, itu2)
             case (komegaWilcox, komegaModified, menterSST, ktau)
                 call unsteadyTurbSpectral(itu1, itu2)
             case (v2f)
@@ -79,6 +82,14 @@ contains
                             call computeSrcLambda(TurbDADICoupled)
                         end if
                         call saGammaRetheta_block(.false.)
+
+                    case (spalartallmarasnoft2gamma)
+                        ! SA-sgamma (2 eq.): same source-dt restriction logic,
+                        ! own 2x2 srcLambda inside saGamma.
+                        if (transitionSrcDtRestrict) then
+                            call computeSrcLambdaSaGamma(TurbDADICoupled)
+                        end if
+                        call saGamma_block(.false.)
 
                     case (komegaWilcox, komegaModified)
                         call kw_block(.false.)
@@ -120,6 +131,7 @@ contains
         use turbMod
         use sa
         use saGammaRetheta
+        use saGamma, only: saGamma_block
         use kt
         use kw
         use SST
@@ -155,6 +167,9 @@ contains
 
                 case (spalartallmarasnoft2gammaretheta)
                     call saGammaRetheta_block(.True.)
+
+                case (spalartallmarasnoft2gamma)
+                    call saGamma_block(.True.)
 
                 case (komegaWilcox, komegaModified)
                     call kw_block(.True.)

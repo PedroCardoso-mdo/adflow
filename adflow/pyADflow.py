@@ -1209,7 +1209,7 @@ class ADFLOW(AeroSolver):
             self.setOption(key, val)
         startCallTime = time.time()
 
-        if self.getOption("turbulenceModel") == "SA-noft2-Gamma-Retheta" and self.comm.rank == 0:
+        if self.getOption("turbulenceModel") in ("SA-noft2-Gamma-Retheta", "SA-noft2-Gamma") and self.comm.rank == 0:
             # Wall functions bypass the near-wall region the transition
             # model needs to resolve onset (Retheta_t) and intermittency;
             # this combination is rejected, not just warned about.
@@ -5740,6 +5740,7 @@ class ADFLOW(AeroSolver):
                     "SA",
                     "SA-Edwards",
                     "SA-noft2-Gamma-Retheta",
+                    "SA-noft2-Gamma",
                     "k-omega Wilcox",
                     "k-omega modified",
                     "k-tau",
@@ -5759,6 +5760,17 @@ class ADFLOW(AeroSolver):
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 10000],
             "transitionUseApproxSA": [bool, True],
+            # ---- SA-noft2-Gamma options ----
+            "sgammaOnsetTanh": [bool, False],
+            "sgammaFturbLee": [bool, False],
+            "sgammaCoupleDestruction": [bool, True],
+            "sgammaFPGSmoothP": [float, 300.0],
+            "sgammaTanhK": [float, 6.0],
+            "sgammaTanhS": [float, 1.35],
+            "sgammaTanhAmp": [float, 1.0],
+            "sgammaTanhRT": [float, 1.0],
+            "sgammaOnsetSmoothP": [float, 300.0],
+            "sgammaArtVisc": [float, 0.0],
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
             "transitionRefLength": [float, -1.0],
@@ -6173,6 +6185,7 @@ class ADFLOW(AeroSolver):
             "turbulencemodel": {
                 "sa": self.adflow.constants.spalartallmaras,
                 "sa-noft2-gamma-retheta": self.adflow.constants.spalartallmarasnoft2gammaretheta,
+                "sa-noft2-gamma": self.adflow.constants.spalartallmarasnoft2gamma,
                 "sa-edwards": self.adflow.constants.spalartallmarasedwards,
                 "k-omega wilcox": self.adflow.constants.komegawilcox,
                 "k-omega modified": self.adflow.constants.komegamodified,
@@ -6192,6 +6205,16 @@ class ADFLOW(AeroSolver):
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
+            "sgammaonsettanh": ["iter", "sgammaonsettanh"],
+            "sgammafturblee": ["iter", "sgammafturblee"],
+            "sgammacoupledestruction": ["iter", "sgammacoupledestruction"],
+            "sgammafpgsmoothp": ["iter", "sgammafpgsmoothp"],
+            "sgammatanhk": ["iter", "sgammatanhk"],
+            "sgammatanhs": ["iter", "sgammatanhs"],
+            "sgammatanhamp": ["iter", "sgammatanhamp"],
+            "sgammatanhrt": ["iter", "sgammatanhrt"],
+            "sgammaonsetsmoothp": ["iter", "sgammaonsetsmoothp"],
+            "sgammaartvisc": ["iter", "sgammaartvisc"],
             "transitionreflength": ["iter", "transitionreflength"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
@@ -6710,7 +6733,7 @@ class ADFLOW(AeroSolver):
         # The transition kernels do exist in blocketteResCore (test_blockette_sagr.py
         # checks they match the block residual), but every validated transition
         # solve used the blockResCore path, so it stays forced for now.
-        if turbModel == "SA-noft2-Gamma-Retheta":
+        if turbModel in ("SA-noft2-Gamma-Retheta", "SA-noft2-Gamma"):
             self.setOption("useBlockettes", False)
 
         if self.getOption("turbresscale") is None:
@@ -6722,6 +6745,9 @@ class ADFLOW(AeroSolver):
                 # -> 0.1, ReThetaTilde ~ O(1e3-1e4) -> 1e-4 (paper Sec. IV.1
                 # scaling with gamma_max=10, Retheta_max=1e4 as divisors).
                 self.setOption("turbresscale", [10000.0, 0.1, 1.0e-4])
+            elif turbModel == "SA-noft2-Gamma":
+                # nuTilde ~1e-4 -> 1e4, gamma ~ O(1) -> 0.1 (as the GR pair)
+                self.setOption("turbresscale", [10000.0, 0.1])
             elif turbModel == "Menter SST":
                 self.setOption("turbresscale", [1e3, 1e-6])
             else:

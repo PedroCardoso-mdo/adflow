@@ -30,6 +30,7 @@ python module libadflow
          integer(kind=inttype) parameter,optional :: ktau=6_inttype
          integer(kind=inttype) parameter,optional :: mentersst=7_inttype
          integer(kind=inttype) parameter,optional :: spalartallmarasnoft2gammaretheta=8_inttype
+         integer(kind=inttype) parameter,optional :: spalartallmarasnoft2gamma=9_inttype
          integer(kind=inttype) parameter,optional :: v2f=10_inttype
          integer(kind=inttype) parameter,optional :: strain=1_inttype
          integer(kind=inttype) parameter,optional :: vorticity=2_inttype
@@ -1120,6 +1121,16 @@ python module libadflow
          logical :: transitioncrossflow
          real(kind=realtype) :: transitionroughnessheight
          logical :: transitionuseapproxsa
+         logical :: sgammaonsettanh
+         logical :: sgammafturblee
+         logical :: sgammacoupledestruction
+         real(kind=realtype) :: sgammafpgsmoothp
+         real(kind=realtype) :: sgammatanhk
+         real(kind=realtype) :: sgammatanhs
+         real(kind=realtype) :: sgammatanhamp
+         real(kind=realtype) :: sgammatanhrt
+real(kind=realtype) :: sgammaonsetsmoothp
+         real(kind=realtype) :: sgammaartvisc
          real(kind=realtype) :: transitionreflength
          logical :: transitionsrcdtrestrict
          real(kind=realtype) :: transitionsrcdtlimit

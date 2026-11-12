@@ -119,6 +119,10 @@ contains
             bcVarNames(offset + 2) = cgnsTurbGamma
             bcVarNames(offset + 3) = cgnsTurbRetheta
 
+        case (spalartallmarasnoft2gamma)
+            bcVarNames(offset + 1) = cgnsTurbSaNu
+            bcVarNames(offset + 2) = cgnsTurbGamma
+
         case (komegaWilcox, komegaModified, menterSST)
             bcVarNames(offset + 1) = cgnsTurbK
             bcVarNames(offset + 2) = cgnsTurbOmega
@@ -1349,6 +1353,10 @@ contains
             ref(itu1) = nuRef
             ref(itu2) = one
             ref(itu3) = one
+
+        case (spalartallmarasnoft2gamma)
+            ref(itu1) = nuRef
+            ref(itu2) = one
 
         case (komegaWilcox, komegaModified, menterSST)
             ref(itu1) = pRef / rhoRef
