@@ -390,6 +390,7 @@ python module libadflow
          real(kind=realtype) :: nk_switchtol
          real(kind=realtype) :: nk_cfl0
          real(kind=realtype) :: nk_fixedstep
+         logical :: nk_lsrelax
          integer(kind=inttype) :: applypcsubspacesize
          logical :: freestreamresset
 
@@ -475,11 +476,17 @@ python module libadflow
          real(kind=realtype) :: ank_cflexponent
          real(kind=realtype) :: ank_cflcutback
          logical :: ank_cflreset
+         ! P&Z stepping mode (must be declared here or setOption silently
+         ! creates a phantom Python attribute -- see the VERIF_06 F4 note)
          real(kind=realtype) :: ank_stepfactor
          real(kind=realtype) :: ank_stepmin
          real(kind=realtype) :: ank_constcflstep
          real(kind=realtype) :: ank_physlstol
          real(kind=realtype) :: ank_physlstolturb
+         ! VERIF_06 F4: these two were declared in Fortran (NKSolvers.F90) and
+         ! wired in pyADflow (defaults + optionMap) but never declared here, so
+         ! setOption silently created a phantom Python attribute and the
+         ! compiled code always used its declared default. Verified 2026-08-13.
          real(kind=realtype) :: ank_unstdylstol
          real(kind=realtype) :: ank_secondordswitchtol
          real(kind=realtype) :: ank_coupledswitchtol
@@ -1132,11 +1139,21 @@ python module libadflow
 real(kind=realtype) :: sgammaonsetsmoothp
          real(kind=realtype) :: sgammaartvisc
          real(kind=realtype) :: transitionreflength
+         logical :: transitionnk
          logical :: transitionsrcdtrestrict
          real(kind=realtype) :: transitionsrcdtlimit
          real(kind=realtype) :: transitionartvisc
+         integer(kind=inttype) :: srcdtdeactivateiters
          real(kind=realtype) :: transitiondamptheta
          integer(kind=inttype) :: transitiondampmaxiter
+         real(kind=realtype) :: ankcflmincap
+         real(kind=realtype) :: ankunsteadylsfactor
+         integer(kind=inttype) :: ankunsteadylsmaxiter
+         logical :: ankrejectonlsexhausted
+         logical :: anktransitiongloballambda
+         real(kind=realtype) :: mffdfunctionerror
+         character(len=maxstringlen) :: mffdtype
+         logical :: ankcolscaleunit
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

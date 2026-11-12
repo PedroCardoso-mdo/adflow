@@ -326,11 +326,24 @@ module inputIteration
     logical :: transitionFirstOrderUpwind = .true.
     logical :: transitionCrossflow = .false.  ! matches pyADflow default
     real(kind=realType) :: transitionRoughnessHeight = 3.3e-6_realType
+    ! Master switch for the NK/ANK/turbKSP convergence-acceleration bundle
+    ! (column scaling + Eq. 59 source-dt restriction, incl. NK reactivation-
+    ! on-backtrack): default True keeps today's behavior for SA-Gamma-Retheta
+    ! unchanged (all of it is still additionally gated on
+    ! turbModel==spalartallmarasnoft2gammaretheta / nwt==3, since the
+    ! underlying srcLambda eigenvalue machinery is model-specific). Exposed
+    ! as its own switch so it can be turned off independently, or reused
+    ! later for another stiff turbulence model without touching the
+    ! turbModel gates themselves.
+    logical :: transitionNK = .true.
     logical :: transitionSrcDtRestrict = .true.
     real(kind=realType) :: transitionSrcDtLimit = 0.9_realType
     ! Gradient-driven artificial viscosity on the GR gamma equation (same form as sgammaArtVisc; saGammaRetheta.F90
     ! Viscous/saGammaReThetaSolve): nu_art = c |V| h |dgamma| per face, c dimensionless, 0 = off. Front ~ sqrt(c) cells.
     real(kind=realType) :: transitionArtVisc = 0.0_realType
+    ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)
+    integer(kind=intType) :: srcDtDeactivateIters = 5
+    integer(kind=intType) :: noBacktrackCount = 0
     ! Damping parameters for γ/Reθt iterative update (P&Z Algorithm 2).
     ! MaxIter is a safety cap on the (unbounded in the paper) back-off loop;
     ! 10000 makes it effectively unbounded (0.99^10000 ~ 0), so the hard
@@ -372,6 +385,120 @@ module inputIteration
     ! the paper uses the root chord. Negative => auto: use lengthRef
     ! (the AeroProblem chordRef).
     real(kind=realType) :: transitionRefLength = -1.0_realType
+
+    ! ------------------------------------------------------------------
+    ! ANK/CANK CFL floor cap (VERIF_06 F1).
+    !
+    ! ADflow ramps the CFL floor with convergence,
+    !     ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase*(totalR0/totalR)**ANK_CFLExponent),
+    ! and every CFL update is clipped from below by it. At depth the floor
+    ! reaches ANK_CFLLimit, at which point the cutback
+    !     ANK_CFL = max(ANK_CFL*ANK_CFLCutback, ANK_CFLMin)
+    ! cannot reduce ANK_CFL at all -- the coupled step controller loses its
+    ! only recovery mechanism exactly when a collapsing step needs it, and
+    ! the solver limit-cycles (huge CFL -> bad step -> backtrack -> repeat).
+    !
+    ! Piotrowski's thesis (§3.1.3, Algorithms 2 and 4) instead halves the
+    ! reference time step against a USER-SPECIFIED bound, dt_ref,min. This
+    ! option supplies that bound: an absolute ceiling on how far the ramped
+    ! floor may rise, so the cutback always has room to act.
+    !
+    ! <= 0 (default) => disabled, floor ramps exactly as before.
+    real(kind=realType) :: ankCFLMinCap = 0.0_realType
+
+    ! ------------------------------------------------------------------
+    ! ANK/CANK unsteady line-search geometry (VERIF_06 F2).
+    !
+    ! ADflow backtracks by 0.7 for at most 12 iterations, so the smallest
+    ! step the line search can produce is 0.7**12 = 0.0138 -- ABOVE its own
+    ! rejection threshold ANK_stepMin*ANK_stepFactor (0.01 by default).
+    ! The search therefore cannot classify a collapsed step as a failure,
+    ! the CFL cutback never fires, the CFL stays pinned at ANK_CFLLimit,
+    ! and the solver limit-cycles: huge proposed step -> throttled to ~1-3%
+    ! -> repeat. Measured on the NLF(2)-0415 swept wing: CFL locked at 1e6
+    ! for 1800+ iterations with a healthy linear residual.
+    !
+    ! Piotrowski's thesis (Algorithm 4) backtracks by 0.90 with an explicit
+    ! 1% floor and rejects on reaching it -- gentler, allowed to go further,
+    ! and its floor coincides with the rejection threshold by construction.
+    ! From lambda = 1 that needs ~44 backtracks to reach 0.01.
+    !
+    ! Defaults reproduce ADflow's current 0.7 / 12 geometry exactly.
+    real(kind=realType) :: ankUnsteadyLSFactor = 0.7_realType
+    integer(kind=intType) :: ankUnsteadyLSMaxIter = 12
+
+    ! Treat an exhausted backtracking budget as a step rejection (thesis
+    ! Algorithm 4), so the CFL cutback actually fires instead of the solver
+    ! accepting the floor step forever. Default .false. = previous behaviour.
+    logical :: ankRejectOnLSExhausted = .false.
+
+    ! Whether gamma/Re-theta-t take part in the GLOBAL step limit of
+    ! physicalityCheckANK (VERIF_06 F8).
+    !
+    ! Measured 2026-08-13 on the NLF(2)-0415 swept wing, job 1820884: over
+    ! ~7200 coupled iterations the binding variable was
+    !     gamma 7143 | nuTilde 53 | rho 3
+    ! i.e. the transition front sets the global step ~99% of the time, and a
+    ! handful of front cells throttle the entire field to 1-3%. That is the
+    ! global-lambda pathology Algorithm 2 exists to avoid: the paper damps
+    ! gamma/Re-theta-t PER NODE and does not let them shrink the global step.
+    !
+    ! .true.  (default) = current behaviour: gamma/Re-theta-t ratios enter the
+    !                     global min alongside rho/E.
+    ! .false.           = paper behaviour: they are excluded from the global
+    !                     min and bounded per node by Algorithm 2
+    !                     (applyANKAlgorithm2Damping) instead.
+    !
+    ! nuTilde deliberately KEEPS its global-limit role: the paper's Algorithm 2
+    ! covers gamma and Re-theta-t only.
+    logical :: ankTransitionGlobalLambda = .true.
+
+    ! MFFD differencing controls (VERIF_06 F9).
+    !
+    ! ANK/CANK and NK all build J*a by finite difference,
+    !     J*a ~ [F(u + h*a) - F(u)] / h
+    ! and PETSc picks h assuming F is evaluated to a relative accuracy of
+    ! machine epsilon -- MatMFFDSetFunctionError is never called. The SA-GR
+    ! residual goes through smoothMinMax blends, empirical correlations, tanh
+    ! and clipping, so its true noise floor is many orders above 1e-16. If the
+    ! real error is ~1e-10, the h PETSc chooses is ~1e-3 too small and J*a is
+    ! dominated by cancellation: a bad Newton direction from a linear solve
+    ! that still converges cleanly, which is the measured signature at the
+    ! stall (Step = 1.00, lin res 0.02-0.04, no progress).
+    !
+    ! Measured first (job 1821307): the COLUMN SCALING is not the problem --
+    ! the scaled state spans only ~2.3 orders (0.014 to 2.5) and the worst
+    ! pair is rho*E vs rho*v, both mean-flow; the transition variables sit
+    ! mid-range (nuTilde 0.026, gamma 0.091, reTheta 0.090). So h itself, not
+    ! the variable scaling, is what is left to test.
+    !
+    ! <= 0 (default) => do not call MatMFFDSetFunctionError, i.e. PETSc's
+    ! machine-epsilon assumption, exactly as before.
+    real(kind=realType) :: mffdFunctionError = 0.0_realType
+
+    ! MFFD h formula: 'ds' (default, Dennis-Schnabel, PETSc's default) or
+    ! 'wp' (Walker-Pernice). Empty/'ds' leaves PETSc untouched.
+    character(len=maxStringLen) :: mffdType = 'ds'
+
+    ! Unit column scaling (VERIF_06 F10).
+    !
+    ! ADflow's column scale is 1 for every mean-flow entry and turbResScale for
+    ! the turbulence entries. Measured on the swept wing (job 1821307), the
+    ! resulting scaled state is:
+    !     rho 0.999 | rho*u 0.071 | rho*v 0.014 | rho*w 0.073 | rho*E 2.505
+    !     nuTilde 0.026 | gamma 0.091 | reTheta 0.090
+    ! so only density and energy are O(1); the three momenta and all three
+    ! turbulence/transition variables sit 10-70x lower. MFFD perturbs every
+    ! component by the SAME h*a_i, so those six get a relative perturbation
+    ! one to two orders away from the one h was chosen for.
+    !
+    ! With this option on, the column scale is chosen so that EVERY variable
+    ! has a scaled RMS of one, leaving PETSc's automatic h mechanism untouched
+    ! -- which is the point: fix the vector, not the differencing rule.
+    !
+    ! The factors are refreshed only when the preconditioner is reformed, so
+    ! the assembled PC and the operator always share one scaling.
+    logical :: ankColScaleUnit = .false.
 
 end module inputIteration
 

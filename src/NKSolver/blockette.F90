@@ -68,7 +68,8 @@ module blockette
 contains
 
     subroutine blocketteRes(useDissApprox, useViscApprox, useUpdateIntermed, useFlowRes, useTurbRes, useSpatial, &
-                            useStoreWall, famLists, funcValues, forces, bcDataNames, bcDataValues, bcDataFamLists)
+                            useStoreWall, famLists, funcValues, forces, bcDataNames, bcDataValues, bcDataFamLists, &
+                            totalTimeOut, commTimeOut)
 
         ! Copy the values from blockPointers (assumed set) into the
         ! blockette
@@ -108,11 +109,19 @@ contains
         real(kind=realType), optional, dimension(:), intent(in) :: bcDataValues
         integer(kind=intType), optional, dimension(:, :) :: bcDataFamLists
         real(kind=realType), intent(out), optional, dimension(:, :, :) :: forces
+        real(kind=alwaysRealType), intent(out), optional :: totalTimeOut, commTimeOut
 
         ! Misc
         logical :: dissApprox, viscApprox, updateIntermed, flowRes, turbRes, spatial, storeWall
         integer(kind=intType) :: nn, sps, fSize, lstart, lend, iRegion
         real(kind=realType) :: pLocal
+        real(kind=alwaysRealType) :: tStart, tCommStart, tPrepStart, totalTime, commTime, computeTime, prepTime
+        integer(kind=intType) :: callContext
+
+        totalTime = 0.0_alwaysRealType
+        commTime = 0.0_alwaysRealType
+        prepTime = 0.0_alwaysRealType
+
 
         ! Set the defaults. The default is to compute the full, exact,
         ! RANS residual without updating the spatial values or the local
@@ -294,6 +303,10 @@ contains
                 call getForces(forces(:, :, sps), fSize, sps)
             end do
         end if
+
+
+        if (present(totalTimeOut)) totalTimeOut = totalTime
+        if (present(commTimeOut)) commTimeOut = commTime
     end subroutine blocketteRes
 
     subroutine blocketteResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall)
@@ -335,6 +348,9 @@ contains
 
         ! Working:
         integer(kind=intType) :: i, j, k, l, lStart, lEnd
+        real(kind=alwaysRealType) :: tStart, totalTime, copyTime, tCopyStart
+
+        copyTime = 0.0_alwaysRealType
 
         ! Compute the ranges of the residuals we are dealing with:
         if (flowRes .and. turbRes) then
@@ -351,7 +367,7 @@ contains
         end if
 
         ! Block loop over the owned cells
-        !$OMP parallel do private(i,j,k,l) collapse(2)
+        !$OMP parallel do private(i,j,k,l,tCopyStart) collapse(2) reduction(+:copyTime)
         do kk = 2, bkl, BS
             do jj = 2, bjl, BS
                 do ii = 2, bil, BS
@@ -750,12 +766,14 @@ contains
                             end do
                         end if visc
 
+
                     end if intermed
 
                 end do
             end do
         end do
         !$OMP END PARALLEL DO
+
     end subroutine blocketteResCore
 
     subroutine blockResCore(dissApprox, viscApprox, updateIntermed, flowRes, turbRes, storeWall, nn, sps)

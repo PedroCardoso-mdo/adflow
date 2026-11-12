@@ -5,7 +5,8 @@ module adjointUtils
 contains
 
     subroutine setupStateResidualMatrix(matrix, useAD, usePC, useTranspose, &
-                                        useObjective, frozenTurb, level, useTurbOnly, useCoarseMats)
+                                        useObjective, frozenTurb, level, useTurbOnly, useCoarseMats, &
+                                        totalTimeOut, commTimeOut)
 
         !      Compute the state derivative matrix using a forward mode calc
         !      There are three different flags that determine how this
@@ -54,6 +55,7 @@ contains
         logical, intent(in) :: useAD, usePC, useTranspose, useObjective, frozenTurb
         logical, intent(in), optional :: useTurbOnly, useCoarseMats
         integer(kind=intType), intent(in) :: level
+        real(kind=alwaysRealType), intent(out), optional :: totalTimeOut, commTimeOut
 
         ! Local variables.
         integer(kind=intType) :: ierr, nn, sps, sps2, i, j, k, l, ll, ii, jj, kk
@@ -68,6 +70,10 @@ contains
         integer(kind=intType), dimension(8, 2:10) :: coarseCols
         integer(kind=intType) :: iBeg, iEnd, jBeg, jEnd, mm, colInd
         logical :: resetToRANS, turbOnly, flowRes, turbRes, buildCoarseMats
+        real(kind=alwaysRealType) :: tStart, tCommStart, localCommTime
+
+        localCommTime = 0.0_alwaysRealType
+        tStart = mpi_wtime()
 
         ! Determine if we are assembling a turb only PC
         turbOnly = .False.
@@ -110,7 +116,9 @@ contains
 
         ! Exchange data and call the residual to make sure its up to date
         ! withe current w
+        tCommStart = mpi_wtime()
         call whalo2(1_intType, 1_intType, nw, .True., .True., .True.)
+        localCommTime = localCommTime + (mpi_wtime() - tCommStart)
 
         ! This routine will not use the extra variables to block_res or the
         ! extra outputs, so we must zero them here
@@ -541,13 +549,17 @@ contains
         end do domainLoopAD
 
         ! PETSc Matrix Assembly begin
+        tCommStart = mpi_wtime()
         call MatAssemblyBegin(matrix, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        localCommTime = localCommTime + (mpi_wtime() - tCommStart)
 
         if (buildCoarseMats) then
             do lvl = 2, amgLevels
+                tCommStart = mpi_wtime()
                 call MatAssemblyBegin(A(lvl), MAT_FINAL_ASSEMBLY, ierr)
                 call EChk(ierr, __FILE__, __LINE__)
+                localCommTime = localCommTime + (mpi_wtime() - tCommStart)
             end do
         end if
 
@@ -589,13 +601,17 @@ contains
         deallocate (blk)
 
         ! Complete the matrix assembly.
+        tCommStart = mpi_wtime()
         call MatAssemblyEnd(matrix, MAT_FINAL_ASSEMBLY, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+        localCommTime = localCommTime + (mpi_wtime() - tCommStart)
 
         if (buildCoarseMats) then
             do lvl = 2, amgLevels
+                tCommStart = mpi_wtime()
                 call MatAssemblyEnd(A(lvl), MAT_FINAL_ASSEMBLY, ierr)
                 call EChk(ierr, __FILE__, __LINE__)
+                localCommTime = localCommTime + (mpi_wtime() - tCommStart)
             end do
         end if
 
@@ -608,6 +624,9 @@ contains
         ! intermediate variables are up to date. We can just call master
         ! for this. No need to recompute spatial terms.
         call master(.false.)
+
+        if (present(totalTimeOut)) totalTimeOut = mpi_wtime() - tStart
+        if (present(commTimeOut)) commTimeOut = localCommTime
 
     contains
 

@@ -6046,7 +6046,7 @@ contains
                       cgnsL2resGamma, cgnsL2resRetheta, &
                       cgnsL2resK, cgnsL2resOmega, &
                       cgnsL2resTau, cgnsL2resEpsilon, &
-                      cgnsL2resV2, cgnsL2resF, 'totalR')
+                      cgnsL2resV2, cgnsL2resF, 'totalR', 'scaledtotalR')
 
                     ! complex residuals need 9 more characters
                     nCharWrite = nCharWrite + fieldWidthLarge + 1 + 9
@@ -6097,6 +6097,9 @@ contains
 
                 case ("totalR")
                     write (*, "(a)", advance="no") "        totalRes        |"
+
+                case ("scaledtotalR")
+                    write (*, "(a)", advance="no") "     scaledTotalRes     |"
 
                 case (cgnsL2resRho)
                     write (*, "(a)", advance="no") "        Res rho         |"
@@ -6208,6 +6211,9 @@ contains
 
                 case ("totalR")
                     write (*, "(a)", advance="no") "            totalRes             |"
+
+                case ("scaledtotalR")
+                    write (*, "(a)", advance="no") "         scaledTotalRes          |"
 
                 case (cgnsL2resRho)
                     write (*, "(a)", advance="no") "            Res rho              |"
@@ -6364,7 +6370,7 @@ contains
                       cgnsL2resGamma, cgnsL2resRetheta, &
                       cgnsL2resK, cgnsL2resOmega, &
                       cgnsL2resTau, cgnsL2resEpsilon, &
-                      cgnsL2resV2, cgnsL2resF, 'totalR')
+                      cgnsL2resV2, cgnsL2resF, 'totalR', 'scaledtotalR')
                     ! residuals get a shorter line
                     write (*, "(a)", advance="no") "                                 |"
                 case default
@@ -6483,6 +6489,62 @@ contains
         end do
 
     end subroutine sumAllResiduals
+
+    subroutine sumAllResidualsScaled(mm)
+        !
+        !       Monitoring-only variable: same sum as sumAllResiduals, with
+        !       the turbulence rows scaled by turbResScale -- mirrors
+        !       NKSolver's setRVec exactly (src/NKSolver/NKSolvers.F90) so
+        !       this monitor reflects what NK's linear solve actually sees.
+        !       Purely additive: does NOT
+        !       feed totalR/totalRes or any switch tolerance (see the
+        !       'scaledtotalR' handling in solvers.F90, which does not set
+        !       the module-level totalR the way 'totalR' does).
+        !
+        use blockPointers
+        use monitor
+        use flowvarrefstate
+        use inputIteration
+        implicit none
+        !
+        !      Subroutine arguments.
+        !
+        integer(kind=intType), intent(in) :: mm
+        !
+        !      Local variables.
+        !
+        integer(kind=intType) :: i, j, k, l
+        real(kind=realType) :: state_sum, ovv
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    state_sum = 0.0
+                    ovv = one / vol(i, j, k)
+                    do l = 1, nwf
+#ifndef USE_COMPLEX
+                        state_sum = state_sum + (dw(i, j, k, l) * ovv)**2
+#else
+                        state_sum = state_sum + &
+                                    cmplx((real(dw(i, j, k, l) * ovv))**2, &
+                                          (aimag(dw(i, j, k, l) * ovv))**2)
+#endif
+                    end do
+                    do l = nt1, nt2
+#ifndef USE_COMPLEX
+                        state_sum = state_sum + (dw(i, j, k, l) * ovv * turbResScale(l - nt1 + 1))**2
+#else
+                        state_sum = state_sum + &
+                                    cmplx((real(dw(i, j, k, l) * ovv * turbResScale(l - nt1 + 1)))**2, &
+                                          (aimag(dw(i, j, k, l) * ovv * turbResScale(l - nt1 + 1)))**2)
+#endif
+                    end do
+                    monLoc(mm) = monLoc(mm) + state_sum
+                end do
+            end do
+        end do
+
+    end subroutine sumAllResidualsScaled
 
     subroutine unsteadyHeader
         !

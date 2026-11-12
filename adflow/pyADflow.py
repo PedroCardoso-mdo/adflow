@@ -5753,9 +5753,11 @@ class ADFLOW(AeroSolver):
             "transitionFirstOrderUpwind": [bool, True],
             "transitionCrossflow": [bool, False],
             "transitionRoughnessHeight": [float, 3.3e-6],
+            "transitionNK": [bool, True],
             "transitionSrcDtRestrict": [bool, True],
             "transitionSrcDtLimit": [float, 0.9],
             "transitionArtVisc": [float, 0.0],
+            "srcDtDeactivateIters": [int, 5],
             # SA-γ-Reθt damping params (not in canonical ADflow)
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 10000],
@@ -5774,6 +5776,34 @@ class ADFLOW(AeroSolver):
             # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
             # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
             "transitionRefLength": [float, -1.0],
+            # VERIF_06 F1: absolute ceiling on the convergence-ramped ANK CFL
+            # floor, so the CFL cutback keeps room to act at depth (the
+            # analogue of the thesis's user-specified dt_ref,min).
+            # <= 0 => disabled, floor ramps exactly as before.
+            "ANKCFLMinCap": [float, 0.0],
+            # VERIF_06 F2: unsteady line-search geometry. Defaults reproduce
+            # ADflow's 0.7/12 (floor 0.7**12 = 0.0138, which sits ABOVE the
+            # 0.01 rejection threshold and so can never trigger a CFL cutback).
+            # The thesis's Algorithm 4 geometry is 0.90 with ~44 iterations.
+            "ANKUnsteadyLSFactor": [float, 0.7],
+            "ANKUnsteadyLSMaxIter": [int, 12],
+            "ANKRejectOnLSExhausted": [bool, False],
+            # VERIF_06 F8: let Algorithm 2 bound gamma/ReTheta per node instead
+            # of letting them shrink the GLOBAL step. Measured: gamma was the
+            # binding variable in 7143 of ~7200 coupled iterations.
+            "ANKTransitionGlobalLambda": [bool, True],
+            # VERIF_06 F9: PETSc assumes the residual is evaluated to machine
+            # epsilon when choosing the MFFD step h. The SA-GR residual is far
+            # noisier (smoothMinMax, correlations, tanh, clipping), so h comes
+            # out far too small and J*a is cancellation noise. <=0 keeps
+            # PETSc's assumption.
+            "MFFDFunctionError": [float, 0.0],
+            "MFFDType": [str, "ds"],
+            # VERIF_06 F10: scale EVERY variable to a unit RMS so the single
+            # MFFD h serves them all equally. Measured today, only rho and
+            # rho*E are O(1); the momenta and all turbulence/transition
+            # variables sit 10-70x lower. Leaves PETSc's h mechanism alone.
+            "ANKColScaleUnit": [bool, False],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -5918,6 +5948,12 @@ class ADFLOW(AeroSolver):
             "NKAMGNSmooth": [int, 1],
             "NKLS": [str, ["cubic", "none", "non-monotone"]],
             "NKFixedStep": [float, 0.25],
+            # NK line-search relaxation: LSCubic uses Armijo alpha=1e-3 and a
+            # turb-blowup pre-limit factor of 3.0. False (default) is ADflow's
+            # original 1e-2 / 2.0, under which NK's step stays pinned at minlambda on
+            # stiff transition sources; it is switched on by default for the
+            # transition models only (see __init__). See src/NKSolver/NKSolvers.F90:LSCubic.
+            "NKLSRelax": [bool, False],
             "RKReset": [bool, False],
             "nRKReset": [int, 5],
             # Approximate Newton-Krylov Parameters
@@ -6199,9 +6235,11 @@ class ADFLOW(AeroSolver):
             "transitionfirstorderupwind": ["iter", "transitionfirstorderupwind"],
             "transitioncrossflow": ["iter", "transitioncrossflow"],
             "transitionroughnessheight": ["iter", "transitionroughnessheight"],
+            "transitionnk": ["iter", "transitionnk"],
             "transitionsrcdtrestrict": ["iter", "transitionsrcdtrestrict"],
             "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
             "transitionartvisc": ["iter", "transitionartvisc"],
+            "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
@@ -6216,6 +6254,14 @@ class ADFLOW(AeroSolver):
             "sgammaonsetsmoothp": ["iter", "sgammaonsetsmoothp"],
             "sgammaartvisc": ["iter", "sgammaartvisc"],
             "transitionreflength": ["iter", "transitionreflength"],
+            "ankcflmincap": ["iter", "ankcflmincap"],
+            "ankunsteadylsfactor": ["iter", "ankunsteadylsfactor"],
+            "ankunsteadylsmaxiter": ["iter", "ankunsteadylsmaxiter"],
+            "ankrejectonlsexhausted": ["iter", "ankrejectonlsexhausted"],
+            "anktransitiongloballambda": ["iter", "anktransitiongloballambda"],
+            "mffdfunctionerror": ["iter", "mffdfunctionerror"],
+            "mffdtype": ["iter", "mffdtype"],
+            "ankcolscaleunit": ["iter", "ankcolscaleunit"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {
@@ -6383,6 +6429,7 @@ class ADFLOW(AeroSolver):
                 "location": ["nk", "nk_ls"],
             },
             "nkfixedstep": ["nk", "nk_fixedstep"],
+            "nklsrelax": ["nk", "nk_lsrelax"],
             "rkreset": ["iter", "rkreset"],
             "nrkreset": ["iter", "miniternum"],
             # Approximate Newton-Krylov Parameters
