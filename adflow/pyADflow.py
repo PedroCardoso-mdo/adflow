@@ -1209,6 +1209,42 @@ class ADFLOW(AeroSolver):
             self.setOption(key, val)
         startCallTime = time.time()
 
+        if self.getOption("turbulenceModel") == "SA-noft2-Gamma-Retheta" and self.comm.rank == 0:
+            # Wall functions bypass the near-wall region the transition
+            # model needs to resolve onset (Retheta_t) and intermittency;
+            # this combination is rejected, not just warned about.
+            if self.getOption("useWallFunctions"):
+                raise Error(
+                    "useWallFunctions is True while the SA-noft2-Gamma-Retheta "
+                    "transition model is active. Wall functions bypass the "
+                    "near-wall boundary layer resolution the transition model "
+                    "requires. Set useWallFunctions to False."
+                )
+
+            # The model is calibrated on the SA-noft2 variant: the ft2 laminar
+            # suppression term competes with the gamma intermittency coupling.
+            if self.getOption("useft2SA"):
+                ADFLOWWarning(
+                    "useft2SA is True while the SA-noft2-Gamma-Retheta transition "
+                    "model is active. This model is calibrated without the ft2 "
+                    "term (Piotrowski and Zingg 2020 use SA-noft2), and the ft2 "
+                    "laminar suppression conflicts with the gamma intermittency "
+                    "coupling. Set useft2SA to False."
+                )
+
+            # The Retheta_t correlation needs a physical freestream turbulence
+            # intensity; Tu <= 0 only survives because of the internal 0.027%
+            # floor and does not represent the intended flow condition.
+            if self.getOption("turbIntensityInf") <= 0.0:
+                ADFLOWWarning(
+                    "turbIntensityInf is <= 0 while the SA-noft2-Gamma-Retheta "
+                    "transition model is active. The Retheta_t correlation "
+                    "requires a positive freestream turbulence intensity "
+                    "(fraction, e.g. 0.001 = 0.1%); the internal 0.027% floor "
+                    "will silently take over otherwise. Set turbIntensityInf "
+                    "to the wind-tunnel/freestream value."
+                )
+
         # Get option about adjoint memory
         releaseAdjointMemory = kwargs.pop("relaseAdjointMemory", True)
 
@@ -5700,10 +5736,32 @@ class ADFLOW(AeroSolver):
             "flowType": [str, ["external", "internal"]],
             "turbulenceModel": [
                 str,
-                ["SA", "SA-Edwards", "k-omega Wilcox", "k-omega modified", "k-tau", "Menter SST", "v2f"],
+                [
+                    "SA",
+                    "SA-Edwards",
+                    "SA-noft2-Gamma-Retheta",
+                    "k-omega Wilcox",
+                    "k-omega modified",
+                    "k-tau",
+                    "Menter SST",
+                    "v2f",
+                ],
             ],
             "turbulenceOrder": [str, ["first order", "second order"]],
             "turbResScale": [(float, list, type(None)), None],
+            "transitionFirstOrderUpwind": [bool, True],
+            "transitionCrossflow": [bool, False],
+            "transitionRoughnessHeight": [float, 3.3e-6],
+            "transitionSrcDtRestrict": [bool, True],
+            "transitionSrcDtLimit": [float, 0.9],
+            "transitionArtVisc": [float, 0.0],
+            # SA-γ-Reθt damping params (not in canonical ADflow)
+            "transitionDampTheta": [float, 0.99],
+            "transitionDampMaxIter": [int, 10000],
+            "transitionUseApproxSA": [bool, True],
+            # Vorticity-limiter reference length l [grid units] (P&Z Eqs. 52-53,
+            # root chord in the paper). Negative => auto: use the AeroProblem chordRef.
+            "transitionRefLength": [float, -1.0],
             "meshMaxSkewness": [float, 1.0],
             "useSkewnessCheck": [bool, False],
             "turbulenceProduction": [str, ["strain", "vorticity", "Kato-Launder"]],
@@ -5853,6 +5911,7 @@ class ADFLOW(AeroSolver):
             # Approximate Newton-Krylov Parameters
             "useANKSolver": [bool, True],
             "ANKUseTurbDADI": [bool, True],
+            "TurbDADICoupled": [str, "full"],
             "ANKUseApproxSA": [bool, False],
             "ANKSwitchTol": [float, 1e3],
             "ANKSubspaceSize": [int, -1],
@@ -6113,6 +6172,7 @@ class ADFLOW(AeroSolver):
             },
             "turbulencemodel": {
                 "sa": self.adflow.constants.spalartallmaras,
+                "sa-noft2-gamma-retheta": self.adflow.constants.spalartallmarasnoft2gammaretheta,
                 "sa-edwards": self.adflow.constants.spalartallmarasedwards,
                 "k-omega wilcox": self.adflow.constants.komegawilcox,
                 "k-omega modified": self.adflow.constants.komegamodified,
@@ -6123,6 +6183,16 @@ class ADFLOW(AeroSolver):
             },
             "turbulenceorder": {"first order": 1, "second order": 2, "location": ["discr", "orderturb"]},
             "turbresscale": ["iter", "turbresscale"],
+            "transitionfirstorderupwind": ["iter", "transitionfirstorderupwind"],
+            "transitioncrossflow": ["iter", "transitioncrossflow"],
+            "transitionroughnessheight": ["iter", "transitionroughnessheight"],
+            "transitionsrcdtrestrict": ["iter", "transitionsrcdtrestrict"],
+            "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
+            "transitionartvisc": ["iter", "transitionartvisc"],
+            "transitiondamptheta": ["iter", "transitiondamptheta"],
+            "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
+            "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
+            "transitionreflength": ["iter", "transitionreflength"],
             "meshmaxskewness": ["iter", "meshmaxskewness"],
             "useskewnesscheck": ["iter", "useskewnesscheck"],
             "turbulenceproduction": {
@@ -6295,6 +6365,12 @@ class ADFLOW(AeroSolver):
             # Approximate Newton-Krylov Parameters
             "useanksolver": ["ank", "useanksolver"],
             "ankuseturbdadi": ["ank", "ank_useturbdadi"],
+            "turbdadicoupled": {
+                "decoupled": 0,
+                "transition": 1,
+                "full": 2,
+                "location": ["iter", "turbdadicoupled"],
+            },
             "ankuseapproxsa": ["ank", "ank_useapproxsa"],
             "ankswitchtol": ["ank", "ank_switchtol"],
             "anksubspacesize": ["ank", "ank_subspace"],
@@ -6629,10 +6705,23 @@ class ADFLOW(AeroSolver):
         # thus set default values depending on turbulence model;
         # else do nothing since it already contains value specified by user
 
+        turbModel = self.getOption("turbulencemodel")
+
+        # The transition kernels do exist in blocketteResCore (test_blockette_sagr.py
+        # checks they match the block residual), but every validated transition
+        # solve used the blockResCore path, so it stays forced for now.
+        if turbModel == "SA-noft2-Gamma-Retheta":
+            self.setOption("useBlockettes", False)
+
         if self.getOption("turbresscale") is None:
-            turbModel = self.getOption("turbulencemodel")
             if turbModel == "SA":
                 self.setOption("turbresscale", 10000.0)
+            elif turbModel == "SA-noft2-Gamma-Retheta":
+                # turbResScale is ~1/state-magnitude per equation (cf. SA 1e4
+                # for nuTilde~1e-4, SST 1e-6 for omega~1e6): gamma ~ O(1-10)
+                # -> 0.1, ReThetaTilde ~ O(1e3-1e4) -> 1e-4 (paper Sec. IV.1
+                # scaling with gamma_max=10, Retheta_max=1e4 as divisors).
+                self.setOption("turbresscale", [10000.0, 0.1, 1.0e-4])
             elif turbModel == "Menter SST":
                 self.setOption("turbresscale", [1e3, 1e-6])
             else:

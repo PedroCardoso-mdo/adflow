@@ -314,11 +314,36 @@ module inputIteration
     logical :: printNegativeVolumes
     logical :: printBadlySkewedCells
     logical :: printBCWarnings
-    real(kind=realType), dimension(4) :: turbResScale
+    real(kind=realType), dimension(4) :: turbResScale = (/1.0_realType, &
+                                                          1.0_realType, &
+                                                          1.0_realType, &
+                                                          1.0_realType/)
     real(kind=realType) :: meshMaxSkewness
     logical :: useSkewnessCheck
     logical :: useDissContinuation
     real(kind=realType) :: dissContMagnitude, dissContMidpoint, dissContSharpness
+    integer(kind=intType) :: TurbDADICoupled = 2
+    logical :: transitionFirstOrderUpwind = .true.
+    logical :: transitionCrossflow = .false.  ! matches pyADflow default
+    real(kind=realType) :: transitionRoughnessHeight = 3.3e-6_realType
+    logical :: transitionSrcDtRestrict = .true.
+    real(kind=realType) :: transitionSrcDtLimit = 0.9_realType
+    ! Gradient-driven artificial viscosity on the GR gamma equation (same form as sgammaArtVisc; saGammaRetheta.F90
+    ! Viscous/saGammaReThetaSolve): nu_art = c |V| h |dgamma| per face, c dimensionless, 0 = off. Front ~ sqrt(c) cells.
+    real(kind=realType) :: transitionArtVisc = 0.0_realType
+    ! Damping parameters for γ/Reθt iterative update (P&Z Algorithm 2).
+    ! MaxIter is a safety cap on the (unbounded in the paper) back-off loop;
+    ! 10000 makes it effectively unbounded (0.99^10000 ~ 0), so the hard
+    ! clip after it is a warned last-resort fallback, not the working
+    ! bounds mechanism.
+    real(kind=realType) :: transitionDampTheta = 0.99_realType
+    integer(kind=intType) :: transitionDampMaxIter = 10000
+    ! Use approxSA simplification in SA-gamma-rethetha (default true for stability)
+    logical :: transitionUseApproxSA = .true.
+    ! Reference length l [grid units] in the vorticity limiter (P&Z Eqs. 52-53);
+    ! the paper uses the root chord. Negative => auto: use lengthRef
+    ! (the AeroProblem chordRef).
+    real(kind=realType) :: transitionRefLength = -1.0_realType
 
 end module inputIteration
 

@@ -37,6 +37,43 @@ module extraOutput
     logical :: volWriteResRhoE, volWriteResTurb, volWriteBlank
     logical :: volWriteShock, volWriteFilteredShock, volWriteGC, volWriteStatus
     logical :: volWriteIntermittency
+    logical :: volWriteFonset, volWriteFlength, volWriteRturb, volWriteReThetaTarget
+    logical :: volWriteFonset1, volWriteReS, volWriteReThetaC, volWriteReSOverCrit
+    logical :: volWriteStrainMag
+    logical :: volWriteDudx, volWriteDudy, volWriteDudz
+    logical :: volWriteDvdx, volWriteDvdy, volWriteDvdz
+    logical :: volWriteDwdx, volWriteDwdy, volWriteDwdz
+    logical :: volWriteFthetaT, volWriteFwake
+    logical :: volWriteGammaProd, volWriteGammaDest
+    logical :: volWriteTransWallDist, volWriteTransRho, volWriteTransMu
+    logical :: volWriteTransTimeScale, volWriteTransLambdaTheta, volWriteTransPReTheta
+    logical :: volWriteGammaForSA, volWriteGammaLocal
+    logical :: volWriteTransVortMag, volWriteTransVortMagLim, volWriteTransFturb
+    logical :: volWriteSAStrainRate, volWriteSAModStrainRate, volWriteTransFt2
+    logical :: volWriteTransThetaBL, volWriteTransDeltaBL, volWriteTransDelta
+    logical :: volWriteTransVelMag, volWriteTransDUds, volWriteTransNutSA
+    logical :: volWriteTransReThetaTilde, volWriteTransVortLim
+    logical :: volWriteTransQQ11, volWriteTransQQ22, volWriteTransQQ33
+    logical :: volWriteTransDScf, volWriteTransReScf, volWriteTransHcf
+    ! Surface write flags for transition debug variables (all 29 slots)
+    logical :: surfWriteFonset, surfWriteFonset1, surfWriteFlength, surfWriteRturb
+    logical :: surfWriteReThetaTarget, surfWriteReS, surfWriteReThetaC, surfWriteReSOverCrit
+    logical :: surfWriteStrainMag
+    logical :: surfWriteDudx, surfWriteDudy, surfWriteDudz
+    logical :: surfWriteDvdx, surfWriteDvdy, surfWriteDvdz
+    logical :: surfWriteDwdx, surfWriteDwdy, surfWriteDwdz
+    logical :: surfWriteFthetaT, surfWriteFwake
+    logical :: surfWriteGammaProd, surfWriteGammaDest
+    logical :: surfWriteTransWallDist, surfWriteTransRho, surfWriteTransMu
+    logical :: surfWriteTransTimeScale, surfWriteTransLambdaTheta, surfWriteTransPReTheta
+    logical :: surfWriteGammaForSA, surfWriteGammaLocal
+    logical :: surfWriteTransVortMag, surfWriteTransVortMagLim, surfWriteTransFturb
+    logical :: surfWriteSAStrainRate, surfWriteSAModStrainRate, surfWriteTransFt2
+    logical :: surfWriteTransThetaBL, surfWriteTransDeltaBL, surfWriteTransDelta
+    logical :: surfWriteTransVelMag, surfWriteTransDUds, surfWriteTransNutSA
+    logical :: surfWriteTransReThetaTilde, surfWriteTransVortLim
+    logical :: surfWriteTransQQ11, surfWriteTransQQ22, surfWriteTransQQ33
+    logical :: surfWriteTransDScf, surfWriteTransReScf, surfWriteTransHcf
 !
 !       The logical variables, which define the isosurface variables
 !       to be written.

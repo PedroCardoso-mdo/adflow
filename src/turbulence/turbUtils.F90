@@ -635,7 +635,7 @@ contains
 
         select case (turbModel)
 
-        case (spalartAllmaras, spalartAllmarasEdwards)
+        case (spalartAllmaras, spalartAllmarasEdwards, spalartallmarasnoft2gammaretheta)
             call saEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
 #ifndef USE_TAPENADE
 
@@ -850,6 +850,8 @@ contains
                                  w, si, sj, sk, addGridVelocities, bmti1, bmti2, bmtj1, bmtj2, &
                                  bmtk1, bmtk2, scratch
         use inputDiscretization, only: orderTurb
+        use inputPhysics, only: turbModel
+        use inputIteration, only: transitionFirstOrderUpwind
         use iteration, only: groundLevel
         use turbMod, only: secondOrd
         implicit none
@@ -875,6 +877,15 @@ contains
         secondOrd = .false.
         if (groundLevel == 1_intType .and. &
             orderTurb == secondOrder) secondOrd = .true.
+
+        ! Transition model: gamma and ReThetaTilde convection is
+        ! first-order upwind (Piotrowski & Zingg 2020, Sec. IV.A).
+        ! Enforced here, in the one routine every path goes through,
+        ! so decoupled DADI, coupled ANK/NK, and the adjoint master
+        ! sweeps discretize the identical residual regardless of
+        ! caller or orderTurb.
+        if (turbModel == spalartAllmarasNoft2GammaRetheta .and. &
+            transitionFirstOrderUpwind) secondOrd = .false.
 
         ! Initialize the grid velocity to zero. This value will be used
         ! if the block is not moving.
@@ -1634,6 +1645,140 @@ contains
 
     end subroutine tdia3
 
+    subroutine tdia3x3(nb, ne, l, c, u, r)
+        !
+        !       tdia3x3 solves the tridiagonal linear system (l+c+u) v = r,
+        !       where l is the lower, c the central and u the upper diagonal.
+        !       Every entry in the matrix has a 3x3 block central diagonal
+        !       and scalar (diagonal) lower and upper diagonals:
+        !                    x x x  x 0 0  0 0 0  ........  = c(nb) u(nb)
+        !                    x x x  0 x 0  0 0 0  ........
+        !                    x x x  0 0 x  0 0 0  ........
+        !                    x 0 0  x x x  x 0 0  ........  = l(i) c(i) u(i)
+        !                    0 x 0  x x x  0 x 0  ........
+        !                    0 0 x  x x x  0 0 x  ........
+        !                         ........  x 0 0  x x x    = l(ne) c(ne)
+        !                         ........  0 x 0  x x x
+        !                         ........  0 0 x  x x x
+        !               With c = x x x     u,l = x 0 0
+        !                        x x x           0 x 0
+        !                        x x x           0 0 x
+        !       This is the 3-equation analog of tdia3.
+        !
+        use constants
+        implicit none
+        !
+        !      Subroutine arguments.
+        !
+        integer(kind=intType), intent(in) :: nb, ne
+
+        real(kind=realType), dimension(3, nb:ne), intent(inout) :: l, u, r
+        real(kind=realType), dimension(3, 3, nb:ne), intent(inout) :: c
+        !
+        !      Local variables.
+        !
+        integer(kind=intType) :: n
+        real(kind=realType) :: deti, r1, r2
+        real(kind=realType) :: ci11, ci12, ci13, ci21, ci22, ci23, ci31, ci32, ci33
+        real(kind=realType) :: f11, f12, f13, f21, f22, f23, f31, f32, f33
+
+        ! Perform the backward sweep to eliminate the upper diagonal u.
+        ! F     = diag(u(:,n)) * C^{-1}(n+1),
+        ! C'(n) = C(n) - F * diag(l(:,n+1))
+        ! r'(n) = r(n) - F * r(n+1)
+
+        do n = ne - 1, nb, -1
+
+            ! Compute cofactors of C(n+1) (= adjugate transpose entries)
+            ci11 = c(2, 2, n + 1) * c(3, 3, n + 1) - c(2, 3, n + 1) * c(3, 2, n + 1)
+            ci12 = c(1, 3, n + 1) * c(3, 2, n + 1) - c(1, 2, n + 1) * c(3, 3, n + 1)
+            ci13 = c(1, 2, n + 1) * c(2, 3, n + 1) - c(1, 3, n + 1) * c(2, 2, n + 1)
+            ci21 = c(2, 3, n + 1) * c(3, 1, n + 1) - c(2, 1, n + 1) * c(3, 3, n + 1)
+            ci22 = c(1, 1, n + 1) * c(3, 3, n + 1) - c(1, 3, n + 1) * c(3, 1, n + 1)
+            ci23 = c(1, 3, n + 1) * c(2, 1, n + 1) - c(1, 1, n + 1) * c(2, 3, n + 1)
+            ci31 = c(2, 1, n + 1) * c(3, 2, n + 1) - c(2, 2, n + 1) * c(3, 1, n + 1)
+            ci32 = c(1, 2, n + 1) * c(3, 1, n + 1) - c(1, 1, n + 1) * c(3, 2, n + 1)
+            ci33 = c(1, 1, n + 1) * c(2, 2, n + 1) - c(1, 2, n + 1) * c(2, 1, n + 1)
+
+            deti = one / (c(1, 1, n + 1) * ci11 + c(1, 2, n + 1) * ci21 + c(1, 3, n + 1) * ci31)
+
+            ! F = diag(u(:,n)) * C^{-1}(n+1)
+            f11 = u(1, n) * ci11 * deti
+            f12 = u(1, n) * ci12 * deti
+            f13 = u(1, n) * ci13 * deti
+            f21 = u(2, n) * ci21 * deti
+            f22 = u(2, n) * ci22 * deti
+            f23 = u(2, n) * ci23 * deti
+            f31 = u(3, n) * ci31 * deti
+            f32 = u(3, n) * ci32 * deti
+            f33 = u(3, n) * ci33 * deti
+
+            ! C'(n) = C(n) - F * diag(l(:,n+1))
+            c(1, 1, n) = c(1, 1, n) - f11 * l(1, n + 1)
+            c(1, 2, n) = c(1, 2, n) - f12 * l(2, n + 1)
+            c(1, 3, n) = c(1, 3, n) - f13 * l(3, n + 1)
+            c(2, 1, n) = c(2, 1, n) - f21 * l(1, n + 1)
+            c(2, 2, n) = c(2, 2, n) - f22 * l(2, n + 1)
+            c(2, 3, n) = c(2, 3, n) - f23 * l(3, n + 1)
+            c(3, 1, n) = c(3, 1, n) - f31 * l(1, n + 1)
+            c(3, 2, n) = c(3, 2, n) - f32 * l(2, n + 1)
+            c(3, 3, n) = c(3, 3, n) - f33 * l(3, n + 1)
+
+            ! r'(n) = r(n) - F * r(n+1)
+            r(1, n) = r(1, n) - f11 * r(1, n + 1) - f12 * r(2, n + 1) - f13 * r(3, n + 1)
+            r(2, n) = r(2, n) - f21 * r(1, n + 1) - f22 * r(2, n + 1) - f23 * r(3, n + 1)
+            r(3, n) = r(3, n) - f31 * r(1, n + 1) - f32 * r(2, n + 1) - f33 * r(3, n + 1)
+
+        end do
+
+        ! The matrix is now in lower block bi-diagonal form and can thus
+        ! be solved by a forward sweep. The solution is stored in r.
+
+        ! Solve C(nb) * x = r(nb)
+        ci11 = c(2, 2, nb) * c(3, 3, nb) - c(2, 3, nb) * c(3, 2, nb)
+        ci12 = c(1, 3, nb) * c(3, 2, nb) - c(1, 2, nb) * c(3, 3, nb)
+        ci13 = c(1, 2, nb) * c(2, 3, nb) - c(1, 3, nb) * c(2, 2, nb)
+        ci21 = c(2, 3, nb) * c(3, 1, nb) - c(2, 1, nb) * c(3, 3, nb)
+        ci22 = c(1, 1, nb) * c(3, 3, nb) - c(1, 3, nb) * c(3, 1, nb)
+        ci23 = c(1, 3, nb) * c(2, 1, nb) - c(1, 1, nb) * c(2, 3, nb)
+        ci31 = c(2, 1, nb) * c(3, 2, nb) - c(2, 2, nb) * c(3, 1, nb)
+        ci32 = c(1, 2, nb) * c(3, 1, nb) - c(1, 1, nb) * c(3, 2, nb)
+        ci33 = c(1, 1, nb) * c(2, 2, nb) - c(1, 2, nb) * c(2, 1, nb)
+
+        deti = one / (c(1, 1, nb) * ci11 + c(1, 2, nb) * ci21 + c(1, 3, nb) * ci31)
+        r1 = r(1, nb)
+        r2 = r(2, nb)
+        r(1, nb) = deti * (ci11 * r1 + ci12 * r2 + ci13 * r(3, nb))
+        r(2, nb) = deti * (ci21 * r1 + ci22 * r2 + ci23 * r(3, nb))
+        r(3, nb) = deti * (ci31 * r1 + ci32 * r2 + ci33 * r(3, nb))
+
+        do n = nb + 1, ne
+
+            r(1, n) = r(1, n) - l(1, n) * r(1, n - 1)
+            r(2, n) = r(2, n) - l(2, n) * r(2, n - 1)
+            r(3, n) = r(3, n) - l(3, n) * r(3, n - 1)
+
+            ci11 = c(2, 2, n) * c(3, 3, n) - c(2, 3, n) * c(3, 2, n)
+            ci12 = c(1, 3, n) * c(3, 2, n) - c(1, 2, n) * c(3, 3, n)
+            ci13 = c(1, 2, n) * c(2, 3, n) - c(1, 3, n) * c(2, 2, n)
+            ci21 = c(2, 3, n) * c(3, 1, n) - c(2, 1, n) * c(3, 3, n)
+            ci22 = c(1, 1, n) * c(3, 3, n) - c(1, 3, n) * c(3, 1, n)
+            ci23 = c(1, 3, n) * c(2, 1, n) - c(1, 1, n) * c(2, 3, n)
+            ci31 = c(2, 1, n) * c(3, 2, n) - c(2, 2, n) * c(3, 1, n)
+            ci32 = c(1, 2, n) * c(3, 1, n) - c(1, 1, n) * c(3, 2, n)
+            ci33 = c(1, 1, n) * c(2, 2, n) - c(1, 2, n) * c(2, 1, n)
+
+            deti = one / (c(1, 1, n) * ci11 + c(1, 2, n) * ci21 + c(1, 3, n) * ci31)
+            r1 = r(1, n)
+            r2 = r(2, n)
+            r(1, n) = deti * (ci11 * r1 + ci12 * r2 + ci13 * r(3, n))
+            r(2, n) = deti * (ci21 * r1 + ci22 * r2 + ci23 * r(3, n))
+            r(3, n) = deti * (ci31 * r1 + ci32 * r2 + ci33 * r(3, n))
+
+        end do
+
+    end subroutine tdia3x3
+
     subroutine vfEddyViscosity(iBeg, iEnd, jBeg, jEnd, kBeg, kEnd)
         !
         !       vfEddyViscosity computes the eddy-viscosity according to the
@@ -2147,4 +2292,164 @@ contains
 
     end subroutine kwCDterm
 #endif
+
+    function reThetaTCorrelation(Tu, lambdaTheta) result(reThetaT)
+        !
+        !       Compute the critical momentum-thickness Reynolds number
+        !       Re_theta_t from the Langtry-Menter correlation.
+        !       Uses smooth F(lambda_theta) from Eqs. 54-57.
+        !
+        !       Tu          : freestream turbulence intensity in percent
+        !       lambdaTheta : pressure-gradient parameter (0 for uniform inflow)
+        !
+        ! NOTE: deliberately NOT `only:`-restricted. This routine branches on
+        ! Tu, so Tapenade emits a pushControl/popControl pair, which
+        ! autoEditReverseFast.py rewrites into myIntPtr/myIntStack. Those live
+        ! in `constants`, and Tapenade propagates the `only:` list verbatim to
+        ! the generated code -- an `only:` list here makes turbUtils_fast_b.f90
+        ! fail to compile with "Symbol 'myintptr' has no IMPLICIT type".
+        use constants
+        use paramTurb, only: rsaGRpmax, rsaGRpmin, rsaGRtuFloor
+        implicit none
+
+        real(kind=realType), intent(in) :: Tu, lambdaTheta
+        real(kind=realType) :: reThetaT
+
+        real(kind=realType) :: Flambda, F1val, F2val, F3val, Tu_safe
+        ! Parameter (not a bare literal) so the CS build's checked interface
+        ! auto-promotes it -- see the note in paramTurb.F90.
+        real(kind=realType), parameter :: reThetaTFloor = 20.0_realType
+
+        Tu_safe = smoothMinMax(Tu, rsaGRtuFloor, rsaGRpmax)
+
+        ! --- Smooth F(lambda_theta) Eqs. 54-57 ---
+        ! Eq. 54: F1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-Tu/0.5)
+        F1val = one + 0.275_realType &
+                * (one - exp(-35.0_realType * lambdaTheta)) &
+                * exp(-Tu_safe / 0.5_realType)
+
+        ! Eq. 56: F2 = smoothMax(F1, 1)
+        F2val = smoothMinMax(F1val, one, rsaGRpmax)
+
+        ! Eq. 55: F3 = 1 - (-12.986*lam - 123.66*lam^2 - 405.689*lam^3)*exp(-(Tu/1.5)^1.5)
+        F3val = one - (-12.986_realType * lambdaTheta &
+                       - 123.66_realType * lambdaTheta**2 &
+                       - 405.689_realType * lambdaTheta**3) &
+                * exp(-(Tu_safe / 1.5_realType)**1.5_realType)
+
+        ! Eq. 57: F(lambda) = smoothMin(F2, F3)
+        Flambda = smoothMinMax(F2val, F3val, rsaGRpmin)
+
+        ! --- Re_theta_t(Tu) * F(lambda_theta) ---
+        if (Tu_safe <= 1.3_realType) then
+            reThetaT = (1173.51_realType &
+                        - 589.428_realType * Tu_safe &
+                        + 0.2196_realType / (Tu_safe**2)) * Flambda
+        else
+            reThetaT = 331.50_realType &
+                       * (Tu_safe - 0.5658_realType)**(-0.671_realType) * Flambda
+        end if
+
+        ! Floor at 20 (LM2009 correlation validity limit). With
+        ! lambda_theta unclamped (rsaGRclampLambdaTheta = .false.) the F3
+        ! cubic goes negative below lambda_theta ~ -0.23, which would give
+        ! a negative target Re_theta_t without this.
+        reThetaT = smoothMinMax(reThetaT, reThetaTFloor, rsaGRpmax)
+
+    end function reThetaTCorrelation
+
+    function flengthCorrelation(reThetaTilde) result(Flength)
+        !
+        !       Smooth Flength correlation (Eqs. 49-50).
+        !       Flength1 = exp(-3e-2 * (ReThetaTilde - 460))
+        !       Flength  = 44 - (44 - (0.5 - 3e-4*(ReThetaTilde-596))) / (1+Flength1)^(1/6)
+        !
+        use constants, only: realType, one
+        implicit none
+
+        real(kind=realType), intent(in) :: reThetaTilde
+        real(kind=realType) :: Flength
+
+        real(kind=realType) :: Flength1, base
+
+        ! Eq. 49
+        Flength1 = exp(-3.0e-2_realType * (reThetaTilde - 460.0_realType))
+
+        ! Eq. 50
+        base = one + Flength1
+        Flength = 44.0_realType - (44.0_realType &
+                  - (0.5_realType - 3.0e-4_realType * (reThetaTilde - 596.0_realType))) &
+                  / base**(one / 6.0_realType)
+
+    end function flengthCorrelation
+
+    function rethetacCorrelation(reThetaTilde) result(reThetaC)
+        !
+        !       Smooth Reθc correlation (Eq. 51).
+        !       Reθc = 0.67*ReThetaTilde + 24*sin(ReThetaTilde/240 + 0.5) + 14
+        !
+        use constants, only: realType
+        implicit none
+
+        real(kind=realType), intent(in) :: reThetaTilde
+        real(kind=realType) :: reThetaC
+
+        reThetaC = 0.67_realType * reThetaTilde &
+                 + 24.0_realType * sin(reThetaTilde / 240.0_realType + 0.5_realType) &
+                 + 14.0_realType
+
+    end function rethetacCorrelation
+
+    function smoothMinMax(g1, g2, p) result(phi)
+        !
+        !  Smooth max (p > 0) or min (p < 0) of two variables.
+        !  Algorithm 1, Piotrowski & Zingg (AIAA J. 2020,
+        !  doi:10.2514/1.J059784), Eqs. 43-45.
+        !
+        !       Phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+        !                     = b + log(1 + exp(p*(a-b))) / p   [min]
+        !  where a = max(g1,g2), b = min(g1,g2).
+        !
+        !  Proximity switch (Eq. 45): when |a-b| > lambda_switch
+        !  the smooth correction is below machine epsilon, so the
+        !  bare max/min is returned directly.
+        !
+        use constants
+        implicit none
+
+        real(kind=realType), intent(in) :: g1, g2, p
+        real(kind=realType) :: phi
+
+        real(kind=realType), parameter :: p_switch = 1.0e-15_realType
+        real(kind=realType) :: a, b, lambda_switch
+
+        ! Order with one if/else, not max()/min(): at a tie g1 == g2 the
+        ! intrinsics can both return the same argument, so AD (Tapenade) and
+        ! complex step each take their own branch and the derivative is wrong
+        ! (1 or 0 instead of 1/2). Here a and b are always distinct arguments.
+        if (g1 >= g2) then
+            a = g1
+            b = g2
+        else
+            a = g2
+            b = g1
+        end if
+        lambda_switch = log(abs(p) * p_switch) / abs(p)
+
+        if (p > 0.0_realType) then
+            if ((a - b) > -lambda_switch) then
+                phi = a
+            else
+                phi = a + log(one + exp(p * (b - a))) / p
+            end if
+        else
+            if ((a - b) > -lambda_switch) then
+                phi = b
+            else
+                phi = b + log(one + exp(p * (a - b))) / p
+            end if
+        end if
+
+    end function smoothMinMax
+
 end module turbUtils

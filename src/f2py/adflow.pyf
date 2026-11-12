@@ -29,6 +29,7 @@ python module libadflow
          integer(kind=inttype) parameter,optional :: komegamodified=5_inttype
          integer(kind=inttype) parameter,optional :: ktau=6_inttype
          integer(kind=inttype) parameter,optional :: mentersst=7_inttype
+         integer(kind=inttype) parameter,optional :: spalartallmarasnoft2gammaretheta=8_inttype
          integer(kind=inttype) parameter,optional :: v2f=10_inttype
          integer(kind=inttype) parameter,optional :: strain=1_inttype
          integer(kind=inttype) parameter,optional :: vorticity=2_inttype
@@ -1114,6 +1115,17 @@ python module libadflow
          real(kind=realtype) :: disscontmagnitude
          real(kind=realtype) :: disscontmidpoint
          real(kind=realtype) :: disscontsharpness
+         integer(kind=4) :: turbdadicoupled
+         logical :: transitionfirstorderupwind
+         logical :: transitioncrossflow
+         real(kind=realtype) :: transitionroughnessheight
+         logical :: transitionuseapproxsa
+         real(kind=realtype) :: transitionreflength
+         logical :: transitionsrcdtrestrict
+         real(kind=realtype) :: transitionsrcdtlimit
+         real(kind=realtype) :: transitionartvisc
+         real(kind=realtype) :: transitiondamptheta
+         integer(kind=inttype) :: transitiondampmaxiter
        end module inputiteration
 
        module inputmotion ! in :adflow:../../modules/inputParam.f90

@@ -2327,7 +2327,7 @@ contains
                     end do
                 end do
 
-            case (cgnsTurbOmega, cgnsTurbTau, cgnsTurbEpsilon)
+            case (cgnsTurbOmega, cgnsTurbTau, cgnsTurbEpsilon, cgnsTurbGamma)
                 do k = 1, ke
                     do j = 1, je
                         do i = 1, ie
@@ -2336,7 +2336,7 @@ contains
                     end do
                 end do
 
-            case (cgnsTurbV2)
+            case (cgnsTurbV2, cgnsTurbRetheta)
                 do k = 1, ke
                     do j = 1, je
                         do i = 1, ie
@@ -2717,7 +2717,7 @@ contains
                     end do
                 end do
 
-            case (cgnsResOmega, cgnsResTau, cgnsResEpsilon)
+            case (cgnsResOmega, cgnsResTau, cgnsResEpsilon, cgnsResGamma)
 
                 do k = 1, ke
                     do j = 1, je
@@ -2727,7 +2727,7 @@ contains
                     end do
                 end do
 
-            case (cgnsResV2)
+            case (cgnsResV2, cgnsResRetheta)
 
                 do k = 1, ke
                     do j = 1, je

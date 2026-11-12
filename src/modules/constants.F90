@@ -128,6 +128,7 @@ module constants
     integer(kind=intType), parameter :: &
         spalartAllmaras = 2, &
         spalartAllmarasEdwards = 3, &
+        spalartallmarasnoft2gammaretheta = 8, &
         komegaWilcox = 4, &
         komegaModified = 5, &
         ktau = 6, &

@@ -112,6 +112,7 @@ fortranFiles=	ADT/adtUtils.F90\
 		turbulence/turbCurveFits.F90\
 		turbulence/turbUtils.F90\
 		turbulence/sa.F90\
+		turbulence/saGammaRetheta.F90\
 		turbulence/kw.F90\
 		turbulence/kt.F90\
 		turbulence/SST.F90\

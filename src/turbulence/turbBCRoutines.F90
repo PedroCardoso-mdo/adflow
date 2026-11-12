@@ -436,6 +436,12 @@ contains
                 else
 
                     ! Inflow. Turbulent variables are prescribed.
+                    ! Standard ADflow farfield form for all models, including
+                    ! SA-gamma-Retheta: prescribed freestream value at the
+                    ! ghost (bmt = 0 default). At a genuine farfield the
+                    ! interior equals the freestream, so this enforces
+                    ! gamma = 1 and Retheta = correlation just as the
+                    ! face-value form would, without any special casing.
 
                     do l = nt1, nt2
                         select case (BCFaceID(nn))
@@ -453,6 +459,7 @@ contains
                             bvtk2(i, j, l) = wInf(l)
                         end select
                     end do
+
                 end if
             end do
         end do
@@ -873,6 +880,72 @@ contains
                 do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
                     do i = BCData(nn)%icBeg, BCData(nn)%icEnd
                         bmtk2(i, j, itu1, itu1) = one
+                    end do
+                end do
+            end select
+
+            !        ================================================================
+
+        case (spalartallmarasnoft2gammaretheta)
+
+            ! SA + transition model wall values:
+            ! nu~ = 0, gamma uses zero-gradient, retheta uses zero-gradient.
+            ! Use linear relation wHalo = bvt - bmt*wInt.
+            select case (BCFaceID(nn))
+            case (iMin)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmti1(i, j, itu1, itu1) = one
+                        bmti1(i, j, itu2, itu2) = -one
+                        bmti1(i, j, itu3, itu3) = -one
+                        bvti1(i, j, itu3) = zero
+                    end do
+                end do
+            case (iMax)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmti2(i, j, itu1, itu1) = one
+                        bmti2(i, j, itu2, itu2) = -one
+                        bmti2(i, j, itu3, itu3) = -one
+                        bvti2(i, j, itu3) = zero
+                    end do
+                end do
+            case (jMin)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtj1(i, j, itu1, itu1) = one
+                        bmtj1(i, j, itu2, itu2) = -one
+                        bmtj1(i, j, itu3, itu3) = -one
+                        bvtj1(i, j, itu3) = zero
+                    end do
+                end do
+            case (jMax)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtj2(i, j, itu1, itu1) = one
+                        bmtj2(i, j, itu2, itu2) = -one
+                        bmtj2(i, j, itu3, itu3) = -one
+                        bvtj2(i, j, itu3) = zero
+                    end do
+                end do
+
+            case (kMin)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtk1(i, j, itu1, itu1) = one
+                        bmtk1(i, j, itu2, itu2) = -one
+                        bmtk1(i, j, itu3, itu3) = -one
+                        bvtk1(i, j, itu3) = zero
+                    end do
+                end do
+
+            case (kMax)
+                do j = BCData(nn)%jcBeg, BCData(nn)%jcEnd
+                    do i = BCData(nn)%icBeg, BCData(nn)%icEnd
+                        bmtk2(i, j, itu1, itu1) = one
+                        bmtk2(i, j, itu2, itu2) = -one
+                        bmtk2(i, j, itu3, itu3) = -one
+                        bvtk2(i, j, itu3) = zero
                     end do
                 end do
             end select

@@ -19,6 +19,72 @@ module paramTurb
 !
     real(kind=realType) :: rsaCw1
 !
+!       SA-noft2-Gamma-Retheta constants.
+!
+    real(kind=realType), parameter :: sigmaTheta = 2.0_realType
+    real(kind=realType), parameter :: sigmaF     = 1.0_realType
+    real(kind=realType), parameter :: rsaGRca1   = 2.0_realType
+    real(kind=realType), parameter :: rsaGRca2   = 0.06_realType
+    real(kind=realType), parameter :: rsaGRce1   = 1.0_realType
+    real(kind=realType), parameter :: rsaGRce2   = 50.0_realType
+    real(kind=realType), parameter :: rsaGRcthetat = 0.03_realType
+    real(kind=realType), parameter :: rsaGRccrossflow = 0.6_realType
+    ! Divisor of the vorticity cap in P_gamma / E_gamma (P&Z Eqs. 52-53): M sqrt(M Re) / 20
+    real(kind=realType), parameter :: rsaGRvortLimScale = 20.0_realType
+!
+!       SA-noft2-Gamma-Retheta correlation constants (paper Eqs. 54-57, 15-26).
+!       Named module-level parameters, NOT bare literals, at smoothMinMax()
+!       call sites: a bare `0.4_realType`-style literal argument fails to
+!       complexify (the complex build's smoothMinMax has an explicit
+!       COMPLEX interface, and Fortran does not auto-promote a REAL literal
+!       actual argument to COMPLEX at a checked interface -- it only
+!       auto-promotes on assignment/parameter-initialization, which is why
+!       `one`/`zero`/`rsaGRpmax` work here but a bare literal doesn't).
+!
+    real(kind=realType), parameter :: rsaGRtuFloor = 0.027_realType
+    real(kind=realType), parameter :: rsaGRlambdaThetaMin = -0.1_realType
+    real(kind=realType), parameter :: rsaGRlambdaThetaMax = 0.1_realType
+    ! 2026-08-03 test (NLF0416 exact-grid showed +22/+30 counts vs paper
+    ! above the drag bucket): the +-0.1 lambda_theta clamp is a legacy
+    ! LM2009 prescription that is NOT part of the P&Z smooth model -- their
+    ! F(lambda_theta) (Eqs. 54-57) carries its own smooth saturations.
+    ! TESTED 2026-08-03 and REJECTED: unclamped lambda_theta stalls the
+    ! solver (~1e-4 plateau on S809 SB3 alpha 4-6 at 300k cycles) and moves
+    ! cd AWAY from the paper (+106..129 counts vs clamped 67..116 vs paper
+    ! ~63-85). The +-0.1 bound is part of the correlation's validity domain
+    ! (separated-flow dU/ds drives lambda_theta far outside it near the
+    ! bubble). Keep .true.; the switch remains for future experiments.
+    logical, parameter :: rsaGRclampLambdaTheta = .true.
+    real(kind=realType), parameter :: rsaGRcrossflowRatioCap = 0.4_realType
+    real(kind=realType), parameter :: rsaGRhcfRef = 0.1066_realType
+!
+!       SA-noft2-Gamma-Retheta smooth-Fonset constants.
+!
+    real(kind=realType), parameter :: rsaGRfonsetC  = 2.6_realType
+    real(kind=realType), parameter :: rsaGRfonsetK  = 6.0_realType
+    real(kind=realType), parameter :: rsaGRfonsetS  = 1.35_realType
+    real(kind=realType), parameter :: rsaGRpmin = -300.0_realType
+    real(kind=realType), parameter :: rsaGRpmax  =  300.0_realType
+    ! rsaGRdampTheta moved to inputIteration as transitionDampTheta (configurable)
+    real(kind=realType), parameter :: rsaGRgammaLo  = 1.e-10_realType
+    real(kind=realType), parameter :: rsaGRgammaHi  = 2.0_realType
+    real(kind=realType), parameter :: rsaGRreThetaLo = 20.0_realType
+!
+!       SA-Gamma-Retheta stabilization: source dt restriction and scaling.
+!
+    real(kind=realType), parameter :: rsaGRsrcDtLimit = 0.9_realType
+
+!       srcLambda eigenvalue modes (distinct from TurbDADICoupled).
+!
+    integer(kind=intType), parameter :: srcLambdaModeDecoupled  = 0_intType
+    integer(kind=intType), parameter :: srcLambdaModeTransition = 1_intType
+    integer(kind=intType), parameter :: srcLambdaModeFull       = 2_intType
+
+!       transitionDebug slot count (must match comment block in saGammaRetheta.F90).
+!       Do NOT renumber existing slots — append new ones at the end.
+    integer(kind=intType), parameter :: nTransitionDebug = 51_intType
+
+!
 !       K-omega constants.
 !
     real(kind=realType), parameter :: rkwK = 0.41_realType

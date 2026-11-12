@@ -1,0 +1,2913 @@
+module saGammaReTheta
+
+    ! This module contains the source code for SA-sLM2015 turbulence
+    ! model. It is slightly more modularized than the original which makes
+    ! performing reverse mode AD simplier.
+
+    ! transitionDebug slot map (nTransitionDebug = 51; see paramTurb.F90).
+    ! Do NOT renumber existing slots — append new ones at the end.
+    !  1  fonset            fOnset
+    !  2  fonset1           fOnset1
+    !  3  flength           fLength_val
+    !  4  rturb             rTurb
+    !  5  rethetatarget     reThetaT_target
+    !  6  res               reS_val
+    !  7  rethetac          reThetaC_val
+    !  8  resovercrit       reS_val / (2.6 * reThetaC_val)
+    !  9  strainmag         strainMag
+    ! 10  fthetat           fThetaT
+    ! 11  fwake             fWake_val
+    ! 12  dudx              dudx
+    ! 13  dudy              dudy
+    ! 14  dudz              dudz
+    ! 15  dvdx              dvdx
+    ! 16  dvdy              dvdy
+    ! 17  dvdz              dvdz
+    ! 18  dwdx              dwdx
+    ! 19  dwdy              dwdy
+    ! 20  dwdz              dwdz
+    ! 21  transgamma        w(i,j,k,itu2)  [γ state; slot 21 = cgnsTurbGamma]
+    ! 22  transwalldist     yDist
+    ! 23  transrho          w(i,j,k,irho)
+    ! 24  transmu           rlv(i,j,k)
+    ! 25  gammaprod         pGamma
+    ! 26  gammadest         eGamma
+    ! 27  transtimescale    timeScale
+    ! 28  translambdatheta  lambdaThetaLocal
+    ! 29  transpretheta     pReTheta
+    ! 30  gammaforsa        gammaForSA  [min(max(γ,0),1) seen by SA production]
+    ! 31  gammalocal        gammaLocal  [min(max(γ,γ_lo),1) in transition eqs]
+    ! 32  transvortmag      vortMag     [raw |ω| before limiter]
+    ! 33  transvortmaglim   vortMagLim  [limited |ω| used in sources]
+    ! 34  fturb             fTurb_val   [γ destruction switch exp(-(RT/4)^4)]
+    ! 35  sastrainrate      ss          [S, raw strain rate]
+    ! 36  samodstrainrate   sst         [S̃, SA-modified strain with wall correction]
+    ! 37  ft2               ft2         [SA ft2 function]
+    ! 38  thetabl           thetaBL     [BL momentum thickness]
+    ! 39  deltabl           deltaBL     [7.5·θ_BL]
+    ! 40  transdelta        delta       [BL thickness for fThetaT shielding]
+    ! 41  transvelmag       velMag      [|U|]
+    ! 42  duds              dUds        [dU/ds streamwise gradient]
+    ! 43  nutsa             nutSA       [w(itu1)·fv1, SA eddy viscosity]
+    ! 44  rethetatilde      reThetaTilde [max(w(itu3),1)]
+    ! 45  transvortlim      vortLim     [vorticity limiter threshold]
+    ! 46  qq11              qq(i,j,k,1,1) [SA diagonal Jacobian]
+    ! 47  qq22              qq(i,j,k,2,2) [γ diagonal Jacobian]
+    ! 48  qq33              qq(i,j,k,3,3) [Re̅θt diagonal Jacobian]
+    ! 49  dscf              dScf         [crossflow source term]
+    ! 50  rescf             reScf        [crossflow Reynolds number]
+    ! 51  hcf               hcf          [helicity-based crossflow metric]
+
+    use constants, only: realType, zero
+
+    real(kind=realType), dimension(:, :, :, :, :), allocatable :: qq
+
+    ! One-shot flag so the rotating-frame warning prints only once per run.
+    logical :: rotWarnDone = .false.
+
+contains
+
+    subroutine saGammaReTheta_block(resOnly)
+
+        use constants
+        use blockPointers, only: il, jl, kl
+        use inputTimeSpectral
+        use iteration
+        use turbUtils, only: turbAdvection, unsteadyTurbTerm, saEddyViscosity
+        use turbBCRoutines, only: bcTurbTreatment, applyAllTurbBCThisBlock
+        implicit none
+
+        !
+        !      Subroutine argument.
+        !
+        logical, intent(in) :: resOnly
+        !
+        !      Local variables.
+        !
+        integer(kind=intType) :: nn, sps
+
+        ! One-time heads-up about the rotating-frame status of the model.
+        ! Hidden from Tapenade (diagnostic only, pulls in communication/cgnsGrid).
+#ifndef USE_TAPENADE
+        call warnRotatingTransition
+#endif
+
+        ! Set the arrays for the boundary condition treatment.
+
+        call bcTurbTreatment
+
+        ! Alloc central jacobian memory
+        allocate (qq(2:il,2:jl,2:kl,3,3))
+
+        ! Source Terms
+        call Source
+
+        ! Advection Term. First-order upwind for the transition
+        ! equations (paper Sec. IV.A) is enforced inside turbAdvection
+        ! itself (single point of truth for all solver/adjoint paths).
+        nn = itu1 - 1
+        call turbAdvection(3_intType, 3_intType, nn, qq)
+
+        call unsteadyTurbTerm(3_intType, 3_intType, nn, qq)
+
+        ! Viscous Terms
+        call Viscous
+
+        ! Perform the residual scaling
+        call ResScale
+
+
+
+        ! The eddy viscosity and the boundary conditions are only
+        ! applied if an actual update has been computed in saGammaReThetaSolve.
+
+        if (.not. resOnly) then
+
+            ! Solve the transport equations for v, gamma, Retheta.
+
+            call saGammaReThetaSolve(resOnly)
+
+            ! Compute the corresponding eddy viscosity.
+
+            call saEddyViscosity(2, il, 2, jl, 2, kl)
+
+            ! Set the halo values for the turbulent variables.
+            ! We are on the finest mesh, so the second layer of halo
+            ! cells must be computed as well.
+
+            call applyAllTurbBCThisBlock(.true.)
+        end if
+        deallocate (qq)
+
+    end subroutine saGammaReTheta_block
+
+#ifndef USE_TAPENADE
+    subroutine warnRotatingTransition
+        !
+        ! One-time warning (rank 0) about the rotating-frame status when the
+        ! SA-GR transition model is active. Tells the user which form defined
+        ! the rotation and whether the model's relative-frame boundary-layer
+        ! correction (V_rel = V_abs - Omega x r) is actually being applied.
+        ! cgnsDoms and sections are globally replicated, so no MPI is needed.
+        ! Not differentiated (called only from the block driver, not Source).
+        !
+        use constants
+        use communication, only: myID
+        use cgnsGrid, only: cgnsDoms, cgnsNDom
+        use section, only: sections, nSections
+        implicit none
+
+        integer(kind=intType) :: n
+        logical :: secRot, cgnsRot
+        real(kind=realType), parameter :: rotEps = 1.0e-14_realType
+
+        if (rotWarnDone) return
+        rotWarnDone = .true.
+        if (myID /= 0) return
+
+        ! Form A: rotation carried through to the sections (rotating frame of
+        ! reference defined in the grid). This is the rate the transition
+        ! model reads, so the relative-frame correction IS applied.
+        secRot = .false.
+        do n = 1, nSections
+            if (sections(n)%rotRate(1)**2 + sections(n)%rotRate(2)**2 &
+                + sections(n)%rotRate(3)**2 > rotEps) secRot = .true.
+        end do
+
+        ! Form B: rotation set on the CGNS domains only (e.g. Python
+        ! setRotationRate), not propagated to the sections -> the transition
+        ! model does not see it and the correction is NOT applied.
+        cgnsRot = .false.
+        do n = 1, cgnsNDom
+            if (cgnsDoms(n)%rotRate(1)**2 + cgnsDoms(n)%rotRate(2)**2 &
+                + cgnsDoms(n)%rotRate(3)**2 > rotEps) cgnsRot = .true.
+        end do
+
+        if (secRot) then
+            print "(a)", "#"
+            print "(a)", "#               Warning!!!!"
+            print "(a)", "# SA-GR transition: a rotating frame of reference is active"
+            print "(a)", "# (rotation defined in the grid / sections). The transition"
+            print "(a)", "# model is applying its relative-frame boundary-layer"
+            print "(a)", "# correction: V_rel = V_abs - Omega x r."
+            print "(a)", "#"
+        else if (cgnsRot) then
+            print "(a)", "#"
+            print "(a)", "#               Warning!!!!"
+            print "(a)", "# SA-GR transition: rotation is defined on the CGNS domains"
+            print "(a)", "# (e.g. via setRotationRate) but is NOT propagated to the"
+            print "(a)", "# sections, so the transition model's relative-frame"
+            print "(a)", "# correction is NOT active -- boundary-layer quantities use"
+            print "(a)", "# the absolute velocity. Define the rotation in the grid"
+            print "(a)", "# (rotating frame of reference) to enable the correction."
+            print "(a)", "#"
+        end if
+
+    end subroutine warnRotatingTransition
+#endif
+
+
+
+    
+    subroutine Source
+        !
+        !  Source terms.
+        !  Determine the source term and its derivative w.r.t. nuTilde
+        !  for all internal cells of the block.
+        !  Remember that the SA field variable nuTilde = w(i,j,k,itu1)
+
+        use blockPointers
+        use constants
+        use paramTurb
+        use section
+        use inputPhysics
+        use turbMod, only: dvt, vort, prod, kwCD, f1
+        use inputDiscretization, only: approxSA
+        use flowVarRefState
+        use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
+        use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
+                      transitionSrcDtRestrict, transitionUseApproxSA, transitionRefLength
+        implicit none
+
+        ! Local parameters
+        real(kind=realType), parameter :: f23 = two * third
+        integer(kind=intType), parameter :: dbgFonset = 1_intType
+        integer(kind=intType), parameter :: dbgFonset1 = 2_intType
+        integer(kind=intType), parameter :: dbgFlength = 3_intType
+        integer(kind=intType), parameter :: dbgRturb = 4_intType
+        integer(kind=intType), parameter :: dbgReThetaTarget = 5_intType
+        integer(kind=intType), parameter :: dbgReS = 6_intType
+        integer(kind=intType), parameter :: dbgReThetaC = 7_intType
+        integer(kind=intType), parameter :: dbgReSOverCrit = 8_intType
+        integer(kind=intType), parameter :: dbgStrainMag = 9_intType
+        integer(kind=intType), parameter :: dbgFthetaT = 10_intType
+        integer(kind=intType), parameter :: dbgFwake = 11_intType
+        integer(kind=intType), parameter :: dbgDudx = 12_intType
+        integer(kind=intType), parameter :: dbgDudy = 13_intType
+        integer(kind=intType), parameter :: dbgDudz = 14_intType
+        integer(kind=intType), parameter :: dbgDvdx = 15_intType
+        integer(kind=intType), parameter :: dbgDvdy = 16_intType
+        integer(kind=intType), parameter :: dbgDvdz = 17_intType
+        integer(kind=intType), parameter :: dbgDwdx = 18_intType
+        integer(kind=intType), parameter :: dbgDwdy = 19_intType
+        integer(kind=intType), parameter :: dbgDwdz = 20_intType
+        integer(kind=intType), parameter :: dbgGamma = 21_intType
+        integer(kind=intType), parameter :: dbgWallDist = 22_intType
+        integer(kind=intType), parameter :: dbgRho = 23_intType
+        integer(kind=intType), parameter :: dbgMu = 24_intType
+        integer(kind=intType), parameter :: dbgGammaProd = 25_intType
+        integer(kind=intType), parameter :: dbgGammaDest = 26_intType
+        integer(kind=intType), parameter :: dbgTimeScale = 27_intType
+        integer(kind=intType), parameter :: dbgLambdaTheta = 28_intType
+        integer(kind=intType), parameter :: dbgPReTheta = 29_intType
+        integer(kind=intType), parameter :: dbgGammaForSA = 30_intType
+        integer(kind=intType), parameter :: dbgGammaLocal = 31_intType
+        integer(kind=intType), parameter :: dbgVortMag = 32_intType
+        integer(kind=intType), parameter :: dbgVortMagLim = 33_intType
+        integer(kind=intType), parameter :: dbgFturb = 34_intType
+        integer(kind=intType), parameter :: dbgSS = 35_intType
+        integer(kind=intType), parameter :: dbgSST = 36_intType
+        integer(kind=intType), parameter :: dbgFt2 = 37_intType
+        integer(kind=intType), parameter :: dbgThetaBL = 38_intType
+        integer(kind=intType), parameter :: dbgDeltaBL = 39_intType
+        integer(kind=intType), parameter :: dbgDelta = 40_intType
+        integer(kind=intType), parameter :: dbgVelMag = 41_intType
+        integer(kind=intType), parameter :: dbgDUds = 42_intType
+        integer(kind=intType), parameter :: dbgNutSA = 43_intType
+        integer(kind=intType), parameter :: dbgReThetaTilde = 44_intType
+        integer(kind=intType), parameter :: dbgVortLim = 45_intType
+        integer(kind=intType), parameter :: dbgQQ11 = 46_intType
+        integer(kind=intType), parameter :: dbgQQ22 = 47_intType
+        integer(kind=intType), parameter :: dbgQQ33 = 48_intType
+        integer(kind=intType), parameter :: dbgDScf = 49_intType
+        integer(kind=intType), parameter :: dbgReScf = 50_intType
+        integer(kind=intType), parameter :: dbgHcf = 51_intType
+
+        ! Local variables.
+        integer(kind=intType) :: i, j, k, nn, ii
+        real(kind=realType) :: fv1, fv2, ft2
+        real(kind=realType) :: ss, sst, nu, dist2Inv, chi, chi2, chi3
+        real(kind=realType) :: rr, gg, gg6, termFw, fwSa, term1, term2
+        real(kind=realType) :: term2_prod, term2_dest
+        real(kind=realType) :: cv13, kar2Inv, cw36, cb3Inv
+        real(kind=realType), parameter :: gammaStatic = one
+        real(kind=realType), parameter :: reThetaStatic = one
+        real(kind=realType) :: dfv1, dfv2, dft2, drr, dgg, dfw
+        real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
+        real(kind=realType) :: div2, fact, sxx, syy, szz, sxy, sxz, syz
+        real(kind=realType) :: vortx, vorty, vortz
+        real(kind=realType) :: omegax, omegay, omegaz
+        real(kind=realType) :: strainMag2, strainProd, vortProd
+        real(kind=realType), parameter :: xminn = 1.e-10_realType
+
+        ! Gamma-ReTheta source term variables
+        real(kind=realType) :: vortMag, strainMag
+        real(kind=realType) :: nutSA, rTurb, gammaLocal, reThetaTilde
+        real(kind=realType) :: gammaForSA
+        real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
+        real(kind=realType) :: reThetaOnset
+        real(kind=realType) :: fOnset, fOnset1
+        real(kind=realType) :: vortLim, vortMagLim, refLenTrans
+        real(kind=realType) :: pGamma, eGamma
+        real(kind=realType) :: velMag, velMag2, timeScale, reThetaT_target
+        real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
+        real(kind=realType) :: gammaEff, gammaTerm
+        real(kind=realType) :: pReTheta, dScf, reScf, hcf
+        real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
+        real(kind=realType) :: yDist
+        ! Rotating-frame (relative-velocity) helpers. See the block near
+        ! velMag below: V_rel = V_abs - Omega x r. Omega (rotRate) is a fixed
+        ! input, so sc is computed unconditionally; a non-rotating section has
+        ! rotRate = 0 => sc = 0 exactly, a bit-identical no-op.
+        real(kind=realType) :: xc(3), xxc(3), sc(3)
+        real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
+        real(kind=realType) :: uxhat, uyhat, uzhat, dUds, lambdaThetaLocal
+        real(kind=realType) :: lambdaThetaRaw, lambdaThetaClamped
+        real(kind=realType) :: dudx, dudy, dudz, dvdx, dvdy, dvdz
+        real(kind=realType) :: dwdx, dwdy, dwdz
+        real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
+        real(kind=realType) :: dfOnset1_drT, dfOnset_dfOnset1
+        real(kind=realType) :: F1_val, base_val, inner_val
+        real(kind=realType) :: dFlength_dReT, dReThetaC_dReT
+        real(kind=realType) :: dfOnset1_dReT, dfOnset_dReT, dPgamma_dReT
+        real(kind=realType) :: dEgamma_dReT
+        real(kind=realType) :: pGamma_common, sech2_val
+
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+        cb3Inv = one / rsaCb3
+
+#ifndef USE_TAPENADE
+        ! Initialize the full 3x3 turbulence Jacobian block to avoid
+        ! uninitialized off-diagonal entries contaminating ANK/DADI.
+        qq = zero
+#endif
+
+        ! Determine the non-dimensional wheel speed of this block.
+
+        omegax = timeRef * sections(sectionID)%rotRate(1)
+        omegay = timeRef * sections(sectionID)%rotRate(2)
+        omegaz = timeRef * sections(sectionID)%rotRate(3)
+
+        ! Create switches to production term depending on the variable that
+        ! should be used
+        if (turbProd .eq. katoLaunder) then
+            print *, 'katoLaunder production term not supported for SA'
+            stop
+        end if
+
+#ifdef TAPENADE_REVERSE
+        !$AD II-LOOP
+        do ii = 0, nx * ny * nz - 1
+            i = mod(ii, nx) + 2
+            j = mod(ii / nx, ny) + 2
+            k = ii / (nx * ny) + 2
+#else
+            do k = 2, kl
+                do j = 2, jl
+                    do i = 2, il
+#endif
+                        ! Compute the gradient of u in the cell center. Use is made
+                        ! of the fact that the surrounding normals sum up to zero,
+                        ! such that the cell i,j,k does not give a contribution.
+                        ! The gradient is scaled by the factor 2*vol.
+
+                        uux = w(i + 1, j, k, ivx) * si(i, j, k, 1) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 1) &
+                              + w(i, j + 1, k, ivx) * sj(i, j, k, 1) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 1) &
+                              + w(i, j, k + 1, ivx) * sk(i, j, k, 1) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 1)
+                        uuy = w(i + 1, j, k, ivx) * si(i, j, k, 2) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 2) &
+                              + w(i, j + 1, k, ivx) * sj(i, j, k, 2) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 2) &
+                              + w(i, j, k + 1, ivx) * sk(i, j, k, 2) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 2)
+                        uuz = w(i + 1, j, k, ivx) * si(i, j, k, 3) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 3) &
+                              + w(i, j + 1, k, ivx) * sj(i, j, k, 3) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 3) &
+                              + w(i, j, k + 1, ivx) * sk(i, j, k, 3) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 3)
+
+                        ! Idem for the gradient of v.
+
+                        vvx = w(i + 1, j, k, ivy) * si(i, j, k, 1) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 1) &
+                              + w(i, j + 1, k, ivy) * sj(i, j, k, 1) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 1) &
+                              + w(i, j, k + 1, ivy) * sk(i, j, k, 1) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 1)
+                        vvy = w(i + 1, j, k, ivy) * si(i, j, k, 2) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 2) &
+                              + w(i, j + 1, k, ivy) * sj(i, j, k, 2) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 2) &
+                              + w(i, j, k + 1, ivy) * sk(i, j, k, 2) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 2)
+                        vvz = w(i + 1, j, k, ivy) * si(i, j, k, 3) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 3) &
+                              + w(i, j + 1, k, ivy) * sj(i, j, k, 3) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 3) &
+                              + w(i, j, k + 1, ivy) * sk(i, j, k, 3) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 3)
+
+                        ! And for the gradient of w.
+
+                        wwx = w(i + 1, j, k, ivz) * si(i, j, k, 1) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 1) &
+                              + w(i, j + 1, k, ivz) * sj(i, j, k, 1) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 1) &
+                              + w(i, j, k + 1, ivz) * sk(i, j, k, 1) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 1)
+                        wwy = w(i + 1, j, k, ivz) * si(i, j, k, 2) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 2) &
+                              + w(i, j + 1, k, ivz) * sj(i, j, k, 2) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 2) &
+                              + w(i, j, k + 1, ivz) * sk(i, j, k, 2) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 2)
+                        wwz = w(i + 1, j, k, ivz) * si(i, j, k, 3) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 3) &
+                              + w(i, j + 1, k, ivz) * sj(i, j, k, 3) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 3) &
+                              + w(i, j, k + 1, ivz) * sk(i, j, k, 3) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 3)
+
+                        ! Compute the components of the stress tensor.
+                        ! The combination of the current scaling of the velocity
+                        ! gradients (2*vol) and the definition of the stress tensor,
+                        ! leads to the factor 1/(4*vol).
+
+                        fact = fourth / vol(i, j, k)
+
+                        if (turbProd .eq. strain) then
+
+                            sxx = two * fact * uux
+                            syy = two * fact * vvy
+                            szz = two * fact * wwz
+
+                            sxy = fact * (uuy + vvx)
+                            sxz = fact * (uuz + wwx)
+                            syz = fact * (vvz + wwy)
+
+                            ! Compute 2/3 * divergence of velocity squared
+
+                            div2 = f23 * (sxx + syy + szz)**2
+
+                            ! Compute strain production term
+
+                            strainMag2 = two * (sxy**2 + sxz**2 + syz**2) &
+                                         + sxx**2 + syy**2 + szz**2
+
+                            strainProd = two * strainMag2 - div2
+
+                            ss = sqrt(strainProd)
+
+                        else if (turbProd .eq. vorticity) then
+
+                            ! Compute the three components of the vorticity vector.
+                            ! Substract the part coming from the rotating frame.
+
+                            vortx = two * fact * (wwy - vvz) - two * omegax
+                            vorty = two * fact * (uuz - wwx) - two * omegay
+                            vortz = two * fact * (vvx - uuy) - two * omegaz
+
+                            ! Compute the vorticity production term
+
+                            vortProd = vortx**2 + vorty**2 + vortz**2
+
+                            ! First take the square root of the production term to
+                            ! obtain the correct production term for spalart-allmaras.
+                            ! We do this to avoid if statements.
+
+                            ss = sqrt(vortProd)
+
+                        end if
+
+                        ! Compute the laminar kinematic viscosity, the inverse of
+                        ! wall distance squared, the ratio chi (ratio of nuTilde
+                        ! and nu) and the functions fv1 and fv2. The latter corrects
+                        ! the production term near a viscous wall.
+
+                        nu = rlv(i, j, k) / w(i, j, k, irho)
+                        dist2Inv = one / (d2Wall(i, j, k)**2)
+                        chi = w(i, j, k, itu1) / nu
+                        chi2 = chi * chi
+                        chi3 = chi * chi2
+                        fv1 = chi3 / (chi3 + cv13)
+                        fv2 = one - chi / (one + chi * fv1)
+
+                        ! The function ft2, which is designed to keep a laminar
+                        ! solution laminar. When running in fully turbulent mode
+                        ! this function should be set to 0.0.
+
+                        if (useft2SA) then
+                            ft2 = rsaCt3 * exp(-rsaCt4 * chi2)
+                        else
+                            ft2 = zero
+                        end if
+
+                        ! Correct the production term to account for the influence
+                        ! of the wall.
+
+                        sst = ss + w(i, j, k, itu1) * fv2 * kar2Inv * dist2Inv
+
+                        ! Add rotation term (useRotationSA defined in inputParams.F90)
+
+                        if (useRotationSA) then
+                            sst = sst + rsaCrot * min(zero, sqrt(two * strainMag2))
+                        end if
+
+                        ! Make sure that this term remains positive
+                        ! (the function fv2 is negative between chi = 1 and 18.4,
+                        ! which can cause sst to go negative, which is undesirable).
+
+                        sst = max(sst, xminn)
+
+                        ! Compute the function fw. The argument rr is cut off at 10
+                        ! to avoid numerical problems. This is ok, because the
+                        ! asymptotical value of fw is then already reached.
+
+                        rr = w(i, j, k, itu1) * kar2Inv * dist2Inv / sst
+                        rr = min(rr, 10.0_realType)
+                        gg = rr + rsaCw2 * (rr**6 - rr)
+                        gg6 = gg**6
+                        termFw = ((one + cw36) / (gg6 + cw36))**sixth
+                        fwSa = gg * termFw
+
+                        ! --- Compute vorticity and strain magnitudes ---
+                        vortx = two * fact * (wwy - vvz) - two * omegax
+                        vorty = two * fact * (uuz - wwx) - two * omegay
+                        vortz = two * fact * (vvx - uuy) - two * omegaz
+                        vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+                        sxx = two * fact * uux
+                        syy = two * fact * vvy
+                        szz = two * fact * wwz
+                        sxy = fact * (uuy + vvx)
+                        sxz = fact * (uuz + wwx)
+                        syz = fact * (vvz + wwy)
+
+                        strainMag2 = two*(sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
+                        strainMag  = sqrt(max(two*strainMag2, xminn))
+
+                        ! Compute the source term; some terms are saved for the
+                        ! linearization. The source term is stored in scratch.
+
+                        ! Clamp the intermittency multiplying SA production
+                        ! (Eq. 41: P~_nu = gamma*P_nu). gamma is the RAW
+                        ! intermittency in [0,1] here: unlike standard
+                        ! Langtry-Menter, P&Z drop the separation-induced
+                        ! gamma_sep term (Sec. II), so the SA-production
+                        ! multiplier never exceeds 1 -- hence the upper cap is
+                        ! ~1 (one + xminn), NOT rsaGRgammaHi=2.0 (that 2.0 is
+                        ! gammaLocal's raw solver-state bound from Algorithm 2, a
+                        ! different role). This is a failure/divergence safeguard,
+                        ! not normal physics -- gamma stays in [0,1] on its own in
+                        ! any healthy solve. A bare min(max(gamma,0),1) ties
+                        ! exactly at gamma==1, which gamma legitimately reaches
+                        ! over large fully-turbulent regions, and Tapenade's
+                        ! forward tangent picks the wrong branch there vs.
+                        ! complex-step (confirmed 2026-07-23 by cell-by-cell
+                        ! AD-vs-CS diffing: every mismatched cell in
+                        ! dR[nuTilde]/dw[gamma] had gamma==1.0 bit-exact, CS=0
+                        ! correctly, AD nonzero incorrectly). Padding the upper
+                        ! bound to one + xminn keeps gamma==1.0 strictly inside
+                        ! the pass-through region (xminn=1e-10 >> the observed
+                        ! ~1-ULP overshoot), removing the tie. The lower bound
+                        ! xminn is only met asymptotically (steady-state gamma
+                        ! respects the implicit 0.02 floor), so it carries no tie
+                        ! risk and just guards divergent/negative gamma.
+                        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
+
+                        if (approxSA .and. transitionUseApproxSA) then
+                            term1 = zero
+                        else
+                            term1 = gammaForSA * rsaCb1 * (one - ft2) * ss
+                        end if
+
+                        ! Split term2 into production and destruction parts.
+                        ! Production: near-wall correction from Cb1*fv2/(kappa^2*d^2)
+                        ! Destruction: -Cw1*fw/d^2
+                        ! Gamma multiplies only production.
+                        term2_prod = dist2Inv * kar2Inv * rsaCb1 &
+                                     * ((one - ft2) * fv2 + ft2)
+                        term2_dest = -dist2Inv * rsaCw1 * fwSa
+
+                        ! Effective term2 with gamma on production only
+                        term2 = gammaForSA * term2_prod + term2_dest
+
+                        scratch(i, j, k, idvt) = (term1 + term2 * w(i, j, k, itu1)) * w(i, j, k, itu1)
+
+                        ! ========================================================
+                        ! Gamma and ReTheta source terms (sLangtry-Menter)
+                        ! ========================================================
+
+                        ! --- Local variables ---
+                        !v_t= ν̃ · fv1 is the SA eddy viscosity
+                        nutSA = w(i, j, k, itu1) * fv1
+                        !rTurb= ν_t/ν
+                        rTurb = nutSA / nu
+                        ! gammaLocal clamps intermittency to [rsaGRgammaLo,
+                        ! rsaGRgammaHi] = [1e-10, 2.0] -- these are the model's
+                        ! own bounds from Algorithm 2 (P&Z Eq. context, line 630:
+                        ! "while gamma > 2 or gamma < 1e-10 ... limit
+                        ! intermittency"), NOT arbitrary numbers, so they stay as
+                        ! defined. Unlike gammaForSA above (whose min(.,1) ties at
+                        ! gamma's natural saturation value 1.0 -> AD-vs-CS branch
+                        ! mismatch, fixed there with a margin), gammaLocal's upper
+                        ! bound is 2.0, so gamma==1.0 sits STRICTLY INTERIOR: no
+                        ! tie point at any value gamma naturally reaches, hence no
+                        ! margin needed here. The 1e-10 lower bound is only met
+                        ! asymptotically (gamma->0 in fully laminar regions is not
+                        ! bit-exact), so it too carries no tie risk. reThetaTilde's
+                        ! floor (Algorithm 2: reThetat clamped >= 20) is likewise a
+                        ! plain hard clamp.
+                        gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
+                        reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
+                        yDist = d2Wall(i, j, k)
+
+                        ! --- Relative (rotating-frame) velocity ---
+                        ! ADflow stores the ABSOLUTE velocity in w(:,ivx:ivz)
+                        ! (a rotating no-slip wall carries u = Omega x r, not
+                        ! zero; see solverUtils.F90 wall BC). The boundary-layer
+                        ! correlations below (theta_BL Eq.4, time scale Eq.7,
+                        ! lambda_theta Eq.10, delta Eq.4, helicity Eq.26) are
+                        ! defined in the frame where the BL is steady = the
+                        ! relative (rotating) frame, so they must use
+                        ! V_rel = V_abs - Omega x r.
+                        ! Cell center from the 8 surrounding nodes and
+                        ! sc = Omega x (xc - rotCenter) follow the pattern in
+                        ! solverUtils.F90:gridVelocitiesFineLevel_block; omegax/y/z
+                        ! are already timeRef-scaled (see above). For a
+                        ! non-rotating section rotRate = 0 => sc = 0 exactly, so
+                        ! V_rel = V_abs and every term below is bit-identical.
+                        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+                              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+                              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+                        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+                              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+                              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+                        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+                              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+                              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+                        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+                        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+                        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+                        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+                        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+                        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+                        velRelx = w(i, j, k, ivx) - sc(1)
+                        velRely = w(i, j, k, ivy) - sc(2)
+                        velRelz = w(i, j, k, ivz) - sc(3)
+                        velMag2 = velRelx**2 + velRely**2 + velRelz**2
+                        velMag = sqrt(max(velMag2, xminn))
+
+                        ! Streamwise velocity gradient dU/ds (used by lambdaTheta =
+                        ! (thetaBL^2 / nu) * dU/ds below).
+                        ! Streamwise unit vector is along the RELATIVE velocity
+                        ! (rotating-frame streamline). The velocity-gradient
+                        ! stencils (uux..wwz) stay absolute: dU/ds contracts them
+                        ! with the symmetric u_hat_i u_hat_j, and the antisymmetric
+                        ! rotation part of d(V_rel)/dx - d(V_abs)/dx cancels there,
+                        ! so only u_hat needs the relative velocity.
+                        uxhat = velRelx / max(velMag, xminn)
+                        uyhat = velRely / max(velMag, xminn)
+                        uzhat = velRelz / max(velMag, xminn)
+                        dUds = two * fact &
+                             * (uxhat * (uxhat * uux + uyhat * uuy + uzhat * uuz) &
+                              + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
+                              + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
+
+                        ! Onset Reynolds number seen by the Re_theta_c and Flength correlations.
+                        ! Kept as its own variable so that the reverse-mode code accumulates
+                        ! its adjoint once, in a fixed order.
+                        reThetaOnset = reThetaTilde
+
+                        ! --- Vorticity limiting ---
+                        ! ADflow nondim of paper Eqs. 52–53. Paper writes M·√(M·Re)/20
+                        ! using a∞ as velocity scale; ADflow uses √(p/ρ) as velocity
+                        ! scale and √(p*ρ) for dynamic viscosity.
+                        ! The paper's Re carries an explicit reference length l (root
+                        ! chord): the physical cap scales as 1/√l. refLenTrans supplies
+                        ! l in grid units; transitionRefLength < 0 => use lengthRef
+                        ! (AeroProblem chordRef).
+                        ! Rotating frame: the cap is 1/20 of the characteristic BL
+                        ! edge wall-vorticity ~ sqrt(U_e^3/(nu*l)); on a rotating
+                        ! blade the relevant edge velocity U_e is the local section
+                        ! speed, not the inertial freestream (uInf -> 0 in hover
+                        ! would kill both P_gamma and E_gamma). Use the blade-element
+                        ! section velocity uRefTrans = sqrt(uInf^2 + |Omega x r|^2)
+                        ! (|Omega x r| = |sc|): exact for axial inflow (Omega x r ⊥
+                        ! V_inf: hover/climb/props/turbines) and a sound characteristic
+                        ! for edgewise flow. Reduces to uInf exactly when sc = 0
+                        ! (non-rotating), so this is a no-op for every inertial case.
+                        if (transitionRefLength > zero) then
+                            refLenTrans = transitionRefLength
+                        else
+                            refLenTrans = lengthRef
+                        end if
+                        uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
+                        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) &
+                                / rsaGRvortLimScale
+
+                        vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
+
+                        ! --- Fonset (smooth tanh-based transition onset) ---
+                        reS_val = w(i, j, k, irho) * yDist**2 * strainMag &
+                                  / rlv(i, j, k)
+                        reThetaC_val = rethetacCorrelation(reThetaOnset)
+                        fOnset1 = sqrt((reS_val / (2.6_realType * reThetaC_val))**2 &
+                                       + rTurb**2)
+                        fOnset = (tanh(6.0_realType * (fOnset1 - 1.35_realType)) + one) * half
+
+                        ! --- Flength and Fturb (modified) ---
+                        fLength_val = flengthCorrelation(reThetaOnset)
+                        fTurb_val = (one - fOnset) * exp(-rTurb)
+                        !Check here if needed 
+                        !fTurb_val = exp(-(rTurb / 4.0_realType)**4)
+
+                        ! --- Gamma production and destruction ---
+                        pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                                 * sqrt(gammaLocal) &
+                                 * (one - rsaGRce1 * gammaLocal)
+                        eGamma = rsaGRca2 * fTurb_val * vortMagLim * gammaLocal &
+                                 * (rsaGRce2 * gammaLocal - one)
+
+                        scratch(i, j, k, idvt + 1) = pGamma - eGamma
+                        
+
+                        ! --- ReTheta production (relaxation toward correlation) ---
+                        ! NOTE: No explicit Reynolds factor here.
+                        ! Nondim form: rlv = mu/muRef with L_ref=1m so Re=1 implicitly
+                        ! (see initializeFlow.F90:62-66). No explicit Re factor needed,
+                        ! consistent with nu = rlv/rho in sa.F90:245.
+                        timeScale = 500.0_realType * nu / max(velMag2, xminn)
+
+                        ! Compute thetaBL first (needed for lambdaTheta)
+                        thetaBL = reThetaTilde * nu &
+                                  / max(velMag, xminn)
+
+                        ! (dU/ds is computed above, right after velMag.)
+                        ! Use distinct targets for each clamp (NOT in-place
+                        ! overwrite) so the reverse-fast AD recomputes each
+                        ! intermediate instead of relying on a push/pop stack
+                        ! that autoEditReverseFast.py strips -- matching the
+                        ! convention used by every other smoothMinMax here
+                        ! (vortMagLim, crossflowRatio, dHplus, ...). The
+                        ! in-place form broke dR[reThetat]/dw[meanflow] in
+                        ! _fast_b only; see docs/VERIFICATION.
+                        lambdaThetaRaw = (thetaBL**2 / nu) * dUds
+                        if (rsaGRclampLambdaTheta) then
+                            lambdaThetaClamped = smoothMinMax(lambdaThetaRaw, rsaGRlambdaThetaMin, rsaGRpmax)
+                            lambdaThetaLocal = smoothMinMax(lambdaThetaClamped, rsaGRlambdaThetaMax, rsaGRpmin)
+                        else
+                            ! Paper-faithful: no clamp (P&Z Eqs. 54-57
+                            ! saturate internally; correlation floors at 20).
+                            lambdaThetaClamped = lambdaThetaRaw
+                            lambdaThetaLocal = lambdaThetaRaw
+                        end if
+
+                        reThetaT_target = reThetaTCorrelation( &
+                            turbIntensityInf * 100.0_realType, lambdaThetaLocal)
+
+                        ! Ftheta_t shielding: shields BL interior, allows
+                        ! freestream to drive ReTheta toward correlation value
+                        deltaBL = 7.5_realType * thetaBL
+                        delta = 50.0_realType * yDist * vortMag * deltaBL &
+                            / max(velMag, xminn)
+                        delta = max(delta, xminn)
+                        fWake_val = exp(-reS_val / 1.0e6_realType)
+                        fThetaT    = fWake_val * exp(-(yDist/delta)**4)
+
+                        pReTheta = rsaGRcthetat / max(timeScale, xminn) &
+                                   * (reThetaT_target - reThetaTilde) &
+                                   * (one - fThetaT)
+
+                        dScf = zero
+                        reScf = zero
+                        hcf = zero
+                        if (transitionCrossflow) then
+                            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
+                            ! Helicity H_cf = d*|U_hat . Omega|/U (Eqs.24-26) in the
+                            ! RELATIVE frame: relative velocity (velRel) dotted with
+                            ! relative vorticity (vortx = curl - 2*Omega). Helicity
+                            ! U.Omega is NOT frame-invariant; the old "+2*omega" undo
+                            ! gave absolute-frame helicity, wrong on a rotor. Omega=0
+                            ! => bit-identical to the old form.
+                            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                                + (velRely / max(velMag, xminn)) * vorty &
+                                + (velRelz / max(velMag, xminn)) * vortz) &
+                                / max(velMag, xminn)
+                            reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
+                                + 319.51_realType
+                            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
+                            reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
+                            dScf = (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
+                                * smoothMinMax(reScf - reThetaTilde, zero, rsaGRpmin) * fThetaT
+                        end if
+
+                        scratch(i, j, k, idvt + 2) = pReTheta + dScf
+
+                        if (associated(transitionDebug)) then
+                            dudx = two * fact * uux
+                            dudy = two * fact * uuy
+                            dudz = two * fact * uuz
+                            dvdx = two * fact * vvx
+                            dvdy = two * fact * vvy
+                            dvdz = two * fact * vvz
+                            dwdx = two * fact * wwx
+                            dwdy = two * fact * wwy
+                            dwdz = two * fact * wwz
+
+                            transitionDebug(i, j, k, dbgFonset) = fOnset
+                            transitionDebug(i, j, k, dbgFonset1) = fOnset1
+                            transitionDebug(i, j, k, dbgFlength) = fLength_val
+                            transitionDebug(i, j, k, dbgRturb) = rTurb
+                            transitionDebug(i, j, k, dbgReThetaTarget) = reThetaT_target
+                            transitionDebug(i, j, k, dbgReS) = reS_val
+                            transitionDebug(i, j, k, dbgReThetaC) = reThetaC_val
+                            transitionDebug(i, j, k, dbgReSOverCrit) = reS_val / (2.6_realType * reThetaC_val)
+                            transitionDebug(i, j, k, dbgStrainMag) = strainMag
+                            transitionDebug(i, j, k, dbgFthetaT) = fThetaT
+                            transitionDebug(i, j, k, dbgFwake) = fWake_val
+                            transitionDebug(i, j, k, dbgDudx) = dudx
+                            transitionDebug(i, j, k, dbgDudy) = dudy
+                            transitionDebug(i, j, k, dbgDudz) = dudz
+                            transitionDebug(i, j, k, dbgDvdx) = dvdx
+                            transitionDebug(i, j, k, dbgDvdy) = dvdy
+                            transitionDebug(i, j, k, dbgDvdz) = dvdz
+                            transitionDebug(i, j, k, dbgDwdx) = dwdx
+                            transitionDebug(i, j, k, dbgDwdy) = dwdy
+                            transitionDebug(i, j, k, dbgDwdz) = dwdz
+                            transitionDebug(i, j, k, dbgGamma) = w(i, j, k, itu2)
+                            transitionDebug(i, j, k, dbgWallDist) = yDist
+                            transitionDebug(i, j, k, dbgRho) = w(i, j, k, irho)
+                            transitionDebug(i, j, k, dbgMu) = rlv(i, j, k)
+                            transitionDebug(i, j, k, dbgGammaProd) = pGamma
+                            transitionDebug(i, j, k, dbgGammaDest) = eGamma
+                            transitionDebug(i, j, k, dbgTimeScale) = timeScale
+                            transitionDebug(i, j, k, dbgLambdaTheta) = lambdaThetaLocal
+                            transitionDebug(i, j, k, dbgPReTheta) = pReTheta
+                            transitionDebug(i, j, k, dbgGammaForSA) = gammaForSA
+                            transitionDebug(i, j, k, dbgGammaLocal) = gammaLocal
+                            transitionDebug(i, j, k, dbgVortMag) = vortMag
+                            transitionDebug(i, j, k, dbgVortMagLim) = vortMagLim
+                            transitionDebug(i, j, k, dbgFturb) = fTurb_val
+                            transitionDebug(i, j, k, dbgSS) = ss
+                            transitionDebug(i, j, k, dbgSST) = sst
+                            transitionDebug(i, j, k, dbgFt2) = ft2
+                            transitionDebug(i, j, k, dbgThetaBL) = thetaBL
+                            transitionDebug(i, j, k, dbgDeltaBL) = deltaBL
+                            transitionDebug(i, j, k, dbgDelta) = delta
+                            transitionDebug(i, j, k, dbgVelMag) = velMag
+                            transitionDebug(i, j, k, dbgDUds) = dUds
+                            transitionDebug(i, j, k, dbgNutSA) = nutSA
+                            transitionDebug(i, j, k, dbgReThetaTilde) = reThetaTilde
+                            transitionDebug(i, j, k, dbgVortLim) = vortLim
+                        end if
+
+#ifndef USE_TAPENADE
+                        ! Compute some derivatives w.r.t. nuTilde. These will occur
+                        ! in the left hand side, i.e. the matrix for the implicit
+                        ! treatment.
+
+                        dfv1 = three * chi2 * cv13 / ((chi3 + cv13)**2)
+                        dfv2 = (chi2 * dfv1 - one) / (nu * ((one + chi * fv1)**2))
+                        dft2 = -two * rsaCt4 * chi * ft2 / nu
+
+                        drr = (one - rr * (fv2 + w(i, j, k, itu1) * dfv2)) &
+                              * kar2Inv * dist2Inv / sst
+                        dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
+                        dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
+
+                        ! Compute the source term jacobian.
+                        ! term2 already contains gammaForSA on production part.
+                        ! The derivative chain also needs gamma on production
+                        ! derivatives but NOT on destruction derivatives.
+                        ! Note that -dsource/dnu is stored.
+                        qq(i, j, k, 1, 1) = -two * term2 * w(i, j, k, itu1) &
+                                      - dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
+                                      * (gammaForSA * rsaCb1 * kar2Inv &
+                                         * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
+                                         - rsaCw1 * dfw)
+
+                        ! Mirror the SA solver's diagonal clip (sa.F90): the
+                        ! destruction terms (-rsaCw1*dfw) may drive qq(1,1)
+                        ! negative, reducing the diagonal dominance of the
+                        ! implicit DDADI Jacobian and hurting stability. Clip to
+                        ! zero as in the validated SA path. This affects only the
+                        ! implicit LHS, not the residual, so the converged
+                        ! solution is unchanged (paper-neutral). The Eq. 59
+                        ! srcLambda/limit restriction is added on top later.
+                        qq(i, j, k, 1, 1) = max(qq(i, j, k, 1, 1), zero)
+
+                        ! Full gamma source Jacobian: -d(pGamma - eGamma)/dgamma
+                        ! Includes both production and destruction linearization.
+                        qq(i, j, k, 2, 2) = rsaGRca1 * fLength_val * fOnset &
+                            * vortMagLim &
+                            * (1.5_realType * rsaGRce1 * gammaLocal - half) &
+                            / sqrt(max(gammaLocal, xminn)) &
+                            + rsaGRca2 * fTurb_val * vortMagLim &
+                            * (two * rsaGRce2 * gammaLocal - one)
+
+                        ! Same diagonal clip as qq(1,1)/qq(3,3): for small gamma
+                        ! (the pre-transition region) the production-derivative
+                        ! factors (1.5*ce1*g-0.5) and (2*ce2*g-1) go negative,
+                        ! so this diagonal can be negative and erode the implicit
+                        ! DDADI diagonal dominance. Clip to zero per the validated
+                        ! ADflow philosophy (implicit treatment only for terms
+                        ! that add diagonal dominance). LHS-only, so the converged
+                        ! solution is unchanged (paper-neutral). Unlike qq(3,3),
+                        ! this clip actually triggers.
+                        qq(i, j, k, 2, 2) = max(qq(i, j, k, 2, 2), zero)
+
+                        ! ReTheta Jacobian diagonal: -dP_theta/dReTheta_tilde
+                        ! Always >= 0 (relaxation), so restriction is a no-op.
+                        qq(i, j, k, 3, 3) = max( &
+                            rsaGRcthetat / max(timeScale, xminn) &
+                            * (one - fThetaT), zero)
+
+                        if (transitionCrossflow) then
+                            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
+                            ! Helicity H_cf = d*|U_hat . Omega|/U (Eqs.24-26) in the
+                            ! RELATIVE frame: relative velocity (velRel) dotted with
+                            ! relative vorticity (vortx = curl - 2*Omega). Helicity
+                            ! U.Omega is NOT frame-invariant; the old "+2*omega" undo
+                            ! gave absolute-frame helicity, wrong on a rotor. Omega=0
+                            ! => bit-identical to the old form.
+                            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                                + (velRely / max(velMag, xminn)) * vorty &
+                                + (velRelz / max(velMag, xminn)) * vortz) &
+                                / max(velMag, xminn)
+                            reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
+                                + 319.51_realType
+                            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+                            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+                            reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
+                            reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
+                            if (reScf < reThetaTilde) then
+                                crossflowPhiPrime = one / (one + exp(rsaGRpmin * (zero - (reScf - reThetaTilde))))
+                                qq(i, j, k, 3, 3) = qq(i, j, k, 3, 3) + &
+                                    (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
+                                    * fThetaT * crossflowPhiPrime
+                            end if
+                        end if
+
+                        ! --- Off-diagonal source Jacobian entries ---
+
+                        ! qq(1,2) = -dS_nu/dgamma: SA production depends on gamma.
+                        ! Keep the derivative consistent with the residual: in the
+                        ! approx-SA mode term1 is dropped from the residual, so its
+                        ! gamma-derivative must be dropped here too.
+                        if (approxSA .and. transitionUseApproxSA) then
+                            qq(i, j, k, 1, 2) = -term2_prod &
+                                * w(i, j, k, itu1) * w(i, j, k, itu1)
+                        else
+                            qq(i, j, k, 1, 2) = -(rsaCb1 * (one - ft2) * ss &
+                                + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
+                        end if
+
+                        ! qq(1,3) = -dS_nu/dReThetaTilde: exactly zero — the SA
+                        ! source has no ReThetaTilde dependence.
+                        qq(i, j, k, 1, 3) = zero
+
+                        ! qq(2,1) = -dS_gamma/dnu_tilde: both pGamma and
+                        ! eGamma depend on nu_tilde through rTurb.
+                        ! rTurb = nu_tilde * fv1 / nu
+                        drTurb_dnu = (fv1 + chi * dfv1) / nu
+
+                        ! dfOnset/dnu = dfOnset/dfOnset1 * dfOnset1/drTurb * drTurb/dnu
+                        ! fOnset1 = sqrt((reS/(2.6*reThetaC))^2 + rTurb^2)
+                        dfOnset1_drT = rTurb / max(fOnset1, xminn)
+                        ! fOnset = 0.5*(tanh(6*(fOnset1-1.35))+1)
+                        dfOnset_dfOnset1 = 12.0_realType * fOnset * (one - fOnset)
+                        dfOnset_dnu = dfOnset_dfOnset1 * dfOnset1_drT * drTurb_dnu
+
+                        ! dfTurb/dnu: fTurb = (1-fOnset)*exp(-rTurb)
+                        ! Full chain rule: d/dnu = d/dfOnset*dfOnset/dnu + d/drTurb*drTurb/dnu
+                        dfTurb_dnu = -exp(-rTurb) * dfOnset_dnu - fTurb_val * drTurb_dnu
+
+                        ! -d(pGamma - eGamma)/dnu_tilde
+                        qq(i, j, k, 2, 1) = &
+                            -(rsaGRca1 * fLength_val * dfOnset_dnu * vortMagLim &
+                              * sqrt(max(gammaLocal, xminn)) &
+                              * (one - rsaGRce1 * gammaLocal)) &
+                            + rsaGRca2 * dfTurb_dnu * vortMagLim * gammaLocal &
+                              * (rsaGRce2 * gammaLocal - one)
+
+                        ! qq(2,3) = -dS_gamma/dReThetaTilde: analytical derivative
+                        ! dFlength/dReThetaTilde (Eqs. 49-50)
+                        F1_val = exp(-3.0e-2_realType * (reThetaTilde - 460.0_realType))
+                        base_val = one + F1_val
+                        inner_val = 44.0_realType - (0.5_realType &
+                                    - 3.0e-4_realType * (reThetaTilde - 596.0_realType))
+                        dFlength_dReT = -3.0e-4_realType / base_val**(one/6.0_realType) &
+                                      - inner_val * (one/6.0_realType) &
+                                        * base_val**(-7.0_realType/6.0_realType) &
+                                        * F1_val * 3.0e-2_realType
+
+                        ! dReThetaC/dReThetaTilde (Eq. 51)
+                        dReThetaC_dReT = 0.67_realType &
+                            + 0.1_realType * cos(reThetaTilde/240.0_realType + 0.5_realType)
+
+                        ! dfOnset/dReThetaTilde via chain rule
+                        dfOnset1_dReT = -(reS_val / (2.6_realType * reThetaC_val))**2 &
+                                      / (max(reThetaC_val, xminn) * max(fOnset1, xminn)) &
+                                      * dReThetaC_dReT
+                        sech2_val = one - tanh(6.0_realType * (fOnset1 - 1.35_realType))**2
+                        dfOnset_dReT = 3.0_realType * sech2_val * dfOnset1_dReT
+
+                        ! dP_gamma/dReThetaTilde
+                        pGamma_common = rsaGRca1 * vortMagLim &
+                                      * sqrt(max(gammaLocal, xminn)) &
+                                      * (one - rsaGRce1 * gammaLocal)
+                        dPgamma_dReT = pGamma_common * (fOnset * dFlength_dReT &
+                                     + fLength_val * dfOnset_dReT)
+
+                        ! dE_gamma/dReThetaTilde: E_gamma depends on ReThetaTilde
+                        ! through fTurb = (1 - fOnset)*exp(-rTurb), so
+                        ! dfTurb/dReT = -exp(-rTurb)*dfOnset_dReT.
+                        dEgamma_dReT = -rsaGRca2 * exp(-rTurb) * dfOnset_dReT &
+                                     * vortMagLim * gammaLocal &
+                                     * (rsaGRce2 * gammaLocal - one)
+
+                        ! qq(2,3) = -d(pGamma - eGamma)/dReThetaTilde
+                        qq(i, j, k, 2, 3) = -dPgamma_dReT + dEgamma_dReT
+
+                        ! qq(3,1) = -dS_retheta/dnu_tilde: exactly zero without
+                        ! crossflow (S_theta has no nu_tilde dependence). With
+                        ! transitionCrossflow, D_scf depends weakly on nu_tilde
+                        ! via crossflowRatio(rTurb); that coupling is deliberately
+                        ! neglected here (LHS-only) to preserve the triangular
+                        ! source-Jacobian structure used by computeSrcLambda.
+                        qq(i, j, k, 3, 1) = zero
+
+                        ! qq(3,2) = -dS_retheta/dgamma: fThetaT does not
+                        ! depend on gamma in the current implementation.
+                        qq(i, j, k, 3, 2) = zero
+
+                        if (associated(transitionDebug)) then
+                            transitionDebug(i, j, k, dbgQQ11) = qq(i, j, k, 1, 1)
+                            transitionDebug(i, j, k, dbgQQ22) = qq(i, j, k, 2, 2)
+                            transitionDebug(i, j, k, dbgQQ33) = qq(i, j, k, 3, 3)
+                            transitionDebug(i, j, k, dbgDScf) = dScf
+                            transitionDebug(i, j, k, dbgReScf) = reScf
+                            transitionDebug(i, j, k, dbgHcf) = hcf
+                        end if
+#endif
+#ifdef TAPENADE_REVERSE
+                    end do
+#else
+                end do
+            end do
+        end do
+#endif
+
+    end subroutine Source
+
+    subroutine Viscous
+        !
+        !  Viscous term for SA variable.
+        !  Determine the viscous contribution to the residual
+        !  for all internal cells of the block.
+
+        use constants
+        use blockPointers
+        use paramTurb
+        use inputIteration, only: transitionArtVisc
+        implicit none
+
+        integer(kind=intType) :: i, j, k, ii
+
+        ! viscosity variables
+        real(kind=realType) :: nu, nu_m, nu_p
+        real(kind=realType) :: nut, nut_m, nut_p
+        real(kind=realType) :: nu_tm, nu_tp
+        real(kind=realType) :: nuTilde, nuTilde_m, nuTilde_p
+        ! artificial viscosity on gamma
+        real(kind=realType) :: vel0, velm, velp, artm, artp, c2mI, c2pI, c20I
+
+        ! SA auxiliary functions
+        real(kind=realType) :: chi, chi3
+        real(kind=realType) :: chi_m, chi3_m
+        real(kind=realType) :: chi_p, chi3_p
+        real(kind=realType) :: fv1, fv1_m, fv1_p
+
+        ! geometry terms
+        real(kind=realType) :: voli, volmi, volpi
+        real(kind=realType) :: xm, ym, zm
+        real(kind=realType) :: xp, yp, zp
+        real(kind=realType) :: xa, ya, za
+        real(kind=realType) :: ttm, ttp
+
+        ! diffusion coefficients
+        real(kind=realType) :: num, nup
+        real(kind=realType) :: cdm, cdp
+        real(kind=realType) :: cdm_gamma, cdp_gamma
+        real(kind=realType) :: cdm_rt, cdp_rt
+
+        ! SA nonlinear correction
+        real(kind=realType) :: cnud, cam, cap
+        real(kind=realType) :: nutm, nutp
+
+        ! matrix coefficients
+        real(kind=realType) :: c1m, c1p, c10
+        real(kind=realType) :: c2m, c2p, c20
+        real(kind=realType) :: c3m, c3p, c30
+        real(kind=realType) :: b1, c1, d1
+        real(kind=realType) :: b2, c2, d2
+        real(kind=realType) :: b3, c3, d3
+
+        ! constants
+        real(kind=realType) :: cb3Inv, cv13
+
+        
+
+        cb3Inv = one / rsaCb3
+        cv13 = rsaCv1**3
+
+
+
+        ! Viscous terms in k-direction.
+#ifdef TAPENADE_REVERSE
+        !$AD II-LOOP
+        do ii = 0, nx * ny * nz - 1
+            i = mod(ii, nx) + 2
+            j = mod(ii / nx, ny) + 2
+            k = ii / (nx * ny) + 2
+#else
+            do k = 2, kl
+                do j = 2, jl
+                    do i = 2, il
+#endif
+                        !Mesh Geometry contribution
+                        voli = one / vol(i, j, k)
+                        volmi = two / (vol(i, j, k) + vol(i, j, k - 1))
+                        volpi = two / (vol(i, j, k) + vol(i, j, k + 1))
+
+                        xm = sk(i, j, k - 1, 1) * volmi
+                        ym = sk(i, j, k - 1, 2) * volmi
+                        zm = sk(i, j, k - 1, 3) * volmi
+                        xp = sk(i, j, k, 1) * volpi
+                        yp = sk(i, j, k, 2) * volpi
+                        zp = sk(i, j, k, 3) * volpi
+
+                        xa = half * (sk(i, j, k, 1) + sk(i, j, k - 1, 1)) * voli
+                        ya = half * (sk(i, j, k, 2) + sk(i, j, k - 1, 2)) * voli
+                        za = half * (sk(i, j, k, 3) + sk(i, j, k - 1, 3)) * voli
+                        ttm = xm * xa + ym * ya + zm * za
+                        ttp = xp * xa + yp * ya + zp * za
+
+                        cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                        cam = ttm * cnud
+                        cap = ttp * cnud
+
+                        nutm = half * (w(i, j, k - 1, itu1) + w(i, j, k, itu1))
+                        nutp = half * (w(i, j, k + 1, itu1) + w(i, j, k, itu1))
+
+
+                        ! ----- viscosities in cell (i,j,k)
+                        nu  = rlv(i,j,k) / w(i,j,k,irho)
+                        nuTilde = w(i,j,k,itu1)
+
+                        chi  = nuTilde / nu
+                        chi3 = chi*chi*chi
+                        fv1  = chi3 / (chi3 + cv13)
+
+                        nut = nuTilde * fv1
+
+
+                        ! ----- k-1 cell
+                        nu_m = rlv(i,j,k-1) / w(i,j,k-1,irho)
+                        nuTilde_m = w(i,j,k-1,itu1)
+
+                        chi_m  = nuTilde_m / nu_m
+                        chi3_m = chi_m*chi_m*chi_m
+                        fv1_m  = chi3_m / (chi3_m + cv13)
+
+                        nut_m = nuTilde_m * fv1_m
+
+
+                        ! ----- k+1 cell
+                        nu_p = rlv(i,j,k+1) / w(i,j,k+1,irho)
+                        nuTilde_p = w(i,j,k+1,itu1)
+
+                        chi_p  = nuTilde_p / nu_p
+                        chi3_p = chi_p*chi_p*chi_p
+                        fv1_p  = chi3_p / (chi3_p + cv13)
+
+                        nut_p = nuTilde_p * fv1_p
+
+
+                        num = half * (nu_m + nu)
+                        nup = half * (nu_p + nu)
+
+                        nu_tm = half * (nut_m + nut)
+                        nu_tp = half * (nut_p + nut)
+
+                        !SA diffusion contribution
+                        cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                        cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
+
+                        !Gamma diffusion contribution
+                        ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                        ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                        ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                        artm = zero
+                        artp = zero
+                        if (transitionArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i,j,k-1, ivx)**2 + w(i,j,k-1, ivy)**2 + w(i,j,k-1, ivz)**2)
+                            velp = sqrt(w(i,j,k+1, ivx)**2 + w(i,j,k+1, ivy)**2 + w(i,j,k+1, ivz)**2)
+                            artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i,j,k-1, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i,j,k+1, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm/sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp + artp
+
+                        !Rethata diffusion contribution
+                        cdm_rt = sigmaTheta * (num + nu_tm) * ttm
+                        cdp_rt = sigmaTheta * (nup + nu_tp) * ttp
+
+
+                        c1m = max(cdm + cam, zero)
+                        c1p = max(cdp + cap, zero)
+                        c10 = c1m + c1p
+
+                        c2m = max(cdm_gamma, zero)
+                        c2p = max(cdp_gamma, zero)
+                        c20 = c2m + c2p
+#ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
+#endif
+
+                        c3m = max(cdm_rt, zero)
+                        c3p = max(cdp_rt, zero)
+                        c30 = c3m + c3p
+
+                        scratch(i, j, k, idvt) = scratch(i, j, k, idvt) + c1m * w(i, j, k - 1, itu1) &
+                                                 - c10 * w(i, j, k, itu1) + c1p * w(i, j, k + 1, itu1)
+                        scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) + c2m * w(i, j, k - 1, itu2) &
+                                                     - c20 * w(i, j, k, itu2) + c2p * w(i, j, k + 1, itu2)
+                        scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i, j, k - 1, itu3) &
+                                                     - c30 * w(i, j, k, itu3) + c3p * w(i, j, k + 1, itu3)
+#ifndef USE_TAPENADE
+                        b1 = -c1m
+                        c1 = c10
+                        d1 = -c1p
+
+                        ! Update the central jacobian. For nonboundary cells this
+                        ! is simply c1. For boundary cells this is slightly more
+                        ! complicated, because the boundary conditions are treated
+                        ! implicitly and the off-diagonal terms b1 and d1 must be
+                        ! taken into account.
+                        ! The boundary conditions are only treated implicitly if
+                        ! the diagonal dominance of the matrix is increased.
+
+                        if (k == 2) then
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
+                                            - b1 * max(bmtk1(i,j,itu1,itu1), zero)
+                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - b1 * bmtk1(i,j,itu1,itu2)
+                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - b1 * bmtk1(i,j,itu1,itu3)
+
+                        else if (k == kl) then
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
+                                            - d1 * max(bmtk2(i,j,itu1,itu1), zero)
+                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - d1 * bmtk2(i,j,itu1,itu2)
+                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - d1 * bmtk2(i,j,itu1,itu3)
+
+                        else
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1
+                        end if
+
+                        !====================================================
+                        ! GAMMA EQUATION
+                        !====================================================
+                        ! Unlike SA (bmt=+1 at walls), gamma/retheta use
+                        ! zero-gradient wall halos (bmt=-1). The max(bmt,0)
+                        ! guard used for eq 1 would skip the implicit BC and
+                        ! leave the wall-face coefficient anchoring the
+                        ! diagonal, which stalls the DADI on the smooth
+                        ! near-wall layer mode. Use the true bmt: the row
+                        ! stays weakly diagonally dominant (diag = |offdiag|
+                        ! plus source/relaxation terms).
+
+                        b2 = -c2mI
+                        c2 =  c20I
+                        d2 = -c2pI
+
+                        if (k == 2) then
+                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtk1(i,j,itu2,itu1)
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
+                                            - b2 * bmtk1(i,j,itu2,itu2)
+                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmtk1(i,j,itu2,itu3)
+
+                        else if (k == kl) then
+                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmtk2(i,j,itu2,itu1)
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
+                                            - d2 * bmtk2(i,j,itu2,itu2)
+                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmtk2(i,j,itu2,itu3)
+
+                        else
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2
+                        end if
+
+
+                        !====================================================
+                        ! RETHETA EQUATION
+                        !====================================================
+
+                        b3 = -c3m
+                        c3 =  c30
+                        d3 = -c3p
+
+                        if (k == 2) then
+                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmtk1(i,j,itu3,itu1)
+                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmtk1(i,j,itu3,itu2)
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
+                                            - b3 * bmtk1(i,j,itu3,itu3)
+
+                        else if (k == kl) then
+                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmtk2(i,j,itu3,itu1)
+                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmtk2(i,j,itu3,itu2)
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
+                                            - d3 * bmtk2(i,j,itu3,itu3)
+
+                        else
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
+                        end if
+#endif
+#ifdef TAPENADE_REVERSE
+                    end do
+#else
+                end do
+            end do
+        end do
+#endif
+        ! Viscous terms in j-direction.
+#ifdef TAPENADE_REVERSE
+        !$AD II-LOOP
+        do ii = 0, nx * ny * nz - 1
+            i = mod(ii, nx) + 2
+            j = mod(ii / nx, ny) + 2
+            k = ii / (nx * ny) + 2
+#else
+            do k = 2, kl
+                do j = 2, jl
+                    do i = 2, il
+#endif
+                        voli = one / vol(i, j, k)
+                        volmi = two / (vol(i, j, k) + vol(i, j - 1, k))
+                        volpi = two / (vol(i, j, k) + vol(i, j + 1, k))
+
+                        xm = sj(i, j - 1, k, 1) * volmi
+                        ym = sj(i, j - 1, k, 2) * volmi
+                        zm = sj(i, j - 1, k, 3) * volmi
+                        xp = sj(i, j, k, 1) * volpi
+                        yp = sj(i, j, k, 2) * volpi
+                        zp = sj(i, j, k, 3) * volpi
+
+                        xa = half * (sj(i, j, k, 1) + sj(i, j - 1, k, 1)) * voli
+                        ya = half * (sj(i, j, k, 2) + sj(i, j - 1, k, 2)) * voli
+                        za = half * (sj(i, j, k, 3) + sj(i, j - 1, k, 3)) * voli
+                        ttm = xm * xa + ym * ya + zm * za
+                        ttp = xp * xa + yp * ya + zp * za
+
+                        cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                        cam = ttm * cnud
+                        cap = ttp * cnud
+
+                        nutm = half * (w(i, j - 1, k, itu1) + w(i, j, k, itu1))
+                        nutp = half * (w(i, j + 1, k, itu1) + w(i, j, k, itu1))
+
+                       ! ----- viscosities in cell (i,j,k)
+                        nu  = rlv(i,j,k) / w(i,j,k,irho)
+                        nuTilde = w(i,j,k,itu1)
+
+                        chi  = nuTilde / nu
+                        chi3 = chi*chi*chi
+                        fv1  = chi3 / (chi3 + cv13)
+
+                        nut = nuTilde * fv1
+
+
+                        ! ----- j-1 cell
+                        nu_m = rlv(i,j-1,k) / w(i,j-1,k,irho)
+                        nuTilde_m = w(i,j-1,k,itu1)
+
+                        chi_m  = nuTilde_m / nu_m
+                        chi3_m = chi_m*chi_m*chi_m
+                        fv1_m  = chi3_m / (chi3_m + cv13)
+
+                        nut_m = nuTilde_m * fv1_m
+
+
+                        ! ----- j+1 cell
+                        nu_p = rlv(i,j+1,k) / w(i,j+1,k,irho)
+                        nuTilde_p = w(i,j+1,k,itu1)
+
+                        chi_p  = nuTilde_p / nu_p
+                        chi3_p = chi_p*chi_p*chi_p
+                        fv1_p  = chi3_p / (chi3_p + cv13)
+
+                        nut_p = nuTilde_p * fv1_p
+
+
+                        num = half * (nu_m + nu)
+                        nup = half * (nu_p + nu)
+
+                        nu_tm = half * (nut_m + nut)
+                        nu_tp = half * (nut_p + nut)
+
+                        !SA diffusion contribution
+                        cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                        cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
+
+                        !Gamma diffusion contribution
+                        ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                        ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                        ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                        artm = zero
+                        artp = zero
+                        if (transitionArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i,j-1,k, ivx)**2 + w(i,j-1,k, ivy)**2 + w(i,j-1,k, ivz)**2)
+                            velp = sqrt(w(i,j+1,k, ivx)**2 + w(i,j+1,k, ivy)**2 + w(i,j+1,k, ivz)**2)
+                            artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i,j-1,k, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i,j+1,k, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm/sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp + artp
+
+                        !Rethata diffusion contribution
+                        cdm_rt = sigmaTheta * (num + nu_tm) * ttm
+                        cdp_rt = sigmaTheta * (nup + nu_tp) * ttp
+
+
+                        c1m = max(cdm + cam, zero)
+                        c1p = max(cdp + cap, zero)
+                        c10 = c1m + c1p
+
+                        c2m = max(cdm_gamma, zero)
+                        c2p = max(cdp_gamma, zero)
+                        c20 = c2m + c2p
+#ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
+#endif
+
+                        c3m = max(cdm_rt, zero)
+                        c3p = max(cdp_rt, zero)
+                        c30 = c3m + c3p
+
+                        scratch(i, j, k, idvt) = scratch(i, j, k, idvt) + c1m * w(i, j-1, k, itu1) &
+                                                 - c10 * w(i, j, k, itu1) + c1p * w(i, j+1, k, itu1)
+                        scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) + c2m * w(i, j-1, k, itu2) &
+                                                     - c20 * w(i, j, k, itu2) + c2p * w(i, j+1, k, itu2)
+                        scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i, j-1, k, itu3) &
+                                                     - c30 * w(i, j, k, itu3) + c3p * w(i, j+1, k, itu3)
+#ifndef USE_TAPENADE
+                        b1 = -c1m
+                        c1 = c10
+                        d1 = -c1p
+
+                        ! Update the central jacobian. For nonboundary cells this
+                        ! is simply c1. For boundary cells this is slightly more
+                        ! complicated, because the boundary conditions are treated
+                        ! implicitly and the off-diagonal terms b1 and d1 must be
+                        ! taken into account.
+                        ! The boundary conditions are only treated implicitly if
+                        ! the diagonal dominance of the matrix is increased.
+
+                        if (j == 2) then
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
+                                            - b1 * max(bmtj1(i,k,itu1,itu1), zero)
+                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - b1 * bmtj1(i,k,itu1,itu2)
+                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - b1 * bmtj1(i,k,itu1,itu3)
+
+                        else if (j == jl) then
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
+                                            - d1 * max(bmtj2(i,k,itu1,itu1), zero)
+                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - d1 * bmtj2(i,k,itu1,itu2)
+                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - d1 * bmtj2(i,k,itu1,itu3)
+
+                        else
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1
+                        end if
+
+                        !====================================================
+                        ! GAMMA EQUATION
+                        !====================================================
+
+                        b2 = -c2mI
+                        c2 =  c20I
+                        d2 = -c2pI
+
+                        if (j == 2) then
+                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtj1(i,k,itu2,itu1)
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
+                                            - b2 * bmtj1(i,k,itu2,itu2)
+                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmtj1(i,k,itu2,itu3)
+
+                        else if (j == jl) then
+                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmtj2(i,k,itu2,itu1)
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
+                                            - d2 * bmtj2(i,k,itu2,itu2)
+                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmtj2(i,k,itu2,itu3)
+
+                        else
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2
+                        end if
+
+
+                        !====================================================
+                        ! RETHETA EQUATION
+                        !====================================================
+
+                        b3 = -c3m
+                        c3 =  c30
+                        d3 = -c3p
+
+                        if (j == 2) then
+                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmtj1(i,k,itu3,itu1)
+                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmtj1(i,k,itu3,itu2)
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
+                                            - b3 * bmtj1(i,k,itu3,itu3)
+
+                        else if (j == jl) then
+                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmtj2(i,k,itu3,itu1)
+                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmtj2(i,k,itu3,itu2)
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
+                                            - d3 * bmtj2(i,k,itu3,itu3)
+
+                        else
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
+                        end if
+#endif
+#ifdef TAPENADE_REVERSE
+                    end do
+#else
+                end do
+            end do
+        end do
+#endif
+        ! Viscous terms in i-direction.
+#ifdef TAPENADE_REVERSE
+        !$AD II-LOOP
+        do ii = 0, nx * ny * nz - 1
+            i = mod(ii, nx) + 2
+            j = mod(ii / nx, ny) + 2
+            k = ii / (nx * ny) + 2
+#else
+            do k = 2, kl
+                do j = 2, jl
+                    do i = 2, il
+#endif
+                        voli = one / vol(i, j, k)
+                        volmi = two / (vol(i, j, k) + vol(i - 1, j, k))
+                        volpi = two / (vol(i, j, k) + vol(i + 1, j, k))
+
+                        xm = si(i - 1, j, k, 1) * volmi
+                        ym = si(i - 1, j, k, 2) * volmi
+                        zm = si(i - 1, j, k, 3) * volmi
+                        xp = si(i, j, k, 1) * volpi
+                        yp = si(i, j, k, 2) * volpi
+                        zp = si(i, j, k, 3) * volpi
+
+                        xa = half * (si(i, j, k, 1) + si(i - 1, j, k, 1)) * voli
+                        ya = half * (si(i, j, k, 2) + si(i - 1, j, k, 2)) * voli
+                        za = half * (si(i, j, k, 3) + si(i - 1, j, k, 3)) * voli
+                        ttm = xm * xa + ym * ya + zm * za
+                        ttp = xp * xa + yp * ya + zp * za
+
+                        cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                        cam = ttm * cnud
+                        cap = ttp * cnud
+
+                        nutm = half * (w(i - 1, j, k, itu1) + w(i, j, k, itu1))
+                        nutp = half * (w(i + 1, j, k, itu1) + w(i, j, k, itu1))
+                        ! ----- viscosities in cell (i,j,k)
+                        nu  = rlv(i,j,k) / w(i,j,k,irho)
+                        nuTilde = w(i,j,k,itu1)
+
+                        chi  = nuTilde / nu
+                        chi3 = chi*chi*chi
+                        fv1  = chi3 / (chi3 + cv13)
+
+                        nut = nuTilde * fv1
+
+
+                        ! ----- i-1 cell
+                        nu_m = rlv(i-1,j,k) / w(i-1,j,k,irho)
+                        nuTilde_m = w(i-1,j,k,itu1)
+
+                        chi_m  = nuTilde_m / nu_m
+                        chi3_m = chi_m*chi_m*chi_m
+                        fv1_m  = chi3_m / (chi3_m + cv13)
+
+                        nut_m = nuTilde_m * fv1_m
+
+
+                        ! ----- i+1 cell
+                        nu_p = rlv(i+1,j,k) / w(i+1,j,k,irho)
+                        nuTilde_p = w(i+1,j,k,itu1)
+
+                        chi_p  = nuTilde_p / nu_p
+                        chi3_p = chi_p*chi_p*chi_p
+                        fv1_p  = chi3_p / (chi3_p + cv13)
+
+                        nut_p = nuTilde_p * fv1_p
+
+
+                        num = half * (nu_m + nu)
+                        nup = half * (nu_p + nu)
+
+                        nu_tm = half * (nut_m + nut)
+                        nu_tp = half * (nut_p + nut)
+
+                        !SA diffusion contribution
+                        cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                        cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
+
+                        !Gamma diffusion contribution
+                        ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                        ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                        ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                        artm = zero
+                        artp = zero
+                        if (transitionArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i-1,j,k, ivx)**2 + w(i-1,j,k, ivy)**2 + w(i-1,j,k, ivz)**2)
+                            velp = sqrt(w(i+1,j,k, ivx)**2 + w(i+1,j,k, ivy)**2 + w(i+1,j,k, ivz)**2)
+                            artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i-1,j,k, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i+1,j,k, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm/sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp + artp
+
+                        !Rethata diffusion contribution
+                        cdm_rt = sigmaTheta * (num + nu_tm) * ttm
+                        cdp_rt = sigmaTheta * (nup + nu_tp) * ttp
+
+
+                        c1m = max(cdm + cam, zero)
+                        c1p = max(cdp + cap, zero)
+                        c10 = c1m + c1p
+
+                        c2m = max(cdm_gamma, zero)
+                        c2p = max(cdp_gamma, zero)
+                        c20 = c2m + c2p
+#ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
+#endif
+
+                        c3m = max(cdm_rt, zero)
+                        c3p = max(cdp_rt, zero)
+                        c30 = c3m + c3p
+
+                        scratch(i, j, k, idvt) = scratch(i, j, k, idvt) + c1m * w(i-1, j, k, itu1) &
+                                                 - c10 * w(i, j, k, itu1) + c1p * w(i+1, j, k, itu1)
+                        scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) + c2m * w(i-1, j, k, itu2) &
+                                                     - c20 * w(i, j, k, itu2) + c2p * w(i+1, j, k, itu2)
+                        scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) + c3m * w(i-1, j, k, itu3) &
+                                                     - c30 * w(i, j, k, itu3) + c3p * w(i+1, j, k, itu3)
+#ifndef USE_TAPENADE
+                        b1 = -c1m
+                        c1 = c10
+                        d1 = -c1p
+
+                        ! Update the central jacobian. For nonboundary cells this
+                        ! is simply c1. For boundary cells this is slightly more
+                        ! complicated, because the boundary conditions are treated
+                        ! implicitly and the off-diagonal terms b1 and d1 must be
+                        ! taken into account.
+                        ! The boundary conditions are only treated implicitly if
+                        ! the diagonal dominance of the matrix is increased.
+
+                        if (i == 2) then
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
+                                            - b1 * max(bmti1(j,k,itu1,itu1), zero)
+                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - b1 * bmti1(j,k,itu1,itu2)
+                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - b1 * bmti1(j,k,itu1,itu3)
+
+                        else if (i == il) then
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1 &
+                                            - d1 * max(bmti2(j,k,itu1,itu1), zero)
+                            qq(i,j,k,1,2) = qq(i,j,k,1,2) - d1 * bmti2(j,k,itu1,itu2)
+                            qq(i,j,k,1,3) = qq(i,j,k,1,3) - d1 * bmti2(j,k,itu1,itu3)
+
+                        else
+                            qq(i,j,k,1,1) = qq(i,j,k,1,1) + c1
+                        end if
+
+                        !====================================================
+                        ! GAMMA EQUATION
+                        !====================================================
+
+                        b2 = -c2mI
+                        c2 =  c20I
+                        d2 = -c2pI
+
+                        if (i == 2) then
+                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmti1(j,k,itu2,itu1)
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
+                                            - b2 * bmti1(j,k,itu2,itu2)
+                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - b2 * bmti1(j,k,itu2,itu3)
+
+                        else if (i == il) then
+                            qq(i,j,k,2,1) = qq(i,j,k,2,1) - d2 * bmti2(j,k,itu2,itu1)
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2 &
+                                            - d2 * bmti2(j,k,itu2,itu2)
+                            qq(i,j,k,2,3) = qq(i,j,k,2,3) - d2 * bmti2(j,k,itu2,itu3)
+
+                        else
+                            qq(i,j,k,2,2) = qq(i,j,k,2,2) + c2
+                        end if
+
+
+                        !====================================================
+                        ! RETHETA EQUATION
+                        !====================================================
+
+                        b3 = -c3m
+                        c3 =  c30
+                        d3 = -c3p
+
+                        if (i == 2) then
+                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - b3 * bmti1(j,k,itu3,itu1)
+                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - b3 * bmti1(j,k,itu3,itu2)
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
+                                            - b3 * bmti1(j,k,itu3,itu3)
+
+                        else if (i == il) then
+                            qq(i,j,k,3,1) = qq(i,j,k,3,1) - d3 * bmti2(j,k,itu3,itu1)
+                            qq(i,j,k,3,2) = qq(i,j,k,3,2) - d3 * bmti2(j,k,itu3,itu2)
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3 &
+                                            - d3 * bmti2(j,k,itu3,itu3)
+
+                        else
+                            qq(i,j,k,3,3) = qq(i,j,k,3,3) + c3
+                        end if
+#endif
+#ifdef TAPENADE_REVERSE
+                    end do
+#else
+                end do
+            end do
+        end do
+#endif
+    end subroutine Viscous
+
+    subroutine ResScale
+
+        !
+        !  Multiply the residual by the volume and store this in dw; this
+        ! * is done for monitoring reasons only. The multiplication with the
+        ! * volume is present to be consistent with the flow residuals; also
+        !  the negative value is taken, again to be consistent with the
+        ! * flow equations. Also multiply by iblank so that no updates occur
+        !  in holes or the overset boundary.
+        use constants
+        use blockPointers
+        implicit none
+
+        ! Local variables
+        integer(kind=intType) :: i, j, k, ii
+        real(kind=realType) :: rblank
+
+#ifdef TAPENADE_REVERSE
+        !$AD II-LOOP
+        do ii = 0, nx * ny * nz - 1
+            i = mod(ii, nx) + 2
+            j = mod(ii / nx, ny) + 2
+            k = ii / (nx * ny) + 2
+#else
+            do k = 2, kl
+                do j = 2, jl
+                    do i = 2, il
+#endif
+                        rblank = max(real(iblank(i, j, k), realType), zero)
+                        ! SA variable ν~
+                        dw(i,j,k,itu1) = -volRef(i,j,k) * scratch(i, j, k, idvt) * rblank
+
+                        ! Gamma
+                        dw(i,j,k,itu2) = -volRef(i,j,k) * scratch(i, j, k, idvt + 1) * rblank
+
+                        ! ReTheta
+                        dw(i,j,k,itu3) = -volRef(i,j,k) * scratch(i, j, k, idvt + 2) * rblank
+#ifdef TAPENADE_REVERSE
+                    end do
+#else
+                end do
+            end do
+        end do
+#endif
+    end subroutine ResScale
+
+    subroutine saGammaReThetaSolve(resOnly)
+        !
+        !       Coupled DD-ADI SA-gamma-ReTheta transport solve.
+        !       Solves the 3-equation system using a diagonally-dominant
+        !       alternating-direction-implicit scheme with full 3x3 block
+        !       coupling, following the same pattern as the SST solver.
+        !
+        use blockPointers
+        use constants
+        use flowVarRefState
+        use inputIteration
+        use inputPhysics
+        use paramTurb
+        use turbUtils, only: tdia3x3
+        implicit none
+        !
+        !      Subroutine arguments.
+        !
+        logical, intent(in) :: resOnly
+        !
+        !      Local variables.
+        !
+        integer(kind=intType) :: i, j, k
+
+        ! viscosity variables
+        real(kind=realType) :: nu, nu_m, nu_p
+        real(kind=realType) :: nut, nut_m, nut_p
+        real(kind=realType) :: nu_tm, nu_tp
+        real(kind=realType) :: nuTilde, nuTilde_m, nuTilde_p
+        real(kind=realType) :: chi, chi3, fv1
+        real(kind=realType) :: chi_m, chi3_m, fv1_m
+        real(kind=realType) :: chi_p, chi3_p, fv1_p
+
+        ! geometry terms
+        real(kind=realType) :: voli, volmi, volpi
+        real(kind=realType) :: xm, ym, zm, xp, yp, zp, xa, ya, za
+        real(kind=realType) :: ttm, ttp
+
+        ! diffusion coefficients
+        real(kind=realType) :: num_v, nup_v
+        real(kind=realType) :: cdm, cdp
+        real(kind=realType) :: cdm_gamma, cdp_gamma
+        real(kind=realType) :: cdm_rt, cdp_rt
+        real(kind=realType) :: vel0, velm, velp, artm, artp
+
+        ! SA nonlinear correction
+        real(kind=realType) :: cnud, cam, cap
+        real(kind=realType) :: nutm, nutp
+
+        ! clipped diffusion coefficients
+        real(kind=realType) :: c1m, c1p, c2m, c2p, c3m, c3p
+
+        ! advection
+        real(kind=realType) :: qs, uu, um, up
+
+        ! constants
+        real(kind=realType) :: cb3Inv, cv13
+
+        ! misc
+        real(kind=realType) :: rblank, factor
+        real(kind=realType) :: gammaNew, gammaDelta, dampFactor
+        integer(kind=intType) :: mm
+        integer(kind=intType) :: nDampCapGamma, nDampCapReTheta
+
+        ! Source dt restriction (Eq. 59)
+        real(kind=realType) :: dt_inv
+
+        ! Scaling values from existing turbulence residual scaling options
+        real(kind=realType) :: scaleNu, scaleGamma, scaleReTheta
+
+        ! Scaling ratios (precomputed from scaling values)
+        real(kind=realType) :: s12, s13, s21, s23, s31, s32
+
+        ! ADI work arrays
+        real(kind=realType), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
+        real(kind=realType), dimension(3, 3, 2:max(il, jl, kl)) :: cc
+
+        logical, save :: printedCoupling = .false.
+
+        if (resOnly) return
+
+        if (.not. printedCoupling) then
+            printedCoupling = .true.
+            select case (TurbDADICoupled)
+            case (0)
+                print *, 'SA-gamma-ReTheta DADI coupling: fully decoupled (diagonal only)'
+            case (1)
+                print *, 'SA-gamma-ReTheta DADI coupling: SA decoupled, gamma-ReTheta coupled'
+            case (2)
+                print *, 'SA-gamma-ReTheta DADI coupling: fully coupled (3x3 block)'
+            case default
+                print *, 'SA-gamma-ReTheta DADI coupling: unknown mode', TurbDADICoupled
+            end select
+        end if
+
+        cb3Inv = one / rsaCb3
+        cv13 = rsaCv1**3
+
+        ! Use existing per-equation scaling controls. Guard against zero
+        ! only: sub-unity (deflating) scales are legitimate — turbResScale
+        ! is ~1/state-magnitude, and ReThetaTilde ~ O(1e3-1e4) needs ~1e-4.
+        scaleNu = max(abs(turbResScale(1)), 1.0e-12_realType)
+        scaleGamma = max(abs(turbResScale(2)), 1.0e-12_realType)
+        scaleReTheta = max(abs(turbResScale(3)), 1.0e-12_realType)
+
+        ! Precompute scaling ratios: s_col / s_row for off-diagonal entries
+        s12 = scaleGamma   / scaleNu       ! eq1, var2
+        s13 = scaleReTheta / scaleNu       ! eq1, var3
+        s21 = scaleNu      / scaleGamma    ! eq2, var1
+        s23 = scaleReTheta / scaleGamma    ! eq2, var3
+        s31 = scaleNu      / scaleReTheta  ! eq3, var1
+        s32 = scaleGamma   / scaleReTheta  ! eq3, var2
+
+        ! Prepare qq: decoupled mode, scaling, and CFL factor.
+        ! For implicit relaxation: factor = 1 + (1-alfa)/alfa = 1/alfa.
+
+        factor = one
+        if (turbRelax == turbRelaxImplicit) &
+            factor = one + (one - alfaTurb) / alfaTurb
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    ! TurbDADICoupled: 0=decoupled, 1=transition-only, 2=full
+                    if (TurbDADICoupled == 0) then
+                        qq(i, j, k, 1, 2) = zero
+                        qq(i, j, k, 1, 3) = zero
+                        qq(i, j, k, 2, 1) = zero
+                        qq(i, j, k, 2, 3) = zero
+                        qq(i, j, k, 3, 1) = zero
+                        qq(i, j, k, 3, 2) = zero
+                    else if (TurbDADICoupled == 1) then
+                        ! SA decoupled, gamma-retheta coupled
+                        qq(i, j, k, 1, 2) = zero
+                        qq(i, j, k, 1, 3) = zero
+                        qq(i, j, k, 2, 1) = zero
+                        qq(i, j, k, 3, 1) = zero
+                    end if
+
+                    ! Source dt restriction (P&Z Eq. 59): ADDITIVE form.
+                    ! In DD-ADI there is no separate dtinv_CFL; srcLambda/limit IS the
+                    ! pseudo-transient term added to the diagonal. Contrast with turbKSP
+                    ! (NKSolvers.F90) which uses MAX form to restrict an existing dtinv_CFL.
+                    ! DD-ADI: controlled by transitionSrcDtRestrict only (no deactivation).
+                    if (transitionSrcDtRestrict) then
+                        qq(i,j,k,1,1) = qq(i,j,k,1,1) + srcLambda(i,j,k,1) / transitionSrcDtLimit
+                        qq(i,j,k,2,2) = qq(i,j,k,2,2) + srcLambda(i,j,k,2) / transitionSrcDtLimit
+                        qq(i,j,k,3,3) = qq(i,j,k,3,3) + srcLambda(i,j,k,3) / transitionSrcDtLimit
+                    end if
+
+                    ! Symmetric scaling (§4): qq(m,n) *= s_n / s_m
+                    ! Diagonal entries unchanged; only off-diag scaled.
+                    qq(i, j, k, 1, 2) = qq(i, j, k, 1, 2) * s12
+                    qq(i, j, k, 1, 3) = qq(i, j, k, 1, 3) * s13
+                    qq(i, j, k, 2, 1) = qq(i, j, k, 2, 1) * s21
+                    qq(i, j, k, 2, 3) = qq(i, j, k, 2, 3) * s23
+                    qq(i, j, k, 3, 1) = qq(i, j, k, 3, 1) * s31
+                    qq(i, j, k, 3, 2) = qq(i, j, k, 3, 2) * s32
+
+                    ! CFL factor scaling (all 9 entries)
+                    qq(i, j, k, 1, 1) = factor * qq(i, j, k, 1, 1)
+                    qq(i, j, k, 1, 2) = factor * qq(i, j, k, 1, 2)
+                    qq(i, j, k, 1, 3) = factor * qq(i, j, k, 1, 3)
+                    qq(i, j, k, 2, 1) = factor * qq(i, j, k, 2, 1)
+                    qq(i, j, k, 2, 2) = factor * qq(i, j, k, 2, 2)
+                    qq(i, j, k, 2, 3) = factor * qq(i, j, k, 2, 3)
+                    qq(i, j, k, 3, 1) = factor * qq(i, j, k, 3, 1)
+                    qq(i, j, k, 3, 2) = factor * qq(i, j, k, 3, 2)
+                    qq(i, j, k, 3, 3) = factor * qq(i, j, k, 3, 3)
+
+                    ! Scale the RHS: scratch(m) /= s_m
+                    scratch(i, j, k, idvt)     = scratch(i, j, k, idvt)     / scaleNu
+                    scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) / scaleGamma
+                    scratch(i, j, k, idvt + 2) = scratch(i, j, k, idvt + 2) / scaleReTheta
+                end do
+            end do
+        end do
+
+        ! Initialize grid velocity to zero.
+        qs = zero
+        !
+        !       DD-ADI step in j-direction. As we solve in j-direction,
+        !       the j-loop is the innermost loop.
+        !
+        do k = 2, kl
+            do i = 2, il
+                do j = 2, jl
+
+                    ! Recompute viscous diffusion coefficients in j-direction.
+
+                    voli = one / vol(i, j, k)
+                    volmi = two / (vol(i, j, k) + vol(i, j - 1, k))
+                    volpi = two / (vol(i, j, k) + vol(i, j + 1, k))
+
+                    xm = sj(i, j - 1, k, 1) * volmi
+                    ym = sj(i, j - 1, k, 2) * volmi
+                    zm = sj(i, j - 1, k, 3) * volmi
+                    xp = sj(i, j, k, 1) * volpi
+                    yp = sj(i, j, k, 2) * volpi
+                    zp = sj(i, j, k, 3) * volpi
+
+                    xa = half * (sj(i, j, k, 1) + sj(i, j - 1, k, 1)) * voli
+                    ya = half * (sj(i, j, k, 2) + sj(i, j - 1, k, 2)) * voli
+                    za = half * (sj(i, j, k, 3) + sj(i, j - 1, k, 3)) * voli
+                    ttm = xm * xa + ym * ya + zm * za
+                    ttp = xp * xa + yp * ya + zp * za
+
+                    cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                    cam = ttm * cnud
+                    cap = ttp * cnud
+
+                    nutm = half * (w(i, j - 1, k, itu1) + w(i, j, k, itu1))
+                    nutp = half * (w(i, j + 1, k, itu1) + w(i, j, k, itu1))
+
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    nuTilde = w(i, j, k, itu1)
+                    chi = nuTilde / nu; chi3 = chi * chi * chi
+                    fv1 = chi3 / (chi3 + cv13)
+                    nut = nuTilde * fv1
+
+                    nu_m = rlv(i, j - 1, k) / w(i, j - 1, k, irho)
+                    nuTilde_m = w(i, j - 1, k, itu1)
+                    chi_m = nuTilde_m / nu_m; chi3_m = chi_m * chi_m * chi_m
+                    fv1_m = chi3_m / (chi3_m + cv13)
+                    nut_m = nuTilde_m * fv1_m
+
+                    nu_p = rlv(i, j + 1, k) / w(i, j + 1, k, irho)
+                    nuTilde_p = w(i, j + 1, k, itu1)
+                    chi_p = nuTilde_p / nu_p; chi3_p = chi_p * chi_p * chi_p
+                    fv1_p = chi3_p / (chi3_p + cv13)
+                    nut_p = nuTilde_p * fv1_p
+
+                    num_v = half * (nu_m + nu)
+                    nup_v = half * (nu_p + nu)
+                    nu_tm = half * (nut_m + nut)
+                    nu_tp = half * (nut_p + nut)
+
+                    ! SA diffusion
+                    cdm = (num_v + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                    cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
+
+                    ! Gamma diffusion
+                    ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                    ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                    ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                    artm = zero
+                    artp = zero
+                    if (transitionArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i, j - 1, k, ivx)**2 + w(i, j - 1, k, ivy)**2 + w(i, j - 1, k, ivz)**2)
+                        velp = sqrt(w(i, j + 1, k, ivx)**2 + w(i, j + 1, k, ivy)**2 + w(i, j + 1, k, ivz)**2)
+                        artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j - 1, k, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j + 1, k, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
+
+                    ! ReTheta diffusion
+                    cdm_rt = sigmaTheta * (num_v + nu_tm) * ttm
+                    cdp_rt = sigmaTheta * (nup_v + nu_tp) * ttp
+
+                    c1m = max(cdm + cam, zero)
+                    c1p = max(cdp + cap, zero)
+                    c2m = max(cdm_gamma + artm, zero)   ! exact linearisation of the quadratic art flux
+                    c2p = max(cdp_gamma + artp, zero)
+                    c3m = max(cdm_rt, zero)
+                    c3p = max(cdp_rt, zero)
+
+                    bb(1, j) = -c1m
+                    dd(1, j) = -c1p
+                    bb(2, j) = -c2m
+                    dd(2, j) = -c2p
+                    bb(3, j) = -c3m
+                    dd(3, j) = -c3p
+
+                    ! Add advection off-diagonal terms in j-direction.
+
+                    if (addGridVelocities) &
+                        qs = half * (sFaceJ(i, j, k) + sFaceJ(i, j - 1, k)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) &
+                         + za * w(i, j, k, ivz) - qs
+                    um = zero; up = zero
+                    if (uu < zero) um = uu
+                    if (uu > zero) up = uu
+
+                    bb(1, j) = bb(1, j) - up
+                    dd(1, j) = dd(1, j) + um
+                    bb(2, j) = bb(2, j) - up
+                    dd(2, j) = dd(2, j) + um
+                    bb(3, j) = bb(3, j) - up
+                    dd(3, j) = dd(3, j) + um
+
+                    ! Store central jacobian and rhs in cc and ff.
+                    ! Multiply off-diagonal qq entries and rhs by iblank
+                    ! so the update for iblank=0 cells is zero.
+
+                    rblank = real(iblank(i, j, k), realType)
+
+                    cc(1, 1, j) = qq(i, j, k, 1, 1)
+                    cc(1, 2, j) = qq(i, j, k, 1, 2) * rblank
+                    cc(1, 3, j) = qq(i, j, k, 1, 3) * rblank
+                    cc(2, 1, j) = qq(i, j, k, 2, 1) * rblank
+                    cc(2, 2, j) = qq(i, j, k, 2, 2)
+                    cc(2, 3, j) = qq(i, j, k, 2, 3) * rblank
+                    cc(3, 1, j) = qq(i, j, k, 3, 1) * rblank
+                    cc(3, 2, j) = qq(i, j, k, 3, 2) * rblank
+                    cc(3, 3, j) = qq(i, j, k, 3, 3)
+
+                    ff(1, j) = scratch(i, j, k, idvt) * rblank
+                    ff(2, j) = scratch(i, j, k, idvt + 1) * rblank
+                    ff(3, j) = scratch(i, j, k, idvt + 2) * rblank
+
+                    bb(:, j) = bb(:, j) * rblank
+                    dd(:, j) = dd(:, j) * rblank
+
+                end do
+
+                ! Solve the tri-diagonal system in j-direction.
+
+                call tdia3x3(2_intType, jl, bb, cc, dd, ff)
+
+                ! Determine the new rhs for the next direction.
+
+                do j = 2, jl
+                    scratch(i, j, k, idvt) = qq(i, j, k, 1, 1) * ff(1, j) &
+                        + qq(i, j, k, 1, 2) * ff(2, j) + qq(i, j, k, 1, 3) * ff(3, j)
+                    scratch(i, j, k, idvt + 1) = qq(i, j, k, 2, 1) * ff(1, j) &
+                        + qq(i, j, k, 2, 2) * ff(2, j) + qq(i, j, k, 2, 3) * ff(3, j)
+                    scratch(i, j, k, idvt + 2) = qq(i, j, k, 3, 1) * ff(1, j) &
+                        + qq(i, j, k, 3, 2) * ff(2, j) + qq(i, j, k, 3, 3) * ff(3, j)
+                end do
+
+            end do
+        end do
+        !
+        !       DD-ADI step in i-direction. As we solve in i-direction,
+        !       the i-loop is the innermost loop.
+        !
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+
+                    ! Recompute viscous diffusion coefficients in i-direction.
+
+                    voli = one / vol(i, j, k)
+                    volmi = two / (vol(i, j, k) + vol(i - 1, j, k))
+                    volpi = two / (vol(i, j, k) + vol(i + 1, j, k))
+
+                    xm = si(i - 1, j, k, 1) * volmi
+                    ym = si(i - 1, j, k, 2) * volmi
+                    zm = si(i - 1, j, k, 3) * volmi
+                    xp = si(i, j, k, 1) * volpi
+                    yp = si(i, j, k, 2) * volpi
+                    zp = si(i, j, k, 3) * volpi
+
+                    xa = half * (si(i, j, k, 1) + si(i - 1, j, k, 1)) * voli
+                    ya = half * (si(i, j, k, 2) + si(i - 1, j, k, 2)) * voli
+                    za = half * (si(i, j, k, 3) + si(i - 1, j, k, 3)) * voli
+                    ttm = xm * xa + ym * ya + zm * za
+                    ttp = xp * xa + yp * ya + zp * za
+
+                    cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                    cam = ttm * cnud
+                    cap = ttp * cnud
+
+                    nutm = half * (w(i - 1, j, k, itu1) + w(i, j, k, itu1))
+                    nutp = half * (w(i + 1, j, k, itu1) + w(i, j, k, itu1))
+
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    nuTilde = w(i, j, k, itu1)
+                    chi = nuTilde / nu; chi3 = chi * chi * chi
+                    fv1 = chi3 / (chi3 + cv13)
+                    nut = nuTilde * fv1
+
+                    nu_m = rlv(i - 1, j, k) / w(i - 1, j, k, irho)
+                    nuTilde_m = w(i - 1, j, k, itu1)
+                    chi_m = nuTilde_m / nu_m; chi3_m = chi_m * chi_m * chi_m
+                    fv1_m = chi3_m / (chi3_m + cv13)
+                    nut_m = nuTilde_m * fv1_m
+
+                    nu_p = rlv(i + 1, j, k) / w(i + 1, j, k, irho)
+                    nuTilde_p = w(i + 1, j, k, itu1)
+                    chi_p = nuTilde_p / nu_p; chi3_p = chi_p * chi_p * chi_p
+                    fv1_p = chi3_p / (chi3_p + cv13)
+                    nut_p = nuTilde_p * fv1_p
+
+                    num_v = half * (nu_m + nu)
+                    nup_v = half * (nu_p + nu)
+                    nu_tm = half * (nut_m + nut)
+                    nu_tp = half * (nut_p + nut)
+
+                    ! SA diffusion
+                    cdm = (num_v + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                    cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
+
+                    ! Gamma diffusion
+                    ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                    ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                    ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                    artm = zero
+                    artp = zero
+                    if (transitionArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i - 1, j, k, ivx)**2 + w(i - 1, j, k, ivy)**2 + w(i - 1, j, k, ivz)**2)
+                        velp = sqrt(w(i + 1, j, k, ivx)**2 + w(i + 1, j, k, ivy)**2 + w(i + 1, j, k, ivz)**2)
+                        artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i - 1, j, k, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i + 1, j, k, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
+
+                    ! ReTheta diffusion
+                    cdm_rt = sigmaTheta * (num_v + nu_tm) * ttm
+                    cdp_rt = sigmaTheta * (nup_v + nu_tp) * ttp
+
+                    c1m = max(cdm + cam, zero)
+                    c1p = max(cdp + cap, zero)
+                    c2m = max(cdm_gamma + artm, zero)   ! exact linearisation of the quadratic art flux
+                    c2p = max(cdp_gamma + artp, zero)
+                    c3m = max(cdm_rt, zero)
+                    c3p = max(cdp_rt, zero)
+
+                    bb(1, i) = -c1m
+                    dd(1, i) = -c1p
+                    bb(2, i) = -c2m
+                    dd(2, i) = -c2p
+                    bb(3, i) = -c3m
+                    dd(3, i) = -c3p
+
+                    ! Add advection off-diagonal terms in i-direction.
+
+                    if (addGridVelocities) &
+                        qs = half * (sFaceI(i, j, k) + sFaceI(i - 1, j, k)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) &
+                         + za * w(i, j, k, ivz) - qs
+                    um = zero; up = zero
+                    if (uu < zero) um = uu
+                    if (uu > zero) up = uu
+
+                    bb(1, i) = bb(1, i) - up
+                    dd(1, i) = dd(1, i) + um
+                    bb(2, i) = bb(2, i) - up
+                    dd(2, i) = dd(2, i) + um
+                    bb(3, i) = bb(3, i) - up
+                    dd(3, i) = dd(3, i) + um
+
+                    ! Store central jacobian and rhs in cc and ff.
+
+                    rblank = real(iblank(i, j, k), realType)
+
+                    cc(1, 1, i) = qq(i, j, k, 1, 1)
+                    cc(1, 2, i) = qq(i, j, k, 1, 2) * rblank
+                    cc(1, 3, i) = qq(i, j, k, 1, 3) * rblank
+                    cc(2, 1, i) = qq(i, j, k, 2, 1) * rblank
+                    cc(2, 2, i) = qq(i, j, k, 2, 2)
+                    cc(2, 3, i) = qq(i, j, k, 2, 3) * rblank
+                    cc(3, 1, i) = qq(i, j, k, 3, 1) * rblank
+                    cc(3, 2, i) = qq(i, j, k, 3, 2) * rblank
+                    cc(3, 3, i) = qq(i, j, k, 3, 3)
+
+                    ff(1, i) = scratch(i, j, k, idvt) * rblank
+                    ff(2, i) = scratch(i, j, k, idvt + 1) * rblank
+                    ff(3, i) = scratch(i, j, k, idvt + 2) * rblank
+
+                    bb(:, i) = bb(:, i) * rblank
+                    dd(:, i) = dd(:, i) * rblank
+
+                end do
+
+                ! Solve the tri-diagonal system in i-direction.
+
+                call tdia3x3(2_intType, il, bb, cc, dd, ff)
+
+                ! Determine the new rhs for the next direction.
+
+                do i = 2, il
+                    scratch(i, j, k, idvt) = qq(i, j, k, 1, 1) * ff(1, i) &
+                        + qq(i, j, k, 1, 2) * ff(2, i) + qq(i, j, k, 1, 3) * ff(3, i)
+                    scratch(i, j, k, idvt + 1) = qq(i, j, k, 2, 1) * ff(1, i) &
+                        + qq(i, j, k, 2, 2) * ff(2, i) + qq(i, j, k, 2, 3) * ff(3, i)
+                    scratch(i, j, k, idvt + 2) = qq(i, j, k, 3, 1) * ff(1, i) &
+                        + qq(i, j, k, 3, 2) * ff(2, i) + qq(i, j, k, 3, 3) * ff(3, i)
+                end do
+
+            end do
+        end do
+        !
+        !       DD-ADI step in k-direction. As we solve in k-direction,
+        !       the k-loop is the innermost loop.
+        !
+        do j = 2, jl
+            do i = 2, il
+                do k = 2, kl
+
+                    ! Recompute viscous diffusion coefficients in k-direction.
+
+                    voli = one / vol(i, j, k)
+                    volmi = two / (vol(i, j, k) + vol(i, j, k - 1))
+                    volpi = two / (vol(i, j, k) + vol(i, j, k + 1))
+
+                    xm = sk(i, j, k - 1, 1) * volmi
+                    ym = sk(i, j, k - 1, 2) * volmi
+                    zm = sk(i, j, k - 1, 3) * volmi
+                    xp = sk(i, j, k, 1) * volpi
+                    yp = sk(i, j, k, 2) * volpi
+                    zp = sk(i, j, k, 3) * volpi
+
+                    xa = half * (sk(i, j, k, 1) + sk(i, j, k - 1, 1)) * voli
+                    ya = half * (sk(i, j, k, 2) + sk(i, j, k - 1, 2)) * voli
+                    za = half * (sk(i, j, k, 3) + sk(i, j, k - 1, 3)) * voli
+                    ttm = xm * xa + ym * ya + zm * za
+                    ttp = xp * xa + yp * ya + zp * za
+
+                    cnud = -rsaCb2 * w(i, j, k, itu1) * cb3Inv
+                    cam = ttm * cnud
+                    cap = ttp * cnud
+
+                    nutm = half * (w(i, j, k - 1, itu1) + w(i, j, k, itu1))
+                    nutp = half * (w(i, j, k + 1, itu1) + w(i, j, k, itu1))
+
+                    nu = rlv(i, j, k) / w(i, j, k, irho)
+                    nuTilde = w(i, j, k, itu1)
+                    chi = nuTilde / nu; chi3 = chi * chi * chi
+                    fv1 = chi3 / (chi3 + cv13)
+                    nut = nuTilde * fv1
+
+                    nu_m = rlv(i, j, k - 1) / w(i, j, k - 1, irho)
+                    nuTilde_m = w(i, j, k - 1, itu1)
+                    chi_m = nuTilde_m / nu_m; chi3_m = chi_m * chi_m * chi_m
+                    fv1_m = chi3_m / (chi3_m + cv13)
+                    nut_m = nuTilde_m * fv1_m
+
+                    nu_p = rlv(i, j, k + 1) / w(i, j, k + 1, irho)
+                    nuTilde_p = w(i, j, k + 1, itu1)
+                    chi_p = nuTilde_p / nu_p; chi3_p = chi_p * chi_p * chi_p
+                    fv1_p = chi3_p / (chi3_p + cv13)
+                    nut_p = nuTilde_p * fv1_p
+
+                    num_v = half * (nu_m + nu)
+                    nup_v = half * (nu_p + nu)
+                    nu_tm = half * (nut_m + nut)
+                    nu_tp = half * (nut_p + nut)
+
+                    ! SA diffusion
+                    cdm = (num_v + (one + rsaCb2) * nutm) * ttm * cb3Inv
+                    cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
+
+                    ! Gamma diffusion
+                    ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                    ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                    ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                    artm = zero
+                    artp = zero
+                    if (transitionArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i, j, k - 1, ivx)**2 + w(i, j, k - 1, ivy)**2 + w(i, j, k - 1, ivz)**2)
+                        velp = sqrt(w(i, j, k + 1, ivx)**2 + w(i, j, k + 1, ivy)**2 + w(i, j, k + 1, ivz)**2)
+                        artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j, k - 1, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j, k + 1, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
+
+                    ! ReTheta diffusion
+                    cdm_rt = sigmaTheta * (num_v + nu_tm) * ttm
+                    cdp_rt = sigmaTheta * (nup_v + nu_tp) * ttp
+
+                    c1m = max(cdm + cam, zero)
+                    c1p = max(cdp + cap, zero)
+                    c2m = max(cdm_gamma + artm, zero)   ! exact linearisation of the quadratic art flux
+                    c2p = max(cdp_gamma + artp, zero)
+                    c3m = max(cdm_rt, zero)
+                    c3p = max(cdp_rt, zero)
+
+                    bb(1, k) = -c1m
+                    dd(1, k) = -c1p
+                    bb(2, k) = -c2m
+                    dd(2, k) = -c2p
+                    bb(3, k) = -c3m
+                    dd(3, k) = -c3p
+
+                    ! Add advection off-diagonal terms in k-direction.
+
+                    if (addGridVelocities) &
+                        qs = half * (sFaceK(i, j, k) + sFaceK(i, j, k - 1)) * voli
+
+                    uu = xa * w(i, j, k, ivx) + ya * w(i, j, k, ivy) &
+                         + za * w(i, j, k, ivz) - qs
+                    um = zero; up = zero
+                    if (uu < zero) um = uu
+                    if (uu > zero) up = uu
+
+                    bb(1, k) = bb(1, k) - up
+                    dd(1, k) = dd(1, k) + um
+                    bb(2, k) = bb(2, k) - up
+                    dd(2, k) = dd(2, k) + um
+                    bb(3, k) = bb(3, k) - up
+                    dd(3, k) = dd(3, k) + um
+
+                    ! Store central jacobian and rhs in cc and ff.
+
+                    rblank = real(iblank(i, j, k), realType)
+
+                    cc(1, 1, k) = qq(i, j, k, 1, 1)
+                    cc(1, 2, k) = qq(i, j, k, 1, 2) * rblank
+                    cc(1, 3, k) = qq(i, j, k, 1, 3) * rblank
+                    cc(2, 1, k) = qq(i, j, k, 2, 1) * rblank
+                    cc(2, 2, k) = qq(i, j, k, 2, 2)
+                    cc(2, 3, k) = qq(i, j, k, 2, 3) * rblank
+                    cc(3, 1, k) = qq(i, j, k, 3, 1) * rblank
+                    cc(3, 2, k) = qq(i, j, k, 3, 2) * rblank
+                    cc(3, 3, k) = qq(i, j, k, 3, 3)
+
+                    ff(1, k) = scratch(i, j, k, idvt) * rblank
+                    ff(2, k) = scratch(i, j, k, idvt + 1) * rblank
+                    ff(3, k) = scratch(i, j, k, idvt + 2) * rblank
+
+                    bb(:, k) = bb(:, k) * rblank
+                    dd(:, k) = dd(:, k) * rblank
+
+                end do
+
+                ! Solve the tri-diagonal system in k-direction.
+
+                call tdia3x3(2_intType, kl, bb, cc, dd, ff)
+
+                ! Store the final update in scratch.
+
+                do k = 2, kl
+                    scratch(i, j, k, idvt) = ff(1, k)
+                    scratch(i, j, k, idvt + 1) = ff(2, k)
+                    scratch(i, j, k, idvt + 2) = ff(3, k)
+                end do
+
+            end do
+        end do
+        !
+        !       Update the turbulent variables. For explicit relaxation the
+        !       update must be relaxed; for implicit relaxation this has been
+        !       done via the time step.
+        !       Unscale the update: ΔQ(m) = s_m * ΔQ_scaled(m).
+        !
+        factor = one
+        if (turbRelax == turbRelaxExplicit) factor = alfaTurb
+
+        nDampCapGamma = 0
+        nDampCapReTheta = 0
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    w(i, j, k, itu1) = w(i, j, k, itu1) &
+                                       + factor * scaleNu &
+                                       * scratch(i, j, k, idvt)
+                    w(i, j, k, itu1) = max(w(i, j, k, itu1), zero)
+
+                    ! Gamma update with exponential back-off damping
+                    ! (paper Algorithm 2): reduce the step by theta^m until
+                    ! the new value stays in [gammaLo, gammaHi]. The hard
+                    ! clip below is a last-resort fallback only — it can
+                    ! only fire if the back-off exhausted maxIter, which is
+                    ! only possible when the previous value was already out
+                    ! of bounds (theta^m * delta -> 0).
+                    gammaDelta = factor * scaleGamma &
+                                 * scratch(i, j, k, idvt + 1)
+                    gammaNew = w(i, j, k, itu2) + gammaDelta
+                    dampFactor = one
+                    do mm = 1, transitionDampMaxIter
+                        if (gammaNew >= rsaGRgammaLo .and. &
+                            gammaNew <= rsaGRgammaHi) exit
+                        dampFactor = dampFactor * transitionDampTheta
+                        gammaNew = w(i, j, k, itu2) + dampFactor * gammaDelta
+                    end do
+                    if (gammaNew < rsaGRgammaLo .or. &
+                        gammaNew > rsaGRgammaHi) then
+                        nDampCapGamma = nDampCapGamma + 1
+                        gammaNew = min(max(gammaNew, rsaGRgammaLo), &
+                                       rsaGRgammaHi)
+                    end if
+                    w(i, j, k, itu2) = gammaNew
+
+                    ! ReTheta update with exponential back-off damping
+                    ! (paper Algorithm 2, lower bound only). Same
+                    ! last-resort clip as gamma.
+                    gammaDelta = factor * scaleReTheta &
+                                 * scratch(i, j, k, idvt + 2)
+                    gammaNew = w(i, j, k, itu3) + gammaDelta
+                    dampFactor = one
+                    do mm = 1, transitionDampMaxIter
+                        if (gammaNew >= rsaGRreThetaLo) exit
+                        dampFactor = dampFactor * transitionDampTheta
+                        gammaNew = w(i, j, k, itu3) + dampFactor * gammaDelta
+                    end do
+                    if (gammaNew < rsaGRreThetaLo) then
+                        nDampCapReTheta = nDampCapReTheta + 1
+                        gammaNew = rsaGRreThetaLo
+                    end if
+                    w(i, j, k, itu3) = gammaNew
+                end do
+            end do
+        end do
+
+        if (nDampCapGamma + nDampCapReTheta > 0) then
+            print *, 'Warning: transition update damping exhausted ', &
+                'transitionDampMaxIter (', transitionDampMaxIter, ') in ', &
+                nDampCapGamma, ' gamma / ', nDampCapReTheta, &
+                ' reTheta cells; values clipped to Algorithm 2 bounds. ', &
+                'Increase transitionDampMaxIter or investigate why the ', &
+                'previous state was already out of bounds.'
+        end if
+
+    end subroutine saGammaReThetaSolve
+
+    subroutine evalSrcJacBlock(i, j, k, A)
+        !
+        ! Compute the source-term Jacobian A_source = ∂S/∂Q for cell (i,j,k).
+        ! Returns the 5 non-zero entries: A(1,1), A(1,2), A(2,1), A(2,2), A(3,3).
+        ! A(1,3) is exactly zero (SA source has no ReThetaTilde dependence).
+        ! A(3,2) is exactly zero (this FThetaT has no gamma term).
+        ! A(3,1) is zero without crossflow; with transitionCrossflow the weak
+        ! D_scf dependence on nu_tilde (via crossflowRatio(rTurb)) is
+        ! deliberately neglected to keep the triangular structure used by
+        ! computeSrcLambda.
+        ! A(2,3) is computed via one-sided finite difference of pGamma-eGamma.
+        !
+        ! This routine is independent of qq — it recomputes everything from w.
+        ! Used by computeSrcLambda for the source dt restriction (Eq. 59).
+        !
+        use blockPointers
+        use constants
+        use paramTurb
+        use section
+        use inputPhysics
+        use flowVarRefState
+        use turbUtils, only: flengthCorrelation, rethetacCorrelation, smoothMinMax
+        use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
+                      transitionRefLength
+        implicit none
+
+        integer(kind=intType), intent(in) :: i, j, k
+        real(kind=realType), intent(out) :: A(3,3)
+
+        ! Local parameters
+        real(kind=realType), parameter :: f23 = two * third
+        real(kind=realType), parameter :: xminn = 1.e-10_realType
+
+        ! Local variables
+        real(kind=realType) :: fv1, fv2, ft2
+        real(kind=realType) :: ss, sst, nu, dist2Inv, chi, chi2, chi3
+        real(kind=realType) :: rr, gg, gg6, termFw, fwSa, term2
+        real(kind=realType) :: term2_prod, term2_dest
+        real(kind=realType) :: cv13, kar2Inv, cw36
+        real(kind=realType) :: dfv1, dfv2, dft2, drr, dgg, dfw
+        real(kind=realType) :: uux, uuy, uuz, vvx, vvy, vvz, wwx, wwy, wwz
+        real(kind=realType) :: fact, sxx, syy, szz, sxy, sxz, syz
+        real(kind=realType) :: vortx, vorty, vortz
+        real(kind=realType) :: omegax, omegay, omegaz
+        real(kind=realType) :: strainMag2
+
+        ! Gamma-ReTheta variables
+        real(kind=realType) :: vortMag, strainMag
+        real(kind=realType) :: nutSA, rTurb, gammaLocal, reThetaTilde
+        real(kind=realType) :: gammaForSA
+        real(kind=realType) :: reS_val, reThetaC_val, fLength_val, fTurb_val
+        real(kind=realType) :: fOnset, fOnset1
+        real(kind=realType) :: vortLim, vortMagLim, refLenTrans
+        real(kind=realType) :: pGamma, eGamma, dScf, reScf, hcf
+        real(kind=realType) :: velMag, velMag2, timeScale
+        real(kind=realType) :: thetaBL, deltaBL, delta, fWake_val, fThetaT
+        real(kind=realType) :: yDist
+        ! Rotating-frame helpers (see Source; no-op when rotRate = 0 => sc = 0)
+        real(kind=realType) :: xc(3), xxc(3), sc(3)
+        real(kind=realType) :: velRelx, velRely, velRelz, uRefTrans
+        real(kind=realType) :: crossflowRatio, crossflowPhiPrime, dHplus, dHminus
+        real(kind=realType) :: epsRT, reThetaTilde_p, reThetaC_p
+        real(kind=realType) :: fOnset1_p, fOnset_p, fLength_p, pGamma_p
+        real(kind=realType) :: fTurb_p, eGamma_p
+        real(kind=realType) :: drTurb_dnu, dfTurb_dnu, dfOnset_dnu
+        real(kind=realType) :: dfOnset1_drT, dfOnset_dfOnset1
+
+        ! Set model constants
+        cv13 = rsaCv1**3
+        kar2Inv = one / (rsaK**2)
+        cw36 = rsaCw3**6
+
+        ! Rotation rates
+        omegax = timeRef * sections(sectionID)%rotRate(1)
+        omegay = timeRef * sections(sectionID)%rotRate(2)
+        omegaz = timeRef * sections(sectionID)%rotRate(3)
+
+        ! Initialize output
+        A = zero
+
+        ! Compute velocity gradients (scaled by 2*vol)
+        uux = w(i + 1, j, k, ivx) * si(i, j, k, 1) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 1) &
+              + w(i, j + 1, k, ivx) * sj(i, j, k, 1) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 1) &
+              + w(i, j, k + 1, ivx) * sk(i, j, k, 1) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 1)
+        uuy = w(i + 1, j, k, ivx) * si(i, j, k, 2) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 2) &
+              + w(i, j + 1, k, ivx) * sj(i, j, k, 2) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 2) &
+              + w(i, j, k + 1, ivx) * sk(i, j, k, 2) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 2)
+        uuz = w(i + 1, j, k, ivx) * si(i, j, k, 3) - w(i - 1, j, k, ivx) * si(i - 1, j, k, 3) &
+              + w(i, j + 1, k, ivx) * sj(i, j, k, 3) - w(i, j - 1, k, ivx) * sj(i, j - 1, k, 3) &
+              + w(i, j, k + 1, ivx) * sk(i, j, k, 3) - w(i, j, k - 1, ivx) * sk(i, j, k - 1, 3)
+
+        vvx = w(i + 1, j, k, ivy) * si(i, j, k, 1) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 1) &
+              + w(i, j + 1, k, ivy) * sj(i, j, k, 1) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 1) &
+              + w(i, j, k + 1, ivy) * sk(i, j, k, 1) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 1)
+        vvy = w(i + 1, j, k, ivy) * si(i, j, k, 2) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 2) &
+              + w(i, j + 1, k, ivy) * sj(i, j, k, 2) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 2) &
+              + w(i, j, k + 1, ivy) * sk(i, j, k, 2) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 2)
+        vvz = w(i + 1, j, k, ivy) * si(i, j, k, 3) - w(i - 1, j, k, ivy) * si(i - 1, j, k, 3) &
+              + w(i, j + 1, k, ivy) * sj(i, j, k, 3) - w(i, j - 1, k, ivy) * sj(i, j - 1, k, 3) &
+              + w(i, j, k + 1, ivy) * sk(i, j, k, 3) - w(i, j, k - 1, ivy) * sk(i, j, k - 1, 3)
+
+        wwx = w(i + 1, j, k, ivz) * si(i, j, k, 1) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 1) &
+              + w(i, j + 1, k, ivz) * sj(i, j, k, 1) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 1) &
+              + w(i, j, k + 1, ivz) * sk(i, j, k, 1) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 1)
+        wwy = w(i + 1, j, k, ivz) * si(i, j, k, 2) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 2) &
+              + w(i, j + 1, k, ivz) * sj(i, j, k, 2) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 2) &
+              + w(i, j, k + 1, ivz) * sk(i, j, k, 2) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 2)
+        wwz = w(i + 1, j, k, ivz) * si(i, j, k, 3) - w(i - 1, j, k, ivz) * si(i - 1, j, k, 3) &
+              + w(i, j + 1, k, ivz) * sj(i, j, k, 3) - w(i, j - 1, k, ivz) * sj(i, j - 1, k, 3) &
+              + w(i, j, k + 1, ivz) * sk(i, j, k, 3) - w(i, j, k - 1, ivz) * sk(i, j, k - 1, 3)
+
+        fact = fourth / vol(i, j, k)
+
+        ! Compute vorticity for ss (production term)
+        vortx = two * fact * (wwy - vvz) - two * omegax
+        vorty = two * fact * (uuz - wwx) - two * omegay
+        vortz = two * fact * (vvx - uuy) - two * omegaz
+        ss = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+        ! SA auxiliary functions
+        nu = rlv(i, j, k) / w(i, j, k, irho)
+        dist2Inv = one / (d2Wall(i, j, k)**2)
+        chi = w(i, j, k, itu1) / nu
+        chi2 = chi * chi
+        chi3 = chi * chi2
+        fv1 = chi3 / (chi3 + cv13)
+        fv2 = one - chi / (one + chi * fv1)
+
+        if (useft2SA) then
+            ft2 = rsaCt3 * exp(-rsaCt4 * chi2)
+        else
+            ft2 = zero
+        end if
+
+        sst = ss + w(i, j, k, itu1) * fv2 * kar2Inv * dist2Inv
+        sst = max(sst, xminn)
+
+        rr = w(i, j, k, itu1) * kar2Inv * dist2Inv / sst
+        rr = min(rr, 10.0_realType)
+        gg = rr + rsaCw2 * (rr**6 - rr)
+        gg6 = gg**6
+        termFw = ((one + cw36) / (gg6 + cw36))**sixth
+        fwSa = gg * termFw
+
+        ! Clamp -- kept in lockstep with Source's gammaForSA (this is the
+        ! hand-coded PC/DADI Jacobian, not Tapenade-differentiated, but must
+        ! clamp gamma the same way as the residual for the linearization point
+        ! to stay physically consistent): [xminn, one + xminn], upper cap ~1
+        ! since Eq. 41's SA-production multiplier is the raw gamma in [0,1].
+        gammaForSA = min(max(w(i, j, k, itu2), xminn), one + xminn)
+
+        term2_prod = dist2Inv * kar2Inv * rsaCb1 * ((one - ft2) * fv2 + ft2)
+        term2_dest = -dist2Inv * rsaCw1 * fwSa
+        term2 = gammaForSA * term2_prod + term2_dest
+
+        ! Derivatives for A(1,1)
+        dfv1 = three * chi2 * cv13 / ((chi3 + cv13)**2)
+        dfv2 = (chi2 * dfv1 - one) / (nu * ((one + chi * fv1)**2))
+        dft2 = -two * rsaCt4 * chi * ft2 / nu
+
+        drr = (one - rr * (fv2 + w(i, j, k, itu1) * dfv2)) * kar2Inv * dist2Inv / sst
+        dgg = (one - rsaCw2 + six * rsaCw2 * (rr**5)) * drr
+        dfw = (cw36 / (gg6 + cw36)) * termFw * dgg
+
+        ! A(1,1) = +∂S_nu/∂nu_tilde
+        A(1,1) = two * term2 * w(i, j, k, itu1) &
+               + dist2Inv * w(i, j, k, itu1) * w(i, j, k, itu1) &
+               * (gammaForSA * rsaCb1 * kar2Inv &
+                  * (dfv2 - ft2 * dfv2 - fv2 * dft2 + dft2) &
+                  - rsaCw1 * dfw)
+
+        ! --- Gamma-ReTheta variables for A(2,*) ---
+        vortMag = sqrt(max(vortx**2 + vorty**2 + vortz**2, xminn))
+
+        sxx = two * fact * uux
+        syy = two * fact * vvy
+        szz = two * fact * wwz
+        sxy = fact * (uuy + vvx)
+        sxz = fact * (uuz + wwx)
+        syz = fact * (vvz + wwy)
+        strainMag2 = two*(sxy**2 + sxz**2 + syz**2) + sxx**2 + syy**2 + szz**2
+        strainMag = sqrt(max(two*strainMag2, xminn))
+
+        nutSA = w(i, j, k, itu1) * fv1
+        rTurb = nutSA / nu
+        gammaLocal = min(max(w(i, j, k, itu2), rsaGRgammaLo), rsaGRgammaHi)
+        reThetaTilde = max(w(i, j, k, itu3), rsaGRreThetaLo)
+        yDist = d2Wall(i, j, k)
+
+        ! Relative (rotating-frame) velocity V_rel = V_abs - Omega x r; must
+        ! match the residual in Source (see the detailed comment there). Cell
+        ! center from the 8 nodes, sc = Omega x (xc - rotCenter). Non-rotating
+        ! section => rotRate = 0 => sc = 0 => identical to the old absolute form.
+        xc(1) = eighth * (x(i - 1, j - 1, k - 1, 1) + x(i, j - 1, k - 1, 1) &
+              + x(i - 1, j, k - 1, 1) + x(i, j, k - 1, 1) + x(i - 1, j - 1, k, 1) &
+              + x(i, j - 1, k, 1) + x(i - 1, j, k, 1) + x(i, j, k, 1))
+        xc(2) = eighth * (x(i - 1, j - 1, k - 1, 2) + x(i, j - 1, k - 1, 2) &
+              + x(i - 1, j, k - 1, 2) + x(i, j, k - 1, 2) + x(i - 1, j - 1, k, 2) &
+              + x(i, j - 1, k, 2) + x(i - 1, j, k, 2) + x(i, j, k, 2))
+        xc(3) = eighth * (x(i - 1, j - 1, k - 1, 3) + x(i, j - 1, k - 1, 3) &
+              + x(i - 1, j, k - 1, 3) + x(i, j, k - 1, 3) + x(i - 1, j - 1, k, 3) &
+              + x(i, j - 1, k, 3) + x(i - 1, j, k, 3) + x(i, j, k, 3))
+        xxc(1) = xc(1) - sections(sectionID)%rotCenter(1)
+        xxc(2) = xc(2) - sections(sectionID)%rotCenter(2)
+        xxc(3) = xc(3) - sections(sectionID)%rotCenter(3)
+        sc(1) = omegay * xxc(3) - omegaz * xxc(2)
+        sc(2) = omegaz * xxc(1) - omegax * xxc(3)
+        sc(3) = omegax * xxc(2) - omegay * xxc(1)
+        velRelx = w(i, j, k, ivx) - sc(1)
+        velRely = w(i, j, k, ivy) - sc(2)
+        velRelz = w(i, j, k, ivz) - sc(3)
+        velMag2 = velRelx**2 + velRely**2 + velRelz**2
+        velMag = sqrt(max(velMag2, xminn))
+
+        if (transitionRefLength > zero) then
+            refLenTrans = transitionRefLength
+        else
+            refLenTrans = lengthRef
+        end if
+        ! Blade-element section-speed reference (see Source): sqrt(uInf^2+|Omega x r|^2)
+        uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
+        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) / rsaGRvortLimScale
+        ! Use the same smooth limiter as the residual (Source) so this
+        ! Jacobian linearizes the source actually being solved.
+        vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
+
+        reS_val = w(i, j, k, irho) * yDist**2 * strainMag / rlv(i, j, k)
+        reThetaC_val = rethetacCorrelation(reThetaTilde)
+        fOnset1 = sqrt((reS_val / (2.6_realType * reThetaC_val))**2 + rTurb**2)
+        fOnset = (tanh(6.0_realType * (fOnset1 - 1.35_realType)) + one) * half
+
+        fLength_val = flengthCorrelation(reThetaTilde)
+        fTurb_val = (one - fOnset) * exp(-rTurb)
+
+        pGamma = rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                 * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
+        eGamma = rsaGRca2 * fTurb_val * vortMagLim * gammaLocal &
+                 * (rsaGRce2 * gammaLocal - one)
+
+        ! A(2,2) = +∂S_gamma/∂gamma
+        A(2,2) = -(rsaGRca1 * fLength_val * fOnset * vortMagLim &
+                   * (1.5_realType * rsaGRce1 * gammaLocal - half) &
+                   / sqrt(max(gammaLocal, xminn)) &
+                   + rsaGRca2 * fTurb_val * vortMagLim &
+                   * (two * rsaGRce2 * gammaLocal - one))
+
+        ! A(1,2) = +∂S_nu/∂gamma
+        A(1,2) = (rsaCb1 * (one - ft2) * ss &
+                  + term2_prod * w(i, j, k, itu1)) * w(i, j, k, itu1)
+
+        ! A(2,1) = +∂S_gamma/∂nu_tilde
+        drTurb_dnu = (fv1 + chi * dfv1) / nu
+        dfOnset1_drT = rTurb / max(fOnset1, xminn)
+        dfOnset_dfOnset1 = 12.0_realType * fOnset * (one - fOnset)
+        dfOnset_dnu = dfOnset_dfOnset1 * dfOnset1_drT * drTurb_dnu
+        dfTurb_dnu = -exp(-rTurb) * dfOnset_dnu - fTurb_val * drTurb_dnu
+
+        A(2,1) = (rsaGRca1 * fLength_val * dfOnset_dnu * vortMagLim &
+                  * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)) &
+               - rsaGRca2 * dfTurb_dnu * vortMagLim * gammaLocal &
+                 * (rsaGRce2 * gammaLocal - one)
+
+        ! A(2,3) = +∂S_gamma/∂ReThetaTilde via one-sided FD
+        ! NOTE: A(2,3) is computed but not used in eigenvalue formulas while A32=0
+        ! (triangular structure). Kept for potential future 3x3 reactivation.
+        epsRT = max(1.0e-4_realType * reThetaTilde, 1.0e-2_realType)
+        reThetaTilde_p = reThetaTilde + epsRT
+        reThetaC_p = rethetacCorrelation(reThetaTilde_p)
+        reThetaC_p = max(reThetaC_p, xminn)
+        fOnset1_p = sqrt((reS_val / (2.6_realType * reThetaC_p))**2 + rTurb**2)
+        fOnset_p = (tanh(6.0_realType * (fOnset1_p - 1.35_realType)) + one) * half
+        fLength_p = flengthCorrelation(reThetaTilde_p)
+        ! Perturb the full source S_gamma = pGamma - eGamma: eGamma also
+        ! depends on ReThetaTilde through fOnset -> fTurb.
+        fTurb_p = (one - fOnset_p) * exp(-rTurb)
+        pGamma_p = rsaGRca1 * fLength_p * fOnset_p * vortMagLim &
+                   * sqrt(max(gammaLocal, xminn)) * (one - rsaGRce1 * gammaLocal)
+        eGamma_p = rsaGRca2 * fTurb_p * vortMagLim * gammaLocal &
+                   * (rsaGRce2 * gammaLocal - one)
+        A(2,3) = ((pGamma_p - eGamma_p) - (pGamma - eGamma)) / epsRT
+
+        ! A(3,3) = +∂S_retheta/∂ReThetaTilde
+        timeScale = 500.0_realType * nu / max(velMag2, xminn)
+        thetaBL = reThetaTilde * nu / max(velMag, xminn)
+        deltaBL = 7.5_realType * thetaBL
+        delta = 50.0_realType * yDist * vortMag * deltaBL / max(velMag, xminn)
+        delta = max(delta, xminn)
+        fWake_val = exp(-reS_val / 1.0e6_realType)
+        fThetaT = fWake_val * exp(-(yDist/delta)**4)
+
+        A(3,3) = -(rsaGRcthetat / max(timeScale, xminn) * (one - fThetaT))
+        if (transitionCrossflow) then
+            crossflowRatio = smoothMinMax(rTurb, rsaGRcrossflowRatioCap, rsaGRpmin)
+            ! Helicity in the RELATIVE frame (matches Source): relative velocity
+            ! dotted with relative vorticity (vortx = curl - 2*Omega). Omega=0 =>
+            ! bit-identical to the old absolute-frame form.
+            hcf = yDist * abs((velRelx / max(velMag, xminn)) * vortx &
+                + (velRely / max(velMag, xminn)) * vorty &
+                + (velRelz / max(velMag, xminn)) * vortz) &
+                / max(velMag, xminn)
+            reScf = -35.088_realType * log(max(transitionRoughnessHeight / max(thetaBL, xminn), xminn)) &
+                + 319.51_realType
+            dHplus = smoothMinMax(rsaGRhcfRef - hcf * (one + crossflowRatio), zero, rsaGRpmax)
+            dHminus = smoothMinMax(-(rsaGRhcfRef - hcf * (one + crossflowRatio)), zero, rsaGRpmax)
+            reScf = reScf + (6200.0_realType * dHplus + 50000.0_realType * dHplus**2)
+            reScf = reScf - 75.0_realType * tanh(dHminus / 0.0125_realType)
+            if (reScf < reThetaTilde) then
+                crossflowPhiPrime = one / (one + exp(rsaGRpmin * (zero - (reScf - reThetaTilde))))
+                A(3,3) = A(3,3) - (rsaGRcthetat / max(timeScale, xminn)) * rsaGRccrossflow &
+                    * fThetaT * crossflowPhiPrime
+            end if
+        end if
+        A(3,3) = min(A(3,3), zero)  ! Always <= 0 (relaxation)
+
+        ! A(1,3), A(3,1), A(3,2) are zero per P&Z §7.1
+
+    end subroutine evalSrcJacBlock
+
+    subroutine computeSrcLambda(mode)
+        ! Compute srcLambda(i,j,k,1:3) per equation based on mode argument.
+        ! Calls evalSrcJacBlock to get A_source = ∂S/∂Q (source-only Jacobian).
+        ! Independent of qq — safe to call when qq is deallocated or contaminated.
+        !
+        ! Exploits block-triangular structure: A13=A31=A32=0 (P&Z §7.1).
+        ! This gives det(A-λI) = (A33-λ)·det([A11-λ,A12;A21,A22-λ]),
+        ! so eigenvalues = {A33} ∪ {2x2 block eigenvalues} — no cubic needed.
+        !
+        ! mode (from paramTurb):
+        !   srcLambdaModeDecoupled  (0): srcLambda(m) = max(0, A(m,m))
+        !   srcLambdaModeTransition (1): SA diagonal; γ-Reθ = max(A22,A33) since A32=0
+        !   srcLambdaModeFull       (2): 2x2 eigenvalue + A33
+
+        use constants
+        use blockPointers, only: il, jl, kl, srcLambda
+        use paramTurb, only: srcLambdaModeDecoupled, srcLambdaModeTransition, srcLambdaModeFull
+        implicit none
+
+        integer(kind=intType), intent(in) :: mode
+        integer(kind=intType) :: i, j, k
+        real(kind=realType) :: A(3,3)
+        real(kind=realType) :: A11, A12, A21, A22, A33
+        real(kind=realType) :: lambda3x3, lambda2x2
+        real(kind=realType) :: tr2, disc2
+
+        do k = 2, kl
+            do j = 2, jl
+                do i = 2, il
+                    call evalSrcJacBlock(i, j, k, A)
+
+                    A11 = A(1,1)
+                    A12 = A(1,2)
+                    A21 = A(2,1)
+                    A22 = A(2,2)
+                    A33 = A(3,3)
+
+                    if (mode == srcLambdaModeDecoupled) then
+                        ! Decoupled: each equation uses its own diagonal
+                        srcLambda(i,j,k,1) = max(zero, A11)
+                        srcLambda(i,j,k,2) = max(zero, A22)
+                        srcLambda(i,j,k,3) = max(zero, A33)
+
+                    else if (mode == srcLambdaModeTransition) then
+                        ! Transition: SA diagonal; γ-Reθ block [A22,A23;0,A33] is triangular
+                        ! since A32=0, so eigenvalues = diagonal. If A32 becomes nonzero,
+                        ! this must change to the 2x2 quadratic formula.
+                        srcLambda(i,j,k,1) = max(zero, A11)
+                        lambda2x2 = max(zero, A22, A33)
+                        srcLambda(i,j,k,2) = lambda2x2
+                        srcLambda(i,j,k,3) = lambda2x2
+
+                    else
+                        ! Full: 2x2 eigenvalue for [A11,A12;A21,A22] + A33
+                        ! Since A13=A31=A32=0, the 3x3 factorizes exactly.
+                        ! If any of these off-diagonals become nonzero, must solve full 3x3.
+                        tr2 = A11 + A22
+                        disc2 = ((A11 - A22) * half)**2 + A12 * A21
+                        if (disc2 >= zero) then
+                            lambda2x2 = tr2 * half + sqrt(disc2)
+                        else
+                            ! Complex conjugate pair: real part = tr2/2
+                            lambda2x2 = tr2 * half
+                        end if
+                        lambda3x3 = max(zero, lambda2x2, A33)
+                        srcLambda(i,j,k,1) = lambda3x3
+                        srcLambda(i,j,k,2) = lambda3x3
+                        srcLambda(i,j,k,3) = lambda3x3
+                    end if
+                end do
+            end do
+        end do
+
+    end subroutine computeSrcLambda
+
+end module saGammaReTheta

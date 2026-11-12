@@ -38,7 +38,7 @@ contains
                                    pInf, pInfCorr, rhoInf, uInf, rGas, muInf, gammaInf, wInf, &
                                    nw, nwf, kPresent, wInf
         use flowUtils, only: computeGamma, eTot
-        use turbUtils, only: saNuKnownEddyRatio
+        use turbUtils, only: saNuKnownEddyRatio, reThetaTCorrelation
         implicit none
 
         integer(kind=intType) :: sps, nn, mm, ierr
@@ -135,6 +135,15 @@ contains
             case (spalartAllmaras, spalartAllmarasEdwards)
 
                 wInf(itu1) = saNuKnownEddyRatio(eddyVisInfRatio, nuInf)
+
+                !=============================================================
+
+            case (spalartallmarasnoft2gammaretheta)
+
+                wInf(itu1) = saNuKnownEddyRatio(eddyVisInfRatio, nuInf)
+                wInf(itu2) = one
+                wInf(itu3) = reThetaTCorrelation( &
+                    turbIntensityInf * 100.0_realType, zero)
 
                 !=============================================================
 
@@ -411,11 +420,12 @@ contains
         use constants
         use block, only: flowDoms, nDOm
         use flowVarRefState, only: nw, nwf, nt1, nt2
-        use inputPhysics, only: equationMode, gammaConstant
+        use inputPhysics, only: equationMode, gammaConstant, turbModel
         use inputUnsteady, only: timeIntegrationScheme
         use inputIteration, only: mgStartLevel, turbTreatment
         use iteration, only: nOldLevels
         use utils, only: terminate
+        use paramTurb, only: nTransitionDebug
         implicit none
         !
         !      Subroutine arguments.
@@ -507,6 +517,21 @@ contains
                 call terminate("allocMemFlovarPart1", &
                                "Memory allocation failure for rev")
             !endif
+
+            if (turbModel == spalartallmarasnoft2gammaretheta) then
+                allocate (flowDoms(nn, level, sps)%transitionDebug(2:il, 2:jl, 2:kl, 1:nTransitionDebug), &
+                          stat=ierr)
+                if (ierr /= 0) &
+                    call terminate("allocMemFlovarPart1", &
+                                   "Memory allocation failure for transitionDebug")
+                flowDoms(nn, level, sps)%transitionDebug = zero
+
+                allocate (flowDoms(nn, level, sps)%srcLambda(2:il, 2:jl, 2:kl, 3), stat=ierr)
+                if (ierr /= 0) &
+                    call terminate("allocMemFlovarPart1", &
+                                   "Memory allocation failure for srcLambda")
+                flowDoms(nn, level, sps)%srcLambda = zero
+            end if
 
             ! If this is the finest grid some more memory must be allocated.
 
@@ -2152,7 +2177,8 @@ contains
         use flowVarRefState, only: eddyModel, viscous, muInf, nw, nwf, &
                                    pInfCorr, wInf
         use inputIteration, only: mgStartLevel
-        use inputPhysics, only: equationMode, flowType, eddyVisInfRatio
+        use inputPhysics, only: equationMode, flowType, eddyVisInfRatio, turbModel
+        use constants, only: spalartallmarasnoft2gammaretheta
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers
         implicit none
@@ -2206,6 +2232,20 @@ contains
 
                 if (viscous) rlv = muInf
                 if (eddyModel) rev = eddyVisInfRatio * muInf
+
+                ! For SA-gamma-Retheta: initialize gamma to 0.02
+                ! so that SA production is suppressed until Fonset
+                ! activates gamma through the physical transition
+                ! mechanism. Farfield BCs prescribe gamma=1 at inflow.
+                if (turbModel == spalartallmarasnoft2gammaretheta) then
+                    do k = 0, kb
+                        do j = 0, jb
+                            do i = 0, ib
+                                w(i, j, k, itu2) = 0.02
+                            end do
+                        end do
+                    end do
+                end if
 
             end do domains
         end do spectralLoop

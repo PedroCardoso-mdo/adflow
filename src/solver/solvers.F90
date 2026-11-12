@@ -1366,10 +1366,10 @@ contains
                     case (cgnsL2resNu, cgnsL2resK)
                         call sumResiduals(itu1, mm)
 
-                    case (cgnsL2resOmega, cgnsL2resTau, cgnsL2resEpsilon)
+                    case (cgnsL2resGamma, cgnsL2resOmega, cgnsL2resTau, cgnsL2resEpsilon)
                         call sumResiduals(itu2, mm)
 
-                    case (cgnsL2resV2)
+                    case (cgnsL2resRetheta, cgnsL2resV2)
                         call sumResiduals(itu3, mm)
 
                     case (cgnsL2resF)
@@ -1648,6 +1648,7 @@ contains
                 case (cgnsL2resRho, cgnsL2resMomx, &
                       cgnsL2resMomy, cgnsL2resMomz, &
                       cgnsL2resRhoe, cgnsL2resNu, &
+                        cgnsL2resGamma, cgnsL2resRetheta, &
                       cgnsL2resK, cgnsL2resOmega, &
                       cgnsL2resTau, cgnsL2resEpsilon, &
                       cgnsL2resV2, cgnsL2resF)
@@ -1684,6 +1685,7 @@ contains
                     case (cgnsL2resRho, cgnsL2resMomx, &
                           cgnsL2resMomy, cgnsL2resMomz, &
                           cgnsL2resRhoe, cgnsL2resNu, &
+                          cgnsL2resGamma, cgnsL2resRetheta, &
                           cgnsL2resK, cgnsL2resOmega, &
                           cgnsL2resTau, cgnsL2resEpsilon, &
                           cgnsL2resV2, cgnsL2resF, 'totalR')
@@ -1842,6 +1844,7 @@ contains
                             case (cgnsL2resRho, cgnsL2resMomx, &
                                   cgnsL2resMomy, cgnsL2resMomz, &
                                   cgnsL2resRhoE, cgnsL2resNu, &
+                                    cgnsL2resGamma, cgnsL2resRetheta, &
                                   cgnsL2resK, cgnsL2resOmega, &
                                   cgnsL2resTau, cgnsL2resEpsilon, &
                                   cgnsL2resV2, cgnsL2resF)

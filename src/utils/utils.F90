@@ -2726,6 +2726,7 @@ contains
         nullify (flowDoms(nn, level, sps)%radK)
 
         nullify (flowDoms(nn, level, sps)%d2Wall)
+        nullify (flowDoms(nn, level, sps)%transitionDebug)
 
         nullify (flowDoms(nn, level, sps)%bmti1)
         nullify (flowDoms(nn, level, sps)%bmti2)
@@ -3479,6 +3480,9 @@ contains
         ! Wall distance for the turbulence models.
 
         d2Wall => flowDoms(nn, mm, ll)%d2Wall
+        transitionDebug => flowDoms(nn, mm, ll)%transitionDebug
+        srcLambda => flowDoms(nn, mm, ll)%srcLambda
+        intermittency => flowDoms(nn, mm, ll)%intermittency
         filterDES => flowDoms(nn, mm, ll)%filterDES  ! eran-des
 
         ! Arrays used for the implicit treatment of the turbulent wall
@@ -5455,6 +5459,14 @@ contains
             deallocate (flowDoms(nn, level, sps)%d2Wall, stat=ierr)
         if (ierr /= 0) deallocationFailure = .true.
 
+        if (associated(flowDoms(nn, level, sps)%transitionDebug)) &
+            deallocate (flowDoms(nn, level, sps)%transitionDebug, stat=ierr)
+        if (ierr /= 0) deallocationFailure = .true.
+
+        if (associated(flowDoms(nn, level, sps)%srcLambda)) &
+            deallocate (flowDoms(nn, level, sps)%srcLambda, stat=ierr)
+        if (ierr /= 0) deallocationFailure = .true.
+
         if (associated(flowDoms(nn, level, sps)%bmti1)) &
             deallocate (flowDoms(nn, level, sps)%bmti1, stat=ierr)
         if (ierr /= 0) deallocationFailure = .true.
@@ -6031,6 +6043,7 @@ contains
                 case (cgnsL2resRho, cgnsL2resMomx, &
                       cgnsL2resMomy, cgnsL2resMomz, &
                       cgnsL2resRhoe, cgnsL2resNu, &
+                      cgnsL2resGamma, cgnsL2resRetheta, &
                       cgnsL2resK, cgnsL2resOmega, &
                       cgnsL2resTau, cgnsL2resEpsilon, &
                       cgnsL2resV2, cgnsL2resF, 'totalR')
@@ -6102,6 +6115,12 @@ contains
 
                 case (cgnsL2resNu)
                     write (*, "(a)", advance="no") "       Res nuturb       |"
+
+                case (cgnsL2resGamma)
+                    write (*, "(a)", advance="no") "       Res gamma        |"
+
+                case (cgnsL2resRetheta)
+                    write (*, "(a)", advance="no") "      Res retheta       |"
 
                 case (cgnsL2resK)
                     write (*, "(a)", advance="no") "       Res kturb        |"
@@ -6207,6 +6226,12 @@ contains
 
                 case (cgnsL2resNu)
                     write (*, "(a)", advance="no") "           Res nuturb            |"
+
+                case (cgnsL2resGamma)
+                    write (*, "(a)", advance="no") "           Res gamma             |"
+
+                case (cgnsL2resRetheta)
+                    write (*, "(a)", advance="no") "          Res retheta            |"
 
                 case (cgnsL2resK)
                     write (*, "(a)", advance="no") "           Res kturb             |"
@@ -6336,6 +6361,7 @@ contains
                 case (cgnsL2resRho, cgnsL2resMomx, &
                       cgnsL2resMomy, cgnsL2resMomz, &
                       cgnsL2resRhoe, cgnsL2resNu, &
+                      cgnsL2resGamma, cgnsL2resRetheta, &
                       cgnsL2resK, cgnsL2resOmega, &
                       cgnsL2resTau, cgnsL2resEpsilon, &
                       cgnsL2resV2, cgnsL2resF, 'totalR')

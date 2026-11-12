@@ -114,6 +114,11 @@ contains
         case (spalartAllmaras, spalartAllmarasEdwards)
             bcVarNames(offset + 1) = cgnsTurbSaNu
 
+        case (spalartallmarasnoft2gammaretheta)
+            bcVarNames(offset + 1) = cgnsTurbSaNu
+            bcVarNames(offset + 2) = cgnsTurbGamma
+            bcVarNames(offset + 3) = cgnsTurbRetheta
+
         case (komegaWilcox, komegaModified, menterSST)
             bcVarNames(offset + 1) = cgnsTurbK
             bcVarNames(offset + 2) = cgnsTurbOmega
@@ -1339,6 +1344,11 @@ contains
 
         case (spalartAllmaras, spalartAllmarasEdwards)
             ref(itu1) = nuRef
+
+        case (spalartallmarasnoft2gammaretheta)
+            ref(itu1) = nuRef
+            ref(itu2) = one
+            ref(itu3) = one
 
         case (komegaWilcox, komegaModified, menterSST)
             ref(itu1) = pRef / rhoRef
