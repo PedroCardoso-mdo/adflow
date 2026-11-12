@@ -748,6 +748,12 @@ bocos:do nn=1,nbocos
           call pushcontrol1b(1)
         else
 ! inflow. turbulent variables are prescribed.
+! standard adflow farfield form for all models, including
+! sa-gamma-retheta: prescribed freestream value at the
+! ghost (bmt = 0 default). at a genuine farfield the
+! interior equals the freestream, so this enforces
+! gamma = 1 and retheta = correlation just as the
+! face-value form would, without any special casing.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 
@@ -860,6 +866,12 @@ bocos:do nn=1,nbocos
           end do
         else
 ! inflow. turbulent variables are prescribed.
+! standard adflow farfield form for all models, including
+! sa-gamma-retheta: prescribed freestream value at the
+! ghost (bmt = 0 default). at a genuine farfield the
+! interior equals the freestream, so this enforces
+! gamma = 1 and retheta = correlation just as the
+! face-value form would, without any special casing.
           do l=nt1,nt2
             select case  (bcfaceid(nn)) 
             case (imin) 
@@ -1394,6 +1406,51 @@ bocos:do nn=1,nbocos
     select case  (turbmodel) 
     case (spalartallmaras, spalartallmarasedwards) 
 
+    case (spalartallmarasnoft2gammaretheta) 
+! sa + transition model wall values:
+! nu~ = 0, gamma uses zero-gradient, retheta uses zero-gradient.
+! use linear relation whalo = bvt - bmt*wint.
+      select case  (bcfaceid(nn)) 
+      case (imin) 
+        do j=bcdata(nn)%jcend,bcdata(nn)%jcbeg,-1
+          do i=bcdata(nn)%icend,bcdata(nn)%icbeg,-1
+            bvti1d(i, j, itu3) = 0.0_8
+          end do
+        end do
+      case (imax) 
+        do j=bcdata(nn)%jcend,bcdata(nn)%jcbeg,-1
+          do i=bcdata(nn)%icend,bcdata(nn)%icbeg,-1
+            bvti2d(i, j, itu3) = 0.0_8
+          end do
+        end do
+      case (jmin) 
+        do j=bcdata(nn)%jcend,bcdata(nn)%jcbeg,-1
+          do i=bcdata(nn)%icend,bcdata(nn)%icbeg,-1
+            bvtj1d(i, j, itu3) = 0.0_8
+          end do
+        end do
+      case (jmax) 
+        do j=bcdata(nn)%jcend,bcdata(nn)%jcbeg,-1
+          do i=bcdata(nn)%icend,bcdata(nn)%icbeg,-1
+            bvtj2d(i, j, itu3) = 0.0_8
+          end do
+        end do
+      case (kmin) 
+        do j=bcdata(nn)%jcend,bcdata(nn)%jcbeg,-1
+          do i=bcdata(nn)%icend,bcdata(nn)%icbeg,-1
+            bvtk1d(i, j, itu3) = 0.0_8
+          end do
+        end do
+      case (kmax) 
+        do j=bcdata(nn)%jcend,bcdata(nn)%jcbeg,-1
+          do i=bcdata(nn)%icend,bcdata(nn)%icbeg,-1
+            bvtk2d(i, j, itu3) = 0.0_8
+          end do
+        end do
+      end select
+!        ================================================================
+    case (spalartallmarasnoft2gamma) 
+
     case (komegawilcox, komegamodified, mentersst) 
 ! k-omega type of models. k is zero on the wall and thus the
 ! halo value is the negative of the first internal cell.
@@ -1877,6 +1934,115 @@ bocos:do nn=1,nbocos
         do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
           do i=bcdata(nn)%icbeg,bcdata(nn)%icend
             bmtk2(i, j, itu1, itu1) = one
+          end do
+        end do
+      end select
+!        ================================================================
+    case (spalartallmarasnoft2gammaretheta) 
+! sa + transition model wall values:
+! nu~ = 0, gamma uses zero-gradient, retheta uses zero-gradient.
+! use linear relation whalo = bvt - bmt*wint.
+      select case  (bcfaceid(nn)) 
+      case (imin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti1(i, j, itu1, itu1) = one
+            bmti1(i, j, itu2, itu2) = -one
+            bmti1(i, j, itu3, itu3) = -one
+            bvti1(i, j, itu3) = zero
+          end do
+        end do
+      case (imax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti2(i, j, itu1, itu1) = one
+            bmti2(i, j, itu2, itu2) = -one
+            bmti2(i, j, itu3, itu3) = -one
+            bvti2(i, j, itu3) = zero
+          end do
+        end do
+      case (jmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj1(i, j, itu1, itu1) = one
+            bmtj1(i, j, itu2, itu2) = -one
+            bmtj1(i, j, itu3, itu3) = -one
+            bvtj1(i, j, itu3) = zero
+          end do
+        end do
+      case (jmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj2(i, j, itu1, itu1) = one
+            bmtj2(i, j, itu2, itu2) = -one
+            bmtj2(i, j, itu3, itu3) = -one
+            bvtj2(i, j, itu3) = zero
+          end do
+        end do
+      case (kmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk1(i, j, itu1, itu1) = one
+            bmtk1(i, j, itu2, itu2) = -one
+            bmtk1(i, j, itu3, itu3) = -one
+            bvtk1(i, j, itu3) = zero
+          end do
+        end do
+      case (kmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk2(i, j, itu1, itu1) = one
+            bmtk2(i, j, itu2, itu2) = -one
+            bmtk2(i, j, itu3, itu3) = -one
+            bvtk2(i, j, itu3) = zero
+          end do
+        end do
+      end select
+!        ================================================================
+    case (spalartallmarasnoft2gamma) 
+! sa-sgamma wall values: nu~ = 0, gamma zero-gradient.
+! lockstep with the spalartallmarasnoft2gammaretheta case above (minus itu3).
+      select case  (bcfaceid(nn)) 
+      case (imin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti1(i, j, itu1, itu1) = one
+            bmti1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (imax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmti2(i, j, itu1, itu1) = one
+            bmti2(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (jmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj1(i, j, itu1, itu1) = one
+            bmtj1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (jmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtj2(i, j, itu1, itu1) = one
+            bmtj2(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (kmin) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk1(i, j, itu1, itu1) = one
+            bmtk1(i, j, itu2, itu2) = -one
+          end do
+        end do
+      case (kmax) 
+        do j=bcdata(nn)%jcbeg,bcdata(nn)%jcend
+          do i=bcdata(nn)%icbeg,bcdata(nn)%icend
+            bmtk2(i, j, itu1, itu1) = one
+            bmtk2(i, j, itu2, itu2) = -one
           end do
         end do
       end select

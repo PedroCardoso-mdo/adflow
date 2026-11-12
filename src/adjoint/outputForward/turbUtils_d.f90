@@ -605,7 +605,8 @@ nadvloopspectral:do ii=1,nadv
         kend = kl
       end if
       select case  (turbmodel) 
-      case (spalartallmaras, spalartallmarasedwards) 
+      case (spalartallmaras, spalartallmarasedwards, &
+&     spalartallmarasnoft2gammaretheta, spalartallmarasnoft2gamma) 
         call saeddyviscosity_d(ibeg, iend, jbeg, jend, kbeg, kend)
       case default
         if (associated(revd)) revd = 0.0_8
@@ -664,7 +665,8 @@ nadvloopspectral:do ii=1,nadv
         kend = kl
       end if
       select case  (turbmodel) 
-      case (spalartallmaras, spalartallmarasedwards) 
+      case (spalartallmaras, spalartallmarasedwards, &
+&     spalartallmarasnoft2gammaretheta, spalartallmarasnoft2gamma) 
         call saeddyviscosity(ibeg, iend, jbeg, jend, kbeg, kend)
       end select
     end if
@@ -887,6 +889,8 @@ nadvloopspectral:do ii=1,nadv
 &   sj, sjd, sk, skd, addgridvelocities, bmti1, bmti2, bmtj1, bmtj2, &
 &   bmtk1, bmtk2, scratch, scratchd
     use inputdiscretization, only : orderturb
+    use inputphysics, only : turbmodel
+    use inputiteration, only : transitionfirstorderupwind
     use iteration, only : groundlevel
     use turbmod, only : secondord
     implicit none
@@ -939,6 +943,14 @@ nadvloopspectral:do ii=1,nadv
     secondord = .false.
     if (groundlevel .eq. 1_inttype .and. orderturb .eq. secondorder) &
 &     secondord = .true.
+! transition model: gamma and rethetatilde convection is
+! first-order upwind (piotrowski & zingg 2020, sec. iv.a).
+! enforced here, in the one routine every path goes through,
+! so decoupled dadi, coupled ank/nk, and the adjoint master
+! sweeps discretize the identical residual regardless of
+! caller or orderturb.
+    if (turbmodel .eq. spalartallmarasnoft2gammaretheta .and. &
+&       transitionfirstorderupwind) secondord = .false.
 ! initialize the grid velocity to zero. this value will be used
 ! if the block is not moving.
     qs = zero
@@ -1562,6 +1574,8 @@ nadvloopspectral:do ii=1,nadv
 &   sfacej, sfacek, w, si, sj, sk, addgridvelocities, bmti1, bmti2, &
 &   bmtj1, bmtj2, bmtk1, bmtk2, scratch
     use inputdiscretization, only : orderturb
+    use inputphysics, only : turbmodel
+    use inputiteration, only : transitionfirstorderupwind
     use iteration, only : groundlevel
     use turbmod, only : secondord
     implicit none
@@ -1608,6 +1622,14 @@ nadvloopspectral:do ii=1,nadv
     secondord = .false.
     if (groundlevel .eq. 1_inttype .and. orderturb .eq. secondorder) &
 &     secondord = .true.
+! transition model: gamma and rethetatilde convection is
+! first-order upwind (piotrowski & zingg 2020, sec. iv.a).
+! enforced here, in the one routine every path goes through,
+! so decoupled dadi, coupled ank/nk, and the adjoint master
+! sweeps discretize the identical residual regardless of
+! caller or orderturb.
+    if (turbmodel .eq. spalartallmarasnoft2gammaretheta .and. &
+&       transitionfirstorderupwind) secondord = .false.
 !$ad checkpoint-start
 ! initialize the grid velocity to zero. this value will be used
 ! if the block is not moving.
@@ -2103,11 +2125,543 @@ nadvloopspectral:do ii=1,nadv
 !$ad checkpoint-end
 
   end subroutine turbadvection
+
+!  differentiation of rethetatcorrelation in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: rethetat
+!   with respect to varying inputs: lambdatheta
 ! ----------------------------------------------------------------------
 !                                                                      |
 !                    no tapenade routine below this line               |
 !                                                                      |
 ! ----------------------------------------------------------------------
+  real(kind=realtype) function rethetatcorrelation_d(tu, lambdatheta, &
+&   lambdathetad, rethetat) result (rethetatd)
+!
+!       compute the critical momentum-thickness reynolds number
+!       re_theta_t from the langtry-menter correlation.
+!       uses smooth f(lambda_theta) from eqs. 54-57.
+!
+!       tu          : freestream turbulence intensity in percent
+!       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
+!
+! note: deliberately not `only:`-restricted. this routine branches on
+! tu, so tapenade emits a pushcontrol/popcontrol pair, which
+! autoeditreversefast.py rewrites into myintptr/myintstack. those live
+! in `constants`, and tapenade propagates the `only:` list verbatim to
+! the generated code -- an `only:` list here makes turbutils_fast_b.f90
+! fail to compile with "symbol 'myintptr' has no implicit type".
+    use constants
+    use paramturb, only : rsagrpmax, rsagrpmin, rsagrtufloor
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lambdatheta
+    real(kind=realtype), intent(in) :: lambdathetad
+    real(kind=realtype), intent(out) :: rethetat
+    real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
+    real(kind=realtype) :: flambdad, f1vald, f2vald, f3vald
+! parameter (not a bare literal) so the cs build's checked interface
+! auto-promotes it -- see the note in paramturb.f90.
+    real(kind=realtype), parameter :: rethetatfloor=20.0_realtype
+    intrinsic exp
+    real(kind=realtype) :: arg1
+    real(kind=8) :: temp
+    real(realtype) :: temp0
+    real(kind=realtype) :: temp1
+    real(kind=realtype) :: tmpresult
+    tu_safe = smoothminmax(tu, rsagrtufloor, rsagrpmax)
+! --- smooth f(lambda_theta) eqs. 54-57 ---
+! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
+    temp = 0.275_realtype*exp(-(tu_safe/0.5_realtype))
+    f1vald = temp*exp(-(35.0_realtype*lambdatheta))*35.0_realtype*&
+&     lambdathetad
+    f1val = one + temp*(one-exp(-(35.0_realtype*lambdatheta)))
+! eq. 56: f2 = smoothmax(f1, 1)
+    f2vald = smoothminmax_d(f1val, f1vald, one, 0.0_8, rsagrpmax, f2val)
+! eq. 55: f3 = 1 - (-12.986*lam - 123.66*lam^2 - 405.689*lam^3)*exp(-(tu/1.5)^1.5)
+    arg1 = -((tu_safe/1.5_realtype)**1.5_realtype)
+    temp = exp(arg1)
+    f3vald = temp*(123.66_realtype*2*lambdatheta+405.689_realtype*3*&
+&     lambdatheta**2+12.986_realtype)*lambdathetad
+    f3val = one - temp*(-(12.986_realtype*lambdatheta)-123.66_realtype*(&
+&     lambdatheta*lambdatheta)-405.689_realtype*(lambdatheta*lambdatheta&
+&     *lambdatheta))
+! eq. 57: f(lambda) = smoothmin(f2, f3)
+    flambdad = smoothminmax_d(f2val, f2vald, f3val, f3vald, rsagrpmin, &
+&     flambda)
+! --- re_theta_t(tu) * f(lambda_theta) ---
+    if (tu_safe .le. 1.3_realtype) then
+      temp0 = 0.2196_realtype/(tu_safe*tu_safe) - 589.428_realtype*&
+&       tu_safe + 1173.51_realtype
+      rethetatd = temp0*flambdad
+      rethetat = temp0*flambda
+    else
+      temp1 = (tu_safe-0.5658_realtype)**(-0.671_realtype)
+      rethetatd = temp1*331.50_realtype*flambdad
+      rethetat = temp1*(331.50_realtype*flambda)
+    end if
+! floor at 20 (lm2009 correlation validity limit). with
+! lambda_theta unclamped (rsagrclamplambdatheta = .false.) the f3
+! cubic goes negative below lambda_theta ~ -0.23, which would give
+! a negative target re_theta_t without this.
+    rethetatd = smoothminmax_d(rethetat, rethetatd, rethetatfloor, 0.0_8&
+&     , rsagrpmax, tmpresult)
+    rethetat = tmpresult
+  end function rethetatcorrelation_d
 
+! ----------------------------------------------------------------------
+!                                                                      |
+!                    no tapenade routine below this line               |
+!                                                                      |
+! ----------------------------------------------------------------------
+  function rethetatcorrelation(tu, lambdatheta) result (rethetat)
+!
+!       compute the critical momentum-thickness reynolds number
+!       re_theta_t from the langtry-menter correlation.
+!       uses smooth f(lambda_theta) from eqs. 54-57.
+!
+!       tu          : freestream turbulence intensity in percent
+!       lambdatheta : pressure-gradient parameter (0 for uniform inflow)
+!
+! note: deliberately not `only:`-restricted. this routine branches on
+! tu, so tapenade emits a pushcontrol/popcontrol pair, which
+! autoeditreversefast.py rewrites into myintptr/myintstack. those live
+! in `constants`, and tapenade propagates the `only:` list verbatim to
+! the generated code -- an `only:` list here makes turbutils_fast_b.f90
+! fail to compile with "symbol 'myintptr' has no implicit type".
+    use constants
+    use paramturb, only : rsagrpmax, rsagrpmin, rsagrtufloor
+    implicit none
+    real(kind=realtype), intent(in) :: tu, lambdatheta
+    real(kind=realtype) :: rethetat
+    real(kind=realtype) :: flambda, f1val, f2val, f3val, tu_safe
+! parameter (not a bare literal) so the cs build's checked interface
+! auto-promotes it -- see the note in paramturb.f90.
+    real(kind=realtype), parameter :: rethetatfloor=20.0_realtype
+    intrinsic exp
+    real(kind=realtype) :: arg1
+    tu_safe = smoothminmax(tu, rsagrtufloor, rsagrpmax)
+! --- smooth f(lambda_theta) eqs. 54-57 ---
+! eq. 54: f1 = 1 + 0.275*(1 - exp(-35*lam))*exp(-tu/0.5)
+    f1val = one + 0.275_realtype*(one-exp(-(35.0_realtype*lambdatheta)))&
+&     *exp(-(tu_safe/0.5_realtype))
+! eq. 56: f2 = smoothmax(f1, 1)
+    f2val = smoothminmax(f1val, one, rsagrpmax)
+! eq. 55: f3 = 1 - (-12.986*lam - 123.66*lam^2 - 405.689*lam^3)*exp(-(tu/1.5)^1.5)
+    arg1 = -((tu_safe/1.5_realtype)**1.5_realtype)
+    f3val = one - (-(12.986_realtype*lambdatheta)-123.66_realtype*&
+&     lambdatheta**2-405.689_realtype*lambdatheta**3)*exp(arg1)
+! eq. 57: f(lambda) = smoothmin(f2, f3)
+    flambda = smoothminmax(f2val, f3val, rsagrpmin)
+! --- re_theta_t(tu) * f(lambda_theta) ---
+    if (tu_safe .le. 1.3_realtype) then
+      rethetat = (1173.51_realtype-589.428_realtype*tu_safe+&
+&       0.2196_realtype/tu_safe**2)*flambda
+    else
+      rethetat = 331.50_realtype*(tu_safe-0.5658_realtype)**(-&
+&       0.671_realtype)*flambda
+    end if
+! floor at 20 (lm2009 correlation validity limit). with
+! lambda_theta unclamped (rsagrclamplambdatheta = .false.) the f3
+! cubic goes negative below lambda_theta ~ -0.23, which would give
+! a negative target re_theta_t without this.
+    rethetat = smoothminmax(rethetat, rethetatfloor, rsagrpmax)
+  end function rethetatcorrelation
+
+!  differentiation of flengthcorrelation in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: flength
+!   with respect to varying inputs: rethetatilde
+  real(kind=realtype) function flengthcorrelation_d(rethetatilde, &
+&   rethetatilded, flength) result (flengthd)
+!
+!       smooth flength correlation (eqs. 49-50).
+!       flength1 = exp(-3e-2 * (rethetatilde - 460))
+!       flength  = 44 - (44 - (0.5 - 3e-4*(rethetatilde-596))) / (1+flength1)^(1/6)
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype), intent(in) :: rethetatilded
+    real(kind=realtype), intent(out) :: flength
+    real(kind=realtype) :: flength1, base
+    real(kind=realtype) :: flength1d, based
+    intrinsic exp
+    real(kind=realtype) :: temp
+    real(kind=realtype) :: temp0
+    real(realtype) :: temp1
+    real(kind=realtype) :: tempd
+! eq. 49
+    flength1d = -(exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype)))*&
+&     3.0e-2_realtype*rethetatilded)
+    flength1 = exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype)))
+! eq. 50
+    based = flength1d
+    base = one + flength1
+    temp = one/6.0_realtype
+    temp0 = base**temp
+    temp1 = (3.0e-4_realtype*(rethetatilde-596.0_realtype)+43.5)/temp0
+    if (base .le. 0.0_8 .and. (temp .eq. 0.0_8 .or. temp .ne. int(temp))&
+&   ) then
+      tempd = 0.0_8
+    else
+      tempd = temp*base**(temp-1)*based
+    end if
+    flengthd = -((3.0e-4_realtype*rethetatilded-temp1*tempd)/temp0)
+    flength = 44.0_realtype - temp1
+  end function flengthcorrelation_d
+
+  function flengthcorrelation(rethetatilde) result (flength)
+!
+!       smooth flength correlation (eqs. 49-50).
+!       flength1 = exp(-3e-2 * (rethetatilde - 460))
+!       flength  = 44 - (44 - (0.5 - 3e-4*(rethetatilde-596))) / (1+flength1)^(1/6)
+!
+    use constants, only : realtype, one
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype) :: flength
+    real(kind=realtype) :: flength1, base
+    intrinsic exp
+! eq. 49
+    flength1 = exp(-(3.0e-2_realtype*(rethetatilde-460.0_realtype)))
+! eq. 50
+    base = one + flength1
+    flength = 44.0_realtype - (44.0_realtype-(0.5_realtype-&
+&     3.0e-4_realtype*(rethetatilde-596.0_realtype)))/base**(one/&
+&     6.0_realtype)
+  end function flengthcorrelation
+
+!  differentiation of rethetaccorrelation in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: rethetac
+!   with respect to varying inputs: rethetatilde
+  real(kind=realtype) function rethetaccorrelation_d(rethetatilde, &
+&   rethetatilded, rethetac) result (rethetacd)
+!
+!       smooth reθc correlation (eq. 51).
+!       reθc = 0.67*rethetatilde + 24*sin(rethetatilde/240 + 0.5) + 14
+!
+    use constants, only : realtype
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype), intent(in) :: rethetatilded
+    real(kind=realtype), intent(out) :: rethetac
+    intrinsic sin
+    rethetacd = (24.0_realtype*cos(rethetatilde/240.0_realtype+&
+&     0.5_realtype)/240.0_realtype+0.67_realtype)*rethetatilded
+    rethetac = 0.67_realtype*rethetatilde + 24.0_realtype*sin(&
+&     rethetatilde/240.0_realtype+0.5_realtype) + 14.0_realtype
+  end function rethetaccorrelation_d
+
+  function rethetaccorrelation(rethetatilde) result (rethetac)
+!
+!       smooth reθc correlation (eq. 51).
+!       reθc = 0.67*rethetatilde + 24*sin(rethetatilde/240 + 0.5) + 14
+!
+    use constants, only : realtype
+    implicit none
+    real(kind=realtype), intent(in) :: rethetatilde
+    real(kind=realtype) :: rethetac
+    intrinsic sin
+    rethetac = 0.67_realtype*rethetatilde + 24.0_realtype*sin(&
+&     rethetatilde/240.0_realtype+0.5_realtype) + 14.0_realtype
+  end function rethetaccorrelation
+
+!  differentiation of smoothminmax in forward (tangent) mode (with options i4 dr8 r8):
+!   variations   of useful results: phi
+!   with respect to varying inputs: g1 g2
+  real(kind=realtype) function smoothminmax_d(g1, g1d, g2, g2d, p, phi) &
+& result (phid)
+!
+!  smooth max (p > 0) or min (p < 0) of two variables.
+!  algorithm 1, piotrowski & zingg (aiaa j. 2020,
+!  doi:10.2514/1.j059784), eqs. 43-45.
+!
+!       phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+!                     = b + log(1 + exp(p*(a-b))) / p   [min]
+!  where a = max(g1,g2), b = min(g1,g2).
+!
+!  proximity switch (eq. 45): when |a-b| > lambda_switch
+!  the smooth correction is below machine epsilon, so the
+!  bare max/min is returned directly.
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: g1, g2, p
+    real(kind=realtype), intent(in) :: g1d, g2d
+    real(kind=realtype), intent(out) :: phi
+    real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
+    real(kind=realtype) :: a, b, lambda_switch
+    real(kind=realtype) :: ad, bd
+    intrinsic abs
+    intrinsic log
+    intrinsic exp
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
+    real(kind=realtype) :: arg2
+    real(kind=realtype) :: arg2d
+! order with one if/else, not max()/min(): at a tie g1 == g2 the
+! intrinsics can both return the same argument, so ad (tapenade) and
+! complex step each take their own branch and the derivative is wrong
+! (1 or 0 instead of 1/2). here a and b are always distinct arguments.
+    if (g1 .ge. g2) then
+      ad = g1d
+      a = g1
+      bd = g2d
+      b = g2
+    else
+      ad = g2d
+      a = g2
+      bd = g1d
+      b = g1
+    end if
+    if (p .ge. 0.) then
+      abs0 = p
+    else
+      abs0 = -p
+    end if
+    if (p .ge. 0.) then
+      abs1 = p
+    else
+      abs1 = -p
+    end if
+    lambda_switch = log(abs0*p_switch)/abs1
+    if (p .gt. 0.0_realtype) then
+      if (a - b .gt. -lambda_switch) then
+        phid = ad
+        phi = a
+      else
+        arg1d = p*(bd-ad)
+        arg1 = p*(b-a)
+        arg2d = exp(arg1)*arg1d
+        arg2 = one + exp(arg1)
+        phid = ad + arg2d/(p*arg2)
+        phi = a + log(arg2)/p
+      end if
+    else if (a - b .gt. -lambda_switch) then
+      phid = bd
+      phi = b
+    else
+      arg1d = p*(ad-bd)
+      arg1 = p*(a-b)
+      arg2d = exp(arg1)*arg1d
+      arg2 = one + exp(arg1)
+      phid = bd + arg2d/(p*arg2)
+      phi = b + log(arg2)/p
+    end if
+  end function smoothminmax_d
+
+  function smoothminmax(g1, g2, p) result (phi)
+!
+!  smooth max (p > 0) or min (p < 0) of two variables.
+!  algorithm 1, piotrowski & zingg (aiaa j. 2020,
+!  doi:10.2514/1.j059784), eqs. 43-45.
+!
+!       phi_p(g1, g2) = a + log(1 + exp(p*(b-a))) / p   [max]
+!                     = b + log(1 + exp(p*(a-b))) / p   [min]
+!  where a = max(g1,g2), b = min(g1,g2).
+!
+!  proximity switch (eq. 45): when |a-b| > lambda_switch
+!  the smooth correction is below machine epsilon, so the
+!  bare max/min is returned directly.
+!
+    use constants
+    implicit none
+    real(kind=realtype), intent(in) :: g1, g2, p
+    real(kind=realtype) :: phi
+    real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
+    real(kind=realtype) :: a, b, lambda_switch
+    intrinsic abs
+    intrinsic log
+    intrinsic exp
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg2
+! order with one if/else, not max()/min(): at a tie g1 == g2 the
+! intrinsics can both return the same argument, so ad (tapenade) and
+! complex step each take their own branch and the derivative is wrong
+! (1 or 0 instead of 1/2). here a and b are always distinct arguments.
+    if (g1 .ge. g2) then
+      a = g1
+      b = g2
+    else
+      a = g2
+      b = g1
+    end if
+    if (p .ge. 0.) then
+      abs0 = p
+    else
+      abs0 = -p
+    end if
+    if (p .ge. 0.) then
+      abs1 = p
+    else
+      abs1 = -p
+    end if
+    lambda_switch = log(abs0*p_switch)/abs1
+    if (p .gt. 0.0_realtype) then
+      if (a - b .gt. -lambda_switch) then
+        phi = a
+      else
+        arg1 = p*(b-a)
+        arg2 = one + exp(arg1)
+        phi = a + log(arg2)/p
+      end if
+    else if (a - b .gt. -lambda_switch) then
+      phi = b
+    else
+      arg1 = p*(a-b)
+      arg2 = one + exp(arg1)
+      phi = b + log(arg2)/p
+    end if
+  end function smoothminmax
+
+
+
+    subroutine tdia2x2(nb, ne, l, c, u, r)
+        !
+        !       tdia2x2 solves the tridiagonal linear system (l+c+u) v = r
+        !       with 2x2 block central diagonal and scalar (diagonal) lower
+        !       and upper diagonals. 2-equation analog of tdia3x3 (same
+        !       backward elimination + forward sweep), for SA-noft2-Gamma.
+        !
+        use constants
+        implicit none
+
+        integer(kind=intType), intent(in) :: nb, ne
+        real(kind=realType), dimension(2, nb:ne), intent(inout) :: l, u, r
+        real(kind=realType), dimension(2, 2, nb:ne), intent(inout) :: c
+
+        integer(kind=intType) :: n
+        real(kind=realType) :: deti, r1
+        real(kind=realType) :: ci11, ci12, ci21, ci22
+        real(kind=realType) :: f11, f12, f21, f22
+
+        ! Backward sweep: eliminate the upper diagonal.
+        do n = ne - 1, nb, -1
+            deti = one / (c(1, 1, n + 1) * c(2, 2, n + 1) - c(1, 2, n + 1) * c(2, 1, n + 1))
+            ci11 = c(2, 2, n + 1) * deti
+            ci12 = -c(1, 2, n + 1) * deti
+            ci21 = -c(2, 1, n + 1) * deti
+            ci22 = c(1, 1, n + 1) * deti
+
+            f11 = u(1, n) * ci11
+            f12 = u(1, n) * ci12
+            f21 = u(2, n) * ci21
+            f22 = u(2, n) * ci22
+
+            c(1, 1, n) = c(1, 1, n) - f11 * l(1, n + 1)
+            c(1, 2, n) = c(1, 2, n) - f12 * l(2, n + 1)
+            c(2, 1, n) = c(2, 1, n) - f21 * l(1, n + 1)
+            c(2, 2, n) = c(2, 2, n) - f22 * l(2, n + 1)
+
+            r(1, n) = r(1, n) - f11 * r(1, n + 1) - f12 * r(2, n + 1)
+            r(2, n) = r(2, n) - f21 * r(1, n + 1) - f22 * r(2, n + 1)
+        end do
+
+        ! Forward sweep. Solution stored in r.
+        deti = one / (c(1, 1, nb) * c(2, 2, nb) - c(1, 2, nb) * c(2, 1, nb))
+        r1 = r(1, nb)
+        r(1, nb) = deti * (c(2, 2, nb) * r1 - c(1, 2, nb) * r(2, nb))
+        r(2, nb) = deti * (-c(2, 1, nb) * r1 + c(1, 1, nb) * r(2, nb))
+
+        do n = nb + 1, ne
+            r(1, n) = r(1, n) - l(1, n) * r(1, n - 1)
+            r(2, n) = r(2, n) - l(2, n) * r(2, n - 1)
+            deti = one / (c(1, 1, n) * c(2, 2, n) - c(1, 2, n) * c(2, 1, n))
+            r1 = r(1, n)
+            r(1, n) = deti * (c(2, 2, n) * r1 - c(1, 2, n) * r(2, n))
+            r(2, n) = deti * (-c(2, 1, n) * r1 + c(1, 1, n) * r(2, n))
+        end do
+
+    end subroutine tdia2x2
+
+
+    subroutine tdia3x3(nb, ne, l, c, u, r)
+        use constants
+        implicit none
+        integer(kind=inttype), intent(in) :: nb, ne
+        real(kind=realtype), dimension(3, nb:ne), intent(inout) :: l, u, r
+        real(kind=realtype), dimension(3, 3, nb:ne), intent(inout) :: c
+        integer(kind=inttype) :: n
+        real(kind=realtype) :: deti, r1, r2
+        real(kind=realtype) :: ci11, ci12, ci13, ci21, ci22, ci23, ci31, ci32, ci33
+        real(kind=realtype) :: f11, f12, f13, f21, f22, f23, f31, f32, f33
+
+        do n = ne - 1, nb, -1
+            ci11 = c(2, 2, n + 1) * c(3, 3, n + 1) - c(2, 3, n + 1) * c(3, 2, n + 1)
+            ci12 = c(1, 3, n + 1) * c(3, 2, n + 1) - c(1, 2, n + 1) * c(3, 3, n + 1)
+            ci13 = c(1, 2, n + 1) * c(2, 3, n + 1) - c(1, 3, n + 1) * c(2, 2, n + 1)
+            ci21 = c(2, 3, n + 1) * c(3, 1, n + 1) - c(2, 1, n + 1) * c(3, 3, n + 1)
+            ci22 = c(1, 1, n + 1) * c(3, 3, n + 1) - c(1, 3, n + 1) * c(3, 1, n + 1)
+            ci23 = c(1, 3, n + 1) * c(2, 1, n + 1) - c(1, 1, n + 1) * c(2, 3, n + 1)
+            ci31 = c(2, 1, n + 1) * c(3, 2, n + 1) - c(2, 2, n + 1) * c(3, 1, n + 1)
+            ci32 = c(1, 2, n + 1) * c(3, 1, n + 1) - c(1, 1, n + 1) * c(3, 2, n + 1)
+            ci33 = c(1, 1, n + 1) * c(2, 2, n + 1) - c(1, 2, n + 1) * c(2, 1, n + 1)
+            deti = one / (c(1, 1, n + 1) * ci11 + c(1, 2, n + 1) * ci21 + c(1, 3, n + 1) * ci31)
+
+            f11 = u(1, n) * ci11 * deti
+            f12 = u(1, n) * ci12 * deti
+            f13 = u(1, n) * ci13 * deti
+            f21 = u(2, n) * ci21 * deti
+            f22 = u(2, n) * ci22 * deti
+            f23 = u(2, n) * ci23 * deti
+            f31 = u(3, n) * ci31 * deti
+            f32 = u(3, n) * ci32 * deti
+            f33 = u(3, n) * ci33 * deti
+
+            c(1, 1, n) = c(1, 1, n) - f11 * l(1, n + 1)
+            c(1, 2, n) = c(1, 2, n) - f12 * l(2, n + 1)
+            c(1, 3, n) = c(1, 3, n) - f13 * l(3, n + 1)
+            c(2, 1, n) = c(2, 1, n) - f21 * l(1, n + 1)
+            c(2, 2, n) = c(2, 2, n) - f22 * l(2, n + 1)
+            c(2, 3, n) = c(2, 3, n) - f23 * l(3, n + 1)
+            c(3, 1, n) = c(3, 1, n) - f31 * l(1, n + 1)
+            c(3, 2, n) = c(3, 2, n) - f32 * l(2, n + 1)
+            c(3, 3, n) = c(3, 3, n) - f33 * l(3, n + 1)
+
+            r(1, n) = r(1, n) - f11 * r(1, n + 1) - f12 * r(2, n + 1) - f13 * r(3, n + 1)
+            r(2, n) = r(2, n) - f21 * r(1, n + 1) - f22 * r(2, n + 1) - f23 * r(3, n + 1)
+            r(3, n) = r(3, n) - f31 * r(1, n + 1) - f32 * r(2, n + 1) - f33 * r(3, n + 1)
+        end do
+
+        ci11 = c(2, 2, nb) * c(3, 3, nb) - c(2, 3, nb) * c(3, 2, nb)
+        ci12 = c(1, 3, nb) * c(3, 2, nb) - c(1, 2, nb) * c(3, 3, nb)
+        ci13 = c(1, 2, nb) * c(2, 3, nb) - c(1, 3, nb) * c(2, 2, nb)
+        ci21 = c(2, 3, nb) * c(3, 1, nb) - c(2, 1, nb) * c(3, 3, nb)
+        ci22 = c(1, 1, nb) * c(3, 3, nb) - c(1, 3, nb) * c(3, 1, nb)
+        ci23 = c(1, 3, nb) * c(2, 1, nb) - c(1, 1, nb) * c(2, 3, nb)
+        ci31 = c(2, 1, nb) * c(3, 2, nb) - c(2, 2, nb) * c(3, 1, nb)
+        ci32 = c(1, 2, nb) * c(3, 1, nb) - c(1, 1, nb) * c(3, 2, nb)
+        ci33 = c(1, 1, nb) * c(2, 2, nb) - c(1, 2, nb) * c(2, 1, nb)
+        deti = one / (c(1, 1, nb) * ci11 + c(1, 2, nb) * ci21 + c(1, 3, nb) * ci31)
+        r1 = r(1, nb)
+        r2 = r(2, nb)
+        r(1, nb) = deti * (ci11 * r1 + ci12 * r2 + ci13 * r(3, nb))
+        r(2, nb) = deti * (ci21 * r1 + ci22 * r2 + ci23 * r(3, nb))
+        r(3, nb) = deti * (ci31 * r1 + ci32 * r2 + ci33 * r(3, nb))
+
+        do n = nb + 1, ne
+            r(1, n) = r(1, n) - l(1, n) * r(1, n - 1)
+            r(2, n) = r(2, n) - l(2, n) * r(2, n - 1)
+            r(3, n) = r(3, n) - l(3, n) * r(3, n - 1)
+
+            ci11 = c(2, 2, n) * c(3, 3, n) - c(2, 3, n) * c(3, 2, n)
+            ci12 = c(1, 3, n) * c(3, 2, n) - c(1, 2, n) * c(3, 3, n)
+            ci13 = c(1, 2, n) * c(2, 3, n) - c(1, 3, n) * c(2, 2, n)
+            ci21 = c(2, 3, n) * c(3, 1, n) - c(2, 1, n) * c(3, 3, n)
+            ci22 = c(1, 1, n) * c(3, 3, n) - c(1, 3, n) * c(3, 1, n)
+            ci23 = c(1, 3, n) * c(2, 1, n) - c(1, 1, n) * c(2, 3, n)
+            ci31 = c(2, 1, n) * c(3, 2, n) - c(2, 2, n) * c(3, 1, n)
+            ci32 = c(1, 2, n) * c(3, 1, n) - c(1, 1, n) * c(3, 2, n)
+            ci33 = c(1, 1, n) * c(2, 2, n) - c(1, 2, n) * c(2, 1, n)
+            deti = one / (c(1, 1, n) * ci11 + c(1, 2, n) * ci21 + c(1, 3, n) * ci31)
+            r1 = r(1, n)
+            r2 = r(2, n)
+            r(1, n) = deti * (ci11 * r1 + ci12 * r2 + ci13 * r(3, n))
+            r(2, n) = deti * (ci21 * r1 + ci22 * r2 + ci23 * r(3, n))
+            r(3, n) = deti * (ci31 * r1 + ci32 * r2 + ci33 * r(3, n))
+        end do
+    end subroutine tdia3x3
 end module turbutils_d
 

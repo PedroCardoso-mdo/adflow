@@ -100,6 +100,13 @@ contains
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards) 
         bcvarnames(offset+1) = cgnsturbsanu
+      case (spalartallmarasnoft2gammaretheta) 
+        bcvarnames(offset+1) = cgnsturbsanu
+        bcvarnames(offset+2) = cgnsturbgamma
+        bcvarnames(offset+3) = cgnsturbretheta
+      case (spalartallmarasnoft2gamma) 
+        bcvarnames(offset+1) = cgnsturbsanu
+        bcvarnames(offset+2) = cgnsturbgamma
       case (komegawilcox, komegamodified, mentersst) 
         bcvarnames(offset+1) = cgnsturbk
         bcvarnames(offset+2) = cgnsturbomega
@@ -2336,6 +2343,20 @@ contains
         refd = 0.0_8
         refd(itu1) = nurefd
         ref(itu1) = nuref
+      case (spalartallmarasnoft2gammaretheta) 
+        refd = 0.0_8
+        refd(itu1) = nurefd
+        ref(itu1) = nuref
+        refd(itu2) = 0.0_8
+        ref(itu2) = one
+        refd(itu3) = 0.0_8
+        ref(itu3) = one
+      case (spalartallmarasnoft2gamma) 
+        refd = 0.0_8
+        refd(itu1) = nurefd
+        ref(itu1) = nuref
+        refd(itu2) = 0.0_8
+        ref(itu2) = one
       case (komegawilcox, komegamodified, mentersst) 
         refd = 0.0_8
         refd(itu1) = (prefd-pref*rhorefd/rhoref)/rhoref
@@ -2440,6 +2461,13 @@ turbloop:do nn=nt1,nt2
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards) 
         ref(itu1) = nuref
+      case (spalartallmarasnoft2gammaretheta) 
+        ref(itu1) = nuref
+        ref(itu2) = one
+        ref(itu3) = one
+      case (spalartallmarasnoft2gamma) 
+        ref(itu1) = nuref
+        ref(itu2) = one
       case (komegawilcox, komegamodified, mentersst) 
         ref(itu1) = pref/rhoref
         ref(itu2) = ref(itu1)/nuref

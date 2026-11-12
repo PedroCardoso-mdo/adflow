@@ -100,6 +100,13 @@ contains
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards) 
         bcvarnames(offset+1) = cgnsturbsanu
+      case (spalartallmarasnoft2gammaretheta) 
+        bcvarnames(offset+1) = cgnsturbsanu
+        bcvarnames(offset+2) = cgnsturbgamma
+        bcvarnames(offset+3) = cgnsturbretheta
+      case (spalartallmarasnoft2gamma) 
+        bcvarnames(offset+1) = cgnsturbsanu
+        bcvarnames(offset+2) = cgnsturbgamma
       case (komegawilcox, komegamodified, mentersst) 
         bcvarnames(offset+1) = cgnsturbk
         bcvarnames(offset+2) = cgnsturbomega
@@ -2085,18 +2092,27 @@ contains
       case (spalartallmaras, spalartallmarasedwards) 
         ref(itu1) = nuref
         call pushcontrol3b(1)
+      case (spalartallmarasnoft2gammaretheta) 
+        ref(itu1) = nuref
+        ref(itu2) = one
+        ref(itu3) = one
+        call pushcontrol3b(2)
+      case (spalartallmarasnoft2gamma) 
+        ref(itu1) = nuref
+        ref(itu2) = one
+        call pushcontrol3b(3)
       case (komegawilcox, komegamodified, mentersst) 
         ref(itu1) = pref/rhoref
         tmp = ref(itu1)/nuref
         call pushreal8(ref(itu2))
         ref(itu2) = tmp
-        call pushcontrol3b(2)
+        call pushcontrol3b(4)
       case (ktau) 
         ref(itu1) = pref/rhoref
         tmp0 = nuref/ref(itu1)
         call pushreal8(ref(itu2))
         ref(itu2) = tmp0
-        call pushcontrol3b(3)
+        call pushcontrol3b(5)
       case (v2f) 
         ref(itu1) = pref/rhoref
         tmp1 = ref(itu1)/nuref
@@ -2108,7 +2124,7 @@ contains
         tmp3 = ref(itu1)
         call pushreal8(ref(itu3))
         ref(itu3) = tmp3
-        call pushcontrol3b(4)
+        call pushcontrol3b(6)
       case default
         call pushcontrol3b(0)
       end select
@@ -2158,21 +2174,30 @@ turbloop:do nn=nt1,nt2
         call popinteger4(mm)
       end do
       call popcontrol3b(branch)
-      if (branch .lt. 2) then
+      if (branch .lt. 3) then
         if (branch .eq. 0) then
           nurefd = 0.0_8
+        else if (branch .eq. 1) then
+          nurefd = refd(itu1)
         else
+          refd(itu3) = 0.0_8
+          refd(itu2) = 0.0_8
           nurefd = refd(itu1)
         end if
-      else if (branch .eq. 2) then
-        call popreal8(ref(itu2))
-        tmpd = refd(itu2)
-        refd(itu2) = 0.0_8
-        refd(itu1) = refd(itu1) + tmpd/nuref
-        nurefd = -(ref(itu1)*tmpd/nuref**2)
-        prefd = prefd + refd(itu1)/rhoref
-        rhorefd = rhorefd - pref*refd(itu1)/rhoref**2
-      else if (branch .eq. 3) then
+      else if (branch .lt. 5) then
+        if (branch .eq. 3) then
+          refd(itu2) = 0.0_8
+          nurefd = refd(itu1)
+        else
+          call popreal8(ref(itu2))
+          tmpd = refd(itu2)
+          refd(itu2) = 0.0_8
+          refd(itu1) = refd(itu1) + tmpd/nuref
+          nurefd = -(ref(itu1)*tmpd/nuref**2)
+          prefd = prefd + refd(itu1)/rhoref
+          rhorefd = rhorefd - pref*refd(itu1)/rhoref**2
+        end if
+      else if (branch .eq. 5) then
         call popreal8(ref(itu2))
         tmpd0 = refd(itu2)
         refd(itu2) = 0.0_8
@@ -2243,6 +2268,13 @@ turbloop:do nn=nt1,nt2
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards) 
         ref(itu1) = nuref
+      case (spalartallmarasnoft2gammaretheta) 
+        ref(itu1) = nuref
+        ref(itu2) = one
+        ref(itu3) = one
+      case (spalartallmarasnoft2gamma) 
+        ref(itu1) = nuref
+        ref(itu2) = one
       case (komegawilcox, komegamodified, mentersst) 
         ref(itu1) = pref/rhoref
         ref(itu2) = ref(itu1)/nuref

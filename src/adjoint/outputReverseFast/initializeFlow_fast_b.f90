@@ -36,13 +36,14 @@ contains
 &   pref, rhoref, tref, muref, timeref, uref, href, pinf, pinfcorr, &
 &   rhoinf, uinf, rgas, muinf, gammainf, winf, nw, nwf, kpresent, winf
     use flowutils_fast_b, only : computegamma, etot
-    use turbutils_fast_b, only : sanuknowneddyratio
+    use turbutils_fast_b, only : sanuknowneddyratio, rethetatcorrelation
     implicit none
     integer(kind=inttype) :: sps, nn, mm, ierr
     real(kind=realtype) :: gm1, ratio
     real(kind=realtype) :: nuinf, ktmp, uinf2
     real(kind=realtype) :: vinf, zinf, tmp1(1), tmp2(1)
     intrinsic sqrt
+    real(kind=realtype) :: arg1
 ! compute the dimensional viscosity from sutherland's law
     muinfdim = musuthdim*((tsuthdim+ssuthdim)/(tinfdim+ssuthdim))*(&
 &     tinfdim/tsuthdim)**1.5_realtype
@@ -106,6 +107,16 @@ contains
       select case  (turbmodel) 
       case (spalartallmaras, spalartallmarasedwards) 
         winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+!=============================================================
+      case (spalartallmarasnoft2gammaretheta) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
+        arg1 = turbintensityinf*100.0_realtype
+        winf(itu3) = rethetatcorrelation(arg1, zero)
+!=============================================================
+      case (spalartallmarasnoft2gamma) 
+        winf(itu1) = sanuknowneddyratio(eddyvisinfratio, nuinf)
+        winf(itu2) = one
 !=============================================================
       case (komegawilcox, komegamodified, mentersst) 
         winf(itu1) = 1.5_realtype*uinf2*turbintensityinf**2
