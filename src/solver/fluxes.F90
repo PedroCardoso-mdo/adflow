@@ -416,6 +416,7 @@ contains
                                  sFaceI, sfaceJ, sFacek, factFamilyI, factFamilyJ, factFamilyK
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use cgnsGrid, only: massFlowFamilyDiss
@@ -425,8 +426,6 @@ contains
         !      Local parameters.
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
-        real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !
@@ -4355,6 +4354,7 @@ contains
         use constants
         use flowVarRefState
         use inputDiscretization
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics
         use iteration
         use utils, only: getCorrectForK
@@ -4363,8 +4363,6 @@ contains
         !      Local parameters.
         !
         real(kind=realType), parameter :: dpMax = 0.25_realType
-        real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
         real(kind=realType), parameter :: omega = 0.5_realType
         real(kind=realType), parameter :: oneMinOmega = one - omega
         !
@@ -5217,6 +5215,7 @@ contains
                                  porI, porJ, porK, fw, gamma, si, sj, sk, &
                                  addGridVelocities, sFaceI, sfaceJ, sFacek
         use inputDiscretization, only: vis2Coarse
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use utils, only: getCorrectForK
@@ -5224,8 +5223,6 @@ contains
         !
         !      Local parameters.
         !
-        real(kind=realType), parameter :: epsAcoustic = 0.25_realType
-        real(kind=realType), parameter :: epsShear = 0.025_realType
         !
         !      Local variables.
         !

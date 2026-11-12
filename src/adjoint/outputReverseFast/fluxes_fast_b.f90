@@ -658,6 +658,7 @@ branch = myIntStack(myIntPtr)
 &   factfamilyk
     use flowvarrefstate, only : pinfcorr
     use inputdiscretization, only : vis2, vis4
+    use inputdissipation, only : epsacoustic, epsshear
     use inputphysics, only : equations
     use iteration, only : rfil
     use cgnsgrid, only : massflowfamilydiss
@@ -667,8 +668,6 @@ branch = myIntStack(myIntPtr)
 !      local parameters.
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
-    real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -2639,6 +2638,7 @@ branch = myIntStack(myIntPtr)
 &   sfacei, sfacej, sfacek, factfamilyi, factfamilyj, factfamilyk
     use flowvarrefstate, only : pinfcorr
     use inputdiscretization, only : vis2, vis4
+    use inputdissipation, only : epsacoustic, epsshear
     use inputphysics, only : equations
     use iteration, only : rfil
     use cgnsgrid, only : massflowfamilydiss
@@ -2648,8 +2648,6 @@ branch = myIntStack(myIntPtr)
 !      local parameters.
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
-    real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
@@ -10918,6 +10916,7 @@ branch = myIntStack(myIntPtr)
     use constants
     use flowvarrefstate
     use inputdiscretization
+    use inputdissipation, only : epsacoustic, epsshear
     use inputphysics
     use iteration
     use utils_fast_b, only : getcorrectfork
@@ -10926,8 +10925,6 @@ branch = myIntStack(myIntPtr)
 !      local parameters.
 !
     real(kind=realtype), parameter :: dpmax=0.25_realtype
-    real(kind=realtype), parameter :: epsacoustic=0.25_realtype
-    real(kind=realtype), parameter :: epsshear=0.025_realtype
     real(kind=realtype), parameter :: omega=0.5_realtype
     real(kind=realtype), parameter :: oneminomega=one-omega
 !
