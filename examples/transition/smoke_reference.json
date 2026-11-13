@@ -1,0 +1,1956 @@
+{
+ "airfoil_naca0012_gr_scalar": {
+  "cluster": {
+   "job": "1962376",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/04_mesh_study/logs/a27_gr_L0_1962376.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 741.4846750679959,
+     "Res nuturb": 8.802502252176928e-06,
+     "Res gamma": 0.00012578407230364388,
+     "Res retheta": 0.0008216257805633291,
+     "C_lift": 0.012617646078699968,
+     "C_drag": 0.872323683644006,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.872323683644006,
+     "totalRes": 1193733.6721295612
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 248.20501253722713,
+     "Res nuturb": 4.2820301356392744e-07,
+     "Res gamma": 8.502304226779652e-05,
+     "Res retheta": 1738.1931690493764,
+     "C_lift": 1.3593209290705386,
+     "C_drag": 1.841795606795603,
+     "C_drag_p": 1.1258359251540186,
+     "C_drag_v": 0.7159596816415843,
+     "totalRes": 413890.2603775869
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 60.285670168655564,
+     "Res nuturb": 1.2448826441665426e-07,
+     "Res gamma": 0.0007606100850460996,
+     "Res retheta": 1551.6330056368058,
+     "C_lift": 1.4049113735887904,
+     "C_drag": 1.6560832285056843,
+     "C_drag_p": 1.1620166712692912,
+     "C_drag_v": 0.49406655723639303,
+     "totalRes": 103396.54425339405
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 9.683402980923695,
+     "Res nuturb": 6.312618649533676e-08,
+     "Res gamma": 0.09103385510385947,
+     "Res retheta": 701.0797116248183,
+     "C_lift": 0.9224600302079735,
+     "C_drag": 1.023154147526359,
+     "C_drag_p": 0.7715630166255882,
+     "C_drag_v": 0.2515911309007706,
+     "totalRes": 20117.077560836227
+    }
+   ]
+  }
+ },
+ "airfoil_naca0012_sgamma_scalar": {
+  "cluster": {
+   "job": "1962376",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/04_mesh_study/logs/a27_sgamma_L0_1962376.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 741.4846750679959,
+     "Res nuturb": 6.7062346936155005e-06,
+     "Res gamma": 0.00012692995036576866,
+     "C_lift": 0.012617646078699968,
+     "C_drag": 0.872323683644006,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.872323683644006,
+     "totalRes": 1193733.671866491
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 248.20501188083435,
+     "Res nuturb": 3.1831247805213375e-07,
+     "Res gamma": 9.900402839503912e-05,
+     "C_lift": 1.3593209298719873,
+     "C_drag": 1.8417956061337224,
+     "C_drag_p": 1.1258359258596482,
+     "C_drag_v": 0.7159596802740742,
+     "totalRes": 413890.2522957524
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 60.28566951893821,
+     "Res nuturb": 9.375820737222272e-08,
+     "Res gamma": 3.1497627126682977,
+     "C_lift": 1.404911372997458,
+     "C_drag": 1.6560832259509197,
+     "C_drag_p": 1.162016670795505,
+     "C_drag_v": 0.49406655515541453,
+     "totalRes": 103396.61335182385
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 9.68340298127141,
+     "Res nuturb": 4.889981169071377e-08,
+     "Res gamma": 41.77125087184516,
+     "C_lift": 0.9224603008405486,
+     "C_drag": 1.0231543185672343,
+     "C_drag_p": 0.7715631627932982,
+     "C_drag_v": 0.2515911557739361,
+     "totalRes": 20200.675005551708
+    }
+   ]
+  }
+ },
+ "airfoil_naca0012_bcm_scalar": {
+  "cluster": {
+   "job": "1962377",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/04_mesh_study/logs/a27_bcm_L0_1962377.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 741.4846750679959,
+     "Res nuturb": 2.1530444411080443e-06,
+     "totalRes": 1193733.6715400487
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 248.20462754273683,
+     "Res nuturb": 9.938763196762578e-08,
+     "totalRes": 413889.7030987077
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 60.284821551366036,
+     "Res nuturb": 2.92173600897014e-08,
+     "totalRes": 103395.42905934007
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 9.435702961728476,
+     "Res nuturb": 1.518588366917874e-08,
+     "totalRes": 19831.586214987048
+    }
+   ]
+  }
+ },
+ "airfoil_naca0012_gr_scalar_pointA": {
+  "cluster": {
+   "job": "2197279",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/recipe_ab/logs/rab_gr_A_2197279.log",
+   "git": "git a108b0fe (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Wall",
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Wall": 0.63909,
+     "Res rho": 761.5222974588219,
+     "Res nuturb": 8.99991130211354e-06,
+     "Res gamma": 0.00012595019257474621,
+     "Res retheta": 0.0011400917696114694,
+     "C_lift": 0.021070353658525432,
+     "C_drag": 0.8733941197606481,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.8733941197606481,
+     "totalRes": 1225850.74735673
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Wall": 8.60041,
+     "Res rho": 254.0299142459452,
+     "Res nuturb": 4.3653038750804987e-07,
+     "Res gamma": 8.509043076594284e-05,
+     "Res retheta": 2351.7732906940705,
+     "C_lift": 2.2703288964064665,
+     "C_drag": 1.9571856611930953,
+     "C_drag_p": 1.2429714492407404,
+     "C_drag_v": 0.714214211952355,
+     "totalRes": 423605.06288105535
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Wall": 16.1792,
+     "Res rho": 61.43735684323837,
+     "Res nuturb": 1.2626992727271709e-07,
+     "Res gamma": 9.474455339508246e-05,
+     "Res retheta": 2251.4428694948992,
+     "C_lift": 2.364939908272316,
+     "C_drag": 1.7803085854731173,
+     "C_drag_p": 1.2882537769342348,
+     "C_drag_v": 0.49205480853888256,
+     "totalRes": 105333.03372335124
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Wall": 24.0343,
+     "Res rho": 9.442304238275788,
+     "Res nuturb": 6.335562138090871e-08,
+     "Res gamma": 0.042341740574853945,
+     "Res retheta": 1011.9110656270775,
+     "C_lift": 2.0874993794316525,
+     "C_drag": 1.2324318441279032,
+     "C_drag_p": 0.9826558409592397,
+     "C_drag_v": 0.2497760031686635,
+     "totalRes": 19824.85189942265
+    }
+   ]
+  }
+ },
+ "airfoil_naca0012_bcmo_scalar_pointA": {
+  "cluster": {
+   "job": "2197279",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/recipe_ab/logs/rab_bcmo_A_2197279.log",
+   "git": "git a108b0fe (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Wall",
+    "Res rho",
+    "Res nuturb",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Wall": 0.474662,
+     "Res rho": 761.5222974588219,
+     "Res nuturb": 2.2013029292203822e-06,
+     "C_lift": 0.021070353658525432,
+     "C_drag": 0.8733941197606481,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.8733941197606481,
+     "totalRes": 1225850.7467566172
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Wall": 7.70816,
+     "Res rho": 254.02951706482511,
+     "Res nuturb": 1.0152472347011612e-07,
+     "C_lift": 2.2703364108275617,
+     "C_drag": 1.957189959150667,
+     "C_drag_p": 1.242975779475425,
+     "C_drag_v": 0.7142141796752421,
+     "totalRes": 423604.4825301574
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Wall": 14.6912,
+     "Res rho": 61.43649486788436,
+     "Res nuturb": 2.9683290105333697e-08,
+     "C_lift": 2.3649689770854003,
+     "C_drag": 1.7803295108055879,
+     "C_drag_p": 1.2882748250944345,
+     "C_drag_v": 0.49205468571115346,
+     "totalRes": 105331.85607966025
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Wall": 21.9991,
+     "Res rho": 9.26523902794595,
+     "Res nuturb": 1.5266986641217357e-08,
+     "C_lift": 2.087543412103361,
+     "C_drag": 1.2323953063125779,
+     "C_drag_p": 0.982611169267156,
+     "C_drag_v": 0.249784137045422,
+     "totalRes": 19623.71233411257
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_gr_scalar": {
+  "cluster": {
+   "job": "1961835",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/logs/nu2.79e-7_nlf0416_gr_a4_1961835.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 664.1167291914053,
+     "Res nuturb": 3.974393035804191e-06,
+     "Res gamma": 0.00010104998158010457,
+     "Res retheta": 0.00223869205965818,
+     "C_lift": 0.0144827497806749,
+     "C_drag": 0.6460856193894561,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.6460856193894561,
+     "totalRes": 1066498.3824682478
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 211.81594280915306,
+     "Res nuturb": 1.9463348140306607e-07,
+     "Res gamma": 6.812742129147959e-05,
+     "Res retheta": 3469.6701746819494,
+     "C_lift": 2.678537386771066,
+     "C_drag": 2.7666974056556874,
+     "C_drag_p": 2.2289907625818355,
+     "C_drag_v": 0.5377066430738517,
+     "totalRes": 353779.2439515334
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 49.49890991094174,
+     "Res nuturb": 5.026400314468304e-08,
+     "Res gamma": 0.0012741439199129194,
+     "Res retheta": 2813.5949820037354,
+     "C_lift": 2.7657483584285907,
+     "C_drag": 2.6961905707461176,
+     "C_drag_p": 2.2991184050040676,
+     "C_drag_v": 0.39707216574204995,
+     "totalRes": 84939.33332189714
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 8.663277715552374,
+     "Res nuturb": 2.6414121020234608e-08,
+     "Res gamma": 0.1060055264674908,
+     "Res retheta": 1179.5180523504177,
+     "C_lift": 1.7647050467168088,
+     "C_drag": 1.7064882959680712,
+     "C_drag_p": 1.4758460026758669,
+     "C_drag_v": 0.2306422932922041,
+     "totalRes": 16739.01475204918
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_gr_matrix": {
+  "cluster": {
+   "job": "2201491",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/matrix_L0/logs/nlf_gr_mtx_a4_2201491.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 663.5702607396556,
+     "Res nuturb": 3.974393035804141e-06,
+     "Res gamma": 0.00010104998158010457,
+     "Res retheta": 0.002238692059351061,
+     "C_lift": 0.014482749780674903,
+     "C_drag": 0.646085619389456,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.646085619389456,
+     "totalRes": 1065491.1159790033
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 219.62642401430367,
+     "Res nuturb": 1.9751308775750644e-07,
+     "Res gamma": 6.623851296343656e-05,
+     "Res retheta": 3658.89202221774,
+     "C_lift": 2.650302778450258,
+     "C_drag": 2.7703544806486473,
+     "C_drag_p": 2.207252360465949,
+     "C_drag_v": 0.5631021201826987,
+     "totalRes": 364789.3562902175
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 61.615211032035496,
+     "Res nuturb": 5.219933286148504e-08,
+     "Res gamma": 0.00043065413777429066,
+     "Res retheta": 3091.6029470245394,
+     "C_lift": 2.790341108172349,
+     "C_drag": 2.742151677724998,
+     "C_drag_p": 2.3136965162884717,
+     "C_drag_v": 0.4284551614365263,
+     "totalRes": 104024.40674016379
+    },
+    {
+     "iter": 3,
+     "iterTot": 12,
+     "type": "*ANK",
+     "Res rho": 11.063974418832723,
+     "Res nuturb": 2.58481834087663e-08,
+     "Res gamma": 0.04813381249369442,
+     "Res retheta": 1657.0140461188532,
+     "C_lift": 2.4152640198187485,
+     "C_drag": 1.9994903991944306,
+     "C_drag_p": 1.7724955744703363,
+     "C_drag_v": 0.2269948247240942,
+     "totalRes": 18774.8643102381
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_sgamma_scalar": {
+  "cluster": {
+   "job": "1961971",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/logs/nu2.79e-7_nlf0416_sgamma_a4_1961971.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 664.1167291914053,
+     "Res nuturb": 3.933479198861224e-06,
+     "Res gamma": 0.00010232677898956435,
+     "C_lift": 0.0144827497806749,
+     "C_drag": 0.6460856193894561,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.6460856193894561,
+     "totalRes": 1066498.3824653206
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 211.81594280915306,
+     "Res nuturb": 1.9159675710511995e-07,
+     "Res gamma": 8.232203146461003e-05,
+     "C_lift": 2.678537386771066,
+     "C_drag": 2.7666974056556874,
+     "C_drag_p": 2.2289907625818355,
+     "C_drag_v": 0.5377066430738517,
+     "totalRes": 353779.21107596875
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 49.4989077720904,
+     "Res nuturb": 4.982500778867939e-08,
+     "Res gamma": 3.7732265718508065,
+     "C_lift": 2.7657483537096526,
+     "C_drag": 2.6961905630422596,
+     "C_drag_p": 2.299118401697123,
+     "C_drag_v": 0.39707216134513645,
+     "totalRes": 84939.4016195828
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 8.663277909160673,
+     "Res nuturb": 2.6489817953290807e-08,
+     "Res gamma": 39.01610939390678,
+     "C_lift": 1.7647053840899063,
+     "C_drag": 1.7064886080925517,
+     "C_drag_p": 1.4758462941181345,
+     "C_drag_v": 0.2306423139744171,
+     "totalRes": 16826.56491222502
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_sgamma_matrix": {
+  "cluster": {
+   "job": "2201629",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/matrix_L0/logs/nlf_sgamma_mtx_a4_2201629.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 663.5702607396556,
+     "Res nuturb": 3.933479198861137e-06,
+     "Res gamma": 0.00010232677898956451,
+     "C_lift": 0.014482749780674903,
+     "C_drag": 0.646085619389456,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.646085619389456,
+     "totalRes": 1065491.1159760777
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 219.62642401430367,
+     "Res nuturb": 1.942562473939802e-07,
+     "Res gamma": 8.045910186440025e-05,
+     "C_lift": 2.650302778450258,
+     "C_drag": 2.7703544806486473,
+     "C_drag_p": 2.207252360465949,
+     "C_drag_v": 0.5631021201826987,
+     "totalRes": 364789.3208344399
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 61.615209078783586,
+     "Res nuturb": 5.18655459981664e-08,
+     "Res gamma": 0.06483066550829134,
+     "C_lift": 2.790341103463608,
+     "C_drag": 2.742151666265198,
+     "C_drag_p": 2.3136965112741543,
+     "C_drag_v": 0.4284551549910434,
+     "totalRes": 104024.31467260995
+    },
+    {
+     "iter": 3,
+     "iterTot": 12,
+     "type": "*ANK",
+     "Res rho": 11.06397399299488,
+     "Res nuturb": 2.569105976944783e-08,
+     "Res gamma": 9.774167819626234,
+     "C_lift": 2.4152637423641883,
+     "C_drag": 1.9994899753601723,
+     "C_drag_p": 1.7724952001001513,
+     "C_drag_v": 0.22699477526002082,
+     "totalRes": 18779.637029850946
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_bcm_scalar": {
+  "cluster": {
+   "job": "1961959",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/logs/nu1e-9_nlf0416_bcm_a4_1961959.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 664.1167291914053,
+     "Res nuturb": 9.771592446536967e-07,
+     "totalRes": 1066498.3823338759
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 211.81535509124285,
+     "Res nuturb": 4.631743229697853e-08,
+     "totalRes": 353778.37136013963
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 49.498077906464005,
+     "Res nuturb": 1.2022966755518002e-08,
+     "totalRes": 84938.08982775662
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 8.648882800948885,
+     "Res nuturb": 6.386819456104115e-09,
+     "totalRes": 16718.471643785622
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_bcmo_scalar": {
+  "cluster": {
+   "job": "2168686",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/logs/nu1e-9_nlf0416_bcmo_a4_2168686.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 664.1167291914053,
+     "Res nuturb": 9.77116850283194e-07,
+     "totalRes": 1066498.3823338752
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 211.85174951464458,
+     "Res nuturb": 4.634504043085938e-08,
+     "totalRes": 353843.5099344624
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 49.374356786225434,
+     "Res nuturb": 1.2146049517550404e-08,
+     "totalRes": 84804.06991796367
+    },
+    {
+     "iter": 3,
+     "iterTot": 12,
+     "type": "*ANK",
+     "Res rho": 8.005566929546214,
+     "Res nuturb": 6.2046839840064126e-09,
+     "totalRes": 15811.96142755477
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_bcmo_matrix": {
+  "cluster": {
+   "job": "2201628",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/matrix_L0/logs/nlf_bcmo_mtx_a4_2201628.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 663.5702607396556,
+     "Res nuturb": 9.771168502831852e-07,
+     "totalRes": 1065491.1158443943
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 219.6258246874288,
+     "Res nuturb": 4.694424187583358e-08,
+     "totalRes": 364788.449539165
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 61.61453124513708,
+     "Res nuturb": 1.2525249389841294e-08,
+     "totalRes": 104023.40633581676
+    },
+    {
+     "iter": 3,
+     "iterTot": 12,
+     "type": "*ANK",
+     "Res rho": 11.051453277416012,
+     "Res nuturb": 6.196345620641178e-09,
+     "totalRes": 18755.166431934787
+    }
+   ]
+  }
+ },
+ "airfoil_nlf0416_sa_scalar": {
+  "cluster": {
+   "job": "1962367",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/logs/nu9e-3_nlf0416_sa_a4_1962367.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 664.1167291914053,
+     "Res nuturb": 0.00027424465641619704,
+     "totalRes": 1066499.0615177383
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 211.83155023380127,
+     "Res nuturb": 1.1973177059622706e-05,
+     "totalRes": 353804.6162026441
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 49.503749582572766,
+     "Res nuturb": 1.939252441854533e-06,
+     "totalRes": 84947.62183866148
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 8.648673455913926,
+     "Res nuturb": 5.427047450346196e-07,
+     "totalRes": 16717.960214535295
+    }
+   ]
+  }
+ },
+ "airfoil_s809_gr_scalar": {
+  "cluster": {
+   "job": "1961835",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/logs/nu2.79e-7_s809_gr_a4_1961835.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 717.50168249802,
+     "Res nuturb": 1.1344372198832698e-05,
+     "Res gamma": 0.00010128219885938288,
+     "Res retheta": 0.000620395045175162,
+     "C_lift": 0.02684508000251599,
+     "C_drag": 1.3020157160422392,
+     "C_drag_p": 0.0,
+     "C_drag_v": 1.3020157160422392,
+     "totalRes": 1153019.833432121
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 232.91250577116259,
+     "Res nuturb": 5.401258923985709e-07,
+     "Res gamma": 6.809161109219746e-05,
+     "Res retheta": 2299.936180325926,
+     "C_lift": 2.4794206046614327,
+     "C_drag": 3.6551342377921117,
+     "C_drag_p": 2.6316401432206487,
+     "C_drag_v": 1.023494094571463,
+     "totalRes": 388259.1907883174
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 55.07810331320219,
+     "Res nuturb": 1.5962591854030506e-07,
+     "Res gamma": 0.00022574005364235953,
+     "Res retheta": 2060.8894779663856,
+     "C_lift": 2.5690371241289207,
+     "C_drag": 3.3983390001155707,
+     "C_drag_p": 2.7239475986413235,
+     "C_drag_v": 0.6743914014742465,
+     "totalRes": 94208.29565540706
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 9.928669234125834,
+     "Res nuturb": 8.795207271523836e-08,
+     "Res gamma": 0.024839902566745224,
+     "Res retheta": 714.0473665897239,
+     "C_lift": 1.5514188462157474,
+     "C_drag": 2.021668299420069,
+     "C_drag_p": 1.693832479332193,
+     "C_drag_v": 0.3278358200878766,
+     "totalRes": 19455.40210347735
+    }
+   ]
+  }
+ },
+ "airfoil_s809_gr_matrix": {
+  "cluster": {
+   "job": "2201434",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/05_validation_polars/matrix_L0/logs/s809_gr_mtx_a4_2201434.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 717.5705726260487,
+     "Res nuturb": 1.1344372198832557e-05,
+     "Res gamma": 0.0001012821988593829,
+     "Res retheta": 0.0006203950449854923,
+     "C_lift": 0.026845080002515998,
+     "C_drag": 1.3020157160422392,
+     "C_drag_p": 0.0,
+     "C_drag_v": 1.3020157160422392,
+     "totalRes": 1153332.7974101016
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 241.73539514348403,
+     "Res nuturb": 5.465240772811585e-07,
+     "Res gamma": 6.823997350856366e-05,
+     "Res retheta": 2393.6036887087703,
+     "C_lift": 2.4514713802638646,
+     "C_drag": 3.665583449100844,
+     "C_drag_p": 2.6054665490611413,
+     "C_drag_v": 1.0601169000397033,
+     "totalRes": 400682.35966997675
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 67.34074767042274,
+     "Res nuturb": 1.6184093306829624e-07,
+     "Res gamma": 7.588244377491629e-05,
+     "Res retheta": 2443.1214939283145,
+     "C_lift": 2.6099141070267042,
+     "C_drag": 3.4447644863956253,
+     "C_drag_p": 2.7527522965303515,
+     "C_drag_v": 0.6920121898652731,
+     "totalRes": 113769.0017258257
+    },
+    {
+     "iter": 3,
+     "iterTot": 12,
+     "type": "*ANK",
+     "Res rho": 12.342801836293674,
+     "Res nuturb": 8.678605515835372e-08,
+     "Res gamma": 0.007738182493550473,
+     "Res retheta": 1108.189324362155,
+     "C_lift": 2.6292226460308807,
+     "C_drag": 2.583221306233534,
+     "C_drag_p": 2.266145072503102,
+     "C_drag_v": 0.31707623373043237,
+     "totalRes": 20837.73027762851
+    }
+   ]
+  }
+ },
+ "swept_nlf0415_matrix": {
+  "cluster": {
+   "job": "1826778",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/13_nlf0415_swept/logs/nlfsw45_L0_a-4_re2p00_rl.log",
+   "git": "git 5c4e9c08 (solver-fidelity-2026-08) DIRTY",
+   "cells": 64800,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 796.9112870498766,
+     "Res nuturb": 1.4032847526042789e-05,
+     "Res gamma": 4.7111618672243674e-05,
+     "Res retheta": 0.0007332245483183899,
+     "C_lift": -0.027139585507172086,
+     "C_drag": 1.27027383651019,
+     "totalRes": 741601.9162890585
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 246.25006367223352,
+     "Res nuturb": 5.598339591145101e-07,
+     "Res gamma": 4.6990287904104395e-05,
+     "Res retheta": 3726.75380701996,
+     "C_lift": -2.484966501822145,
+     "C_drag": 2.0411914224470658,
+     "totalRes": 237151.74691489546
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 55.47991086210756,
+     "Res nuturb": 1.5400232645115926e-07,
+     "Res gamma": 0.00012720685662217157,
+     "Res retheta": 1704.2846170913522,
+     "C_lift": -2.6210746787737795,
+     "C_drag": 1.7015115298061991,
+     "totalRes": 55219.52741082639
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 11.153130867061503,
+     "Res nuturb": 7.891416150547504e-08,
+     "Res gamma": 0.02582215128906895,
+     "Res retheta": 918.3689983493608,
+     "C_lift": -1.9467363282924874,
+     "C_drag": 0.8991112932580936,
+     "totalRes": 11106.258681071406
+    }
+   ]
+  }
+ },
+ "swept_nlf0415_scalar": {
+  "cluster": {
+   "job": "job_swept_L0_resweep_ladder.sh",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/13_nlf0415_swept/logs/nlfsw45_L0_a-4_re2p00_lad.log",
+   "git": "git 83b5e92b (sa_gamma_rethetha) DIRTY",
+   "cells": 64800,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 797.1201697724108,
+     "Res nuturb": 2.547037618132984e-05,
+     "Res gamma": 4.711151480779225e-05,
+     "Res retheta": 0.0003666123691533765,
+     "C_lift": -0.038381169837022285,
+     "C_drag": 1.7964384845059338,
+     "totalRes": 743610.1991468302
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 235.79188560490687,
+     "Res nuturb": 1.0635335178070574e-06,
+     "Res gamma": 4.699017609020694e-05,
+     "Res retheta": 2683.3621099122606,
+     "C_lift": -2.487633482045589,
+     "C_drag": 2.3880388867266307,
+     "totalRes": 230395.72929469254
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 35.49616854591373,
+     "Res nuturb": 2.9607451435536404e-07,
+     "Res gamma": 0.00019243312570099523,
+     "Res retheta": 1135.5236351429457,
+     "C_lift": -2.5297015571083477,
+     "C_drag": 1.8363426850930855,
+     "totalRes": 38819.50335331897
+    },
+    {
+     "iter": 3,
+     "iterTot": 10,
+     "type": "*ANK",
+     "Res rho": 8.219604915453692,
+     "Res nuturb": 1.5356963788066915e-07,
+     "Res gamma": 0.01458365391753259,
+     "Res retheta": 646.1631261885904,
+     "C_lift": -1.2264214906542183,
+     "C_drag": 0.8208675132537535,
+     "totalRes": 12180.285725009515
+    }
+   ]
+  }
+ },
+ "sickle_wing": {
+  "cluster": {
+   "job": "job_sickle_paper_v14_cfon.sh",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/07_sickle_wing/mesh_paper_authors/logs/sickle_paper_v14_cfon.log",
+   "git": "git 36b01134 (transition-models) DIRTY",
+   "cells": 4404960,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 1359.937786012094,
+     "Res nuturb": 2.321904010257439e-05,
+     "Res gamma": 0.001040452049050892,
+     "Res retheta": 0.010161053226061378,
+     "C_lift": -0.007663856977111491,
+     "C_drag": 0.5496277328609975,
+     "totalRes": 10480862.968696365
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 446.72269743929485,
+     "Res nuturb": 7.704430662607553e-07,
+     "Res gamma": 0.0009582253902734214,
+     "Res retheta": 9211.644724181191,
+     "C_lift": -1.0835882893271922,
+     "C_drag": 1.4619641006748434,
+     "totalRes": 3501910.033900599
+    },
+    {
+     "iter": 2,
+     "iterTot": 7,
+     "type": "*ANK",
+     "Res rho": 94.45796531625744,
+     "Res nuturb": 1.7046170834626205e-07,
+     "Res gamma": 0.009184807730463415,
+     "Res retheta": 2541.5843507618747,
+     "C_lift": -1.1191681421387338,
+     "C_drag": 1.3538816271208882,
+     "totalRes": 773010.4910629509
+    },
+    {
+     "iter": 3,
+     "iterTot": 19,
+     "type": "*ANK",
+     "Res rho": 24.825108798054302,
+     "Res nuturb": 7.879271736815022e-08,
+     "Res gamma": 0.061957455325462964,
+     "Res retheta": 1513.1373379857182,
+     "C_lift": -0.709040570305564,
+     "C_drag": 0.6191203754371479,
+     "totalRes": 195939.86441391814
+    }
+   ]
+  }
+ },
+ "ar5_gr_L4": {
+  "cluster": {
+   "job": "1810888",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/11_ar5_corrected_foil/batch_jobs/logs/ar5cf_ar5cf_L4_1810888.out",
+   "git": null,
+   "cells": 459452,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 236.98340695606336,
+     "Res nuturb": 5.8781243432504825e-05,
+     "Res gamma": 0.0010122029604006447,
+     "Res retheta": 0.005135876150078207,
+     "C_lift": 0.00505672144035616,
+     "C_drag": 0.24343577611170833,
+     "totalRes": 586070.3077263802
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 70.53008448120819,
+     "Res nuturb": 2.495526666341083e-06,
+     "Res gamma": 0.0008127691581761369,
+     "Res retheta": 2496.452894388317,
+     "C_lift": 2.9683430770373387,
+     "C_drag": 2.7103796100712447,
+     "totalRes": 180087.2968809495
+    },
+    {
+     "iter": 2,
+     "iterTot": 7,
+     "type": "*ANK",
+     "Res rho": 12.892057539720582,
+     "Res nuturb": 3.318575097766154e-07,
+     "Res gamma": 0.02276042153290808,
+     "Res retheta": 518.0500271557836,
+     "C_lift": 3.0222653307646663,
+     "C_drag": 2.5662199971243287,
+     "totalRes": 34348.01493144703
+    },
+    {
+     "iter": 3,
+     "iterTot": 13,
+     "type": "*ANK",
+     "Res rho": 5.492211313141916,
+     "Res nuturb": 1.0224539190994439e-07,
+     "Res gamma": 0.10431136716163934,
+     "Res retheta": 372.0553953445921,
+     "C_lift": 1.8423764864218648,
+     "C_drag": 0.8651863403391737,
+     "totalRes": 14708.971046656578
+    }
+   ]
+  }
+ },
+ "ar5_gr_L1": {
+  "cluster": {
+   "job": "1810891",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/11_ar5_corrected_foil/batch_jobs/logs/ar5cf_ar5cf_L1_1810891.out",
+   "git": null,
+   "cells": 3667320,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 342.8385305242975,
+     "Res nuturb": 0.00016257611235319922,
+     "Res gamma": 0.001124899017453418,
+     "Res retheta": 0.0017055674828835759,
+     "C_lift": 0.009793659596488825,
+     "C_drag": 0.47972887990006624,
+     "totalRes": 2395928.1925613126
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 108.42622670178129,
+     "Res nuturb": 7.549893314839302e-06,
+     "Res gamma": 0.0007674588476395083,
+     "Res retheta": 2083.039822983515,
+     "C_lift": 2.958150928712497,
+     "C_drag": 2.9161097177018167,
+     "totalRes": 784677.6813317282
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 24.273280547191412,
+     "Res nuturb": 8.577493318274257e-07,
+     "Res gamma": 0.0022755286782068203,
+     "Res retheta": 760.4456423523748,
+     "C_lift": 3.064976543218776,
+     "C_drag": 2.845154028571933,
+     "totalRes": 179274.4352544269
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 5.868872587755715,
+     "Res nuturb": 2.746273172453527e-07,
+     "Res gamma": 0.03307415590862761,
+     "Res retheta": 394.3492701604031,
+     "C_lift": 2.7095275443814906,
+     "C_drag": 1.9856484302100215,
+     "totalRes": 45186.99049294543
+    }
+   ]
+  }
+ },
+ "ar5_bcm": {
+  "cluster": {
+   "job": "1904793",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_BCM_ARTICLE/3d/10_grad_diag_tu025/opt_c2_base.log",
+   "git": null,
+   "cells": 943104,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 986.279945098821,
+     "Res nuturb": 5.877423366237728e-06,
+     "totalRes": 3501230.5613429984
+    },
+    {
+     "iter": 1,
+     "iterTot": 4,
+     "type": "*ANK",
+     "Res rho": 309.2340113157323,
+     "Res nuturb": 1.6823393666488627e-07,
+     "totalRes": 1124928.7509277316
+    },
+    {
+     "iter": 2,
+     "iterTot": 9,
+     "type": "*ANK",
+     "Res rho": 36.963239021427945,
+     "Res nuturb": 4.2536366407844215e-08,
+     "totalRes": 143576.69797767777
+    },
+    {
+     "iter": 3,
+     "iterTot": 22,
+     "type": "*ANK",
+     "Res rho": 16.26312265621139,
+     "Res nuturb": 2.5919920476983854e-08,
+     "totalRes": 59945.65993658187
+    }
+   ]
+  }
+ },
+ "ar5_sa": {
+  "cluster": {
+   "job": "08_base_sa",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_BCM_ARTICLE/3d/08_base_sa/base_sa_3d.log",
+   "git": null,
+   "cells": 943104,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 986.1367782487619,
+     "Res nuturb": 9.299135400608457e-07,
+     "totalRes": 3500724.303288542
+    },
+    {
+     "iter": 1,
+     "iterTot": 4,
+     "type": "*ANK",
+     "Res rho": 308.9961469198486,
+     "Res nuturb": 6.27356629420377e-08,
+     "totalRes": 1124069.3251791054
+    },
+    {
+     "iter": 2,
+     "iterTot": 9,
+     "type": "*ANK",
+     "Res rho": 37.32022824655509,
+     "Res nuturb": 7.958562069067477e-08,
+     "totalRes": 144897.1592410491
+    },
+    {
+     "iter": 3,
+     "iterTot": 22,
+     "type": "*ANK",
+     "Res rho": 21.48933889712052,
+     "Res nuturb": 1.4467866460751317e-07,
+     "totalRes": 78573.01297889957
+    }
+   ]
+  }
+ },
+ "opt_airfoil_gr_scalar": {
+  "cluster": {
+   "job": "1988112",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/logs/c2_gr_cl05tu03_1988112.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 761.6096780917056,
+     "Res nuturb": 9.000779390907634e-06,
+     "Res gamma": 0.00012595096884264006,
+     "Res retheta": 0.0011400990350945318,
+     "C_lift": 0.02110033586753827,
+     "C_drag": 0.8733988920289206,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.8733988920289206,
+     "totalRes": 1225990.8080162548
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 254.03325999993197,
+     "Res nuturb": 4.3645478429067583e-07,
+     "Res gamma": 8.509072383365678e-05,
+     "Res retheta": 2354.348968712958,
+     "C_lift": 2.272953897726662,
+     "C_drag": 1.9574906255962676,
+     "C_drag_p": 1.2432908387269999,
+     "C_drag_v": 0.7141997868692678,
+     "totalRes": 423608.699319742
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 61.53661547628468,
+     "Res nuturb": 1.258317641441839e-07,
+     "Res gamma": 0.0006629939162319715,
+     "Res retheta": 2083.8033322363844,
+     "C_lift": 2.3534207502352316,
+     "C_drag": 1.775664734495686,
+     "C_drag_p": 1.283729255063146,
+     "C_drag_v": 0.4919354794325398,
+     "totalRes": 105455.40101871877
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 9.729583121746389,
+     "Res nuturb": 6.363264798592695e-08,
+     "Res gamma": 0.07967891278027231,
+     "Res retheta": 955.2262978799085,
+     "C_lift": 1.6106628744520062,
+     "C_drag": 1.0969890525634747,
+     "C_drag_p": 0.8468347186321272,
+     "C_drag_v": 0.2501543339313473,
+     "totalRes": 20200.763429731913
+    }
+   ]
+  }
+ },
+ "opt_airfoil_gr_matrix": {
+  "cluster": {
+   "job": "2203553",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/mtx_c2/logs/c2_gr_2203553.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 761.6151165514127,
+     "Res nuturb": 9.000779390907634e-06,
+     "Res gamma": 0.00012595096884264006,
+     "Res retheta": 0.0011400990350945318,
+     "C_lift": 0.02110033586753827,
+     "C_drag": 0.8733988920289206,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.8733988920289206,
+     "totalRes": 1225979.062754852
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 262.6334885458123,
+     "Res nuturb": 4.418374390013138e-07,
+     "Res gamma": 8.509072327598549e-05,
+     "Res retheta": 2475.74821113533,
+     "C_lift": 2.2475914025942743,
+     "C_drag": 1.9740077852825875,
+     "C_drag_p": 1.2309257850308648,
+     "C_drag_v": 0.7430820002517228,
+     "totalRes": 434829.7789884819
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 73.66525851590879,
+     "Res nuturb": 1.2654265549817167e-07,
+     "Res gamma": 0.0006375911045573908,
+     "Res retheta": 2158.252641478301,
+     "C_lift": 2.3735882765121206,
+     "C_drag": 1.8088088925470676,
+     "C_drag_p": 1.2962380198381056,
+     "C_drag_v": 0.512570872708962,
+     "totalRes": 124686.67920639059
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 13.056991714000697,
+     "Res nuturb": 6.376129987184622e-08,
+     "Res gamma": 0.05312903745008616,
+     "Res retheta": 1105.6800446138827,
+     "C_lift": 1.8615197067688913,
+     "C_drag": 1.2296877660525356,
+     "C_drag_p": 0.986436421151214,
+     "C_drag_v": 0.24325134490132144,
+     "totalRes": 22310.281202153445
+    }
+   ]
+  }
+ },
+ "opt_airfoil_sgamma_matrix": {
+  "cluster": {
+   "job": "2203553",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/mtx_c2/logs/c2_sgamma_2203553.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 761.6151165514127,
+     "Res nuturb": 8.821381995991197e-06,
+     "Res gamma": 0.0011346602180642002,
+     "C_lift": 0.02110033586753827,
+     "C_drag": 0.8733988920289206,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.8733988920289206,
+     "totalRes": 1225979.062729661
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 262.6334885458123,
+     "Res nuturb": 4.2753047676266333e-07,
+     "Res gamma": 0.00018971022446283674,
+     "C_lift": 2.2475914025942743,
+     "C_drag": 1.9740077852825875,
+     "C_drag_p": 1.2309257850308648,
+     "C_drag_v": 0.7430820002517228,
+     "totalRes": 434829.7653699335
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 73.66525774256822,
+     "Res nuturb": 1.2481952042900615e-07,
+     "Res gamma": 2.1386325115456875,
+     "C_lift": 2.373588275408875,
+     "C_drag": 1.8088088886240214,
+     "C_drag_p": 1.2962380191978682,
+     "C_drag_v": 0.5125708694261534,
+     "totalRes": 124686.67722364383
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 13.056991693191742,
+     "Res nuturb": 6.364628377673159e-08,
+     "Res gamma": 33.90007017246798,
+     "C_lift": 1.8615197409347164,
+     "C_drag": 1.229687758062368,
+     "C_drag_p": 0.9864364154245222,
+     "C_drag_v": 0.24325134263784576,
+     "totalRes": 22359.938244354795
+    }
+   ]
+  }
+ },
+ "opt_airfoil_bcmo_matrix": {
+  "cluster": {
+   "job": "2203553",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/mtx_c2/logs/c2_bcmo_2203553.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 761.6151165514127,
+     "Res nuturb": 2.2015155552586663e-06,
+     "totalRes": 1225979.0621544998
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 262.6334878189729,
+     "Res nuturb": 1.0263722370243171e-07,
+     "totalRes": 434829.7641974443
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 73.66525732946029,
+     "Res nuturb": 2.990596271253677e-08,
+     "totalRes": 124686.64114934427
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 13.056990431970421,
+     "Res nuturb": 1.5207606370400877e-08,
+     "totalRes": 22310.22570501816
+    }
+   ]
+  }
+ },
+ "opt_airfoil_sa_scalar": {
+  "cluster": {
+   "job": "1988112",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/logs/c1_sa_cl05_1988112.log",
+   "git": "git 92aa741f (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 761.6096780917056,
+     "Res nuturb": 0.000780862824087151,
+     "totalRes": 1225995.6104591805
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 254.06121955698387,
+     "Res nuturb": 2.611231385285787e-05,
+     "totalRes": 423653.82851791364
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 61.54580992557544,
+     "Res nuturb": 4.572954235319468e-06,
+     "totalRes": 105471.42915762035
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 9.549864542708493,
+     "Res nuturb": 1.0569869480803916e-06,
+     "totalRes": 19992.05040172328
+    }
+   ]
+  }
+ },
+ "opt_airfoil_gr_matrix_multipoint": {
+  "cluster": {
+   "job": "2203553 (same start point as point 0: Tu 0.3 %, cl 0.5)",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/24_minmodel_2d/06_optimization/mtx_c2/logs/c2_gr_2203553.log",
+   "git": "git 8d0943e9 (transition-models) DIRTY",
+   "cells": 193224,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 761.6151165514127,
+     "Res nuturb": 9.000779390907634e-06,
+     "Res gamma": 0.00012595096884264006,
+     "Res retheta": 0.0011400990350945318,
+     "C_lift": 0.02110033586753827,
+     "C_drag": 0.8733988920289206,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.8733988920289206,
+     "totalRes": 1225979.062754852
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 262.6334885458123,
+     "Res nuturb": 4.418374390013138e-07,
+     "Res gamma": 8.509072327598549e-05,
+     "Res retheta": 2475.74821113533,
+     "C_lift": 2.2475914025942743,
+     "C_drag": 1.9740077852825875,
+     "C_drag_p": 1.2309257850308648,
+     "C_drag_v": 0.7430820002517228,
+     "totalRes": 434829.7789884819
+    },
+    {
+     "iter": 2,
+     "iterTot": 6,
+     "type": "*ANK",
+     "Res rho": 73.66525851590879,
+     "Res nuturb": 1.2654265549817167e-07,
+     "Res gamma": 0.0006375911045573908,
+     "Res retheta": 2158.252641478301,
+     "C_lift": 2.3735882765121206,
+     "C_drag": 1.8088088925470676,
+     "C_drag_p": 1.2962380198381056,
+     "C_drag_v": 0.512570872708962,
+     "totalRes": 124686.67920639059
+    },
+    {
+     "iter": 3,
+     "iterTot": 11,
+     "type": "*ANK",
+     "Res rho": 13.056991714000697,
+     "Res nuturb": 6.376129987184622e-08,
+     "Res gamma": 0.05312903745008616,
+     "Res retheta": 1105.6800446138827,
+     "C_lift": 1.8615197067688913,
+     "C_drag": 1.2296877660525356,
+     "C_drag_p": 0.986436421151214,
+     "C_drag_v": 0.24325134490132144,
+     "totalRes": 22310.281202153445
+    }
+   ]
+  }
+ },
+ "opt_ar5_bcm_article": {
+  "cluster": {
+   "job": "1904652",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_BCM_ARTICLE/3d/02_c2_opt_tu025/opt_c2_base.log",
+   "git": null,
+   "cells": 943104,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "totalRes"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 986.279945098821,
+     "Res nuturb": 5.877423366237728e-06,
+     "totalRes": 3501230.5613429984
+    },
+    {
+     "iter": 1,
+     "iterTot": 4,
+     "type": "*ANK",
+     "Res rho": 309.2340113157323,
+     "Res nuturb": 1.6823393666488627e-07,
+     "totalRes": 1124928.7509277316
+    },
+    {
+     "iter": 2,
+     "iterTot": 9,
+     "type": "*ANK",
+     "Res rho": 36.963239021427945,
+     "Res nuturb": 4.2536366407844215e-08,
+     "totalRes": 143576.69797767777
+    },
+    {
+     "iter": 3,
+     "iterTot": 22,
+     "type": "*ANK",
+     "Res rho": 16.26312265621139,
+     "Res nuturb": 2.5919920476983854e-08,
+     "totalRes": 59945.65993658187
+    }
+   ]
+  }
+ },
+ "opt_ar5_gr_c376_on_L4": {
+  "cluster": null,
+  "note": "no cluster twin: the c376 set-up run on the L4 mesh of the same family"
+ },
+ "opt_ar5_gr_c376": {
+  "cluster": {
+   "job": "1830863",
+   "log": "/projects/F202500002HPCVLABISTUL/pedrocardoso/MDO_Lab_IST/TransitionModel/SA_GAMMA_RETHETHA/08_optimization/3d_c376/logs/opt376_optGRc376_1830863.out",
+   "git": "git d3db8657 (sa_gamma_rethetha) DIRTY",
+   "cells": 13684496,
+   "columns": [
+    "Res rho",
+    "Res nuturb",
+    "Res gamma",
+    "Res retheta",
+    "C_lift",
+    "C_drag",
+    "C_drag_p",
+    "C_drag_v",
+    "totalRes",
+    "Y+_max"
+   ],
+   "rows": [
+    {
+     "iter": 0,
+     "iterTot": 0,
+     "type": "None",
+     "Res rho": 317.99809005671057,
+     "Res nuturb": 0.03663278677795343,
+     "Res gamma": 0.0009435586140383248,
+     "Res retheta": 0.001438847755744391,
+     "C_lift": 0.0081839172203475,
+     "C_drag": 0.4778669749504399,
+     "C_drag_p": 0.0,
+     "C_drag_v": 0.4778669749504399,
+     "totalRes": 4500166.763145051,
+     "Y+_max": 5.524303248060906
+    },
+    {
+     "iter": 1,
+     "iterTot": 3,
+     "type": "*ANK",
+     "Res rho": 103.27030174950694,
+     "Res nuturb": 0.0019599369139257574,
+     "Res gamma": 0.0006941978367456775,
+     "Res retheta": 1518.2666063654253,
+     "C_lift": 2.5011027932203227,
+     "C_drag": 2.9063066470603975,
+     "C_drag_p": 2.496593726068223,
+     "C_drag_v": 0.4097129209921737,
+     "totalRes": 1434241.9531522063,
+     "Y+_max": 5.335605463451492
+    },
+    {
+     "iter": 2,
+     "iterTot": 7,
+     "type": "*ANK",
+     "Res rho": 18.952947024113474,
+     "Res nuturb": 9.49046962463049e-05,
+     "Res gamma": 0.0067536098265394365,
+     "Res retheta": 705.6222994017669,
+     "C_lift": 2.5784152522464523,
+     "C_drag": 2.8332712974002847,
+     "C_drag_p": 2.5150638073498754,
+     "C_drag_v": 0.318207490050409,
+     "totalRes": 272660.7022360824,
+     "Y+_max": 4.850206184678256
+    },
+    {
+     "iter": 3,
+     "iterTot": 14,
+     "type": "*ANK",
+     "Res rho": 6.015068070849452,
+     "Res nuturb": 4.466964351730957e-06,
+     "Res gamma": 0.1022768610222427,
+     "Res retheta": 460.7960746606828,
+     "C_lift": 2.102146912539262,
+     "C_drag": 1.6961901552740632,
+     "C_drag_p": 1.4937361459413867,
+     "C_drag_v": 0.20245400933267663,
+     "totalRes": 90177.18120427353,
+     "Y+_max": 3.982763170674753
+    }
+   ]
+  },
+  "skipped": "13.68 M cells: does not fit the workstation; the same set-up runs on the L4 mesh (opt_ar5_gr_c376_on_L4)"
+ },
+ "ar5_gr_L0": {
+  "cluster": null,
+  "skipped": "7.42 M cells: above the ~6 M workstation limit (mesh on the cluster only; needs 2 nodes there)"
+ }
+}
