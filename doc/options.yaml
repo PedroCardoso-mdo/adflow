@@ -194,6 +194,8 @@ turbulenceModel:
   k-tau: k-tau
   Menter SST: Menter SST k-omega
   v2f: v2-f
+  SA-noft2-Gamma-Retheta: Spalart-Allmaras without ft2 with transport equations for the intermittency and Re-theta-t (Piotrowski and Zingg, AIAA Journal, 2020)
+  SA-noft2-Gamma: Spalart-Allmaras without ft2 with one transport equation for the intermittency
 
 turbulenceOrder:
   desc: >
@@ -241,6 +243,11 @@ eddyVisInfRatio:
   desc: >
     Free stream value of eddy viscosity.
     See `here <https://turbmodels.larc.nasa.gov/spalart.html>`__ for more details.
+
+turbIntensityInf:
+  desc: >
+    Free-stream turbulence intensity, as a fraction.
+    Used by the k-omega models and by the SA-BCM transition model.
 
 useWallFunctions:
   desc: >
@@ -407,6 +414,128 @@ SAct4:
 
 SAcrot:
   desc: SA model constant crot, scaling factor for the rotation correction term.
+
+useSABCM:
+  desc: >
+    Use the SA-BCM algebraic transition model (Mura and Cakmakcioglu, AIAA 2020-2714) with the Spalart-Allmaras model.
+    ft2 is not used with this model.
+    The intermittency is available as the ``intermittency`` volume and isosurface variable.
+    The recommended free-stream boundary condition for the model is ``eddyVisInfRatio`` from 1.4e-10 to 1.1e-9.
+    Transitional cases are stiffer than fully turbulent ones: the recommended solver settings are ``ANKCFL0 = 1``, ``ANKCFLLimit = 1e8``, ``ANKADPC`` and ``NKADPC``, and a late switch to the NK solver (``useNKSolver`` with ``NKSwitchTol = 5e-8``).
+
+SABCMSmooth:
+  desc: >
+    Use the differentiable form of the SA-BCM intermittency, recommended for adjoint-based optimization.
+    If False, the original form is used.
+
+SABCMChi1:
+  desc: SA-BCM model constant chi1, used in Term1.
+
+SABCMChi2:
+  desc: SA-BCM model constant chi2, used in Term2.
+
+SABCMRho:
+  desc: KS aggregation parameter of Term1 in the differentiable form of SA-BCM.
+
+SABCMTanhCenter:
+  desc: Center of the tanh blend of the intermittency in the differentiable form of SA-BCM.
+
+SABCMTanhWidth:
+  desc: Width of the tanh blend of the intermittency in the differentiable form of SA-BCM.
+
+transitionFirstOrderUpwind:
+  desc: >
+    Use first-order upwind convection for the intermittency and Re-theta-t equations, whatever ``turbulenceOrder`` says (Piotrowski and Zingg 2020, Sec. IV.A).
+    Every validated run has it on.
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+transitionCrossflow:
+  desc: >
+    Add the helicity-based stationary-crossflow sink to the Re-theta-t equation (Piotrowski and Zingg 2020, Eqs. 15-26).
+    The term is identically zero in 2D and is validated only with matrix dissipation.
+    Read by the ``SA-noft2-Gamma-Retheta`` model.
+
+transitionRoughnessHeight:
+  desc: >
+    Surface roughness height of the crossflow correlation (Piotrowski and Zingg 2020, Eq. 17), in mesh length units (3.3e-6 is 3.3 micrometres on a metre-scaled mesh).
+    Only read with ``transitionCrossflow``.
+    Read by the ``SA-noft2-Gamma-Retheta`` model.
+
+transitionArtVisc:
+  desc: >
+    Coefficient c of a gradient-driven artificial viscosity on the intermittency equation, nu_art = c V h dgamma per face (velocity magnitude, face-normal cell size, intermittency jump across the face).
+    Zero switches it off.
+    It changes the solution; it is experimental and has no validated case.
+    Read by the ``SA-noft2-Gamma-Retheta`` model.
+
+transitionUseApproxSA:
+  desc: >
+    Let the nuTilde equation of the transition models use the approximate-SA simplification (production term dropped) while the first-order ANK stage requests it.
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+transitionRefLength:
+  desc: >
+    Reference length of the vorticity limiter (Piotrowski and Zingg 2020, Eqs. 52-53), in mesh length units.
+    A value less than or equal to zero uses the AeroProblem ``chordRef``.
+    Read by the ``SA-noft2-Gamma-Retheta`` model.
+
+sgammaOnsetTanh:
+  desc: >
+    Use the tanh onset function of Piotrowski and Zingg instead of the smoothed Menter/Lee min-max onset.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaFturbLee:
+  desc: >
+    Use F_turb = exp(-(R_T/2)^4) (Lee) instead of (1 - F_onset) exp(-R_T).
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaCoupleDestruction:
+  desc: >
+    Also scale the SA destruction term by the smooth maximum of the intermittency and 0.1 (Nichols/Lee coupling).
+    If False, the intermittency acts on the SA production only.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaFPGSmoothP:
+  desc: >
+    Sharpness of the smooth min/max operators inside the pressure-gradient function F_PG.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaTanhK:
+  desc: >
+    Slope k of the tanh onset, F_onset = A [tanh(k (F1 - s)) + 1] / 2.
+    Only with ``sgammaOnsetTanh``.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaTanhS:
+  desc: >
+    Centre s of the tanh onset.
+    Only with ``sgammaOnsetTanh``.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaTanhAmp:
+  desc: >
+    Amplitude A of the tanh onset (the default min-max onset peaks at 2).
+    Only with ``sgammaOnsetTanh``.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaTanhRT:
+  desc: >
+    Scale c of R_T in the argument of the tanh onset, F1 = sqrt((Re_v / (2.2 Re_theta_c))^2 + (R_T / c)^2).
+    Only with ``sgammaOnsetTanh``.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaOnsetSmoothP:
+  desc: >
+    Sharpness of the three smooth min/max operators of the default onset function.
+    Unused with ``sgammaOnsetTanh``.
+    Read by the ``SA-noft2-Gamma`` model.
+
+sgammaArtVisc:
+  desc: >
+    Coefficient c of a gradient-driven artificial viscosity on the intermittency equation, nu_art = c V h dgamma per face (velocity magnitude, face-normal cell size, intermittency jump across the face).
+    Zero switches it off.
+    It changes the drag coefficient by -1.4 to -3.7 % at c = 5 to 10.
+    Read by the ``SA-noft2-Gamma`` model.
 
 nCycles:
   desc: >
@@ -1243,6 +1372,99 @@ ANKUseMatrixFree:
     Use the matrix-free Jacobian for the ANK solver.
     If False, we use the approximate Jacobian formulated for the preconditioner matrix as the implicit formulation.
 
+transitionNK:
+  desc: >
+    Master switch of the transition-specific Newton-Krylov machinery in the turbulence KSP, the coupled ANK and the NK solver: column scaling of the turbulence unknowns, source-term time-step restriction and the guarded fixed NK step.
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+transitionSrcDtRestrict:
+  desc: >
+    Apply the source-term time-step restriction, lambda_source dt <= limit (Piotrowski and Zingg 2020, Eq. 59), on the turbulence diagonal.
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+transitionSrcDtLimit:
+  desc: >
+    The limit in the source-term time-step restriction, lambda_source dt <= limit.
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+srcDtDeactivateIters:
+  desc: >
+    Number of consecutive steps without backtracking after which the source-term time-step restriction is released in the Krylov paths; it is re-armed on a backtrack.
+    Zero releases it from the start.
+    The DADI path ignores this option.
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+transitionDampTheta:
+  desc: >
+    Back-off factor of the per-node update damping of the intermittency and Re-theta-t (Piotrowski and Zingg 2020, Algorithm 2).
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+transitionDampMaxIter:
+  desc: >
+    Cap on the back-off loop of the per-node damping.
+    A hard clip to the bounds follows only if the loop is exhausted.
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+TurbDADICoupled:
+  desc: >
+    Coupling of the turbulence DADI solve: ``decoupled`` (scalar solves), ``transition`` (nuTilde scalar plus an intermittency/Re-theta-t block) or ``full`` (3x3 block for ``SA-noft2-Gamma-Retheta``, 2x2 for ``SA-noft2-Gamma``).
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+ANKCFLMinCap:
+  desc: >
+    Absolute ceiling on the convergence-ramped ANK CFL floor, so that the CFL cutback keeps room to act deep in the convergence.
+    A value less than or equal to zero switches it off (upstream behaviour).
+
+ANKUnsteadyLSFactor:
+  desc: >
+    Backtracking factor of the ANK unsteady line search.
+    The default is the value hard-coded upstream.
+
+ANKUnsteadyLSMaxIter:
+  desc: >
+    Maximum number of backtracks of the ANK unsteady line search.
+    The default is the value hard-coded upstream.
+
+ANKRejectOnLSExhausted:
+  desc: >
+    Treat an exhausted ANK line search as a rejected step, so that the CFL cutback fires.
+    False is the upstream behaviour.
+
+ANKTransitionGlobalLambda:
+  desc: >
+    If True, the intermittency and Re-theta-t take part in the global physicality step limit of the coupled ANK solver.
+    If False, they are excluded from it and bounded per node instead (Piotrowski and Zingg 2020, Algorithm 2).
+    Read by the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models.
+
+ANKColScaleUnit:
+  desc: >
+    Scale every unknown of the ANK system to unit RMS before the matrix-free product.
+    The factors are refreshed when the preconditioner is rebuilt.
+
+MFFDFunctionError:
+  desc: >
+    Relative residual-evaluation error handed to PETSc for the matrix-free differencing step of the ANK and NK solvers.
+    A value less than or equal to zero keeps PETSc's machine-epsilon assumption (upstream behaviour).
+
+MFFDType:
+  desc: >
+    Matrix-free differencing formula: ``ds`` (PETSc default) or ``wp`` (Walker-Pernice).
+
+NKLSRelax:
+  desc: >
+    Relaxed NK cubic line search: Armijo constant 1e-3 and turbulence pre-limit factor 3.0 instead of 1e-2 and 2.0.
+    The default is False (upstream behaviour); pyADflow sets it to True for the ``SA-noft2-Gamma-Retheta`` and ``SA-noft2-Gamma`` models unless the user sets it.
+
+epsAcoustic:
+  desc: >
+    Eigenvalue-limiter coefficient of the acoustic eigenvalues in the matrix dissipation scheme.
+    The default is the value hard-coded upstream.
+
+epsShear:
+  desc: >
+    Eigenvalue-limiter coefficient of the convective (shear) eigenvalues in the matrix dissipation scheme.
+    The default is the value hard-coded upstream; the transition validations use 0.
+
 ANKCharTimeStepType:
   desc: >
     This applies characteristic-based preconditioning to the ANK time step matrix.
@@ -1410,6 +1632,7 @@ volumeVariables:
       * ``resrhoe`` (total energy residual)
       * ``resturb`` (turbulence residuals)
       * ``blank`` (cell iblank values used for visualization or other post-processing)
+      * ``intermittency`` (SA-BCM intermittency, or the transported gamma of the SA-gamma models; one for fully turbulent models)
 
 forcesAsTractions:
   desc: >
@@ -1467,6 +1690,7 @@ adjointSolver:
   Richardson: Preconditioned Richardson iterative method
   BCGS: BiCGStab
   IBCGS: Improved BiCGStab
+  LGMRES: Restarted GMRES augmented with ``adjointLGMRESAugDim`` error-approximation vectors
 
 GMRESOrthogonalizationType:
   desc: >
@@ -1484,6 +1708,23 @@ adjointMaxIter:
 adjointSubspaceSize:
   desc: >
     The size of the Krylov subspace for the adjoint solution.
+
+adjointLGMRESAugDim:
+  desc: >
+    Number of error-approximation vectors that LGMRES carries across restarts.
+    Only with ``adjointSolver = LGMRES``.
+
+adjointFieldSplitType:
+  desc: >
+    Composition of the blocks of the field-split preconditioner.
+    Only with ``globalPreconditioner = field split``.
+  multiplicative: Multiplicative composition (default).
+  additive: Additive composition.
+
+adjointFieldSplitBlocks:
+  desc: >
+    Number of blocks of the field-split preconditioner: 3 uses the blocks flow, nuTilde and intermittency plus Re-theta-t; 4 puts the intermittency and Re-theta-t in separate blocks.
+    Only with ``globalPreconditioner = field split``.
 
 adjointMonitorStep:
   desc: >
@@ -1515,6 +1756,7 @@ globalPreconditioner:
     Algebraic multigrid (AMG).
     This method can be much faster than ASM for large meshes.
     The smoothing iterations and coarse level solutions are done with the standard ASM and ILU combination.
+  field split: PETSc field split over the physical blocks (flow, nuTilde, transition variables), each block with ASM and ILU
 
 localPreconditioner:
   desc: The type of preconditioner to use for the local preconditioning iteration in the adjoint solution.
