@@ -76,3 +76,6 @@ testflo -m "train*" --dryrun
 - To print message when tests pass use `-v`
 - To have the tests announced before they are run (e.g. to debug hanging tests) use `--pre_announce`
 - To list the tests/training functions without running anything, use `--dryrun`.
+
+## Transition-model tests
+The tests of the transition models (`*_sagr.py`, `*_sgamma.py`, `*_sabcm.py`) need two additional restart files and are described in [`reg_tests/README_transition.md`](reg_tests/README_transition.md).
