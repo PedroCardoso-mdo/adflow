@@ -913,8 +913,6 @@ module inputPhysics
     !                      KS-aggregation, but rather an exact max computation.
     ! useSABCM:            Whether or not to use the SA-BCM transition model.
     ! SABCMSmooth:         Whether or not to use the differentiable form of SA-BCM.
-    ! SABCMSmoothMax:      Original SA-BCM with only max(Term1,0), max(Term2,0) KS-smoothed
-    !                      (rho = SABCMRho); takes precedence over SABCMSmooth.
     ! SABCMChi1, SABCMChi2, SABCMRho, SABCMTanhCenter, SABCMTanhWidth
     !                      SA-BCM transition model constants
 
@@ -923,7 +921,7 @@ module inputPhysics
     integer(kind=intType) :: rvfN
     logical :: rvfB
     logical :: useQCR, useRotationSA, useft2SA
-    logical :: useSABCM, SABCMSmooth, SABCMSmoothMax
+    logical :: useSABCM, SABCMSmooth
 
     logical :: wallFunctions, wallDistanceNeeded
 

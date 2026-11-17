@@ -35,7 +35,6 @@ contains
     use paramturb
     use section
     use inputphysics
-    use turbutils_b, only : smoothminmax, smoothminmax_b
     use inputdiscretization, only : approxsa
     use flowvarrefstate
     implicit none
@@ -68,8 +67,6 @@ contains
     real(kind=realtype) :: ksarg, ksmax, gammaarg, gammabcm, dterm2bcm, &
 &   dgammabcm
     real(kind=realtype) :: ksargd, ksmaxd, gammaargd, gammabcmd
-    real(kind=realtype) :: term2pos, pbcm
-    real(kind=realtype) :: term2posd
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype) :: strainmag2d, strainprodd, vortprodd
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
@@ -91,10 +88,6 @@ contains
     real(kind=realtype) :: temp0
     real(kind=realtype) :: tempd0
     real(kind=realtype) :: temp1
-    real(kind=realtype) :: arg1
-    real(kind=realtype) :: arg1d
-    real(kind=realtype) :: arg10
-    real(kind=realtype) :: arg1d0
     real(kind=realtype) :: tempd1
     integer :: branch
 ! set model constants
@@ -281,19 +274,7 @@ contains
           rethetav = revort/2.193_realtype
           term1raw = (rethetav-rethetac)/(rethetac*sabcmchi1)
           term2bcm = fv1*chi/sabcmchi2
-          if (sabcmsmoothmax) then
-! original model with only the two max(., 0) replaced by the
-! smooth max of turbutils (p&z alg. 1, as sa-gamma, p = sabcmrho)
-! with floor xminn: no inf-inf, sqrt and 1/sqrt stay finite.
-            pbcm = sabcmrho
-            arg1 = xminn
-            term1bcm = smoothminmax(term1raw, arg1, pbcm)
-            arg10 = xminn
-            term2pos = smoothminmax(term2bcm, arg10, pbcm)
-            gammaarg = sqrt(term1bcm) + sqrt(term2pos)
-            gammabcm = one - exp(-gammaarg)
-            call pushcontrol2b(0)
-          else if (sabcmsmooth) then
+          if (sabcmsmooth) then
 ! differentiable reformulation: ks-smoothed
 ! max(term1raw, 0) and a tanh intermittency.
             ksarg = sabcmrho*term1raw
@@ -309,7 +290,7 @@ contains
             gammaarg = (term1bcm+term2bcm-sabcmtanhcenter)/&
 &             sabcmtanhwidth
             gammabcm = half*(one+tanh(gammaarg))
-            call pushcontrol2b(1)
+            call pushcontrol2b(0)
           else
             if (term1raw .lt. zero) then
               term1bcm = zero
@@ -327,11 +308,11 @@ contains
             end if
             gammaarg = sqrt(term1bcm) + sqrt(max1)
             gammabcm = one - exp(-gammaarg)
-            call pushcontrol2b(2)
+            call pushcontrol2b(1)
           end if
           ft2 = zero
         else
-          call pushcontrol2b(3)
+          call pushcontrol2b(2)
         end if
 ! compute the source term; some terms are saved for the
 ! linearization. the source term is stored in dvt.
@@ -367,40 +348,18 @@ contains
           ssd = ssd + gammabcm*tempd1
         end if
         call popcontrol2b(branch)
-        if (branch .lt. 2) then
-          if (branch .eq. 0) then
-            gammaargd = exp(-gammaarg)*gammabcmd
-            if (term1bcm .eq. 0.0_8) then
-              term1bcmd = 0.0_8
-            else
-              term1bcmd = gammaargd/(2.0*sqrt(term1bcm))
-            end if
-            if (term2pos .eq. 0.0_8) then
-              term2posd = 0.0_8
-            else
-              term2posd = gammaargd/(2.0*sqrt(term2pos))
-            end if
-            arg1d0 = 0.0_8
-            term2bcmd = 0.0_8
-            call smoothminmax_b(term2bcm, term2bcmd, arg10, arg1d0, pbcm&
-&                         , term2posd)
-            arg1d = 0.0_8
-            term1rawd = 0.0_8
-            call smoothminmax_b(term1raw, term1rawd, arg1, arg1d, pbcm, &
-&                         term1bcmd)
-          else
-            gammaargd = (1.0-tanh(gammaarg)**2)*half*gammabcmd
-            term1bcmd = gammaargd/sabcmtanhwidth
-            term2bcmd = gammaargd/sabcmtanhwidth
-            tempd1 = term1bcmd/((exp(ksarg-ksmax)+exp(-ksmax))*sabcmrho)
-            tempd0 = exp(ksarg-ksmax)*tempd1
-            ksmaxd = term1bcmd/sabcmrho - exp(-ksmax)*tempd1 - tempd0
-            ksargd = tempd0
-            call popcontrol1b(branch)
-            if (branch .ne. 0) ksargd = ksargd + ksmaxd
-            term1rawd = sabcmrho*ksargd
-          end if
-        else if (branch .eq. 2) then
+        if (branch .eq. 0) then
+          gammaargd = (1.0-tanh(gammaarg)**2)*half*gammabcmd
+          term1bcmd = gammaargd/sabcmtanhwidth
+          term2bcmd = gammaargd/sabcmtanhwidth
+          tempd1 = term1bcmd/((exp(ksarg-ksmax)+exp(-ksmax))*sabcmrho)
+          tempd0 = exp(ksarg-ksmax)*tempd1
+          ksmaxd = term1bcmd/sabcmrho - exp(-ksmax)*tempd1 - tempd0
+          ksargd = tempd0
+          call popcontrol1b(branch)
+          if (branch .ne. 0) ksargd = ksargd + ksmaxd
+          term1rawd = sabcmrho*ksargd
+        else if (branch .eq. 1) then
           gammaargd = exp(-gammaarg)*gammabcmd
           if (term1bcm .eq. 0.0_8) then
             term1bcmd = 0.0_8
@@ -703,7 +662,6 @@ contains
     use paramturb
     use section
     use inputphysics
-    use turbutils_b, only : smoothminmax
     use inputdiscretization, only : approxsa
     use flowvarrefstate
     implicit none
@@ -723,7 +681,6 @@ contains
 &   , term1bcm, term2bcm
     real(kind=realtype) :: ksarg, ksmax, gammaarg, gammabcm, dterm2bcm, &
 &   dgammabcm
-    real(kind=realtype) :: term2pos, pbcm
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic mod
@@ -901,16 +858,7 @@ contains
           rethetav = revort/2.193_realtype
           term1raw = (rethetav-rethetac)/(rethetac*sabcmchi1)
           term2bcm = fv1*chi/sabcmchi2
-          if (sabcmsmoothmax) then
-! original model with only the two max(., 0) replaced by the
-! smooth max of turbutils (p&z alg. 1, as sa-gamma, p = sabcmrho)
-! with floor xminn: no inf-inf, sqrt and 1/sqrt stay finite.
-            pbcm = sabcmrho
-            term1bcm = smoothminmax(term1raw, xminn, pbcm)
-            term2pos = smoothminmax(term2bcm, xminn, pbcm)
-            gammaarg = sqrt(term1bcm) + sqrt(term2pos)
-            gammabcm = one - exp(-gammaarg)
-          else if (sabcmsmooth) then
+          if (sabcmsmooth) then
 ! differentiable reformulation: ks-smoothed
 ! max(term1raw, 0) and a tanh intermittency.
             ksarg = sabcmrho*term1raw

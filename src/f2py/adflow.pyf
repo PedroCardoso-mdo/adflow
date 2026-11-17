@@ -1252,7 +1252,6 @@ real(kind=realtype) :: sgammaonsetsmoothp
          logical :: wallfunctions
          logical :: usesabcm
          logical :: sabcmsmooth
-         logical :: sabcmsmoothmax
          real(kind=realtype) :: sabcmchi1
          real(kind=realtype) :: sabcmchi2
          real(kind=realtype) :: sabcmrho
