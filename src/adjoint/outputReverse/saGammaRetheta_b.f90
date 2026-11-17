@@ -146,7 +146,8 @@ contains
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
 &   transitionuseapproxsa, transitionreflength, transitionbcmgamma, &
-&   transitionlocalretheta, transitionrethetainert
+&   transitionlocalretheta, transitionrethetainert, &
+&   transitionvortlimscale
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -883,7 +884,7 @@ contains
           max7 = x3
           call pushcontrol1b(1)
         end if
-        vortlim = ureftrans*sqrt(max7)/20.0_realtype
+        vortlim = ureftrans*sqrt(max7)/transitionvortlimscale
         vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
 ! --- fonset (smooth tanh-based transition onset) ---
         res_val = w(i, j, k, irho)*ydist**2*strainmag/rlv(i, j, k)
@@ -1287,12 +1288,12 @@ contains
         call smoothminmax_b(vortmag, vortmagd, vortlim, vortlimd, &
 &                     rsagrpmin, vortmaglimd)
         temp2 = sqrt(max7)
-        ureftransd = temp2*vortlimd/20.0_realtype
         if (max7 .eq. 0.0_8) then
           max7d = 0.0_8
         else
-          max7d = ureftrans*vortlimd/(2.0*temp2*20.0_realtype)
+          max7d = ureftrans*vortlimd/(2.0*temp2*transitionvortlimscale)
         end if
+        ureftransd = temp2*vortlimd/transitionvortlimscale
         call popcontrol1b(branch)
         if (branch .eq. 0) then
           x3d = 0.0_8
@@ -1779,7 +1780,8 @@ contains
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionsrcdtrestrict, &
 &   transitionuseapproxsa, transitionreflength, transitionbcmgamma, &
-&   transitionlocalretheta, transitionrethetainert
+&   transitionlocalretheta, transitionrethetainert, &
+&   transitionvortlimscale
     implicit none
 ! local parameters
     real(kind=realtype), parameter :: f23=two*third
@@ -2357,7 +2359,7 @@ contains
         else
           max7 = x3
         end if
-        vortlim = ureftrans*sqrt(max7)/20.0_realtype
+        vortlim = ureftrans*sqrt(max7)/transitionvortlimscale
         vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)
 ! --- fonset (smooth tanh-based transition onset) ---
         res_val = w(i, j, k, irho)*ydist**2*strainmag/rlv(i, j, k)
@@ -2597,6 +2599,7 @@ contains
     use constants
     use blockpointers
     use paramturb
+    use inputiteration, only : transitionartvisc
     implicit none
     integer(kind=inttype) :: i, j, k, ii
 ! viscosity variables
@@ -2608,6 +2611,10 @@ contains
     real(kind=realtype) :: nu_tmd, nu_tpd
     real(kind=realtype) :: nutilde, nutilde_m, nutilde_p
     real(kind=realtype) :: nutilded, nutilde_md, nutilde_pd
+! artificial viscosity on gamma
+    real(kind=realtype) :: vel0, velm, velp, artm, artp, c2mi, c2pi, &
+&   c20i
+    real(kind=realtype) :: vel0d, velmd, velpd, artmd, artpd
 ! sa auxiliary functions
     real(kind=realtype) :: chi, chi3
     real(kind=realtype) :: chid, chi3d
@@ -2655,9 +2662,40 @@ contains
 ! constants
     real(kind=realtype) :: cb3inv, cv13
     intrinsic mod
+    intrinsic sqrt
+    intrinsic abs
     intrinsic max
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs0d
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs1d
+    real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs2d
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs3d
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs4d
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: abs5d
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max1d
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max2d
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max3d
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max4d
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max5d
+    real(kind=realtype) :: max6
+    real(kind=realtype) :: max6d
     real(kind=realtype) :: temp
     real(kind=realtype) :: tempd
+    real(kind=realtype) :: temp0
+    real(kind=realtype) :: temp1
+    real(kind=realtype) :: temp2
+    real(kind=realtype) :: tempd0
+    real(kind=realtype) :: tempd1
     integer :: branch
     cb3inv = one/rsacb3
     cv13 = rsacv1**3
@@ -2714,8 +2752,54 @@ contains
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
 !gamma diffusion contribution
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+      artm = zero
+      artp = zero
+      if (transitionartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i-1, j, k, ivx)**2 + w(i-1, j, k, ivy)**2 + w(i-1&
+&         , j, k, ivz)**2)
+        velp = sqrt(w(i+1, j, k, ivx)**2 + w(i+1, j, k, ivy)**2 + w(i+1&
+&         , j, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i-1, j, k, itu2) .ge. 0.) then
+          abs4 = w(i, j, k, itu2) - w(i-1, j, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs4 = -(w(i, j, k, itu2)-w(i-1, j, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttm .lt. eps) then
+          call pushcontrol1b(0)
+          max5 = eps
+        else
+          max5 = ttm
+          call pushcontrol1b(1)
+        end if
+        artm = transitionartvisc*half*(velm+vel0)*abs4*sqrt(max5)
+        if (w(i, j, k, itu2) - w(i+1, j, k, itu2) .ge. 0.) then
+          abs5 = w(i, j, k, itu2) - w(i+1, j, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs5 = -(w(i, j, k, itu2)-w(i+1, j, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttp .lt. eps) then
+          call pushcontrol1b(0)
+          max6 = eps
+        else
+          max6 = ttp
+          call pushcontrol1b(1)
+        end if
+        artp = transitionartvisc*half*(velp+vel0)*abs5*sqrt(max6)
+        call pushcontrol1b(1)
+      else
+        call pushcontrol1b(0)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
 !rethata diffusion contribution
       cdm_rt = sigmatheta*(num+nu_tm)*ttm
       cdp_rt = sigmatheta*(nup+nu_tp)*ttp
@@ -2835,60 +2919,138 @@ contains
         cdmd = c1md
         camd = c1md
       end if
+      tempd0 = sigmatheta*cdp_rtd
+      nupd = ttp*tempd0 + ttp*cdp_gammad
+      nu_tpd = ttp*tempd0 + ttp*cdp_gammad/sigmaf
+      ttpd = (nup+nu_tp)*tempd0 + (nup+nu_tp/sigmaf)*cdp_gammad
+      tempd0 = sigmatheta*cdm_rtd
+      numd = ttm*tempd0 + ttm*cdm_gammad
+      nu_tmd = ttm*tempd0 + ttm*cdm_gammad/sigmaf
+      ttmd = (num+nu_tm)*tempd0 + (num+nu_tm/sigmaf)*cdm_gammad
+      artpd = cdp_gammad
+      artmd = cdm_gammad
+      call popcontrol1b(branch)
+      if (branch .ne. 0) then
+        temp1 = sqrt(max6)
+        tempd0 = transitionartvisc*half*artpd
+        tempd1 = temp1*tempd0
+        if (max6 .eq. 0.0_8) then
+          max6d = 0.0_8
+        else
+          max6d = (velp+vel0)*abs5*tempd0/(2.0*temp1)
+        end if
+        velpd = abs5*tempd1
+        vel0d = abs5*tempd1
+        abs5d = (velp+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttpd = ttpd + max6d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i+1, j, k, itu2) = wd(i+1, j, k, itu2) + abs5d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs5d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs5d
+          wd(i+1, j, k, itu2) = wd(i+1, j, k, itu2) - abs5d
+        end if
+        temp1 = sqrt(max5)
+        tempd0 = transitionartvisc*half*artmd
+        tempd1 = temp1*tempd0
+        if (max5 .eq. 0.0_8) then
+          max5d = 0.0_8
+        else
+          max5d = (velm+vel0)*abs4*tempd0/(2.0*temp1)
+        end if
+        velmd = abs4*tempd1
+        vel0d = vel0d + abs4*tempd1
+        abs4d = (velm+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttmd = ttmd + max5d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i-1, j, k, itu2) = wd(i-1, j, k, itu2) + abs4d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs4d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs4d
+          wd(i-1, j, k, itu2) = wd(i-1, j, k, itu2) - abs4d
+        end if
+        temp2 = w(i+1, j, k, ivz)
+        temp1 = w(i+1, j, k, ivy)
+        temp0 = w(i+1, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velpd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + 2*temp0*tempd
+        wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + 2*temp1*tempd
+        wd(i+1, j, k, ivz) = wd(i+1, j, k, ivz) + 2*temp2*tempd
+        temp2 = w(i-1, j, k, ivz)
+        temp1 = w(i-1, j, k, ivy)
+        temp0 = w(i-1, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velmd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i-1, j, k, ivx) = wd(i-1, j, k, ivx) + 2*temp0*tempd
+        wd(i-1, j, k, ivy) = wd(i-1, j, k, ivy) + 2*temp1*tempd
+        wd(i-1, j, k, ivz) = wd(i-1, j, k, ivz) + 2*temp2*tempd
+        temp2 = w(i, j, k, ivz)
+        temp1 = w(i, j, k, ivy)
+        temp0 = w(i, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = vel0d/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp0*tempd
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp1*tempd
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp2*tempd
+      end if
       cnudd = ttp*capd + ttm*camd
-      tempd = sigmatheta*cdp_rtd
-      nupd = ttp*tempd
-      nu_tpd = ttp*tempd + ttp*cdp_gammad/sigmaf
-      ttpd = (nup+nu_tp)*tempd
-      tempd = sigmatheta*cdm_rtd
-      numd = ttm*tempd
-      nu_tmd = ttm*tempd + ttm*cdm_gammad/sigmaf
-      ttmd = (num+nu_tm)*tempd
-      tempd = cb3inv*cdpd
-      nupd = nupd + ttp*cdp_gammad + ttp*tempd
-      ttpd = ttpd + (nup+nu_tp/sigmaf)*cdp_gammad + (nup+(one+rsacb2)*&
-&       nutp)*tempd + cnud*capd
-      nutpd = (one+rsacb2)*ttp*tempd
-      tempd = cb3inv*cdmd
-      numd = numd + ttm*cdm_gammad + ttm*tempd
-      ttmd = ttmd + (num+nu_tm/sigmaf)*cdm_gammad + (num+(one+rsacb2)*&
-&       nutm)*tempd + cnud*camd
-      nutmd = (one+rsacb2)*ttm*tempd
+      tempd0 = cb3inv*cdpd
+      nupd = nupd + ttp*tempd0
+      nutpd = (one+rsacb2)*ttp*tempd0
+      ttpd = ttpd + (nup+(one+rsacb2)*nutp)*tempd0 + cnud*capd
+      tempd0 = cb3inv*cdmd
+      numd = numd + ttm*tempd0
+      nutmd = (one+rsacb2)*ttm*tempd0
+      ttmd = ttmd + (num+(one+rsacb2)*nutm)*tempd0 + cnud*camd
       nut_pd = half*nu_tpd
       nutd = half*nu_tpd + half*nu_tmd
       nut_md = half*nu_tmd
       fv1_pd = nutilde_p*nut_pd
-      tempd = fv1_pd/(cv13+chi3_p)
-      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd
+      tempd0 = fv1_pd/(cv13+chi3_p)
+      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd0
       chi_pd = 3*chi_p**2*chi3_pd
       nu_pd = half*nupd - nutilde_p*chi_pd/nu_p**2
       nutilde_pd = fv1_p*nut_pd + chi_pd/nu_p
       wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + nutilde_pd
-      temp = w(i+1, j, k, irho)
-      rlvd(i+1, j, k) = rlvd(i+1, j, k) + nu_pd/temp
+      temp2 = w(i+1, j, k, irho)
+      rlvd(i+1, j, k) = rlvd(i+1, j, k) + nu_pd/temp2
       wd(i+1, j, k, irho) = wd(i+1, j, k, irho) - rlv(i+1, j, k)*nu_pd/&
-&       temp**2
+&       temp2**2
       fv1_md = nutilde_m*nut_md
-      tempd = fv1_md/(cv13+chi3_m)
-      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd
+      tempd0 = fv1_md/(cv13+chi3_m)
+      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd0
       chi_md = 3*chi_m**2*chi3_md
       nu_md = half*numd - nutilde_m*chi_md/nu_m**2
       nutilde_md = fv1_m*nut_md + chi_md/nu_m
       wd(i-1, j, k, itu1) = wd(i-1, j, k, itu1) + nutilde_md
-      temp = w(i-1, j, k, irho)
-      rlvd(i-1, j, k) = rlvd(i-1, j, k) + nu_md/temp
+      temp2 = w(i-1, j, k, irho)
+      rlvd(i-1, j, k) = rlvd(i-1, j, k) + nu_md/temp2
       wd(i-1, j, k, irho) = wd(i-1, j, k, irho) - rlv(i-1, j, k)*nu_md/&
-&       temp**2
+&       temp2**2
       fv1d = nutilde*nutd
-      tempd = fv1d/(cv13+chi3)
-      chi3d = (1.0-chi3/(cv13+chi3))*tempd
+      tempd0 = fv1d/(cv13+chi3)
+      chi3d = (1.0-chi3/(cv13+chi3))*tempd0
       chid = 3*chi**2*chi3d
       nud = half*nupd + half*numd - nutilde*chid/nu**2
       nutilded = fv1*nutd + chid/nu
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + nutilded
-      temp = w(i, j, k, irho)
-      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
-      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+      temp2 = w(i, j, k, irho)
+      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp2
+      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp2**2
       wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + half*nutpd
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + half*nutpd + half*nutmd - &
 &       rsacb2*cb3inv*cnudd
@@ -2902,18 +3064,18 @@ contains
       xmd = xa*ttmd
       ymd = ya*ttmd
       zmd = za*ttmd
-      tempd = half*zad
-      sid(i, j, k, 3) = sid(i, j, k, 3) + voli*tempd
-      sid(i-1, j, k, 3) = sid(i-1, j, k, 3) + voli*tempd
-      volid = (si(i, j, k, 3)+si(i-1, j, k, 3))*tempd
-      tempd = half*yad
-      sid(i, j, k, 2) = sid(i, j, k, 2) + voli*tempd
-      sid(i-1, j, k, 2) = sid(i-1, j, k, 2) + voli*tempd
-      volid = volid + (si(i, j, k, 2)+si(i-1, j, k, 2))*tempd
-      tempd = half*xad
-      sid(i, j, k, 1) = sid(i, j, k, 1) + voli*tempd
-      sid(i-1, j, k, 1) = sid(i-1, j, k, 1) + voli*tempd
-      volid = volid + (si(i, j, k, 1)+si(i-1, j, k, 1))*tempd
+      tempd0 = half*zad
+      sid(i, j, k, 3) = sid(i, j, k, 3) + voli*tempd0
+      sid(i-1, j, k, 3) = sid(i-1, j, k, 3) + voli*tempd0
+      volid = (si(i, j, k, 3)+si(i-1, j, k, 3))*tempd0
+      tempd0 = half*yad
+      sid(i, j, k, 2) = sid(i, j, k, 2) + voli*tempd0
+      sid(i-1, j, k, 2) = sid(i-1, j, k, 2) + voli*tempd0
+      volid = volid + (si(i, j, k, 2)+si(i-1, j, k, 2))*tempd0
+      tempd0 = half*xad
+      sid(i, j, k, 1) = sid(i, j, k, 1) + voli*tempd0
+      sid(i-1, j, k, 1) = sid(i-1, j, k, 1) + voli*tempd0
+      volid = volid + (si(i, j, k, 1)+si(i-1, j, k, 1))*tempd0
       sid(i, j, k, 3) = sid(i, j, k, 3) + volpi*zpd
       volpid = si(i, j, k, 3)*zpd + si(i, j, k, 2)*ypd + si(i, j, k, 1)*&
 &       xpd
@@ -2924,14 +3086,14 @@ contains
 &       k, 1)*xmd
       sid(i-1, j, k, 2) = sid(i-1, j, k, 2) + volmi*ymd
       sid(i-1, j, k, 1) = sid(i-1, j, k, 1) + volmi*xmd
-      temp = vol(i, j, k) + vol(i+1, j, k)
-      tempd = -(two*volpid/temp**2)
-      vold(i, j, k) = vold(i, j, k) + tempd
-      vold(i+1, j, k) = vold(i+1, j, k) + tempd
-      temp = vol(i, j, k) + vol(i-1, j, k)
-      tempd = -(two*volmid/temp**2)
-      vold(i-1, j, k) = vold(i-1, j, k) + tempd
-      vold(i, j, k) = vold(i, j, k) + tempd - one*volid/vol(i, j, k)**2
+      temp2 = vol(i, j, k) + vol(i+1, j, k)
+      tempd0 = -(two*volpid/temp2**2)
+      vold(i, j, k) = vold(i, j, k) + tempd0
+      vold(i+1, j, k) = vold(i+1, j, k) + tempd0
+      temp2 = vol(i, j, k) + vol(i-1, j, k)
+      tempd0 = -(two*volmid/temp2**2)
+      vold(i-1, j, k) = vold(i-1, j, k) + tempd0
+      vold(i, j, k) = vold(i, j, k) + tempd0 - one*volid/vol(i, j, k)**2
     end do
 !$bwd-of ii-loop 
     do ii=0,nx*ny*nz-1
@@ -2986,8 +3148,54 @@ contains
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
 !gamma diffusion contribution
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+      artm = zero
+      artp = zero
+      if (transitionartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j-1, k, ivx)**2 + w(i, j-1, k, ivy)**2 + w(i, j&
+&         -1, k, ivz)**2)
+        velp = sqrt(w(i, j+1, k, ivx)**2 + w(i, j+1, k, ivy)**2 + w(i, j&
+&         +1, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j-1, k, itu2) .ge. 0.) then
+          abs2 = w(i, j, k, itu2) - w(i, j-1, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs2 = -(w(i, j, k, itu2)-w(i, j-1, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttm .lt. eps) then
+          call pushcontrol1b(0)
+          max3 = eps
+        else
+          max3 = ttm
+          call pushcontrol1b(1)
+        end if
+        artm = transitionartvisc*half*(velm+vel0)*abs2*sqrt(max3)
+        if (w(i, j, k, itu2) - w(i, j+1, k, itu2) .ge. 0.) then
+          abs3 = w(i, j, k, itu2) - w(i, j+1, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs3 = -(w(i, j, k, itu2)-w(i, j+1, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttp .lt. eps) then
+          call pushcontrol1b(0)
+          max4 = eps
+        else
+          max4 = ttp
+          call pushcontrol1b(1)
+        end if
+        artp = transitionartvisc*half*(velp+vel0)*abs3*sqrt(max4)
+        call pushcontrol1b(1)
+      else
+        call pushcontrol1b(0)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
 !rethata diffusion contribution
       cdm_rt = sigmatheta*(num+nu_tm)*ttm
       cdp_rt = sigmatheta*(nup+nu_tp)*ttp
@@ -3107,60 +3315,138 @@ contains
         cdmd = c1md
         camd = c1md
       end if
+      tempd0 = sigmatheta*cdp_rtd
+      nupd = ttp*tempd0 + ttp*cdp_gammad
+      nu_tpd = ttp*tempd0 + ttp*cdp_gammad/sigmaf
+      ttpd = (nup+nu_tp)*tempd0 + (nup+nu_tp/sigmaf)*cdp_gammad
+      tempd0 = sigmatheta*cdm_rtd
+      numd = ttm*tempd0 + ttm*cdm_gammad
+      nu_tmd = ttm*tempd0 + ttm*cdm_gammad/sigmaf
+      ttmd = (num+nu_tm)*tempd0 + (num+nu_tm/sigmaf)*cdm_gammad
+      artpd = cdp_gammad
+      artmd = cdm_gammad
+      call popcontrol1b(branch)
+      if (branch .ne. 0) then
+        temp1 = sqrt(max4)
+        tempd0 = transitionartvisc*half*artpd
+        tempd1 = temp1*tempd0
+        if (max4 .eq. 0.0_8) then
+          max4d = 0.0_8
+        else
+          max4d = (velp+vel0)*abs3*tempd0/(2.0*temp1)
+        end if
+        velpd = abs3*tempd1
+        vel0d = abs3*tempd1
+        abs3d = (velp+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttpd = ttpd + max4d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j+1, k, itu2) = wd(i, j+1, k, itu2) + abs3d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs3d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs3d
+          wd(i, j+1, k, itu2) = wd(i, j+1, k, itu2) - abs3d
+        end if
+        temp1 = sqrt(max3)
+        tempd0 = transitionartvisc*half*artmd
+        tempd1 = temp1*tempd0
+        if (max3 .eq. 0.0_8) then
+          max3d = 0.0_8
+        else
+          max3d = (velm+vel0)*abs2*tempd0/(2.0*temp1)
+        end if
+        velmd = abs2*tempd1
+        vel0d = vel0d + abs2*tempd1
+        abs2d = (velm+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttmd = ttmd + max3d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j-1, k, itu2) = wd(i, j-1, k, itu2) + abs2d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs2d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs2d
+          wd(i, j-1, k, itu2) = wd(i, j-1, k, itu2) - abs2d
+        end if
+        temp2 = w(i, j+1, k, ivz)
+        temp1 = w(i, j+1, k, ivy)
+        temp0 = w(i, j+1, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velpd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + 2*temp0*tempd
+        wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + 2*temp1*tempd
+        wd(i, j+1, k, ivz) = wd(i, j+1, k, ivz) + 2*temp2*tempd
+        temp2 = w(i, j-1, k, ivz)
+        temp1 = w(i, j-1, k, ivy)
+        temp0 = w(i, j-1, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velmd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j-1, k, ivx) = wd(i, j-1, k, ivx) + 2*temp0*tempd
+        wd(i, j-1, k, ivy) = wd(i, j-1, k, ivy) + 2*temp1*tempd
+        wd(i, j-1, k, ivz) = wd(i, j-1, k, ivz) + 2*temp2*tempd
+        temp2 = w(i, j, k, ivz)
+        temp1 = w(i, j, k, ivy)
+        temp0 = w(i, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = vel0d/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp0*tempd
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp1*tempd
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp2*tempd
+      end if
       cnudd = ttp*capd + ttm*camd
-      tempd = sigmatheta*cdp_rtd
-      nupd = ttp*tempd
-      nu_tpd = ttp*tempd + ttp*cdp_gammad/sigmaf
-      ttpd = (nup+nu_tp)*tempd
-      tempd = sigmatheta*cdm_rtd
-      numd = ttm*tempd
-      nu_tmd = ttm*tempd + ttm*cdm_gammad/sigmaf
-      ttmd = (num+nu_tm)*tempd
-      tempd = cb3inv*cdpd
-      nupd = nupd + ttp*cdp_gammad + ttp*tempd
-      ttpd = ttpd + (nup+nu_tp/sigmaf)*cdp_gammad + (nup+(one+rsacb2)*&
-&       nutp)*tempd + cnud*capd
-      nutpd = (one+rsacb2)*ttp*tempd
-      tempd = cb3inv*cdmd
-      numd = numd + ttm*cdm_gammad + ttm*tempd
-      ttmd = ttmd + (num+nu_tm/sigmaf)*cdm_gammad + (num+(one+rsacb2)*&
-&       nutm)*tempd + cnud*camd
-      nutmd = (one+rsacb2)*ttm*tempd
+      tempd0 = cb3inv*cdpd
+      nupd = nupd + ttp*tempd0
+      nutpd = (one+rsacb2)*ttp*tempd0
+      ttpd = ttpd + (nup+(one+rsacb2)*nutp)*tempd0 + cnud*capd
+      tempd0 = cb3inv*cdmd
+      numd = numd + ttm*tempd0
+      nutmd = (one+rsacb2)*ttm*tempd0
+      ttmd = ttmd + (num+(one+rsacb2)*nutm)*tempd0 + cnud*camd
       nut_pd = half*nu_tpd
       nutd = half*nu_tpd + half*nu_tmd
       nut_md = half*nu_tmd
       fv1_pd = nutilde_p*nut_pd
-      tempd = fv1_pd/(cv13+chi3_p)
-      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd
+      tempd0 = fv1_pd/(cv13+chi3_p)
+      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd0
       chi_pd = 3*chi_p**2*chi3_pd
       nu_pd = half*nupd - nutilde_p*chi_pd/nu_p**2
       nutilde_pd = fv1_p*nut_pd + chi_pd/nu_p
       wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + nutilde_pd
-      temp = w(i, j+1, k, irho)
-      rlvd(i, j+1, k) = rlvd(i, j+1, k) + nu_pd/temp
+      temp2 = w(i, j+1, k, irho)
+      rlvd(i, j+1, k) = rlvd(i, j+1, k) + nu_pd/temp2
       wd(i, j+1, k, irho) = wd(i, j+1, k, irho) - rlv(i, j+1, k)*nu_pd/&
-&       temp**2
+&       temp2**2
       fv1_md = nutilde_m*nut_md
-      tempd = fv1_md/(cv13+chi3_m)
-      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd
+      tempd0 = fv1_md/(cv13+chi3_m)
+      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd0
       chi_md = 3*chi_m**2*chi3_md
       nu_md = half*numd - nutilde_m*chi_md/nu_m**2
       nutilde_md = fv1_m*nut_md + chi_md/nu_m
       wd(i, j-1, k, itu1) = wd(i, j-1, k, itu1) + nutilde_md
-      temp = w(i, j-1, k, irho)
-      rlvd(i, j-1, k) = rlvd(i, j-1, k) + nu_md/temp
+      temp2 = w(i, j-1, k, irho)
+      rlvd(i, j-1, k) = rlvd(i, j-1, k) + nu_md/temp2
       wd(i, j-1, k, irho) = wd(i, j-1, k, irho) - rlv(i, j-1, k)*nu_md/&
-&       temp**2
+&       temp2**2
       fv1d = nutilde*nutd
-      tempd = fv1d/(cv13+chi3)
-      chi3d = (1.0-chi3/(cv13+chi3))*tempd
+      tempd0 = fv1d/(cv13+chi3)
+      chi3d = (1.0-chi3/(cv13+chi3))*tempd0
       chid = 3*chi**2*chi3d
       nud = half*nupd + half*numd - nutilde*chid/nu**2
       nutilded = fv1*nutd + chid/nu
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + nutilded
-      temp = w(i, j, k, irho)
-      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
-      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+      temp2 = w(i, j, k, irho)
+      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp2
+      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp2**2
       wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + half*nutpd
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + half*nutpd + half*nutmd - &
 &       rsacb2*cb3inv*cnudd
@@ -3174,18 +3460,18 @@ contains
       xmd = xa*ttmd
       ymd = ya*ttmd
       zmd = za*ttmd
-      tempd = half*zad
-      sjd(i, j, k, 3) = sjd(i, j, k, 3) + voli*tempd
-      sjd(i, j-1, k, 3) = sjd(i, j-1, k, 3) + voli*tempd
-      volid = (sj(i, j, k, 3)+sj(i, j-1, k, 3))*tempd
-      tempd = half*yad
-      sjd(i, j, k, 2) = sjd(i, j, k, 2) + voli*tempd
-      sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) + voli*tempd
-      volid = volid + (sj(i, j, k, 2)+sj(i, j-1, k, 2))*tempd
-      tempd = half*xad
-      sjd(i, j, k, 1) = sjd(i, j, k, 1) + voli*tempd
-      sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) + voli*tempd
-      volid = volid + (sj(i, j, k, 1)+sj(i, j-1, k, 1))*tempd
+      tempd0 = half*zad
+      sjd(i, j, k, 3) = sjd(i, j, k, 3) + voli*tempd0
+      sjd(i, j-1, k, 3) = sjd(i, j-1, k, 3) + voli*tempd0
+      volid = (sj(i, j, k, 3)+sj(i, j-1, k, 3))*tempd0
+      tempd0 = half*yad
+      sjd(i, j, k, 2) = sjd(i, j, k, 2) + voli*tempd0
+      sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) + voli*tempd0
+      volid = volid + (sj(i, j, k, 2)+sj(i, j-1, k, 2))*tempd0
+      tempd0 = half*xad
+      sjd(i, j, k, 1) = sjd(i, j, k, 1) + voli*tempd0
+      sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) + voli*tempd0
+      volid = volid + (sj(i, j, k, 1)+sj(i, j-1, k, 1))*tempd0
       sjd(i, j, k, 3) = sjd(i, j, k, 3) + volpi*zpd
       volpid = sj(i, j, k, 3)*zpd + sj(i, j, k, 2)*ypd + sj(i, j, k, 1)*&
 &       xpd
@@ -3196,14 +3482,14 @@ contains
 &       k, 1)*xmd
       sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) + volmi*ymd
       sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) + volmi*xmd
-      temp = vol(i, j, k) + vol(i, j+1, k)
-      tempd = -(two*volpid/temp**2)
-      vold(i, j, k) = vold(i, j, k) + tempd
-      vold(i, j+1, k) = vold(i, j+1, k) + tempd
-      temp = vol(i, j, k) + vol(i, j-1, k)
-      tempd = -(two*volmid/temp**2)
-      vold(i, j-1, k) = vold(i, j-1, k) + tempd
-      vold(i, j, k) = vold(i, j, k) + tempd - one*volid/vol(i, j, k)**2
+      temp2 = vol(i, j, k) + vol(i, j+1, k)
+      tempd0 = -(two*volpid/temp2**2)
+      vold(i, j, k) = vold(i, j, k) + tempd0
+      vold(i, j+1, k) = vold(i, j+1, k) + tempd0
+      temp2 = vol(i, j, k) + vol(i, j-1, k)
+      tempd0 = -(two*volmid/temp2**2)
+      vold(i, j-1, k) = vold(i, j-1, k) + tempd0
+      vold(i, j, k) = vold(i, j, k) + tempd0 - one*volid/vol(i, j, k)**2
     end do
 !$bwd-of ii-loop 
     do ii=0,nx*ny*nz-1
@@ -3259,8 +3545,54 @@ contains
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
 !gamma diffusion contribution
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+      artm = zero
+      artp = zero
+      if (transitionartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j, k-1, ivx)**2 + w(i, j, k-1, ivy)**2 + w(i, j&
+&         , k-1, ivz)**2)
+        velp = sqrt(w(i, j, k+1, ivx)**2 + w(i, j, k+1, ivy)**2 + w(i, j&
+&         , k+1, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j, k-1, itu2) .ge. 0.) then
+          abs0 = w(i, j, k, itu2) - w(i, j, k-1, itu2)
+          call pushcontrol1b(1)
+        else
+          abs0 = -(w(i, j, k, itu2)-w(i, j, k-1, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttm .lt. eps) then
+          call pushcontrol1b(0)
+          max1 = eps
+        else
+          max1 = ttm
+          call pushcontrol1b(1)
+        end if
+        artm = transitionartvisc*half*(velm+vel0)*abs0*sqrt(max1)
+        if (w(i, j, k, itu2) - w(i, j, k+1, itu2) .ge. 0.) then
+          abs1 = w(i, j, k, itu2) - w(i, j, k+1, itu2)
+          call pushcontrol1b(1)
+        else
+          abs1 = -(w(i, j, k, itu2)-w(i, j, k+1, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttp .lt. eps) then
+          call pushcontrol1b(0)
+          max2 = eps
+        else
+          max2 = ttp
+          call pushcontrol1b(1)
+        end if
+        artp = transitionartvisc*half*(velp+vel0)*abs1*sqrt(max2)
+        call pushcontrol1b(1)
+      else
+        call pushcontrol1b(0)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
 !rethata diffusion contribution
       cdm_rt = sigmatheta*(num+nu_tm)*ttm
       cdp_rt = sigmatheta*(nup+nu_tp)*ttp
@@ -3380,25 +3712,103 @@ contains
         cdmd = c1md
         camd = c1md
       end if
+      tempd0 = sigmatheta*cdp_rtd
+      nupd = ttp*tempd0 + ttp*cdp_gammad
+      nu_tpd = ttp*tempd0 + ttp*cdp_gammad/sigmaf
+      ttpd = (nup+nu_tp)*tempd0 + (nup+nu_tp/sigmaf)*cdp_gammad
+      tempd0 = sigmatheta*cdm_rtd
+      numd = ttm*tempd0 + ttm*cdm_gammad
+      nu_tmd = ttm*tempd0 + ttm*cdm_gammad/sigmaf
+      ttmd = (num+nu_tm)*tempd0 + (num+nu_tm/sigmaf)*cdm_gammad
+      artpd = cdp_gammad
+      artmd = cdm_gammad
+      call popcontrol1b(branch)
+      if (branch .ne. 0) then
+        temp1 = sqrt(max2)
+        tempd0 = transitionartvisc*half*artpd
+        tempd1 = temp1*tempd0
+        if (max2 .eq. 0.0_8) then
+          max2d = 0.0_8
+        else
+          max2d = (velp+vel0)*abs1*tempd0/(2.0*temp1)
+        end if
+        velpd = abs1*tempd1
+        vel0d = abs1*tempd1
+        abs1d = (velp+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttpd = ttpd + max2d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j, k+1, itu2) = wd(i, j, k+1, itu2) + abs1d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs1d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs1d
+          wd(i, j, k+1, itu2) = wd(i, j, k+1, itu2) - abs1d
+        end if
+        temp1 = sqrt(max1)
+        tempd0 = transitionartvisc*half*artmd
+        tempd1 = temp1*tempd0
+        if (max1 .eq. 0.0_8) then
+          max1d = 0.0_8
+        else
+          max1d = (velm+vel0)*abs0*tempd0/(2.0*temp1)
+        end if
+        velmd = abs0*tempd1
+        vel0d = vel0d + abs0*tempd1
+        abs0d = (velm+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttmd = ttmd + max1d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j, k-1, itu2) = wd(i, j, k-1, itu2) + abs0d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs0d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs0d
+          wd(i, j, k-1, itu2) = wd(i, j, k-1, itu2) - abs0d
+        end if
+        temp2 = w(i, j, k+1, ivz)
+        temp1 = w(i, j, k+1, ivy)
+        temp0 = w(i, j, k+1, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velpd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + 2*temp0*tempd
+        wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + 2*temp1*tempd
+        wd(i, j, k+1, ivz) = wd(i, j, k+1, ivz) + 2*temp2*tempd
+        temp2 = w(i, j, k-1, ivz)
+        temp1 = w(i, j, k-1, ivy)
+        temp0 = w(i, j, k-1, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velmd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k-1, ivx) = wd(i, j, k-1, ivx) + 2*temp0*tempd
+        wd(i, j, k-1, ivy) = wd(i, j, k-1, ivy) + 2*temp1*tempd
+        wd(i, j, k-1, ivz) = wd(i, j, k-1, ivz) + 2*temp2*tempd
+        temp = w(i, j, k, ivz)
+        temp0 = w(i, j, k, ivy)
+        temp1 = w(i, j, k, ivx)
+        if (temp1**2 + temp0**2 + temp**2 .eq. 0.0_8) then
+          tempd0 = 0.0_8
+        else
+          tempd0 = vel0d/(2.0*sqrt(temp1**2+temp0**2+temp**2))
+        end if
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp0*tempd0
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp*tempd0
+      end if
       cnudd = ttp*capd + ttm*camd
-      tempd = sigmatheta*cdp_rtd
-      nupd = ttp*tempd
-      nu_tpd = ttp*tempd + ttp*cdp_gammad/sigmaf
-      ttpd = (nup+nu_tp)*tempd
-      tempd = sigmatheta*cdm_rtd
-      numd = ttm*tempd
-      nu_tmd = ttm*tempd + ttm*cdm_gammad/sigmaf
-      ttmd = (num+nu_tm)*tempd
       tempd = cb3inv*cdpd
-      nupd = nupd + ttp*cdp_gammad + ttp*tempd
-      ttpd = ttpd + (nup+nu_tp/sigmaf)*cdp_gammad + (nup+(one+rsacb2)*&
-&       nutp)*tempd + cnud*capd
+      nupd = nupd + ttp*tempd
       nutpd = (one+rsacb2)*ttp*tempd
+      ttpd = ttpd + (nup+(one+rsacb2)*nutp)*tempd + cnud*capd
       tempd = cb3inv*cdmd
-      numd = numd + ttm*cdm_gammad + ttm*tempd
-      ttmd = ttmd + (num+nu_tm/sigmaf)*cdm_gammad + (num+(one+rsacb2)*&
-&       nutm)*tempd + cnud*camd
+      numd = numd + ttm*tempd
       nutmd = (one+rsacb2)*ttm*tempd
+      ttmd = ttmd + (num+(one+rsacb2)*nutm)*tempd + cnud*camd
       nut_pd = half*nu_tpd
       nutd = half*nu_tpd + half*nu_tmd
       nut_md = half*nu_tmd
@@ -3488,6 +3898,7 @@ contains
     use constants
     use blockpointers
     use paramturb
+    use inputiteration, only : transitionartvisc
     implicit none
     integer(kind=inttype) :: i, j, k, ii
 ! viscosity variables
@@ -3495,6 +3906,9 @@ contains
     real(kind=realtype) :: nut, nut_m, nut_p
     real(kind=realtype) :: nu_tm, nu_tp
     real(kind=realtype) :: nutilde, nutilde_m, nutilde_p
+! artificial viscosity on gamma
+    real(kind=realtype) :: vel0, velm, velp, artm, artp, c2mi, c2pi, &
+&   c20i
 ! sa auxiliary functions
     real(kind=realtype) :: chi, chi3
     real(kind=realtype) :: chi_m, chi3_m
@@ -3524,7 +3938,21 @@ contains
 ! constants
     real(kind=realtype) :: cb3inv, cv13
     intrinsic mod
+    intrinsic sqrt
+    intrinsic abs
     intrinsic max
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max6
     cb3inv = one/rsacb3
     cv13 = rsacv1**3
 !$ad ii-loop
@@ -3582,8 +4010,43 @@ contains
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
 !gamma diffusion contribution
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+      artm = zero
+      artp = zero
+      if (transitionartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j, k-1, ivx)**2 + w(i, j, k-1, ivy)**2 + w(i, j&
+&         , k-1, ivz)**2)
+        velp = sqrt(w(i, j, k+1, ivx)**2 + w(i, j, k+1, ivy)**2 + w(i, j&
+&         , k+1, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j, k-1, itu2) .ge. 0.) then
+          abs0 = w(i, j, k, itu2) - w(i, j, k-1, itu2)
+        else
+          abs0 = -(w(i, j, k, itu2)-w(i, j, k-1, itu2))
+        end if
+        if (ttm .lt. eps) then
+          max1 = eps
+        else
+          max1 = ttm
+        end if
+        artm = transitionartvisc*half*(velm+vel0)*abs0*sqrt(max1)
+        if (w(i, j, k, itu2) - w(i, j, k+1, itu2) .ge. 0.) then
+          abs1 = w(i, j, k, itu2) - w(i, j, k+1, itu2)
+        else
+          abs1 = -(w(i, j, k, itu2)-w(i, j, k+1, itu2))
+        end if
+        if (ttp .lt. eps) then
+          max2 = eps
+        else
+          max2 = ttp
+        end if
+        artp = transitionartvisc*half*(velp+vel0)*abs1*sqrt(max2)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
 !rethata diffusion contribution
       cdm_rt = sigmatheta*(num+nu_tm)*ttm
       cdp_rt = sigmatheta*(nup+nu_tp)*ttp
@@ -3681,8 +4144,43 @@ contains
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
 !gamma diffusion contribution
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+      artm = zero
+      artp = zero
+      if (transitionartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j-1, k, ivx)**2 + w(i, j-1, k, ivy)**2 + w(i, j&
+&         -1, k, ivz)**2)
+        velp = sqrt(w(i, j+1, k, ivx)**2 + w(i, j+1, k, ivy)**2 + w(i, j&
+&         +1, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j-1, k, itu2) .ge. 0.) then
+          abs2 = w(i, j, k, itu2) - w(i, j-1, k, itu2)
+        else
+          abs2 = -(w(i, j, k, itu2)-w(i, j-1, k, itu2))
+        end if
+        if (ttm .lt. eps) then
+          max3 = eps
+        else
+          max3 = ttm
+        end if
+        artm = transitionartvisc*half*(velm+vel0)*abs2*sqrt(max3)
+        if (w(i, j, k, itu2) - w(i, j+1, k, itu2) .ge. 0.) then
+          abs3 = w(i, j, k, itu2) - w(i, j+1, k, itu2)
+        else
+          abs3 = -(w(i, j, k, itu2)-w(i, j+1, k, itu2))
+        end if
+        if (ttp .lt. eps) then
+          max4 = eps
+        else
+          max4 = ttp
+        end if
+        artp = transitionartvisc*half*(velp+vel0)*abs3*sqrt(max4)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
 !rethata diffusion contribution
       cdm_rt = sigmatheta*(num+nu_tm)*ttm
       cdp_rt = sigmatheta*(nup+nu_tp)*ttp
@@ -3780,8 +4278,43 @@ contains
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
 !gamma diffusion contribution
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+      artm = zero
+      artp = zero
+      if (transitionartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i-1, j, k, ivx)**2 + w(i-1, j, k, ivy)**2 + w(i-1&
+&         , j, k, ivz)**2)
+        velp = sqrt(w(i+1, j, k, ivx)**2 + w(i+1, j, k, ivy)**2 + w(i+1&
+&         , j, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i-1, j, k, itu2) .ge. 0.) then
+          abs4 = w(i, j, k, itu2) - w(i-1, j, k, itu2)
+        else
+          abs4 = -(w(i, j, k, itu2)-w(i-1, j, k, itu2))
+        end if
+        if (ttm .lt. eps) then
+          max5 = eps
+        else
+          max5 = ttm
+        end if
+        artm = transitionartvisc*half*(velm+vel0)*abs4*sqrt(max5)
+        if (w(i, j, k, itu2) - w(i+1, j, k, itu2) .ge. 0.) then
+          abs5 = w(i, j, k, itu2) - w(i+1, j, k, itu2)
+        else
+          abs5 = -(w(i, j, k, itu2)-w(i+1, j, k, itu2))
+        end if
+        if (ttp .lt. eps) then
+          max6 = eps
+        else
+          max6 = ttp
+        end if
+        artp = transitionartvisc*half*(velp+vel0)*abs5*sqrt(max6)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
 !rethata diffusion contribution
       cdm_rt = sigmatheta*(num+nu_tm)*ttm
       cdp_rt = sigmatheta*(nup+nu_tp)*ttp
@@ -3955,6 +4488,7 @@ contains
     real(kind=realtype) :: cdm, cdp
     real(kind=realtype) :: cdm_gamma, cdp_gamma
     real(kind=realtype) :: cdm_rt, cdp_rt
+    real(kind=realtype) :: vel0, velm, velp, artm, artp
 ! sa nonlinear correction
     real(kind=realtype) :: cnud, cam, cap
     real(kind=realtype) :: nutm, nutp
@@ -3981,12 +4515,25 @@ contains
     real(kind=realtype), dimension(3, 3, 2:max(il, jl, kl)) :: cc
     logical, save :: printedcoupling=.false.
     intrinsic abs
+    intrinsic sqrt
     intrinsic real
     intrinsic min
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
     real(kind=realtype) :: x4
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max6
     if (resonly) then
       return
     else
@@ -4170,8 +4717,43 @@ contains
             cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
             cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
 ! gamma diffusion
-            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
-            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+            artm = zero
+            artp = zero
+            if (transitionartvisc .gt. zero) then
+              vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i&
+&               , j, k, ivz)**2)
+              velm = sqrt(w(i, j-1, k, ivx)**2 + w(i, j-1, k, ivy)**2 + &
+&               w(i, j-1, k, ivz)**2)
+              velp = sqrt(w(i, j+1, k, ivx)**2 + w(i, j+1, k, ivy)**2 + &
+&               w(i, j+1, k, ivz)**2)
+              if (w(i, j, k, itu2) - w(i, j-1, k, itu2) .ge. 0.) then
+                abs0 = w(i, j, k, itu2) - w(i, j-1, k, itu2)
+              else
+                abs0 = -(w(i, j, k, itu2)-w(i, j-1, k, itu2))
+              end if
+              if (ttm .lt. eps) then
+                max1 = eps
+              else
+                max1 = ttm
+              end if
+              artm = transitionartvisc*half*(velm+vel0)*abs0*sqrt(max1)
+              if (w(i, j, k, itu2) - w(i, j+1, k, itu2) .ge. 0.) then
+                abs1 = w(i, j, k, itu2) - w(i, j+1, k, itu2)
+              else
+                abs1 = -(w(i, j, k, itu2)-w(i, j+1, k, itu2))
+              end if
+              if (ttp .lt. eps) then
+                max2 = eps
+              else
+                max2 = ttp
+              end if
+              artp = transitionartvisc*half*(velp+vel0)*abs1*sqrt(max2)
+            end if
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm + artm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp + artp
 ! retheta diffusion
             cdm_rt = sigmatheta*(num_v+nu_tm)*ttm
             cdp_rt = sigmatheta*(nup_v+nu_tp)*ttp
@@ -4185,15 +4767,15 @@ contains
             else
               c1p = cdp + cap
             end if
-            if (cdm_gamma .lt. zero) then
+            if (cdm_gamma + artm .lt. zero) then
               c2m = zero
             else
-              c2m = cdm_gamma
+              c2m = cdm_gamma + artm
             end if
-            if (cdp_gamma .lt. zero) then
+            if (cdp_gamma + artp .lt. zero) then
               c2p = zero
             else
-              c2p = cdp_gamma
+              c2p = cdp_gamma + artp
             end if
             if (cdm_rt .lt. zero) then
               c3m = zero
@@ -4311,8 +4893,43 @@ contains
             cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
             cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
 ! gamma diffusion
-            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
-            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+            artm = zero
+            artp = zero
+            if (transitionartvisc .gt. zero) then
+              vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i&
+&               , j, k, ivz)**2)
+              velm = sqrt(w(i-1, j, k, ivx)**2 + w(i-1, j, k, ivy)**2 + &
+&               w(i-1, j, k, ivz)**2)
+              velp = sqrt(w(i+1, j, k, ivx)**2 + w(i+1, j, k, ivy)**2 + &
+&               w(i+1, j, k, ivz)**2)
+              if (w(i, j, k, itu2) - w(i-1, j, k, itu2) .ge. 0.) then
+                abs2 = w(i, j, k, itu2) - w(i-1, j, k, itu2)
+              else
+                abs2 = -(w(i, j, k, itu2)-w(i-1, j, k, itu2))
+              end if
+              if (ttm .lt. eps) then
+                max3 = eps
+              else
+                max3 = ttm
+              end if
+              artm = transitionartvisc*half*(velm+vel0)*abs2*sqrt(max3)
+              if (w(i, j, k, itu2) - w(i+1, j, k, itu2) .ge. 0.) then
+                abs3 = w(i, j, k, itu2) - w(i+1, j, k, itu2)
+              else
+                abs3 = -(w(i, j, k, itu2)-w(i+1, j, k, itu2))
+              end if
+              if (ttp .lt. eps) then
+                max4 = eps
+              else
+                max4 = ttp
+              end if
+              artp = transitionartvisc*half*(velp+vel0)*abs3*sqrt(max4)
+            end if
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm + artm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp + artp
 ! retheta diffusion
             cdm_rt = sigmatheta*(num_v+nu_tm)*ttm
             cdp_rt = sigmatheta*(nup_v+nu_tp)*ttp
@@ -4326,15 +4943,15 @@ contains
             else
               c1p = cdp + cap
             end if
-            if (cdm_gamma .lt. zero) then
+            if (cdm_gamma + artm .lt. zero) then
               c2m = zero
             else
-              c2m = cdm_gamma
+              c2m = cdm_gamma + artm
             end if
-            if (cdp_gamma .lt. zero) then
+            if (cdp_gamma + artp .lt. zero) then
               c2p = zero
             else
-              c2p = cdp_gamma
+              c2p = cdp_gamma + artp
             end if
             if (cdm_rt .lt. zero) then
               c3m = zero
@@ -4450,8 +5067,43 @@ contains
             cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
             cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
 ! gamma diffusion
-            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
-            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (transitionartvisc = c, ricci et al. 2026 eq. 43-44
+! in face form, as sgammaartvisc in sagamma.f90): nu_art*tt = c |v| |dgamma| sqrt(tt), dgamma = jump
+! across the face. front width ~ sqrt(c) cells (mesh-relative). only the gamma equation.
+            artm = zero
+            artp = zero
+            if (transitionartvisc .gt. zero) then
+              vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i&
+&               , j, k, ivz)**2)
+              velm = sqrt(w(i, j, k-1, ivx)**2 + w(i, j, k-1, ivy)**2 + &
+&               w(i, j, k-1, ivz)**2)
+              velp = sqrt(w(i, j, k+1, ivx)**2 + w(i, j, k+1, ivy)**2 + &
+&               w(i, j, k+1, ivz)**2)
+              if (w(i, j, k, itu2) - w(i, j, k-1, itu2) .ge. 0.) then
+                abs4 = w(i, j, k, itu2) - w(i, j, k-1, itu2)
+              else
+                abs4 = -(w(i, j, k, itu2)-w(i, j, k-1, itu2))
+              end if
+              if (ttm .lt. eps) then
+                max5 = eps
+              else
+                max5 = ttm
+              end if
+              artm = transitionartvisc*half*(velm+vel0)*abs4*sqrt(max5)
+              if (w(i, j, k, itu2) - w(i, j, k+1, itu2) .ge. 0.) then
+                abs5 = w(i, j, k, itu2) - w(i, j, k+1, itu2)
+              else
+                abs5 = -(w(i, j, k, itu2)-w(i, j, k+1, itu2))
+              end if
+              if (ttp .lt. eps) then
+                max6 = eps
+              else
+                max6 = ttp
+              end if
+              artp = transitionartvisc*half*(velp+vel0)*abs5*sqrt(max6)
+            end if
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm + artm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp + artp
 ! retheta diffusion
             cdm_rt = sigmatheta*(num_v+nu_tm)*ttm
             cdp_rt = sigmatheta*(nup_v+nu_tp)*ttp
@@ -4465,15 +5117,15 @@ contains
             else
               c1p = cdp + cap
             end if
-            if (cdm_gamma .lt. zero) then
+            if (cdm_gamma + artm .lt. zero) then
               c2m = zero
             else
-              c2m = cdm_gamma
+              c2m = cdm_gamma + artm
             end if
-            if (cdp_gamma .lt. zero) then
+            if (cdp_gamma + artp .lt. zero) then
               c2p = zero
             else
-              c2p = cdp_gamma
+              c2p = cdp_gamma + artp
             end if
             if (cdm_rt .lt. zero) then
               c3m = zero
@@ -4654,7 +5306,8 @@ contains
 &   smoothminmax, rethetatcorrelation
     use inputiteration, only : transitioncrossflow, &
 &   transitionroughnessheight, transitionreflength, transitionbcmgamma, &
-&   transitionlocalretheta, transitionrethetainert
+&   transitionlocalretheta, transitionrethetainert, &
+&   transitionvortlimscale
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(3, 3)
@@ -5023,7 +5676,7 @@ contains
     else
       max8 = x3
     end if
-    vortlim = ureftrans*sqrt(max8)/20.0_realtype
+    vortlim = ureftrans*sqrt(max8)/transitionvortlimscale
 ! use the same smooth limiter as the residual (source) so this
 ! jacobian linearizes the source actually being solved.
     vortmaglim = smoothminmax(vortmag, vortlim, rsagrpmin)

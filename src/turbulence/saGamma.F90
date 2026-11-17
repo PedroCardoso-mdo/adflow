@@ -104,8 +104,8 @@ contains
 
     subroutine cellSources(nuTilde, gam, nu, dist2Inv, ss, strainMag, vortMag, &
                            yDist, dUds, rho, mu, tuPct, vortLim, ft2, approxTerm1, &
-                           useLimiter, onsetTanh, fturbLee, coupleDest, pSmooth, &
-                           cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, &
+                           useLimiter, prodVort, onsetTanh, fturbLee, coupleDest, smoothClip, pSmooth, &
+                           cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, pLam, pOn, &
                            sNu, sGamma, gammaS, destMult, term2prod, term2dest, &
                            fv1, fv2, sst, rr, gg, gg6, termFw, fwSa, &
                            reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb, &
@@ -126,8 +126,8 @@ contains
 
         real(kind=realType), intent(in) :: nuTilde, gam, nu, dist2Inv, ss, strainMag, vortMag
         real(kind=realType), intent(in) :: yDist, dUds, rho, mu, tuPct, vortLim, ft2
-        logical, intent(in) :: approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest
-        real(kind=realType), intent(in) :: pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT
+        logical, intent(in) :: approxTerm1, useLimiter, prodVort, onsetTanh, fturbLee, coupleDest, smoothClip
+        real(kind=realType), intent(in) :: pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, pLam, pOn
         real(kind=realType), intent(out) :: sNu, sGamma, gammaS, destMult, term2prod, term2dest
         real(kind=realType), intent(out) :: fv1, fv2, sst, rr, gg, gg6, termFw, fwSa
         real(kind=realType), intent(out) :: reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb
@@ -136,9 +136,10 @@ contains
         real(kind=realType), parameter :: xminn = 1.e-10_realType
         real(kind=realType) :: cv13, kar2Inv, cw36, chi, chi2, chi3
         real(kind=realType) :: term1, term2
-        real(kind=realType) :: gClip1, gS0, lamRaw, lamLo, lamPlus, lamMinus
+        real(kind=realType) :: gClip1, gS0, lamRaw, lamLo, lamPlus, lamMinus, gamLo
         real(kind=realType) :: fPGplusRaw, fPGplus, fPGminusRaw, fPGminus
-        real(kind=realType) :: fOnset2, fOnset3raw, fOnset3, fOnsetRaw, fOnset1t
+        real(kind=realType) :: fOnset2, fOnset3raw, fOnset3, fOnsetRaw, fOnset1t, fOnsetNorm
+        real(kind=realType) :: sBase
 
         cv13 = rsaCv1**3
         kar2Inv = one / (rsaK**2)
@@ -184,12 +185,18 @@ contains
         ! ---------------- gam part ----------------
         nutSA = nuTilde * fv1
         rTurb = nutSA / nu
-        gammaLocal = min(max(gam, rsaGRgammaLo), rsaGRgammaHi)
+        if (smoothClip) then
+            ! option sgammaSmoothClip: C-inf clip of gamma to [gammaLo, gammaHi] (P&Z smoothMinMax)
+            gamLo = smoothMinMax(gam, rsaGRgammaLo, rsaGRpmax)
+            gammaLocal = smoothMinMax(gamLo, rsaGRgammaHi, rsaGRpmin)
+        else
+            gammaLocal = min(max(gam, rsaGRgammaLo), rsaGRgammaHi)
+        end if
 
         ! Eq. 8: local pressure-gradient parameter (continuity form), smooth clip [-1, 1]
         lamRaw = sgLamCoef * yDist**2 / nu * dUds + sgLamOffset
-        lamLo = smoothMinMax(lamRaw, -sgLamClip, rsaGRpmax)
-        lamL = smoothMinMax(lamLo, sgLamClip, rsaGRpmin)
+        lamLo = smoothMinMax(lamRaw, -sgLamClip, pLam)     ! sharpness pLam = sgammaLamSmoothP (300 = P&Z)
+        lamL = smoothMinMax(lamLo, sgLamClip, -pLam)
 
         ! Eq. 7: F_PG (V with caps) and Re_theta_c
         lamPlus = smoothMinMax(lamL, zero, pSmooth)
@@ -209,26 +216,40 @@ contains
             fOnset = tanhAmp * (tanh(tanhK * (fOnset1t - tanhS)) + one) * half
         else
             fOnset1 = reVort / (sgFonsetC * reThetaC)
-            fOnset2 = smoothMinMax(fOnset1, two, rsaGRpmin)
+            ! sharpness pOn = sgammaOnsetSmoothP (300 = P&Z) on the three onset kinks
+            fOnset2 = smoothMinMax(fOnset1, two, -pOn)
             fOnset3raw = one - (rTurb / sgFonsetRT)**3
-            fOnset3 = smoothMinMax(fOnset3raw, zero, rsaGRpmax)
+            fOnset3 = smoothMinMax(fOnset3raw, zero, pOn)
             fOnsetRaw = fOnset2 - fOnset3
-            fOnset = smoothMinMax(fOnsetRaw, zero, rsaGRpmax)
+            fOnset = smoothMinMax(fOnsetRaw, zero, pOn)
         end if
 
-        ! Eq. 5: F_turb
+        ! Eq. 5: F_turb. The P&Z form (1 - F_onset) exp(-R_T) assumes F_onset <= 1; here F_onset
+        ! reaches tanhAmp (tanh) or 2 (original), so it is normalised to [0, 1] first -- otherwise
+        ! the destruction term changes sign in the transition zone (production of gamma).
         if (fturbLee) then
             fTurb = exp(-(rTurb / two)**4)
         else
-            fTurb = (one - fOnset) * exp(-rTurb)
+            if (onsetTanh) then
+                fOnsetNorm = fOnset / tanhAmp
+            else
+                fOnsetNorm = smoothMinMax(fOnset, one, -pOn)
+            end if
+            fTurb = (one - fOnsetNorm) * exp(-rTurb)
         end if
 
-        ! Eqs. 2-3: production with S, destruction with Omega (optional P&Z floor)
+        ! Eqs. 2-3: production with S (Menter 2015) or with Omega (P&Z Sec. II, sgammaProdVorticity),
+        ! destruction with Omega; optional P&Z cap phi-(., Omega_cap) on both (sgammaVortLimiter)
+        if (prodVort) then
+            sBase = vortMag
+        else
+            sBase = strainMag
+        end if
         if (useLimiter) then
-            sEff = smoothMinMax(strainMag, vortLim, rsaGRpmin)
+            sEff = smoothMinMax(sBase, vortLim, rsaGRpmin)
             omEff = smoothMinMax(vortMag, vortLim, rsaGRpmin)
         else
-            sEff = strainMag
+            sEff = sBase
             omEff = vortMag
         end if
         pGamma = sgFlength * sEff * gammaLocal * (one - gammaLocal) * fOnset
@@ -251,7 +272,7 @@ contains
         use section
         use inputPhysics
         use flowVarRefState
-        use inputIteration, only: transitionRefLength
+        use inputIteration, only: transitionRefLength, sgammaVortLimScale
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -358,7 +379,8 @@ contains
                   + uyhat * (uxhat * vvx + uyhat * vvy + uzhat * vvz) &
                   + uzhat * (uxhat * wwx + uyhat * wwy + uzhat * wwz))
 
-        ! P&Z vorticity-limiter threshold (Eqs. 52-53), only used with sgammaVortLimiter
+        ! P&Z vorticity-limiter threshold (Eqs. 52-53) U sqrt(U/(nu L)) / d, d = sgammaVortLimScale (P&Z 20);
+        ! only used with sgammaVortLimiter
         if (transitionRefLength > zero) then
             refLenTrans = transitionRefLength
         else
@@ -366,7 +388,7 @@ contains
         end if
         uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
         vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) &
-                  / 20.0_realType
+                  / sgammaVortLimScale
 
     end subroutine cellKinematics
 
@@ -382,10 +404,11 @@ contains
         use inputPhysics
         use inputDiscretization, only: approxSA
         use flowVarRefState
-        use inputIteration, only: transitionUseApproxSA, sgammaVortLimiter, sgammaOnsetTanh, &
+        use inputIteration, only: transitionUseApproxSA, sgammaVortLimiter, sgammaProdVorticity, sgammaOnsetTanh, &
                                   sgammaFturbLee, sgammaCoupleDestruction, sgammaFPGSmoothP, &
                                   sgammaCTU1, sgammaCTU2, sgammaCTU3, sgammaTanhK, sgammaTanhS, &
-                                  sgammaTanhAmp, sgammaTanhRT
+                                  sgammaTanhAmp, sgammaTanhRT, sgammaSmoothClip, sgammaLamSmoothP, &
+                                  sgammaOnsetSmoothP
         implicit none
 
         integer(kind=intType), parameter :: dbgFonset = 1_intType
@@ -441,8 +464,8 @@ contains
         real(kind=realType) :: fv1, fv2, sst, rr, gg, gg6, termFw, fwSa
         real(kind=realType) :: reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb
         real(kind=realType) :: pGamma, eGamma, gammaLocal, sEff, omEff, rTurb, nutSA
-        logical :: approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest
-        real(kind=realType) :: pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT
+        logical :: approxTerm1, useLimiter, prodVort, onsetTanh, fturbLee, coupleDest, smoothClip
+        real(kind=realType) :: pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, pLam, pOn
         ! FD Jacobian scratch (LHS only)
         real(kind=realType) :: epsNu, epsG, sNuP, sGamP
         real(kind=realType) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14
@@ -451,10 +474,14 @@ contains
         ! Options -> locals (copied once, before the differentiated loop)
         approxTerm1 = approxSA .and. transitionUseApproxSA
         useLimiter = sgammaVortLimiter
+        prodVort = sgammaProdVorticity
         onsetTanh = sgammaOnsetTanh
         fturbLee = sgammaFturbLee
         coupleDest = sgammaCoupleDestruction
         pSmooth = sgammaFPGSmoothP
+        smoothClip = sgammaSmoothClip
+        pLam = sgammaLamSmoothP
+        pOn = sgammaOnsetSmoothP
         cTU1 = sgammaCTU1
         cTU2 = sgammaCTU2
         cTU3 = sgammaCTU3
@@ -502,8 +529,8 @@ contains
 
                         call cellSources(nuTilde, gam, nu, dist2Inv, ss, strainMag, vortMag, &
                                          yDist, dUds, w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, &
-                                         ft2, approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest, &
-                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, &
+                                         ft2, approxTerm1, useLimiter, prodVort, onsetTanh, fturbLee, coupleDest, smoothClip, &
+                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, pLam, pOn, &
                                          sNu, sGamma, gammaS, destMult, term2prod, term2dest, &
                                          fv1, fv2, sst, rr, gg, gg6, termFw, fwSa, &
                                          reVort, lamL, fPG, reThetaC, fOnset1, fOnset, fTurb, &
@@ -564,16 +591,16 @@ contains
                         epsG = 1.0e-6_realType
                         call cellSources(nuTilde + epsNu, gam, nu, dist2Inv, ss, strainMag, vortMag, &
                                          yDist, dUds, w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, &
-                                         ft2, approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest, &
-                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, &
+                                         ft2, approxTerm1, useLimiter, prodVort, onsetTanh, fturbLee, coupleDest, smoothClip, &
+                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, pLam, pOn, &
                                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
                         qq(i, j, k, 1, 1) = -(sNuP - sNu) / epsNu
                         qq(i, j, k, 2, 1) = -(sGamP - sGamma) / epsNu
                         call cellSources(nuTilde, gam + epsG, nu, dist2Inv, ss, strainMag, vortMag, &
                                          yDist, dUds, w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, &
-                                         ft2, approxTerm1, useLimiter, onsetTanh, fturbLee, coupleDest, &
-                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, &
+                                         ft2, approxTerm1, useLimiter, prodVort, onsetTanh, fturbLee, coupleDest, smoothClip, &
+                                         pSmooth, cTU1, cTU2, cTU3, tanhK, tanhS, tanhAmp, tanhRT, pLam, pOn, &
                                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
                         qq(i, j, k, 1, 2) = -(sNuP - sNu) / epsG
@@ -604,10 +631,12 @@ contains
         use constants
         use blockPointers
         use paramTurb
+        use inputIteration, only: sgammaArtVisc
         implicit none
 
         integer(kind=intType) :: i, j, k, ii
         real(kind=realType) :: nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, nu_tp
+        real(kind=realType) :: vel0, velm, velp, artm, artp, c2mI, c2pI, c20I
         real(kind=realType) :: nuTilde, nuTilde_m, nuTilde_p
         real(kind=realType) :: chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1, fv1_m, fv1_p
         real(kind=realType) :: voli, volmi, volpi, xm, ym, zm, xp, yp, zp, xa, ya, za, ttm, ttp
@@ -676,8 +705,23 @@ contains
 
                         cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
                         cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
-                        cdm_gamma = (num + nu_tm / sigmaF) * ttm
-                        cdp_gamma = (nup + nu_tp / sigmaF) * ttp
+                        ! Gradient-driven artificial viscosity on gamma (after Ricci et al. 2026 Eq. 43-44, JST-like
+                        ! face form): nu_art = c |V| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+                        ! dgamma the jump across the face -> nu_art*tt = c |V| |dgamma| sqrt(tt). Front width ~ sqrt(c)
+                        ! cells (mesh-relative). Code units: |V| h is already a viscosity ("Re = 1 implicit", ADFLOW_08).
+                        artm = zero
+                        artp = zero
+                        if (sgammaArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i, j, k - 1, ivx)**2 + w(i, j, k - 1, ivy)**2 + w(i, j, k - 1, ivz)**2)
+                            velp = sqrt(w(i, j, k + 1, ivx)**2 + w(i, j, k + 1, ivy)**2 + w(i, j, k + 1, ivz)**2)
+                            artm = sgammaArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j, k - 1, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = sgammaArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j, k + 1, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm / sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp / sigmaF) * ttp + artp
 
                         c1m = max(cdm + cam, zero)
                         c1p = max(cdp + cap, zero)
@@ -691,6 +735,10 @@ contains
                         scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) + c2m * w(i, j, k - 1, itu2) &
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i, j, k + 1, itu2)
 #ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
                         b1 = -c1m; c1 = c10; d1 = -c1p
                         if (k == 2) then
                             qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1 - b1 * max(bmtk1(i, j, itu1, itu1), zero)
@@ -701,7 +749,7 @@ contains
                         else
                             qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1
                         end if
-                        b2 = -c2m; c2 = c20; d2 = -c2p
+                        b2 = -c2mI; c2 = c20I; d2 = -c2pI
                         if (k == 2) then
                             qq(i, j, k, 2, 1) = qq(i, j, k, 2, 1) - b2 * bmtk1(i, j, itu2, itu1)
                             qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2 - b2 * bmtk1(i, j, itu2, itu2)
@@ -776,8 +824,23 @@ contains
 
                         cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
                         cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
-                        cdm_gamma = (num + nu_tm / sigmaF) * ttm
-                        cdp_gamma = (nup + nu_tp / sigmaF) * ttp
+                        ! Gradient-driven artificial viscosity on gamma (after Ricci et al. 2026 Eq. 43-44, JST-like
+                        ! face form): nu_art = c |V| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+                        ! dgamma the jump across the face -> nu_art*tt = c |V| |dgamma| sqrt(tt). Front width ~ sqrt(c)
+                        ! cells (mesh-relative). Code units: |V| h is already a viscosity ("Re = 1 implicit", ADFLOW_08).
+                        artm = zero
+                        artp = zero
+                        if (sgammaArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i, j - 1, k, ivx)**2 + w(i, j - 1, k, ivy)**2 + w(i, j - 1, k, ivz)**2)
+                            velp = sqrt(w(i, j + 1, k, ivx)**2 + w(i, j + 1, k, ivy)**2 + w(i, j + 1, k, ivz)**2)
+                            artm = sgammaArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j - 1, k, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = sgammaArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j + 1, k, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm / sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp / sigmaF) * ttp + artp
 
                         c1m = max(cdm + cam, zero)
                         c1p = max(cdp + cap, zero)
@@ -791,6 +854,10 @@ contains
                         scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) + c2m * w(i, j - 1, k, itu2) &
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i, j + 1, k, itu2)
 #ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
                         b1 = -c1m; c1 = c10; d1 = -c1p
                         if (j == 2) then
                             qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1 - b1 * max(bmtj1(i, k, itu1, itu1), zero)
@@ -801,7 +868,7 @@ contains
                         else
                             qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1
                         end if
-                        b2 = -c2m; c2 = c20; d2 = -c2p
+                        b2 = -c2mI; c2 = c20I; d2 = -c2pI
                         if (j == 2) then
                             qq(i, j, k, 2, 1) = qq(i, j, k, 2, 1) - b2 * bmtj1(i, k, itu2, itu1)
                             qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2 - b2 * bmtj1(i, k, itu2, itu2)
@@ -876,8 +943,23 @@ contains
 
                         cdm = (num + (one + rsaCb2) * nutm) * ttm * cb3Inv
                         cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
-                        cdm_gamma = (num + nu_tm / sigmaF) * ttm
-                        cdp_gamma = (nup + nu_tp / sigmaF) * ttp
+                        ! Gradient-driven artificial viscosity on gamma (after Ricci et al. 2026 Eq. 43-44, JST-like
+                        ! face form): nu_art = c |V| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+                        ! dgamma the jump across the face -> nu_art*tt = c |V| |dgamma| sqrt(tt). Front width ~ sqrt(c)
+                        ! cells (mesh-relative). Code units: |V| h is already a viscosity ("Re = 1 implicit", ADFLOW_08).
+                        artm = zero
+                        artp = zero
+                        if (sgammaArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i - 1, j, k, ivx)**2 + w(i - 1, j, k, ivy)**2 + w(i - 1, j, k, ivz)**2)
+                            velp = sqrt(w(i + 1, j, k, ivx)**2 + w(i + 1, j, k, ivy)**2 + w(i + 1, j, k, ivz)**2)
+                            artm = sgammaArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i - 1, j, k, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = sgammaArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i + 1, j, k, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm / sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp / sigmaF) * ttp + artp
 
                         c1m = max(cdm + cam, zero)
                         c1p = max(cdp + cap, zero)
@@ -891,6 +973,10 @@ contains
                         scratch(i, j, k, idvt + 1) = scratch(i, j, k, idvt + 1) + c2m * w(i - 1, j, k, itu2) &
                                                      - c20 * w(i, j, k, itu2) + c2p * w(i + 1, j, k, itu2)
 #ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
                         b1 = -c1m; c1 = c10; d1 = -c1p
                         if (i == 2) then
                             qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1 - b1 * max(bmti1(j, k, itu1, itu1), zero)
@@ -901,7 +987,7 @@ contains
                         else
                             qq(i, j, k, 1, 1) = qq(i, j, k, 1, 1) + c1
                         end if
-                        b2 = -c2m; c2 = c20; d2 = -c2p
+                        b2 = -c2mI; c2 = c20I; d2 = -c2pI
                         if (i == 2) then
                             qq(i, j, k, 2, 1) = qq(i, j, k, 2, 1) - b2 * bmti1(j, k, itu2, itu1)
                             qq(i, j, k, 2, 2) = qq(i, j, k, 2, 2) + c2 - b2 * bmti1(j, k, itu2, itu2)
@@ -976,6 +1062,7 @@ contains
         real(kind=realType) :: cnud, cam, cap, nutm, nutp
         real(kind=realType) :: c1m, c1p, c2m, c2p
         real(kind=realType) :: qs, uu, um, up
+        real(kind=realType) :: vel0, velm, velp, artm, artp
         real(kind=realType) :: cb3Inv, cv13, rblank, factor
         real(kind=realType) :: gammaNew, gammaDelta, dampFactor
         integer(kind=intType) :: nDampCapGamma
@@ -1080,13 +1167,27 @@ contains
 
                     cdm = (num_v + (one + rsaCb2) * nutm) * ttm * cb3Inv
                     cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
-                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm
-                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp
+                    ! same gradient-driven artificial viscosity on gamma as in sgViscous (keep the ADI operator
+                    ! consistent with the residual; without it the DADI stalls on a false fixed point)
+                    artm = zero
+                    artp = zero
+                    if (sgammaArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i, j - 1, k, ivx)**2 + w(i, j - 1, k, ivy)**2 + w(i, j - 1, k, ivz)**2)
+                        velp = sqrt(w(i, j + 1, k, ivx)**2 + w(i, j + 1, k, ivy)**2 + w(i, j + 1, k, ivz)**2)
+                        artm = sgammaArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j - 1, k, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = sgammaArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j + 1, k, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
 
                     c1m = max(cdm + cam, zero)
                     c1p = max(cdp + cap, zero)
-                    c2m = max(cdm_gamma, zero)
-                    c2p = max(cdp_gamma, zero)
+                    ! exact linearisation of the quadratic art flux (2*art), consistent with qq from sgViscous
+                    c2m = max(cdm_gamma + artm, zero)
+                    c2p = max(cdp_gamma + artp, zero)
 
                     bb(1, j) = -c1m; dd(1, j) = -c1p
                     bb(2, j) = -c2m; dd(2, j) = -c2p
@@ -1167,13 +1268,27 @@ contains
 
                     cdm = (num_v + (one + rsaCb2) * nutm) * ttm * cb3Inv
                     cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
-                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm
-                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp
+                    ! same gradient-driven artificial viscosity on gamma as in sgViscous (keep the ADI operator
+                    ! consistent with the residual; without it the DADI stalls on a false fixed point)
+                    artm = zero
+                    artp = zero
+                    if (sgammaArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i - 1, j, k, ivx)**2 + w(i - 1, j, k, ivy)**2 + w(i - 1, j, k, ivz)**2)
+                        velp = sqrt(w(i + 1, j, k, ivx)**2 + w(i + 1, j, k, ivy)**2 + w(i + 1, j, k, ivz)**2)
+                        artm = sgammaArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i - 1, j, k, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = sgammaArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i + 1, j, k, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
 
                     c1m = max(cdm + cam, zero)
                     c1p = max(cdp + cap, zero)
-                    c2m = max(cdm_gamma, zero)
-                    c2p = max(cdp_gamma, zero)
+                    ! exact linearisation of the quadratic art flux (2*art), consistent with qq from sgViscous
+                    c2m = max(cdm_gamma + artm, zero)
+                    c2p = max(cdp_gamma + artp, zero)
 
                     bb(1, i) = -c1m; dd(1, i) = -c1p
                     bb(2, i) = -c2m; dd(2, i) = -c2p
@@ -1254,13 +1369,27 @@ contains
 
                     cdm = (num_v + (one + rsaCb2) * nutm) * ttm * cb3Inv
                     cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
-                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm
-                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp
+                    ! same gradient-driven artificial viscosity on gamma as in sgViscous (keep the ADI operator
+                    ! consistent with the residual; without it the DADI stalls on a false fixed point)
+                    artm = zero
+                    artp = zero
+                    if (sgammaArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i, j, k - 1, ivx)**2 + w(i, j, k - 1, ivy)**2 + w(i, j, k - 1, ivz)**2)
+                        velp = sqrt(w(i, j, k + 1, ivx)**2 + w(i, j, k + 1, ivy)**2 + w(i, j, k + 1, ivz)**2)
+                        artm = sgammaArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j, k - 1, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = sgammaArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j, k + 1, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
 
                     c1m = max(cdm + cam, zero)
                     c1p = max(cdp + cap, zero)
-                    c2m = max(cdm_gamma, zero)
-                    c2p = max(cdp_gamma, zero)
+                    ! exact linearisation of the quadratic art flux (2*art), consistent with qq from sgViscous
+                    c2m = max(cdm_gamma + artm, zero)
+                    c2p = max(cdp_gamma + artp, zero)
 
                     bb(1, k) = -c1m; dd(1, k) = -c1p
                     bb(2, k) = -c2m; dd(2, k) = -c2p
@@ -1340,10 +1469,11 @@ contains
         use inputPhysics
         use flowVarRefState
         use inputDiscretization, only: approxSA
-        use inputIteration, only: transitionUseApproxSA, sgammaVortLimiter, sgammaOnsetTanh, &
+        use inputIteration, only: transitionUseApproxSA, sgammaVortLimiter, sgammaProdVorticity, sgammaOnsetTanh, &
                                   sgammaFturbLee, sgammaCoupleDestruction, sgammaFPGSmoothP, &
                                   sgammaCTU1, sgammaCTU2, sgammaCTU3, sgammaTanhK, sgammaTanhS, &
-                                  sgammaTanhAmp, sgammaTanhRT
+                                  sgammaTanhAmp, sgammaTanhRT, sgammaSmoothClip, sgammaLamSmoothP, &
+                                  sgammaOnsetSmoothP
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -1377,27 +1507,30 @@ contains
 
         call cellSources(nuTilde, gam, nu, dist2Inv, ss, strainMag, vortMag, yDist, dUds, &
                          w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, ft2, approxTerm1, &
-                         sgammaVortLimiter, sgammaOnsetTanh, sgammaFturbLee, sgammaCoupleDestruction, &
+                         sgammaVortLimiter, sgammaProdVorticity, sgammaOnsetTanh, sgammaFturbLee, &
+                         sgammaCoupleDestruction, sgammaSmoothClip, &
                          sgammaFPGSmoothP, sgammaCTU1, sgammaCTU2, sgammaCTU3, &
-                         sgammaTanhK, sgammaTanhS, sgammaTanhAmp, sgammaTanhRT, &
+                         sgammaTanhK, sgammaTanhS, sgammaTanhAmp, sgammaTanhRT, sgammaLamSmoothP, sgammaOnsetSmoothP, &
                          sNu, sGamma, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
         epsNu = max(1.0e-6_realType * abs(nuTilde), 1.0e-12_realType * nu)
         epsG = 1.0e-6_realType
         call cellSources(nuTilde + epsNu, gam, nu, dist2Inv, ss, strainMag, vortMag, yDist, dUds, &
                          w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, ft2, approxTerm1, &
-                         sgammaVortLimiter, sgammaOnsetTanh, sgammaFturbLee, sgammaCoupleDestruction, &
+                         sgammaVortLimiter, sgammaProdVorticity, sgammaOnsetTanh, sgammaFturbLee, &
+                         sgammaCoupleDestruction, sgammaSmoothClip, &
                          sgammaFPGSmoothP, sgammaCTU1, sgammaCTU2, sgammaCTU3, &
-                         sgammaTanhK, sgammaTanhS, sgammaTanhAmp, sgammaTanhRT, &
+                         sgammaTanhK, sgammaTanhS, sgammaTanhAmp, sgammaTanhRT, sgammaLamSmoothP, sgammaOnsetSmoothP, &
                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
         A(1, 1) = (sNuP - sNu) / epsNu
         A(2, 1) = (sGamP - sGamma) / epsNu
         call cellSources(nuTilde, gam + epsG, nu, dist2Inv, ss, strainMag, vortMag, yDist, dUds, &
                          w(i, j, k, irho), rlv(i, j, k), tuPct, vortLim, ft2, approxTerm1, &
-                         sgammaVortLimiter, sgammaOnsetTanh, sgammaFturbLee, sgammaCoupleDestruction, &
+                         sgammaVortLimiter, sgammaProdVorticity, sgammaOnsetTanh, sgammaFturbLee, &
+                         sgammaCoupleDestruction, sgammaSmoothClip, &
                          sgammaFPGSmoothP, sgammaCTU1, sgammaCTU2, sgammaCTU3, &
-                         sgammaTanhK, sgammaTanhS, sgammaTanhAmp, sgammaTanhRT, &
+                         sgammaTanhK, sgammaTanhS, sgammaTanhAmp, sgammaTanhRT, sgammaLamSmoothP, sgammaOnsetSmoothP, &
                          sNuP, sGamP, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11, &
                          d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, d26)
         A(1, 2) = (sNuP - sNu) / epsG

@@ -97,6 +97,7 @@ contains
         use paramTurb
         use section
         use inputPhysics
+        use turbUtils, only: smoothMinMax
         use inputDiscretization, only: approxSA
         use flowVarRefState
         implicit none
@@ -116,6 +117,7 @@ contains
         real(kind=realType) :: omegax, omegay, omegaz
         real(kind=realType) :: vortMag, reThetaC, reVort, reThetaV, term1Raw, term1BCM, term2BCM
         real(kind=realType) :: ksArg, ksMax, gammaArg, gammaBCM, dTerm2BCM, dGammaBCM
+        real(kind=realType) :: term2Pos, pBCM
         real(kind=realType) :: strainMag2, strainProd, vortProd
         real(kind=realType), parameter :: xminn = 1.e-10_realType
 
@@ -317,7 +319,18 @@ contains
                             term1Raw = (reThetaV - reThetaC) / (reThetaC * SABCMChi1)
                             term2BCM = fv1 * chi / SABCMChi2
 
-                            if (SABCMSmooth) then
+                            if (SABCMSmoothMax) then
+
+                                ! Original model with only the two max(., 0) replaced by the
+                                ! smooth max of turbUtils (P&Z Alg. 1, as SA-gamma, p = SABCMRho)
+                                ! with floor xminn: no Inf-Inf, sqrt and 1/sqrt stay finite.
+
+                                pBCM = SABCMRho
+                                term1BCM = smoothMinMax(term1Raw, xminn, pBCM)
+                                term2Pos = smoothMinMax(term2BCM, xminn, pBCM)
+                                gammaArg = sqrt(term1BCM) + sqrt(term2Pos)
+                                gammaBCM = one - exp(-gammaArg)
+                            else if (SABCMSmooth) then
 
                                 ! Differentiable reformulation: KS-smoothed
                                 ! max(term1Raw, 0) and a tanh intermittency.
@@ -367,7 +380,11 @@ contains
                         dGammaBCM = zero
                         if (useSABCM) then
                             dTerm2BCM = (chi * dfv1 + fv1) / (nu * SABCMChi2)
-                            if (SABCMSmooth) then
+                            if (SABCMSmoothMax) then
+                                ! d(smooth max)/d(term2BCM) = logistic weight (0 or 1 beyond the switch)
+                                dGammaBCM = exp(-gammaArg) * half / sqrt(term2Pos) * dTerm2BCM &
+                                            / (one + exp(min(-pBCM * (term2BCM - xminn), 700.0_realType)))
+                            else if (SABCMSmooth) then
                                 dGammaBCM = half * (one - tanh(gammaArg)**2) * dTerm2BCM / SABCMTanhWidth
                             else if (term2BCM > xminn .and. gammaBCM < one) then
                                 dGammaBCM = exp(-gammaArg) * (half * dTerm2BCM / sqrt(term2BCM))
@@ -419,6 +436,7 @@ contains
         use paramTurb
         use section
         use inputPhysics
+        use turbUtils, only: smoothMinMax
         use flowVarRefState
         implicit none
 
@@ -431,7 +449,7 @@ contains
         real(kind=realType) :: omegax, omegay, omegaz, vortx, vorty, vortz, vortProd, vortMag
         real(kind=realType) :: nu, chi, chi2, chi3, fv1
         real(kind=realType) :: reThetaC, reVort, reThetaV, term1Raw, term1BCM, term2BCM
-        real(kind=realType) :: ksArg, ksMax, gammaArg
+        real(kind=realType) :: ksArg, ksMax, gammaArg, term2Pos, pBCM
         real(kind=realType), parameter :: xminn = 1.e-10_realType
 
         cv13 = rsaCv1**3
@@ -484,7 +502,13 @@ contains
                     term1Raw = (reThetaV - reThetaC) / (reThetaC * SABCMChi1)
                     term2BCM = fv1 * chi / SABCMChi2
 
-                    if (SABCMSmooth) then
+                    if (SABCMSmoothMax) then
+                        pBCM = SABCMRho
+                        term1BCM = smoothMinMax(term1Raw, xminn, pBCM)
+                        term2Pos = smoothMinMax(term2BCM, xminn, pBCM)
+                        gammaArg = sqrt(term1BCM) + sqrt(term2Pos)
+                        gammaBCM(i, j, k) = one - exp(-gammaArg)
+                    else if (SABCMSmooth) then
                         ksArg = SABCMRho * term1Raw
                         ksMax = max(ksArg, xminn)
                         term1BCM = (ksMax + log(exp(ksArg - ksMax) + exp(-ksMax))) / SABCMRho

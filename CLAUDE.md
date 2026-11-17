@@ -2,6 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
 # ADflow transition models (branch `transition-models`)
 
 ## Models on this branch

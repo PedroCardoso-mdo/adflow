@@ -227,7 +227,8 @@ contains
         use turbUtils, only: reThetaTCorrelation, flengthCorrelation, rethetacCorrelation, smoothMinMax
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
                       transitionSrcDtRestrict, transitionUseApproxSA, transitionRefLength, &
-                      transitionBCMGamma, transitionLocalReTheta, transitionReThetaInert
+                      transitionBCMGamma, transitionLocalReTheta, transitionReThetaInert, &
+                      transitionVortLimScale
         implicit none
 
         ! Local parameters
@@ -755,7 +756,7 @@ contains
                         end if
                         uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
                         vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) &
-                                / 20.0_realType
+                                / transitionVortLimScale
 
                         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
 
@@ -1172,6 +1173,7 @@ contains
         use constants
         use blockPointers
         use paramTurb
+        use inputIteration, only: transitionArtVisc
         implicit none
 
         integer(kind=intType) :: i, j, k, ii
@@ -1181,6 +1183,8 @@ contains
         real(kind=realType) :: nut, nut_m, nut_p
         real(kind=realType) :: nu_tm, nu_tp
         real(kind=realType) :: nuTilde, nuTilde_m, nuTilde_p
+        ! artificial viscosity on gamma
+        real(kind=realType) :: vel0, velm, velp, artm, artp, c2mI, c2pI, c20I
 
         ! SA auxiliary functions
         real(kind=realType) :: chi, chi3
@@ -1305,8 +1309,22 @@ contains
                         cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
 
                         !Gamma diffusion contribution
-                        cdm_gamma = (num + nu_tm/sigmaF) * ttm
-                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp
+                        ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                        ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                        ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                        artm = zero
+                        artp = zero
+                        if (transitionArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i,j,k-1, ivx)**2 + w(i,j,k-1, ivy)**2 + w(i,j,k-1, ivz)**2)
+                            velp = sqrt(w(i,j,k+1, ivx)**2 + w(i,j,k+1, ivy)**2 + w(i,j,k+1, ivz)**2)
+                            artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i,j,k-1, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i,j,k+1, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm/sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp + artp
 
                         !Rethata diffusion contribution
                         cdm_rt = sigmaTheta * (num + nu_tm) * ttm
@@ -1320,6 +1338,12 @@ contains
                         c2m = max(cdm_gamma, zero)
                         c2p = max(cdp_gamma, zero)
                         c20 = c2m + c2p
+#ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
+#endif
 
                         c3m = max(cdm_rt, zero)
                         c3p = max(cdp_rt, zero)
@@ -1372,9 +1396,9 @@ contains
                         ! stays weakly diagonally dominant (diag = |offdiag|
                         ! plus source/relaxation terms).
 
-                        b2 = -c2m
-                        c2 =  c20
-                        d2 = -c2p
+                        b2 = -c2mI
+                        c2 =  c20I
+                        d2 = -c2pI
 
                         if (k == 2) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtk1(i,j,itu2,itu1)
@@ -1504,8 +1528,22 @@ contains
                         cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
 
                         !Gamma diffusion contribution
-                        cdm_gamma = (num + nu_tm/sigmaF) * ttm
-                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp
+                        ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                        ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                        ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                        artm = zero
+                        artp = zero
+                        if (transitionArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i,j-1,k, ivx)**2 + w(i,j-1,k, ivy)**2 + w(i,j-1,k, ivz)**2)
+                            velp = sqrt(w(i,j+1,k, ivx)**2 + w(i,j+1,k, ivy)**2 + w(i,j+1,k, ivz)**2)
+                            artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i,j-1,k, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i,j+1,k, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm/sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp + artp
 
                         !Rethata diffusion contribution
                         cdm_rt = sigmaTheta * (num + nu_tm) * ttm
@@ -1519,6 +1557,12 @@ contains
                         c2m = max(cdm_gamma, zero)
                         c2p = max(cdp_gamma, zero)
                         c20 = c2m + c2p
+#ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
+#endif
 
                         c3m = max(cdm_rt, zero)
                         c3p = max(cdp_rt, zero)
@@ -1563,9 +1607,9 @@ contains
                         ! GAMMA EQUATION
                         !====================================================
 
-                        b2 = -c2m
-                        c2 =  c20
-                        d2 = -c2p
+                        b2 = -c2mI
+                        c2 =  c20I
+                        d2 = -c2pI
 
                         if (j == 2) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmtj1(i,k,itu2,itu1)
@@ -1694,8 +1738,22 @@ contains
                         cdp = (nup + (one + rsaCb2) * nutp) * ttp * cb3Inv
 
                         !Gamma diffusion contribution
-                        cdm_gamma = (num + nu_tm/sigmaF) * ttm
-                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp
+                        ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                        ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                        ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                        artm = zero
+                        artp = zero
+                        if (transitionArtVisc > zero) then
+                            vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                            velm = sqrt(w(i-1,j,k, ivx)**2 + w(i-1,j,k, ivy)**2 + w(i-1,j,k, ivz)**2)
+                            velp = sqrt(w(i+1,j,k, ivx)**2 + w(i+1,j,k, ivy)**2 + w(i+1,j,k, ivz)**2)
+                            artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i-1,j,k, itu2)) &
+                                   * sqrt(max(ttm, eps))
+                            artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i+1,j,k, itu2)) &
+                                   * sqrt(max(ttp, eps))
+                        end if
+                        cdm_gamma = (num + nu_tm/sigmaF) * ttm + artm
+                        cdp_gamma = (nup + nu_tp/sigmaF) * ttp + artp
 
                         !Rethata diffusion contribution
                         cdm_rt = sigmaTheta * (num + nu_tm) * ttm
@@ -1709,6 +1767,12 @@ contains
                         c2m = max(cdm_gamma, zero)
                         c2p = max(cdp_gamma, zero)
                         c20 = c2m + c2p
+#ifndef USE_TAPENADE
+                        ! implicit (DADI) coefficients: the art flux is quadratic in the jump, d/dgamma = 2*art
+                        c2mI = max(cdm_gamma + artm, zero)
+                        c2pI = max(cdp_gamma + artp, zero)
+                        c20I = c2mI + c2pI
+#endif
 
                         c3m = max(cdm_rt, zero)
                         c3p = max(cdp_rt, zero)
@@ -1753,9 +1817,9 @@ contains
                         ! GAMMA EQUATION
                         !====================================================
 
-                        b2 = -c2m
-                        c2 =  c20
-                        d2 = -c2p
+                        b2 = -c2mI
+                        c2 =  c20I
+                        d2 = -c2pI
 
                         if (i == 2) then
                             qq(i,j,k,2,1) = qq(i,j,k,2,1) - b2 * bmti1(j,k,itu2,itu1)
@@ -1896,6 +1960,7 @@ contains
         real(kind=realType) :: cdm, cdp
         real(kind=realType) :: cdm_gamma, cdp_gamma
         real(kind=realType) :: cdm_rt, cdp_rt
+        real(kind=realType) :: vel0, velm, velp, artm, artp
 
         ! SA nonlinear correction
         real(kind=realType) :: cnud, cam, cap
@@ -2094,8 +2159,22 @@ contains
                     cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
 
                     ! Gamma diffusion
-                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm
-                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp
+                    ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                    ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                    ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                    artm = zero
+                    artp = zero
+                    if (transitionArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i, j - 1, k, ivx)**2 + w(i, j - 1, k, ivy)**2 + w(i, j - 1, k, ivz)**2)
+                        velp = sqrt(w(i, j + 1, k, ivx)**2 + w(i, j + 1, k, ivy)**2 + w(i, j + 1, k, ivz)**2)
+                        artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j - 1, k, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j + 1, k, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
 
                     ! ReTheta diffusion
                     cdm_rt = sigmaTheta * (num_v + nu_tm) * ttm
@@ -2103,8 +2182,8 @@ contains
 
                     c1m = max(cdm + cam, zero)
                     c1p = max(cdp + cap, zero)
-                    c2m = max(cdm_gamma, zero)
-                    c2p = max(cdp_gamma, zero)
+                    c2m = max(cdm_gamma + artm, zero)   ! exact linearisation of the quadratic art flux
+                    c2p = max(cdp_gamma + artp, zero)
                     c3m = max(cdm_rt, zero)
                     c3p = max(cdp_rt, zero)
 
@@ -2237,8 +2316,22 @@ contains
                     cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
 
                     ! Gamma diffusion
-                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm
-                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp
+                    ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                    ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                    ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                    artm = zero
+                    artp = zero
+                    if (transitionArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i - 1, j, k, ivx)**2 + w(i - 1, j, k, ivy)**2 + w(i - 1, j, k, ivz)**2)
+                        velp = sqrt(w(i + 1, j, k, ivx)**2 + w(i + 1, j, k, ivy)**2 + w(i + 1, j, k, ivz)**2)
+                        artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i - 1, j, k, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i + 1, j, k, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
 
                     ! ReTheta diffusion
                     cdm_rt = sigmaTheta * (num_v + nu_tm) * ttm
@@ -2246,8 +2339,8 @@ contains
 
                     c1m = max(cdm + cam, zero)
                     c1p = max(cdp + cap, zero)
-                    c2m = max(cdm_gamma, zero)
-                    c2p = max(cdp_gamma, zero)
+                    c2m = max(cdm_gamma + artm, zero)   ! exact linearisation of the quadratic art flux
+                    c2p = max(cdp_gamma + artp, zero)
                     c3m = max(cdm_rt, zero)
                     c3p = max(cdp_rt, zero)
 
@@ -2378,8 +2471,22 @@ contains
                     cdp = (nup_v + (one + rsaCb2) * nutp) * ttp * cb3Inv
 
                     ! Gamma diffusion
-                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm
-                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp
+                    ! Gradient-driven artificial viscosity on gamma (transitionArtVisc = c, Ricci et al. 2026 Eq. 43-44
+                    ! in face form, as sgammaArtVisc in saGamma.F90): nu_art*tt = c |V| |dgamma| sqrt(tt), dgamma = jump
+                    ! across the face. Front width ~ sqrt(c) cells (mesh-relative). Only the gamma equation.
+                    artm = zero
+                    artp = zero
+                    if (transitionArtVisc > zero) then
+                        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k, ivz)**2)
+                        velm = sqrt(w(i, j, k - 1, ivx)**2 + w(i, j, k - 1, ivy)**2 + w(i, j, k - 1, ivz)**2)
+                        velp = sqrt(w(i, j, k + 1, ivx)**2 + w(i, j, k + 1, ivy)**2 + w(i, j, k + 1, ivz)**2)
+                        artm = transitionArtVisc * half * (velm + vel0) * abs(w(i, j, k, itu2) - w(i, j, k - 1, itu2)) &
+                               * sqrt(max(ttm, eps))
+                        artp = transitionArtVisc * half * (velp + vel0) * abs(w(i, j, k, itu2) - w(i, j, k + 1, itu2)) &
+                               * sqrt(max(ttp, eps))
+                    end if
+                    cdm_gamma = (num_v + nu_tm / sigmaF) * ttm + artm
+                    cdp_gamma = (nup_v + nu_tp / sigmaF) * ttp + artp
 
                     ! ReTheta diffusion
                     cdm_rt = sigmaTheta * (num_v + nu_tm) * ttm
@@ -2387,8 +2494,8 @@ contains
 
                     c1m = max(cdm + cam, zero)
                     c1p = max(cdp + cap, zero)
-                    c2m = max(cdm_gamma, zero)
-                    c2p = max(cdp_gamma, zero)
+                    c2m = max(cdm_gamma + artm, zero)   ! exact linearisation of the quadratic art flux
+                    c2p = max(cdp_gamma + artp, zero)
                     c3m = max(cdm_rt, zero)
                     c3p = max(cdp_rt, zero)
 
@@ -2558,7 +2665,7 @@ contains
                              reThetaTCorrelation
         use inputIteration, only: transitionCrossflow, transitionRoughnessHeight, &
                       transitionRefLength, transitionBCMGamma, transitionLocalReTheta, &
-                      transitionReThetaInert
+                      transitionReThetaInert, transitionVortLimScale
         implicit none
 
         integer(kind=intType), intent(in) :: i, j, k
@@ -2813,7 +2920,7 @@ contains
         end if
         ! Blade-element section-speed reference (see Source): sqrt(uInf^2+|Omega x r|^2)
         uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
-        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) / 20.0_realType
+        vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) / transitionVortLimScale
         ! Use the same smooth limiter as the residual (Source) so this
         ! Jacobian linearizes the source actually being solved.
         vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)

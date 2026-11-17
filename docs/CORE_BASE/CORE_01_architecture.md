@@ -140,7 +140,8 @@ The values below were checked against `_getDefaultOptions` in
 | `ANKPhysicalLSTolReTheta` | `0.99` | Relative physicality tolerance for Re̅θt in turb-ANK. |
 | `omegaMinGamma` | `0.05` | Step-factor floor for γ in turb-ANK. |
 | `ANKNSubiterTurb` | `1` | Inner turbulence iterations. Applies to turbKSP only; DADI makes a single call. |
-| `sgamma{VortLimiter, OnsetTanh, FturbLee}` | `False` | SA-sγ formulation switches. |
+| `sgamma{VortLimiter, OnsetTanh}` | `False` | SA-sγ formulation switches. |
+| `sgammaFturbLee` | `True` | Original F_turb = exp(-(R_T/2)^4) (default since 2026-11-16); `False` = P&Z (1 - F_onset) exp(-R_T), the form of every run before that date. |
 | `sgammaCoupleDestruction` | `True` | Couples γ into SA destruction (φ⁺(γ, 0.1)). |
 | `sgammaFPGSmoothP` / `sgammaCTU1..3` | `300` / `163, 1002.25, 1.0` | φ± sharpness at the F_PG kink, and the Colonia C_TU constants. |
 | `sgammaTanhK` / `sgammaTanhS` | `6.0` / `1.35` | k, s of the tanh onset (only with `sgammaOnsetTanh`); default P&Z. A-priori fit to the φ form: k 2.68, s 1.55 (`sa_sgamma/07_tanh_calibration`). |

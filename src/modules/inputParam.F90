@@ -391,6 +391,13 @@ module inputIteration
     real(kind=realType) :: nkAutoScaleFac(4) = one
     logical :: transitionSrcDtRestrict = .true.
     real(kind=realType) :: transitionSrcDtLimit = 0.9_realType
+    ! Gradient-driven artificial viscosity on the GR gamma equation (same form as sgammaArtVisc; saGammaRetheta.F90
+    ! Viscous/saGammaReThetaSolve): nu_art = c |V| h |dgamma| per face, c dimensionless, 0 = off. Front ~ sqrt(c) cells.
+    real(kind=realType) :: transitionArtVisc = 0.0_realType
+    ! Lower bound of gamma in the ANK physicality checks only (not in the residual), 0 = rsaGRgammaLo = 1e-10. The source
+    ! P - E has a false root at gamma = 0 and a stable one at 1/ce2 = 0.02: a cell clipped to 1e-10 stays pinned there with a
+    ! constant Res gamma (NLF0416 L0 matrix a +-2). Keep it below 1/ce2, e.g. 0.01, so that no converged state is touched.
+    real(kind=realType) :: transitionGammaFloor = 0.0_realType
     ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)
     integer(kind=intType) :: srcDtDeactivateIters = 5
     integer(kind=intType) :: noBacktrackCount = 0
@@ -426,10 +433,20 @@ module inputIteration
     ! ---- SA-noft2-Gamma (SA-sgamma) options (only read by saGamma.F90) ----
     ! P&Z vorticity/strain floor phi-(S|Omega, M sqrt(M Re)/20) in P_g and E_g.
     logical :: sgammaVortLimiter = .false.
+    ! Divisor d of the cap Omega_cap = U sqrt(U/(nu L)) / d (P&Z: 20). Only with sgammaVortLimiter.
+    real(kind=realType) :: sgammaVortLimScale = 20.0_realType
+    ! P_g with vorticity magnitude instead of strain (P&Z Sec. II: 'more stable near laminar separation bubbles').
+    logical :: sgammaProdVorticity = .false.
+    ! Gradient-driven artificial viscosity on gamma (after Ricci et al. 2026 Eq. 43-44, JST-like face form):
+    ! nu_art = c |V| h |dgamma| = c |V| h^2 |grad gamma| per face (h = face-normal cell length, dgamma = jump across the
+    ! face), c = sgammaArtVisc dimensionless, 0 = off. Front width ~ sqrt(c) cells, mesh-relative (vanishes with h).
+    ! Deviates from the paper: |V| factor (dimensionless c), gamma not log(gamma), face-normal h not vol**(1/3).
+    real(kind=realType) :: sgammaArtVisc = 0.0_realType
     ! P&Z tanh onset (plan B) instead of the smoothed Menter/Lee min/max F_onset.
     logical :: sgammaOnsetTanh = .false.
-    ! F_turb = exp(-(R_T/2)^4) (Lee) instead of the P&Z (1 - F_onset) exp(-R_T).
-    logical :: sgammaFturbLee = .false.
+    ! F_turb = exp(-(R_T/2)^4) (Menter/Lee original, default since 2026-11-16); .false. = the P&Z
+    ! (1 - F_onset) exp(-R_T), the form of every run before that date.
+    logical :: sgammaFturbLee = .true.
     ! Nichols/Lee coupling: SA destruction scaled by phi+(gamma_s, 0.1). False = production only.
     logical :: sgammaCoupleDestruction = .true.
     ! Smoothing parameter |p| of the phi operators inside F_PG (Eq. 7).
@@ -443,13 +460,21 @@ module inputIteration
     real(kind=realType) :: sgammaTanhK = 6.0_realType
     real(kind=realType) :: sgammaTanhS = 1.35_realType
     ! Amplitude A of the tanh onset: F_onset = A [tanh(k (F1t - s)) + 1] / 2. P&Z: 1. A = 2 matches the
-    ! maximum of the original Menter/Lee F_onset = max(min(F1, 2) - F3, 0). Use with sgammaFturbLee: the
-    ! P&Z F_turb = (1 - F_onset) exp(-R_T) goes negative for F_onset > 1.
+    ! maximum of the original Menter/Lee F_onset = max(min(F1, 2) - F3, 0). The P&Z F_turb uses
+    ! F_onset / A, so it stays in [0, 1] for any A.
     real(kind=realType) :: sgammaTanhAmp = 1.0_realType
     ! R_T scale c in the tanh onset argument: F1t = sqrt((Re_v/(2.2 Re_theta_c))^2 + (R_T/c)^2). P&Z: 1.
     ! c ~ 2.4 delays the near-wall R_T activation to R_T ~ s c ~ 3.5, the R_T at which the original
     ! F3 = phi+(1 - (R_T/3.5)^3, 0) lets F_onset turn on; keeps the near-wall gamma dip of the original.
     real(kind=realType) :: sgammaTanhRT = 1.0_realType
+    ! sgammaSmoothClip: gamma_local = C-inf clip of gamma to [1e-10, 2] (smoothMinMax, p = 300) instead
+    ! of min/max. Default off (original SA-sgamma).
+    logical :: sgammaSmoothClip = .false.
+    ! Sharpness p of the smooth clip of lambda_L to [-1, 1] (Eq. 8). 300 = P&Z smoothMinMax default.
+    real(kind=realType) :: sgammaLamSmoothP = 300.0_realType
+    ! SA-sgamma: sharpness of the three smoothMinMax of the original (Menter) onset F_onset = phi+(phi-(F1,2) - F3, 0),
+    ! F3 = phi+(1-(R_T/3.5)^3, 0); 300 = P&Z. Only used with sgammaOnsetTanh = False.
+    real(kind=realType) :: sgammaOnsetSmoothP = 300.0_realType
     ! Warm start from a solution WITHOUT gamma/ReTheta fields (e.g. a converged
     ! SA-BCM or plain-SA restart): instead of gamma = 1 everywhere, initialize
     ! gamma from the local eddy-viscosity state via the SA-BCM algebraic
@@ -461,6 +486,10 @@ module inputIteration
     ! the paper uses the root chord. Negative => auto: use lengthRef
     ! (the AeroProblem chordRef).
     real(kind=realType) :: transitionRefLength = -1.0_realType
+    ! SA-GR: divisor d of the P&Z vorticity cap in P_gamma / E_gamma (Eqs. 52-53),
+    ! Omega_cap = U sqrt(U/(nu l)) / d. Paper (and the previous hard-coded value): 20.
+    ! Larger d = tighter cap (the paper's fix for bubble oscillations).
+    real(kind=realType) :: transitionVortLimScale = 20.0_realType
 
     ! ------------------------------------------------------------------
     ! Stall diagnostics (VERIF_06). Purely diagnostic: when enabled the
@@ -884,6 +913,8 @@ module inputPhysics
     !                      KS-aggregation, but rather an exact max computation.
     ! useSABCM:            Whether or not to use the SA-BCM transition model.
     ! SABCMSmooth:         Whether or not to use the differentiable form of SA-BCM.
+    ! SABCMSmoothMax:      Original SA-BCM with only max(Term1,0), max(Term2,0) KS-smoothed
+    !                      (rho = SABCMRho); takes precedence over SABCMSmooth.
     ! SABCMChi1, SABCMChi2, SABCMRho, SABCMTanhCenter, SABCMTanhWidth
     !                      SA-BCM transition model constants
 
@@ -892,7 +923,7 @@ module inputPhysics
     integer(kind=intType) :: rvfN
     logical :: rvfB
     logical :: useQCR, useRotationSA, useft2SA
-    logical :: useSABCM, SABCMSmooth
+    logical :: useSABCM, SABCMSmooth, SABCMSmoothMax
 
     logical :: wallFunctions, wallDistanceNeeded
 

@@ -33,6 +33,7 @@ contains
     use paramturb
     use section
     use inputphysics
+    use turbutils_d, only : smoothminmax, smoothminmax_d
     use inputdiscretization, only : approxsa
     use flowvarrefstate
     implicit none
@@ -65,6 +66,8 @@ contains
     real(kind=realtype) :: ksarg, ksmax, gammaarg, gammabcm, dterm2bcm, &
 &   dgammabcm
     real(kind=realtype) :: ksargd, ksmaxd, gammaargd, gammabcmd
+    real(kind=realtype) :: term2pos, pbcm
+    real(kind=realtype) :: term2posd
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype) :: strainmag2d, strainprodd, vortprodd
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
@@ -80,12 +83,12 @@ contains
     real(kind=realtype) :: min1d
     real(kind=realtype) :: max1
     real(kind=realtype) :: max1d
-    real(kind=realtype) :: arg1
-    real(kind=realtype) :: arg1d
     real(kind=realtype) :: result1
     real(kind=realtype) :: result1d
     real(kind=realtype) :: result2
     real(kind=realtype) :: result2d
+    real(kind=realtype) :: arg1
+    real(kind=realtype) :: arg1d
     real(kind=realtype) :: temp
     real(kind=realtype) :: temp0
     real(kind=realtype) :: temp1
@@ -510,7 +513,34 @@ contains
               term1raw = (rethetav-rethetac)/(rethetac*sabcmchi1)
               term2bcmd = (chi*fv1d+fv1*chid)/sabcmchi2
               term2bcm = fv1*chi/sabcmchi2
-              if (sabcmsmooth) then
+              if (sabcmsmoothmax) then
+! original model with only the two max(., 0) replaced by the
+! smooth max of turbutils (p&z alg. 1, as sa-gamma, p = sabcmrho)
+! with floor xminn: no inf-inf, sqrt and 1/sqrt stay finite.
+                pbcm = sabcmrho
+                term1bcmd = smoothminmax_d(term1raw, term1rawd, xminn, &
+&                 0.0_8, pbcm, term1bcm)
+                term2posd = smoothminmax_d(term2bcm, term2bcmd, xminn, &
+&                 0.0_8, pbcm, term2pos)
+                temp10 = sqrt(term1bcm)
+                if (term1bcm .eq. 0.0_8) then
+                  result1d = 0.0_8
+                else
+                  result1d = term1bcmd/(2.0*temp10)
+                end if
+                result1 = temp10
+                temp10 = sqrt(term2pos)
+                if (term2pos .eq. 0.0_8) then
+                  result2d = 0.0_8
+                else
+                  result2d = term2posd/(2.0*temp10)
+                end if
+                result2 = temp10
+                gammaargd = result1d + result2d
+                gammaarg = result1 + result2
+                gammabcmd = exp(-gammaarg)*gammaargd
+                gammabcm = one - exp(-gammaarg)
+              else if (sabcmsmooth) then
 ! differentiable reformulation: ks-smoothed
 ! max(term1raw, 0) and a tanh intermittency.
                 ksargd = sabcmrho*term1rawd
@@ -609,6 +639,7 @@ contains
     use paramturb
     use section
     use inputphysics
+    use turbutils_d, only : smoothminmax
     use inputdiscretization, only : approxsa
     use flowvarrefstate
     implicit none
@@ -628,6 +659,7 @@ contains
 &   , term1bcm, term2bcm
     real(kind=realtype) :: ksarg, ksmax, gammaarg, gammabcm, dterm2bcm, &
 &   dgammabcm
+    real(kind=realtype) :: term2pos, pbcm
     real(kind=realtype) :: strainmag2, strainprod, vortprod
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     intrinsic sqrt
@@ -639,9 +671,9 @@ contains
     real(kind=realtype) :: y1
     real(kind=realtype) :: min1
     real(kind=realtype) :: max1
-    real(kind=realtype) :: arg1
     real(kind=realtype) :: result1
     real(kind=realtype) :: result2
+    real(kind=realtype) :: arg1
 ! set model constants
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -805,7 +837,18 @@ contains
               rethetav = revort/2.193_realtype
               term1raw = (rethetav-rethetac)/(rethetac*sabcmchi1)
               term2bcm = fv1*chi/sabcmchi2
-              if (sabcmsmooth) then
+              if (sabcmsmoothmax) then
+! original model with only the two max(., 0) replaced by the
+! smooth max of turbutils (p&z alg. 1, as sa-gamma, p = sabcmrho)
+! with floor xminn: no inf-inf, sqrt and 1/sqrt stay finite.
+                pbcm = sabcmrho
+                term1bcm = smoothminmax(term1raw, xminn, pbcm)
+                term2pos = smoothminmax(term2bcm, xminn, pbcm)
+                result1 = sqrt(term1bcm)
+                result2 = sqrt(term2pos)
+                gammaarg = result1 + result2
+                gammabcm = one - exp(-gammaarg)
+              else if (sabcmsmooth) then
 ! differentiable reformulation: ks-smoothed
 ! max(term1raw, 0) and a tanh intermittency.
                 ksarg = sabcmrho*term1raw

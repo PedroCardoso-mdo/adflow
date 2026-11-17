@@ -2353,8 +2353,6 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
     real(kind=realtype) :: a, b, lambda_switch
     real(kind=realtype) :: ad, bd
-    intrinsic max
-    intrinsic min
     intrinsic abs
     intrinsic log
     intrinsic exp
@@ -2362,23 +2360,20 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: abs1
     real(kind=realtype) :: tempd
     integer :: branch
-    if (g1 .lt. g2) then
-      a = g2
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
-    else
+! order with one if/else, not max()/min(): at a tie g1 == g2 the
+! intrinsics can both return the same argument, so ad (tapenade) and
+! complex step each take their own branch and the derivative is wrong
+! (1 or 0 instead of 1/2). here a and b are always distinct arguments.
+    if (g1 .ge. g2) then
       a = g1
-myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
-    end if
-    if (g1 .gt. g2) then
       b = g2
 myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 0
+ myIntStack(myIntPtr) = 1
     else
+      a = g2
       b = g1
 myIntPtr = myIntPtr + 1
- myIntStack(myIntPtr) = 1
+ myIntStack(myIntPtr) = 0
     end if
     if (p .ge. 0.) then
       abs0 = p
@@ -2411,16 +2406,10 @@ myIntPtr = myIntPtr + 1
 branch = myIntStack(myIntPtr)
  myIntPtr = myIntPtr - 1
     if (branch .eq. 0) then
-      g2d = bd
-    else
       g1d = g1d + bd
-      g2d = 0.0_8
-    end if
-branch = myIntStack(myIntPtr)
- myIntPtr = myIntPtr - 1
-    if (branch .eq. 0) then
-      g2d = g2d + ad
+      g2d = ad
     else
+      g2d = bd
       g1d = g1d + ad
     end if
   end subroutine smoothminmax_fast_b
@@ -2445,21 +2434,20 @@ branch = myIntStack(myIntPtr)
     real(kind=realtype) :: phi
     real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
     real(kind=realtype) :: a, b, lambda_switch
-    intrinsic max
-    intrinsic min
     intrinsic abs
     intrinsic log
     intrinsic exp
     real(kind=realtype) :: abs0
     real(kind=realtype) :: abs1
-    if (g1 .lt. g2) then
-      a = g2
-    else
+! order with one if/else, not max()/min(): at a tie g1 == g2 the
+! intrinsics can both return the same argument, so ad (tapenade) and
+! complex step each take their own branch and the derivative is wrong
+! (1 or 0 instead of 1/2). here a and b are always distinct arguments.
+    if (g1 .ge. g2) then
       a = g1
-    end if
-    if (g1 .gt. g2) then
       b = g2
     else
+      a = g2
       b = g1
     end if
     if (p .ge. 0.) then

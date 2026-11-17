@@ -23,7 +23,7 @@ test_params = [
     {
         "name": "sgamma_tut_wing",
         "options": copy.deepcopy(sagrBaseOptions),
-        "ref_file": "jacvecfwd_sgamma_tut_wing.json",
+        "ref_file": f"jacvecfwd_sgamma_tut_wing{reg_sagr.variantSuffix}.json",
         "aero_prob": copy.deepcopy(ap_sagr_tut_wing),
         "N_PROCS": 1,
     },

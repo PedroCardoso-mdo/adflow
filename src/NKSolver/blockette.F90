@@ -1012,8 +1012,9 @@ contains
         use paramTurb
         use blockPointers, only: sectionID
         use inputPhysics, only: useft2SA, useRotationSA, turbProd, equations, &
-                                useSABCM, SABCMSmooth, turbIntensityInf, SABCMChi1, SABCMChi2, SABCMRho, &
+                                useSABCM, SABCMSmooth, SABCMSmoothMax, turbIntensityInf, SABCMChi1, SABCMChi2, SABCMRho, &
                                 SABCMTanhCenter, SABCMTanhWidth
+        use turbUtils, only: smoothMinMax
         use inputDiscretization, only: approxSA
         use section, only: sections
         use sa, only: cv13, kar2Inv, cw36, cb3Inv
@@ -1032,7 +1033,7 @@ contains
         real(kind=realType) :: omegax, omegay, omegaz
         real(kind=realType) :: strainMag2, prod
         real(kind=realType) :: vortProd, vortMag, reThetaC, reVort, reThetaV, term1Raw, term1BCM, term2BCM
-        real(kind=realType) :: ksArg, ksMax, gammaArg, gammaBCM
+        real(kind=realType) :: ksArg, ksMax, gammaArg, gammaBCM, term2Pos, pBCM
         real(kind=realType), parameter :: xminn = 1.e-10_realType
         real(kind=realType), parameter :: f23 = two * third
         integer(kind=intType) :: i, j, k
@@ -1207,7 +1208,16 @@ contains
                         term1Raw = (reThetaV - reThetaC) / (reThetaC * SABCMChi1)
                         term2BCM = fv1 * chi / SABCMChi2
 
-                        if (SABCMSmooth) then
+                        if (SABCMSmoothMax) then
+
+                            ! Original model, only the two max(., 0) KS-smoothed (sa.F90).
+
+                            pBCM = SABCMRho
+                            term1BCM = smoothMinMax(term1Raw, xminn, pBCM)
+                            term2Pos = smoothMinMax(term2BCM, xminn, pBCM)
+                            gammaArg = sqrt(term1BCM) + sqrt(term2Pos)
+                            gammaBCM = one - exp(-gammaArg)
+                        else if (SABCMSmooth) then
 
                             ! Differentiable reformulation: KS-smoothed
                             ! max(term1Raw, 0) and a tanh intermittency.
@@ -6979,7 +6989,8 @@ contains
                                 lengthRef
         use inputDiscretization, only: approxSA
         use inputIteration, only: transitionUseApproxSA, transitionCrossflow, &
-                                  transitionRoughnessHeight, transitionRefLength
+                                  transitionRoughnessHeight, transitionRefLength, &
+                                  transitionVortLimScale
         use section, only: sections
         use sa, only: cv13, kar2Inv, cw36, cb3Inv
         use flowvarRefState, only: timeRef, muInf, uInf
@@ -7198,7 +7209,7 @@ contains
                     ! sc = 0. Kept identical to saGammaRetheta.F90 Source.
                     uRefTrans = sqrt(uInf**2 + sc(1)**2 + sc(2)**2 + sc(3)**2)
                     vortLim = uRefTrans * sqrt(max(uRefTrans / max(muInf * refLenTrans, xminn), xminn)) &
-                              / 20.0_realType
+                              / transitionVortLimScale
                     vortMagLim = smoothMinMax(vortMag, vortLim, rsaGRpmin)
 
                     ! Fonset

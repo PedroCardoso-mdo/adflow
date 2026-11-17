@@ -45,7 +45,7 @@ from baseclasses import AeroProblem
 import os as _os, sys as _sys
 _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from reg_default_options import adflowDefOpts
-from reg_sgamma import sagrBaseOptions
+from reg_sgamma import sagrBaseOptions, sagrRestartFile
 
 baseDir = os.path.dirname(os.path.abspath(__file__))
 
@@ -59,7 +59,7 @@ def main():
     )
     parser.add_argument(
         "--output",
-        default=os.path.join(baseDir, "../../../input_files/mdo_tutorial_sgamma_dp.cgns"),
+        default=sagrRestartFile,  # mdo_tutorial_sgamma[_<SGAMMA_VARIANT>]_dp.cgns
         help="grid+solution CGNS to write (becomes the tests' restartfile)",
     )
     parser.add_argument("--mach", type=float, default=0.15, help="Mach number (matches ap_sagr_tut_wing)")

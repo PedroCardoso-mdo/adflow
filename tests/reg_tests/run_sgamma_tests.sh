@@ -17,6 +17,7 @@
 #   ./run_sgamma_tests.sh adjoint   full total-derivative adjoint vs CS
 #   ./run_sgamma_tests.sh train     regenerate the JSON reference files
 #   ./run_sgamma_tests.sh genw      regenerate the converged restart state (w)
+#   SGAMMA_VARIANT=suave ./run_sgamma_tests.sh ...   same ladder on the calibrated tanh onset (own w + refs, *_suave)
 #
 # Everything the case depends on -- mesh, restart (w), AeroProblem, options --
 # lives in reg_sgamma.py.
@@ -57,7 +58,8 @@ run_adjoint() {
 do_train() {
     head "Retraining JSON reference files"
     "$PY" -m testflo -n "$NP" "$FWD" "$BWD" "$ADJ" -m "train*" -v
-    echo "refs written: refs/jacvecfwd_sgamma_tut_wing.json  refs/jacvecbwd_sgamma_tut_wing.json  refs/adjoint_sgamma_tut_wing.json"
+    local v=${SGAMMA_VARIANT:+_$SGAMMA_VARIANT}
+    echo "refs written: refs/jacvecfwd_sgamma_tut_wing$v.json  refs/jacvecbwd_sgamma_tut_wing$v.json  refs/adjoint_sgamma_tut_wing$v.json"
 }
 
 do_genw() {

@@ -2476,8 +2476,17 @@ contains
         real(kind=realType), parameter :: p_switch = 1.0e-15_realType
         real(kind=realType) :: a, b, lambda_switch
 
-        a = max(g1, g2)
-        b = min(g1, g2)
+        ! Order with one if/else, not max()/min(): at a tie g1 == g2 the
+        ! intrinsics can both return the same argument, so AD (Tapenade) and
+        ! complex step each take their own branch and the derivative is wrong
+        ! (1 or 0 instead of 1/2). Here a and b are always distinct arguments.
+        if (g1 >= g2) then
+            a = g1
+            b = g2
+        else
+            a = g2
+            b = g1
+        end if
         lambda_switch = log(abs(p) * p_switch) / abs(p)
 
         if (p > 0.0_realType) then

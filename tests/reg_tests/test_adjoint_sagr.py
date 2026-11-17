@@ -245,8 +245,9 @@ class TestCmplxStepSAGR(reg_test_classes.CmplxRegTest):
         # Verification_tuturial_mesh study / docs). Tolerance set accordingly.
         # NOTE: mach still fails at this tol (rel ~1e-3, imaginary part does not
         # settle) -- an open verification item, not silenced by this value.
-        rtol = 5e-8
-        atol = 5e-8
+        # 2026-10-15 (user): CS-vs-adjoint tolerance 1e-7 (was 5e-8; SA-GR dcl/dalpha sat at abs 7e-8, the CS re-converge floor)
+        rtol = 1e-7
+        atol = 1e-7
 
         funcsSens = defaultdict(lambda: {})
 
@@ -319,8 +320,9 @@ class TestCmplxStepSAGR(reg_test_classes.CmplxRegTest):
         # pass comfortably; twist[0] passes cl/cd/cmz but its dimensional `drag`
         # trips (same rel ~1.5e-5 as cd, magnified by drag's O(7) magnitude) --
         # open item, not a tolerance to inflate further.
-        rtol = 5e-8
-        atol = 5e-8
+        # 2026-10-15 (user): CS-vs-adjoint tolerance 1e-7 (was 5e-8; SA-GR dcl/dalpha sat at abs 7e-8, the CS re-converge floor)
+        rtol = 1e-7
+        atol = 1e-7
 
         for dv in ["span", "twist", "shape"]:
             xRef[dv][0] += self.h * 1j

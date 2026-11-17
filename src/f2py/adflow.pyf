@@ -1150,8 +1150,15 @@ python module libadflow
          real(kind=realtype) :: sgammatanhs
          real(kind=realtype) :: sgammatanhamp
          real(kind=realtype) :: sgammatanhrt
+         logical :: sgammasmoothclip
+         real(kind=realtype) :: sgammalamsmoothp
+real(kind=realtype) :: sgammaonsetsmoothp
+         real(kind=realtype) :: sgammavortlimscale
+         logical :: sgammaprodvorticity
+         real(kind=realtype) :: sgammaartvisc
          logical :: transitionrestartalgebraicinit
          real(kind=realtype) :: transitionreflength
+         real(kind=realtype) :: transitionvortlimscale
          logical :: transitionnk
          real(kind=realtype) :: transitionnkautodisabletol
          real(kind=realtype) :: transitionnkstallsteptol
@@ -1161,6 +1168,8 @@ python module libadflow
          logical :: transitionresidualautoscale
          logical :: transitionsrcdtrestrict
          real(kind=realtype) :: transitionsrcdtlimit
+         real(kind=realtype) :: transitionartvisc
+         real(kind=realtype) :: transitiongammafloor
          integer(kind=inttype) :: srcdtdeactivateiters
          real(kind=realtype) :: transitiondamptheta
          integer(kind=inttype) :: transitiondampmaxiter
@@ -1243,6 +1252,7 @@ python module libadflow
          logical :: wallfunctions
          logical :: usesabcm
          logical :: sabcmsmooth
+         logical :: sabcmsmoothmax
          real(kind=realtype) :: sabcmchi1
          real(kind=realtype) :: sabcmchi2
          real(kind=realtype) :: sabcmrho

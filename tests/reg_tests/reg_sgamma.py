@@ -45,7 +45,17 @@ baseDir = os.path.dirname(os.path.abspath(__file__))
 # Self-contained volume CGNS (grid + the SA-GR-converged solution), used as
 # BOTH grid and restart -- same convention the AR5 crossflow case used.
 sagrGridFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_rans_scalar_jst.cgns")
-sagrRestartFile = os.path.join(baseDir, "../../input_files/mdo_tutorial_sgamma_dp.cgns")
+# SGAMMA_VARIANT=suave runs the same ladder on the calibrated smooth (tanh) onset (sa_sgamma/07_tanh_calibration,
+# 2026-10): own restart state and own JSON refs (suffix _suave), so the default-model files are untouched.
+SGAMMA_VARIANT = os.environ.get("SGAMMA_VARIANT", "")
+if SGAMMA_VARIANT not in ("", "suave"):
+    raise ValueError(f"SGAMMA_VARIANT={SGAMMA_VARIANT!r}: expected '' or 'suave'")
+restartSuffix = f"_{SGAMMA_VARIANT}" if SGAMMA_VARIANT else ""
+# SGAMMA_ARTVISC=<c> adds the gradient-driven artificial viscosity on gamma (sgammaArtVisc = c) to the same ladder:
+# same restart state w (the matvecs are evaluated about w, any w is valid), own refs *_art<c>.
+SGAMMA_ARTVISC = os.environ.get("SGAMMA_ARTVISC", "")
+variantSuffix = restartSuffix + (f"_art{SGAMMA_ARTVISC}" if SGAMMA_ARTVISC else "")
+sagrRestartFile = os.path.join(baseDir, f"../../input_files/mdo_tutorial_sgamma{restartSuffix}_dp.cgns")
 # FFD for the complete-mode/DVGeo adjoint test (test_adjoint_sagr.py). Now
 # that the case is back on the tutorial-wing mesh (see the case-inputs note
 # above), this is the SAME standard ADflow tutorial-wing FFD the SA adjoint
@@ -305,6 +315,20 @@ sagrBaseOptions = {
     "surfacevariables": ["cp", "mach", "cf", "vx", "vy", "vz", "cfx", "cfy", "cfz"],
 }
 
+if SGAMMA_VARIANT == "suave":
+    # tanh onset A[tanh(k(F1t - s)) + 1]/2 with F1t = sqrt((Re_v/2.2Re_thc)^2 + (R_T/c)^2) and F_turb Lee
+    sagrBaseOptions.update({
+        "sgammafturblee": True,
+        "sgammaonsettanh": True,
+        "sgammatanhamp": 2.5,
+        "sgammatanhk": 6.0,
+        "sgammatanhs": 1.45,
+        "sgammatanhrt": 4.0,
+    })
+
+if SGAMMA_ARTVISC:
+    sagrBaseOptions["sgammaartvisc"] = float(SGAMMA_ARTVISC)
+
 
 # --------------------------------------------------------------------------
 # State-vector block helpers
@@ -381,6 +405,7 @@ def assert_coupling_blocks_allclose(handler, CFDSolver, seed=314, mode=None, h=N
     nw, blocks = getStateBlocks(CFDSolver)
 
     wDotFull = CFDSolver.getStatePerturbation(seed)
+    failed = []
 
     extraArgs = {}
     if mode is not None:
@@ -402,7 +427,14 @@ def assert_coupling_blocks_allclose(handler, CFDSolver, seed=314, mode=None, h=N
             rowDot = maskStateVector(resDot, nw, rowOffsets)
             key = "||dR[%s]/dw[%s] * eDot||" % (rowName, colName)
             handler.root_print(key)
-            handler.par_add_norm(key, rowDot, rtol=rtol, atol=atol)
+            # check every block before failing, so one mismatch does not hide the others
+            try:
+                handler.par_add_norm(key, rowDot, rtol=rtol, atol=atol)
+            except AssertionError as e:
+                handler.root_print("BLOCK FAIL " + key + " :: " + " ".join(str(e).split()))
+                failed.append(key)
+    if failed:
+        raise AssertionError("coupling blocks failed: %s" % failed)
 
 
 def assert_transition_xdvdot_allclose(handler, CFDSolver, ap, seed=1.0, mode=None, h=None, **kwargs):

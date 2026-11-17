@@ -2390,8 +2390,6 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
     real(kind=realtype) :: a, b, lambda_switch
     real(kind=realtype) :: ad, bd
-    intrinsic max
-    intrinsic min
     intrinsic abs
     intrinsic log
     intrinsic exp
@@ -2401,17 +2399,18 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: arg1d
     real(kind=realtype) :: arg2
     real(kind=realtype) :: arg2d
-    if (g1 .lt. g2) then
-      ad = g2d
-      a = g2
-    else
+! order with one if/else, not max()/min(): at a tie g1 == g2 the
+! intrinsics can both return the same argument, so ad (tapenade) and
+! complex step each take their own branch and the derivative is wrong
+! (1 or 0 instead of 1/2). here a and b are always distinct arguments.
+    if (g1 .ge. g2) then
       ad = g1d
       a = g1
-    end if
-    if (g1 .gt. g2) then
       bd = g2d
       b = g2
     else
+      ad = g2d
+      a = g2
       bd = g1d
       b = g1
     end if
@@ -2471,8 +2470,6 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: phi
     real(kind=realtype), parameter :: p_switch=1.0e-15_realtype
     real(kind=realtype) :: a, b, lambda_switch
-    intrinsic max
-    intrinsic min
     intrinsic abs
     intrinsic log
     intrinsic exp
@@ -2480,14 +2477,15 @@ nadvloopspectral:do ii=1,nadv
     real(kind=realtype) :: abs1
     real(kind=realtype) :: arg1
     real(kind=realtype) :: arg2
-    if (g1 .lt. g2) then
-      a = g2
-    else
+! order with one if/else, not max()/min(): at a tie g1 == g2 the
+! intrinsics can both return the same argument, so ad (tapenade) and
+! complex step each take their own branch and the derivative is wrong
+! (1 or 0 instead of 1/2). here a and b are always distinct arguments.
+    if (g1 .ge. g2) then
       a = g1
-    end if
-    if (g1 .gt. g2) then
       b = g2
     else
+      a = g2
       b = g1
     end if
     if (p .ge. 0.) then

@@ -104,12 +104,12 @@ contains
   subroutine cellsources_b(nutilde, nutilded, gam, gamd, nu, nud, &
 &   dist2inv, dist2invd, ss, ssd, strainmag, strainmagd, vortmag, &
 &   vortmagd, ydist, ydistd, duds, dudsd, rho, rhod, mu, mud, tupct, &
-&   vortlim, vortlimd, ft2, ft2d, approxterm1, uselimiter, onsettanh, &
-&   fturblee, coupledest, psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
-&   tanhamp, tanhrt, snu, snud, sgamma, sgammad, gammas, destmult, &
-&   term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, fwsa, &
-&   revort, laml, fpg, rethetac, fonset1, fonset, fturb, pgamma, egamma&
-&   , gammalocal, seff, omeff, rturb, nutsa)
+&   vortlim, vortlimd, ft2, ft2d, approxterm1, uselimiter, prodvort, &
+&   onsettanh, fturblee, coupledest, smoothclip, psmooth, ctu1, ctu2, &
+&   ctu3, tanhk, tanhs, tanhamp, tanhrt, plam, pon, snu, snud, sgamma, &
+&   sgammad, gammas, destmult, term2prod, term2dest, fv1, fv2, sst, rr, &
+&   gg, gg6, termfw, fwsa, revort, laml, fpg, rethetac, fonset1, fonset&
+&   , fturb, pgamma, egamma, gammalocal, seff, omeff, rturb, nutsa)
 !
 ! per-cell sa and gam sources of sa-sgamma from the state
 ! (nutilde, gam) and the cell kinematics. used by source (residual,
@@ -131,10 +131,10 @@ contains
     real(kind=realtype), intent(in) :: ydist, duds, rho, mu, tupct, &
 &   vortlim, ft2
     real(kind=realtype) :: ydistd, dudsd, rhod, mud, vortlimd, ft2d
-    logical, intent(in) :: approxterm1, uselimiter, onsettanh, fturblee&
-&   , coupledest
+    logical, intent(in) :: approxterm1, uselimiter, prodvort, onsettanh&
+&   , fturblee, coupledest, smoothclip
     real(kind=realtype), intent(in) :: psmooth, ctu1, ctu2, ctu3, tanhk&
-&   , tanhs, tanhamp, tanhrt
+&   , tanhs, tanhamp, tanhrt, plam, pon
     real(kind=realtype) :: snu, sgamma, gammas, destmult, term2prod, &
 &   term2dest
     real(kind=realtype) :: snud, sgammad
@@ -151,16 +151,19 @@ contains
     real(kind=realtype) :: chid, chi2d, chi3d
     real(kind=realtype) :: term1, term2
     real(kind=realtype) :: term1d, term2d
-    real(kind=realtype) :: gclip1, gs0, lamraw, lamlo, lamplus, lamminus
+    real(kind=realtype) :: gclip1, gs0, lamraw, lamlo, lamplus, lamminus&
+&   , gamlo
     real(kind=realtype) :: gclip1d, gs0d, lamrawd, lamlod, lamplusd, &
-&   lamminusd
+&   lamminusd, gamlod
     real(kind=realtype) :: fpgplusraw, fpgplus, fpgminusraw, fpgminus
     real(kind=realtype) :: fpgplusrawd, fpgplusd, fpgminusrawd, &
 &   fpgminusd
     real(kind=realtype) :: fonset2, fonset3raw, fonset3, fonsetraw, &
-&   fonset1t
+&   fonset1t, fonsetnorm
     real(kind=realtype) :: fonset2d, fonset3rawd, fonset3d, fonsetrawd, &
-&   fonset1td
+&   fonset1td, fonsetnormd
+    real(kind=realtype) :: sbase
+    real(kind=realtype) :: sbased
     intrinsic max
     intrinsic min
     intrinsic exp
@@ -216,6 +219,12 @@ contains
     real(kind=realtype) :: arg1d8
     real(kind=realtype) :: arg19
     real(kind=realtype) :: arg1d9
+    real(kind=realtype) :: arg110
+    real(kind=realtype) :: arg1d10
+    real(kind=realtype) :: arg111
+    real(kind=realtype) :: arg1d11
+    real(kind=realtype) :: arg112
+    real(kind=realtype) :: arg1d12
     integer :: branch
     cv13 = rsacv1**3
     kar2inv = one/rsak**2
@@ -262,10 +271,10 @@ contains
     end if
     if (approxterm1) then
       term1 = zero
-      call pushcontrol1b(1)
+      call pushcontrol1b(0)
     else
       term1 = gammas*rsacb1*(one-ft2)*ss
-      call pushcontrol1b(0)
+      call pushcontrol1b(1)
     end if
     term2prod = dist2inv*kar2inv*rsacb1*((one-ft2)*fv2+ft2)
     term2dest = -(dist2inv*rsacw1*fwsa)
@@ -273,31 +282,41 @@ contains
 ! ---------------- gam part ----------------
     nutsa = nutilde*fv1
     rturb = nutsa/nu
-    if (gam .lt. rsagrgammalo) then
-      x1 = rsagrgammalo
-      call pushcontrol1b(0)
+    if (smoothclip) then
+! option sgammasmoothclip: c-inf clip of gamma to [gammalo, gammahi] (p&z smoothminmax)
+      arg13 = rsagrgammalo
+      gamlo = smoothminmax(gam, arg13, rsagrpmax)
+      arg14 = rsagrgammahi
+      gammalocal = smoothminmax(gamlo, arg14, rsagrpmin)
+      call pushcontrol2b(0)
     else
-      x1 = gam
-      call pushcontrol1b(1)
-    end if
-    if (x1 .gt. rsagrgammahi) then
-      gammalocal = rsagrgammahi
-      call pushcontrol1b(0)
-    else
-      gammalocal = x1
-      call pushcontrol1b(1)
+      if (gam .lt. rsagrgammalo) then
+        x1 = rsagrgammalo
+        call pushcontrol1b(0)
+      else
+        x1 = gam
+        call pushcontrol1b(1)
+      end if
+      if (x1 .gt. rsagrgammahi) then
+        gammalocal = rsagrgammahi
+        call pushcontrol2b(2)
+      else
+        gammalocal = x1
+        call pushcontrol2b(1)
+      end if
     end if
 ! eq. 8: local pressure-gradient parameter (continuity form), smooth clip [-1, 1]
     lamraw = sglamcoef*ydist**2/nu*duds + sglamoffset
-    arg13 = -sglamclip
-    lamlo = smoothminmax(lamraw, arg13, rsagrpmax)
-    arg14 = sglamclip
-    laml = smoothminmax(lamlo, arg14, rsagrpmin)
+! sharpness plam = sgammalamsmoothp (300 = p&z)
+    arg15 = -sglamclip
+    lamlo = smoothminmax(lamraw, arg15, plam)
+    arg16 = sglamclip
+    laml = smoothminmax(lamlo, arg16, -plam)
 ! eq. 7: f_pg (v with caps) and re_theta_c
-    arg15 = zero
-    lamplus = smoothminmax(laml, arg15, psmooth)
-    arg16 = zero
-    lamminus = smoothminmax(laml, arg16, -psmooth)
+    arg17 = zero
+    lamplus = smoothminmax(laml, arg17, psmooth)
+    arg18 = zero
+    lamminus = smoothminmax(laml, arg18, -psmooth)
     fpgplusraw = sgcpg1*lamplus
     arg1 = sgcpg1lim - one
     fpgplus = smoothminmax(fpgplusraw, arg1, -psmooth)
@@ -315,31 +334,50 @@ contains
       call pushcontrol1b(0)
     else
       fonset1 = revort/(sgfonsetc*rethetac)
-      arg17 = two
-      fonset2 = smoothminmax(fonset1, arg17, rsagrpmin)
+! sharpness pon = sgammaonsetsmoothp (300 = p&z) on the three onset kinks
+      arg19 = two
+      fonset2 = smoothminmax(fonset1, arg19, -pon)
       fonset3raw = one - (rturb/sgfonsetrt)**3
-      arg18 = zero
-      fonset3 = smoothminmax(fonset3raw, arg18, rsagrpmax)
+      arg110 = zero
+      fonset3 = smoothminmax(fonset3raw, arg110, pon)
       fonsetraw = fonset2 - fonset3
-      arg19 = zero
-      fonset = smoothminmax(fonsetraw, arg19, rsagrpmax)
+      arg111 = zero
+      fonset = smoothminmax(fonsetraw, arg111, pon)
       call pushcontrol1b(1)
     end if
-! eq. 5: f_turb
+! eq. 5: f_turb. the p&z form (1 - f_onset) exp(-r_t) assumes f_onset <= 1; here f_onset
+! reaches tanhamp (tanh) or 2 (original), so it is normalised to [0, 1] first -- otherwise
+! the destruction term changes sign in the transition zone (production of gamma).
     if (fturblee) then
       fturb = exp(-((rturb/two)**4))
       call pushcontrol1b(0)
     else
-      fturb = (one-fonset)*exp(-rturb)
+      if (onsettanh) then
+        fonsetnorm = fonset/tanhamp
+        call pushcontrol1b(0)
+      else
+        arg112 = one
+        fonsetnorm = smoothminmax(fonset, arg112, -pon)
+        call pushcontrol1b(1)
+      end if
+      fturb = (one-fonsetnorm)*exp(-rturb)
       call pushcontrol1b(1)
     end if
-! eqs. 2-3: production with s, destruction with omega (optional p&z floor)
+! eqs. 2-3: production with s (menter 2015) or with omega (p&z sec. ii, sgammaprodvorticity),
+! destruction with omega; optional p&z cap phi-(., omega_cap) on both (sgammavortlimiter)
+    if (prodvort) then
+      sbase = vortmag
+      call pushcontrol1b(0)
+    else
+      sbase = strainmag
+      call pushcontrol1b(1)
+    end if
     if (uselimiter) then
-      seff = smoothminmax(strainmag, vortlim, rsagrpmin)
+      seff = smoothminmax(sbase, vortlim, rsagrpmin)
       omeff = smoothminmax(vortmag, vortlim, rsagrpmin)
       call pushcontrol1b(0)
     else
-      seff = strainmag
+      seff = sbase
       omeff = vortmag
       call pushcontrol1b(1)
     end if
@@ -361,20 +399,35 @@ contains
       vortlimd = 0.0_8
       call smoothminmax_b(vortmag, vortmagd, vortlim, vortlimd, &
 &                   rsagrpmin, omeffd)
-      strainmagd = 0.0_8
-      call smoothminmax_b(strainmag, strainmagd, vortlim, vortlimd, &
-&                   rsagrpmin, seffd)
+      sbased = 0.0_8
+      call smoothminmax_b(sbase, sbased, vortlim, vortlimd, rsagrpmin, &
+&                   seffd)
     else
       vortmagd = omeffd
-      strainmagd = seffd
+      sbased = seffd
       vortlimd = 0.0_8
+    end if
+    call popcontrol1b(branch)
+    if (branch .eq. 0) then
+      vortmagd = vortmagd + sbased
+      strainmagd = 0.0_8
+    else
+      strainmagd = sbased
     end if
     call popcontrol1b(branch)
     if (branch .eq. 0) then
       rturbd = -(4*rturb**3*exp(-((rturb/two)**4))*fturbd/two**4)
     else
-      fonsetd = fonsetd - exp(-rturb)*fturbd
-      rturbd = -(exp(-rturb)*(one-fonset)*fturbd)
+      fonsetnormd = -(exp(-rturb)*fturbd)
+      rturbd = -(exp(-rturb)*(one-fonsetnorm)*fturbd)
+      call popcontrol1b(branch)
+      if (branch .eq. 0) then
+        fonsetd = fonsetd + fonsetnormd/tanhamp
+      else
+        arg1d12 = 0.0_8
+        call smoothminmax_b(fonset, fonsetd, arg112, arg1d12, -pon, &
+&                     fonsetnormd)
+      end if
     end if
     call popcontrol1b(branch)
     if (branch .eq. 0) then
@@ -391,20 +444,20 @@ contains
       revortd = tempd0
       rethetacd = -(sgfonsetc*temp*tempd0)
     else
-      arg1d9 = 0.0_8
+      arg1d11 = 0.0_8
       fonsetrawd = 0.0_8
-      call smoothminmax_b(fonsetraw, fonsetrawd, arg19, arg1d9, &
-&                   rsagrpmax, fonsetd)
+      call smoothminmax_b(fonsetraw, fonsetrawd, arg111, arg1d11, pon, &
+&                   fonsetd)
       fonset2d = fonsetrawd
       fonset3d = -fonsetrawd
-      arg1d8 = 0.0_8
+      arg1d10 = 0.0_8
       fonset3rawd = 0.0_8
-      call smoothminmax_b(fonset3raw, fonset3rawd, arg18, arg1d8, &
-&                   rsagrpmax, fonset3d)
+      call smoothminmax_b(fonset3raw, fonset3rawd, arg110, arg1d10, pon&
+&                   , fonset3d)
       rturbd = rturbd - 3*rturb**2*fonset3rawd/sgfonsetrt**3
-      arg1d7 = 0.0_8
+      arg1d9 = 0.0_8
       fonset1d = 0.0_8
-      call smoothminmax_b(fonset1, fonset1d, arg17, arg1d7, rsagrpmin, &
+      call smoothminmax_b(fonset1, fonset1d, arg19, arg1d9, -pon, &
 &                   fonset2d)
       tempd0 = fonset1d/(sgfonsetc*rethetac)
       revortd = tempd0
@@ -430,33 +483,42 @@ contains
     call smoothminmax_b(fpgplusraw, fpgplusrawd, arg1, arg1d, -psmooth, &
 &                 fpgplusd)
     lamplusd = sgcpg1*fpgplusrawd
-    arg1d6 = 0.0_8
+    arg1d8 = 0.0_8
     lamld = 0.0_8
-    call smoothminmax_b(laml, lamld, arg16, arg1d6, -psmooth, lamminusd)
-    arg1d5 = 0.0_8
-    call smoothminmax_b(laml, lamld, arg15, arg1d5, psmooth, lamplusd)
-    arg1d4 = 0.0_8
+    call smoothminmax_b(laml, lamld, arg18, arg1d8, -psmooth, lamminusd)
+    arg1d7 = 0.0_8
+    call smoothminmax_b(laml, lamld, arg17, arg1d7, psmooth, lamplusd)
+    arg1d6 = 0.0_8
     lamlod = 0.0_8
-    call smoothminmax_b(lamlo, lamlod, arg14, arg1d4, rsagrpmin, lamld)
-    arg1d3 = 0.0_8
+    call smoothminmax_b(lamlo, lamlod, arg16, arg1d6, -plam, lamld)
+    arg1d5 = 0.0_8
     lamrawd = 0.0_8
-    call smoothminmax_b(lamraw, lamrawd, arg13, arg1d3, rsagrpmax, &
-&                 lamlod)
+    call smoothminmax_b(lamraw, lamrawd, arg15, arg1d5, plam, lamlod)
     ydistd = ydistd + 2*ydist*duds*sglamcoef*lamrawd/nu
     tempd0 = ydist**2*sglamcoef*lamrawd/nu
     dudsd = tempd0
     nud = -(duds*tempd0/nu)
-    call popcontrol1b(branch)
+    call popcontrol2b(branch)
     if (branch .eq. 0) then
-      x1d = 0.0_8
-    else
-      x1d = gammalocald
-    end if
-    call popcontrol1b(branch)
-    if (branch .eq. 0) then
+      arg1d4 = 0.0_8
+      gamlod = 0.0_8
+      call smoothminmax_b(gamlo, gamlod, arg14, arg1d4, rsagrpmin, &
+&                   gammalocald)
+      arg1d3 = 0.0_8
       gamd = 0.0_8
+      call smoothminmax_b(gam, gamd, arg13, arg1d3, rsagrpmax, gamlod)
     else
-      gamd = x1d
+      if (branch .eq. 1) then
+        x1d = gammalocald
+      else
+        x1d = 0.0_8
+      end if
+      call popcontrol1b(branch)
+      if (branch .eq. 0) then
+        gamd = 0.0_8
+      else
+        gamd = x1d
+      end if
     end if
     tempd0 = nutilde*snud
     nutsad = rturbd/nu
@@ -477,12 +539,12 @@ contains
     fv2d = (one-ft2)*tempd
     call popcontrol1b(branch)
     if (branch .eq. 0) then
+      ssd = 0.0_8
+    else
       ft2d = ft2d - gammas*ss*rsacb1*term1d
       tempd0 = (one-ft2)*rsacb1*term1d
       gammasd = gammasd + ss*tempd0
       ssd = gammas*tempd0
-    else
-      ssd = 0.0_8
     end if
     call popcontrol1b(branch)
     if (branch .eq. 0) then
@@ -533,11 +595,12 @@ contains
 
   subroutine cellsources(nutilde, gam, nu, dist2inv, ss, strainmag, &
 &   vortmag, ydist, duds, rho, mu, tupct, vortlim, ft2, approxterm1, &
-&   uselimiter, onsettanh, fturblee, coupledest, psmooth, ctu1, ctu2, &
-&   ctu3, tanhk, tanhs, tanhamp, tanhrt, snu, sgamma, gammas, destmult, &
-&   term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, termfw, fwsa, &
-&   revort, laml, fpg, rethetac, fonset1, fonset, fturb, pgamma, egamma&
-&   , gammalocal, seff, omeff, rturb, nutsa)
+&   uselimiter, prodvort, onsettanh, fturblee, coupledest, smoothclip, &
+&   psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, tanhamp, tanhrt, plam, pon&
+&   , snu, sgamma, gammas, destmult, term2prod, term2dest, fv1, fv2, sst&
+&   , rr, gg, gg6, termfw, fwsa, revort, laml, fpg, rethetac, fonset1, &
+&   fonset, fturb, pgamma, egamma, gammalocal, seff, omeff, rturb, nutsa&
+& )
 !
 ! per-cell sa and gam sources of sa-sgamma from the state
 ! (nutilde, gam) and the cell kinematics. used by source (residual,
@@ -556,10 +619,10 @@ contains
 &   strainmag, vortmag
     real(kind=realtype), intent(in) :: ydist, duds, rho, mu, tupct, &
 &   vortlim, ft2
-    logical, intent(in) :: approxterm1, uselimiter, onsettanh, fturblee&
-&   , coupledest
+    logical, intent(in) :: approxterm1, uselimiter, prodvort, onsettanh&
+&   , fturblee, coupledest, smoothclip
     real(kind=realtype), intent(in) :: psmooth, ctu1, ctu2, ctu3, tanhk&
-&   , tanhs, tanhamp, tanhrt
+&   , tanhs, tanhamp, tanhrt, plam, pon
     real(kind=realtype), intent(out) :: snu, sgamma, gammas, destmult, &
 &   term2prod, term2dest
     real(kind=realtype), intent(out) :: fv1, fv2, sst, rr, gg, gg6, &
@@ -571,10 +634,12 @@ contains
     real(kind=realtype), parameter :: xminn=1.e-10_realtype
     real(kind=realtype) :: cv13, kar2inv, cw36, chi, chi2, chi3
     real(kind=realtype) :: term1, term2
-    real(kind=realtype) :: gclip1, gs0, lamraw, lamlo, lamplus, lamminus
+    real(kind=realtype) :: gclip1, gs0, lamraw, lamlo, lamplus, lamminus&
+&   , gamlo
     real(kind=realtype) :: fpgplusraw, fpgplus, fpgminusraw, fpgminus
     real(kind=realtype) :: fonset2, fonset3raw, fonset3, fonsetraw, &
-&   fonset1t
+&   fonset1t, fonsetnorm
+    real(kind=realtype) :: sbase
     intrinsic max
     intrinsic min
     intrinsic exp
@@ -628,20 +693,27 @@ contains
 ! ---------------- gam part ----------------
     nutsa = nutilde*fv1
     rturb = nutsa/nu
-    if (gam .lt. rsagrgammalo) then
-      x1 = rsagrgammalo
+    if (smoothclip) then
+! option sgammasmoothclip: c-inf clip of gamma to [gammalo, gammahi] (p&z smoothminmax)
+      gamlo = smoothminmax(gam, rsagrgammalo, rsagrpmax)
+      gammalocal = smoothminmax(gamlo, rsagrgammahi, rsagrpmin)
     else
-      x1 = gam
-    end if
-    if (x1 .gt. rsagrgammahi) then
-      gammalocal = rsagrgammahi
-    else
-      gammalocal = x1
+      if (gam .lt. rsagrgammalo) then
+        x1 = rsagrgammalo
+      else
+        x1 = gam
+      end if
+      if (x1 .gt. rsagrgammahi) then
+        gammalocal = rsagrgammahi
+      else
+        gammalocal = x1
+      end if
     end if
 ! eq. 8: local pressure-gradient parameter (continuity form), smooth clip [-1, 1]
     lamraw = sglamcoef*ydist**2/nu*duds + sglamoffset
-    lamlo = smoothminmax(lamraw, -sglamclip, rsagrpmax)
-    laml = smoothminmax(lamlo, sglamclip, rsagrpmin)
+! sharpness plam = sgammalamsmoothp (300 = p&z)
+    lamlo = smoothminmax(lamraw, -sglamclip, plam)
+    laml = smoothminmax(lamlo, sglamclip, -plam)
 ! eq. 7: f_pg (v with caps) and re_theta_c
     lamplus = smoothminmax(laml, zero, psmooth)
     lamminus = smoothminmax(laml, zero, -psmooth)
@@ -662,24 +734,38 @@ contains
       fonset = tanhamp*(tanh(tanhk*(fonset1t-tanhs))+one)*half
     else
       fonset1 = revort/(sgfonsetc*rethetac)
-      fonset2 = smoothminmax(fonset1, two, rsagrpmin)
+! sharpness pon = sgammaonsetsmoothp (300 = p&z) on the three onset kinks
+      fonset2 = smoothminmax(fonset1, two, -pon)
       fonset3raw = one - (rturb/sgfonsetrt)**3
-      fonset3 = smoothminmax(fonset3raw, zero, rsagrpmax)
+      fonset3 = smoothminmax(fonset3raw, zero, pon)
       fonsetraw = fonset2 - fonset3
-      fonset = smoothminmax(fonsetraw, zero, rsagrpmax)
+      fonset = smoothminmax(fonsetraw, zero, pon)
     end if
-! eq. 5: f_turb
+! eq. 5: f_turb. the p&z form (1 - f_onset) exp(-r_t) assumes f_onset <= 1; here f_onset
+! reaches tanhamp (tanh) or 2 (original), so it is normalised to [0, 1] first -- otherwise
+! the destruction term changes sign in the transition zone (production of gamma).
     if (fturblee) then
       fturb = exp(-((rturb/two)**4))
     else
-      fturb = (one-fonset)*exp(-rturb)
+      if (onsettanh) then
+        fonsetnorm = fonset/tanhamp
+      else
+        fonsetnorm = smoothminmax(fonset, one, -pon)
+      end if
+      fturb = (one-fonsetnorm)*exp(-rturb)
     end if
-! eqs. 2-3: production with s, destruction with omega (optional p&z floor)
+! eqs. 2-3: production with s (menter 2015) or with omega (p&z sec. ii, sgammaprodvorticity),
+! destruction with omega; optional p&z cap phi-(., omega_cap) on both (sgammavortlimiter)
+    if (prodvort) then
+      sbase = vortmag
+    else
+      sbase = strainmag
+    end if
     if (uselimiter) then
-      seff = smoothminmax(strainmag, vortlim, rsagrpmin)
+      seff = smoothminmax(sbase, vortlim, rsagrpmin)
       omeff = smoothminmax(vortmag, vortlim, rsagrpmin)
     else
-      seff = strainmag
+      seff = sbase
       omeff = vortmag
     end if
     pgamma = sgflength*seff*gammalocal*(one-gammalocal)*fonset
@@ -708,7 +794,7 @@ contains
     use section
     use inputphysics
     use flowvarrefstate
-    use inputiteration, only : transitionreflength
+    use inputiteration, only : transitionreflength, sgammavortlimscale
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype) :: ss, strainmag, vortmag, duds, velmag, vortlim
@@ -897,7 +983,8 @@ contains
       call pushcontrol1b(1)
     end if
     uzhat = velrelz/max6
-! p&z vorticity-limiter threshold (eqs. 52-53), only used with sgammavortlimiter
+! p&z vorticity-limiter threshold (eqs. 52-53) u sqrt(u/(nu l)) / d, d = sgammavortlimscale (p&z 20);
+! only used with sgammavortlimiter
     if (transitionreflength .gt. zero) then
       reflentrans = transitionreflength
     else
@@ -920,12 +1007,12 @@ contains
       call pushcontrol1b(1)
     end if
     temp2 = sqrt(max7)
-    ureftransd = temp2*vortlimd/20.0_realtype
     if (max7 .eq. 0.0_8) then
       max7d = 0.0_8
     else
-      max7d = ureftrans*vortlimd/(2.0*temp2*20.0_realtype)
+      max7d = ureftrans*vortlimd/(2.0*temp2*sgammavortlimscale)
     end if
+    ureftransd = temp2*vortlimd/sgammavortlimscale
     call popcontrol1b(branch)
     if (branch .eq. 0) then
       x1d = 0.0_8
@@ -1195,7 +1282,7 @@ contains
     use section
     use inputphysics
     use flowvarrefstate
-    use inputiteration, only : transitionreflength
+    use inputiteration, only : transitionreflength, sgammavortlimscale
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: ss, strainmag, vortmag, duds, &
@@ -1339,7 +1426,8 @@ contains
     uzhat = velrelz/max6
     duds = two*fact*(uxhat*(uxhat*uux+uyhat*uuy+uzhat*uuz)+uyhat*(uxhat*&
 &     vvx+uyhat*vvy+uzhat*vvz)+uzhat*(uxhat*wwx+uyhat*wwy+uzhat*wwz))
-! p&z vorticity-limiter threshold (eqs. 52-53), only used with sgammavortlimiter
+! p&z vorticity-limiter threshold (eqs. 52-53) u sqrt(u/(nu l)) / d, d = sgammavortlimscale (p&z 20);
+! only used with sgammavortlimiter
     if (transitionreflength .gt. zero) then
       reflentrans = transitionreflength
     else
@@ -1357,7 +1445,7 @@ contains
     else
       max7 = x1
     end if
-    vortlim = ureftrans*sqrt(max7)/20.0_realtype
+    vortlim = ureftrans*sqrt(max7)/sgammavortlimscale
   end subroutine cellkinematics
 
 !  differentiation of sgsource in reverse (adjoint) mode (with options noisize i4 dr8 r8):
@@ -1383,9 +1471,10 @@ contains
     use inputdiscretization, only : approxsa
     use flowvarrefstate
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
-&   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
-&   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs, sgammatanhamp, sgammatanhrt
+&   sgammaprodvorticity, sgammaonsettanh, sgammafturblee, &
+&   sgammacoupledestruction, sgammafpgsmoothp, sgammactu1, sgammactu2, &
+&   sgammactu3, sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
+&   sgammasmoothclip, sgammalamsmoothp, sgammaonsetsmoothp
     implicit none
     integer(kind=inttype), parameter :: dbgfonset=1_inttype
     integer(kind=inttype), parameter :: dbgfonset1=2_inttype
@@ -1446,9 +1535,10 @@ contains
 &   , fturb
     real(kind=realtype) :: pgamma, egamma, gammalocal, seff, omeff, &
 &   rturb, nutsa
-    logical :: approxterm1, uselimiter, onsettanh, fturblee, coupledest
+    logical :: approxterm1, uselimiter, prodvort, onsettanh, fturblee, &
+&   coupledest, smoothclip
     real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
-&   tanhamp, tanhrt
+&   tanhamp, tanhrt, plam, pon
 ! fd jacobian scratch (lhs only)
     real(kind=realtype) :: epsnu, epsg, snup, sgamp
     real(kind=realtype) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
@@ -1463,10 +1553,14 @@ contains
 ! options -> locals (copied once, before the differentiated loop)
     approxterm1 = approxsa .and. transitionuseapproxsa
     uselimiter = sgammavortlimiter
+    prodvort = sgammaprodvorticity
     onsettanh = sgammaonsettanh
     fturblee = sgammafturblee
     coupledest = sgammacoupledestruction
     psmooth = sgammafpgsmoothp
+    smoothclip = sgammasmoothclip
+    plam = sgammalamsmoothp
+    pon = sgammaonsetsmoothp
     ctu1 = sgammactu1
     ctu2 = sgammactu2
     ctu3 = sgammactu3
@@ -1512,13 +1606,14 @@ contains
 &                    , vortmag, vortmagd, ydist, ydistd, duds, dudsd, w(&
 &                    i, j, k, irho), wd(i, j, k, irho), rlv(i, j, k), &
 &                    rlvd(i, j, k), tupct, vortlim, vortlimd, ft2, ft2d&
-&                    , approxterm1, uselimiter, onsettanh, fturblee, &
-&                    coupledest, psmooth, ctu1, ctu2, ctu3, tanhk, tanhs&
-&                    , tanhamp, tanhrt, snu, snud, sgamma, sgammad, &
-&                    gammas, destmult, term2prod, term2dest, fv1, fv2, &
-&                    sst, rr, gg, gg6, termfw, fwsa, revort, laml, fpg, &
-&                    rethetac, fonset1, fonset, fturb, pgamma, egamma, &
-&                    gammalocal, seff, omeff, rturb, nutsa)
+&                    , approxterm1, uselimiter, prodvort, onsettanh, &
+&                    fturblee, coupledest, smoothclip, psmooth, ctu1, &
+&                    ctu2, ctu3, tanhk, tanhs, tanhamp, tanhrt, plam, &
+&                    pon, snu, snud, sgamma, sgammad, gammas, destmult, &
+&                    term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, &
+&                    termfw, fwsa, revort, laml, fpg, rethetac, fonset1&
+&                    , fonset, fturb, pgamma, egamma, gammalocal, seff, &
+&                    omeff, rturb, nutsa)
         call popcontrol1b(branch)
         if (branch .eq. 0) then
           chi2d = -(rsact4*exp(-(rsact4*chi2))*rsact3*ft2d)
@@ -1557,9 +1652,10 @@ contains
     use inputdiscretization, only : approxsa
     use flowvarrefstate
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
-&   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
-&   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs, sgammatanhamp, sgammatanhrt
+&   sgammaprodvorticity, sgammaonsettanh, sgammafturblee, &
+&   sgammacoupledestruction, sgammafpgsmoothp, sgammactu1, sgammactu2, &
+&   sgammactu3, sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
+&   sgammasmoothclip, sgammalamsmoothp, sgammaonsetsmoothp
     implicit none
     integer(kind=inttype), parameter :: dbgfonset=1_inttype
     integer(kind=inttype), parameter :: dbgfonset1=2_inttype
@@ -1616,9 +1712,10 @@ contains
 &   , fturb
     real(kind=realtype) :: pgamma, egamma, gammalocal, seff, omeff, &
 &   rturb, nutsa
-    logical :: approxterm1, uselimiter, onsettanh, fturblee, coupledest
+    logical :: approxterm1, uselimiter, prodvort, onsettanh, fturblee, &
+&   coupledest, smoothclip
     real(kind=realtype) :: psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, &
-&   tanhamp, tanhrt
+&   tanhamp, tanhrt, plam, pon
 ! fd jacobian scratch (lhs only)
     real(kind=realtype) :: epsnu, epsg, snup, sgamp
     real(kind=realtype) :: d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
@@ -1631,10 +1728,14 @@ contains
 ! options -> locals (copied once, before the differentiated loop)
     approxterm1 = approxsa .and. transitionuseapproxsa
     uselimiter = sgammavortlimiter
+    prodvort = sgammaprodvorticity
     onsettanh = sgammaonsettanh
     fturblee = sgammafturblee
     coupledest = sgammacoupledestruction
     psmooth = sgammafpgsmoothp
+    smoothclip = sgammasmoothclip
+    plam = sgammalamsmoothp
+    pon = sgammaonsetsmoothp
     ctu1 = sgammactu1
     ctu2 = sgammactu2
     ctu3 = sgammactu3
@@ -1670,12 +1771,13 @@ contains
         call cellsources(nutilde, gam, nu, dist2inv, ss, strainmag, &
 &                  vortmag, ydist, duds, w(i, j, k, irho), rlv(i, j, k)&
 &                  , tupct, vortlim, ft2, approxterm1, uselimiter, &
-&                  onsettanh, fturblee, coupledest, psmooth, ctu1, ctu2&
-&                  , ctu3, tanhk, tanhs, tanhamp, tanhrt, snu, sgamma, &
-&                  gammas, destmult, term2prod, term2dest, fv1, fv2, sst&
-&                  , rr, gg, gg6, termfw, fwsa, revort, laml, fpg, &
-&                  rethetac, fonset1, fonset, fturb, pgamma, egamma, &
-&                  gammalocal, seff, omeff, rturb, nutsa)
+&                  prodvort, onsettanh, fturblee, coupledest, smoothclip&
+&                  , psmooth, ctu1, ctu2, ctu3, tanhk, tanhs, tanhamp, &
+&                  tanhrt, plam, pon, snu, sgamma, gammas, destmult, &
+&                  term2prod, term2dest, fv1, fv2, sst, rr, gg, gg6, &
+&                  termfw, fwsa, revort, laml, fpg, rethetac, fonset1, &
+&                  fonset, fturb, pgamma, egamma, gammalocal, seff, &
+&                  omeff, rturb, nutsa)
         scratch(i, j, k, idvt) = snu
         scratch(i, j, k, idvt+1) = sgamma
         if (associated(transitiondebug)) then
@@ -1741,12 +1843,16 @@ contains
     use constants
     use blockpointers
     use paramturb
+    use inputiteration, only : sgammaartvisc
     implicit none
     integer(kind=inttype) :: i, j, k, ii
     real(kind=realtype) :: nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, &
 &   nu_tp
     real(kind=realtype) :: nud, nu_md, nu_pd, nutd, nut_md, nut_pd, &
 &   nu_tmd, nu_tpd
+    real(kind=realtype) :: vel0, velm, velp, artm, artp, c2mi, c2pi, &
+&   c20i
+    real(kind=realtype) :: vel0d, velmd, velpd, artmd, artpd
     real(kind=realtype) :: nutilde, nutilde_m, nutilde_p
     real(kind=realtype) :: nutilded, nutilde_md, nutilde_pd
     real(kind=realtype) :: chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1&
@@ -1767,9 +1873,40 @@ contains
     real(kind=realtype) :: b1, c1, d1, b2, c2, d2
     real(kind=realtype) :: cb3inv, cv13
     intrinsic mod
+    intrinsic sqrt
+    intrinsic abs
     intrinsic max
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs0d
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs1d
+    real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs2d
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs3d
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs4d
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: abs5d
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max1d
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max2d
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max3d
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max4d
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max5d
+    real(kind=realtype) :: max6
+    real(kind=realtype) :: max6d
     real(kind=realtype) :: temp
     real(kind=realtype) :: tempd
+    real(kind=realtype) :: temp0
+    real(kind=realtype) :: temp1
+    real(kind=realtype) :: temp2
+    real(kind=realtype) :: tempd0
+    real(kind=realtype) :: tempd1
     integer :: branch
     cb3inv = one/rsacb3
     cv13 = rsacv1**3
@@ -1821,8 +1958,55 @@ contains
       nu_tp = half*(nut_p+nut)
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (after ricci et al. 2026 eq. 43-44, jst-like
+! face form): nu_art = c |v| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+! dgamma the jump across the face -> nu_art*tt = c |v| |dgamma| sqrt(tt). front width ~ sqrt(c)
+! cells (mesh-relative). code units: |v| h is already a viscosity ("re = 1 implicit", adflow_08).
+      artm = zero
+      artp = zero
+      if (sgammaartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i-1, j, k, ivx)**2 + w(i-1, j, k, ivy)**2 + w(i-1&
+&         , j, k, ivz)**2)
+        velp = sqrt(w(i+1, j, k, ivx)**2 + w(i+1, j, k, ivy)**2 + w(i+1&
+&         , j, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i-1, j, k, itu2) .ge. 0.) then
+          abs4 = w(i, j, k, itu2) - w(i-1, j, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs4 = -(w(i, j, k, itu2)-w(i-1, j, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttm .lt. eps) then
+          call pushcontrol1b(0)
+          max5 = eps
+        else
+          max5 = ttm
+          call pushcontrol1b(1)
+        end if
+        artm = sgammaartvisc*half*(velm+vel0)*abs4*sqrt(max5)
+        if (w(i, j, k, itu2) - w(i+1, j, k, itu2) .ge. 0.) then
+          abs5 = w(i, j, k, itu2) - w(i+1, j, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs5 = -(w(i, j, k, itu2)-w(i+1, j, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttp .lt. eps) then
+          call pushcontrol1b(0)
+          max6 = eps
+        else
+          max6 = ttp
+          call pushcontrol1b(1)
+        end if
+        artp = sgammaartvisc*half*(velp+vel0)*abs5*sqrt(max6)
+        call pushcontrol1b(1)
+      else
+        call pushcontrol1b(0)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
       if (cdm + cam .lt. zero) then
         c1m = zero
         call pushcontrol1b(0)
@@ -1901,54 +2085,136 @@ contains
         cdmd = c1md
         camd = c1md
       end if
-      cnudd = ttp*capd + ttm*camd
-      tempd = cb3inv*cdpd
-      nupd = ttp*cdp_gammad + ttp*tempd
+      nupd = ttp*cdp_gammad
       nu_tpd = ttp*cdp_gammad/sigmaf
-      ttpd = (nup+nu_tp/sigmaf)*cdp_gammad + (nup+(one+rsacb2)*nutp)*&
-&       tempd + cnud*capd
+      ttpd = (nup+nu_tp/sigmaf)*cdp_gammad
+      artpd = cdp_gammad
+      numd = ttm*cdm_gammad
       nu_tmd = ttm*cdm_gammad/sigmaf
-      nutpd = (one+rsacb2)*ttp*tempd
-      tempd = cb3inv*cdmd
-      numd = ttm*cdm_gammad + ttm*tempd
-      ttmd = (num+nu_tm/sigmaf)*cdm_gammad + (num+(one+rsacb2)*nutm)*&
-&       tempd + cnud*camd
-      nutmd = (one+rsacb2)*ttm*tempd
+      ttmd = (num+nu_tm/sigmaf)*cdm_gammad
+      artmd = cdm_gammad
+      call popcontrol1b(branch)
+      if (branch .ne. 0) then
+        temp1 = sqrt(max6)
+        tempd0 = sgammaartvisc*half*artpd
+        tempd1 = temp1*tempd0
+        if (max6 .eq. 0.0_8) then
+          max6d = 0.0_8
+        else
+          max6d = (velp+vel0)*abs5*tempd0/(2.0*temp1)
+        end if
+        velpd = abs5*tempd1
+        vel0d = abs5*tempd1
+        abs5d = (velp+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttpd = ttpd + max6d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i+1, j, k, itu2) = wd(i+1, j, k, itu2) + abs5d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs5d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs5d
+          wd(i+1, j, k, itu2) = wd(i+1, j, k, itu2) - abs5d
+        end if
+        temp1 = sqrt(max5)
+        tempd0 = sgammaartvisc*half*artmd
+        tempd1 = temp1*tempd0
+        if (max5 .eq. 0.0_8) then
+          max5d = 0.0_8
+        else
+          max5d = (velm+vel0)*abs4*tempd0/(2.0*temp1)
+        end if
+        velmd = abs4*tempd1
+        vel0d = vel0d + abs4*tempd1
+        abs4d = (velm+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttmd = ttmd + max5d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i-1, j, k, itu2) = wd(i-1, j, k, itu2) + abs4d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs4d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs4d
+          wd(i-1, j, k, itu2) = wd(i-1, j, k, itu2) - abs4d
+        end if
+        temp2 = w(i+1, j, k, ivz)
+        temp1 = w(i+1, j, k, ivy)
+        temp0 = w(i+1, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velpd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i+1, j, k, ivx) = wd(i+1, j, k, ivx) + 2*temp0*tempd
+        wd(i+1, j, k, ivy) = wd(i+1, j, k, ivy) + 2*temp1*tempd
+        wd(i+1, j, k, ivz) = wd(i+1, j, k, ivz) + 2*temp2*tempd
+        temp2 = w(i-1, j, k, ivz)
+        temp1 = w(i-1, j, k, ivy)
+        temp0 = w(i-1, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velmd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i-1, j, k, ivx) = wd(i-1, j, k, ivx) + 2*temp0*tempd
+        wd(i-1, j, k, ivy) = wd(i-1, j, k, ivy) + 2*temp1*tempd
+        wd(i-1, j, k, ivz) = wd(i-1, j, k, ivz) + 2*temp2*tempd
+        temp2 = w(i, j, k, ivz)
+        temp1 = w(i, j, k, ivy)
+        temp0 = w(i, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = vel0d/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp0*tempd
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp1*tempd
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp2*tempd
+      end if
+      cnudd = ttp*capd + ttm*camd
+      tempd0 = cb3inv*cdpd
+      nupd = nupd + ttp*tempd0
+      nutpd = (one+rsacb2)*ttp*tempd0
+      ttpd = ttpd + (nup+(one+rsacb2)*nutp)*tempd0 + cnud*capd
+      tempd0 = cb3inv*cdmd
+      numd = numd + ttm*tempd0
+      nutmd = (one+rsacb2)*ttm*tempd0
+      ttmd = ttmd + (num+(one+rsacb2)*nutm)*tempd0 + cnud*camd
       nut_pd = half*nu_tpd
       nutd = half*nu_tpd + half*nu_tmd
       nut_md = half*nu_tmd
       fv1_pd = nutilde_p*nut_pd
-      tempd = fv1_pd/(cv13+chi3_p)
-      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd
+      tempd0 = fv1_pd/(cv13+chi3_p)
+      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd0
       chi_pd = 3*chi_p**2*chi3_pd
       nu_pd = half*nupd - nutilde_p*chi_pd/nu_p**2
       nutilde_pd = fv1_p*nut_pd + chi_pd/nu_p
       wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + nutilde_pd
-      temp = w(i+1, j, k, irho)
-      rlvd(i+1, j, k) = rlvd(i+1, j, k) + nu_pd/temp
+      temp2 = w(i+1, j, k, irho)
+      rlvd(i+1, j, k) = rlvd(i+1, j, k) + nu_pd/temp2
       wd(i+1, j, k, irho) = wd(i+1, j, k, irho) - rlv(i+1, j, k)*nu_pd/&
-&       temp**2
+&       temp2**2
       fv1_md = nutilde_m*nut_md
-      tempd = fv1_md/(cv13+chi3_m)
-      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd
+      tempd0 = fv1_md/(cv13+chi3_m)
+      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd0
       chi_md = 3*chi_m**2*chi3_md
       nu_md = half*numd - nutilde_m*chi_md/nu_m**2
       nutilde_md = fv1_m*nut_md + chi_md/nu_m
       wd(i-1, j, k, itu1) = wd(i-1, j, k, itu1) + nutilde_md
-      temp = w(i-1, j, k, irho)
-      rlvd(i-1, j, k) = rlvd(i-1, j, k) + nu_md/temp
+      temp2 = w(i-1, j, k, irho)
+      rlvd(i-1, j, k) = rlvd(i-1, j, k) + nu_md/temp2
       wd(i-1, j, k, irho) = wd(i-1, j, k, irho) - rlv(i-1, j, k)*nu_md/&
-&       temp**2
+&       temp2**2
       fv1d = nutilde*nutd
-      tempd = fv1d/(cv13+chi3)
-      chi3d = (1.0-chi3/(cv13+chi3))*tempd
+      tempd0 = fv1d/(cv13+chi3)
+      chi3d = (1.0-chi3/(cv13+chi3))*tempd0
       chid = 3*chi**2*chi3d
       nud = half*nupd + half*numd - nutilde*chid/nu**2
       nutilded = fv1*nutd + chid/nu
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + nutilded
-      temp = w(i, j, k, irho)
-      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
-      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+      temp2 = w(i, j, k, irho)
+      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp2
+      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp2**2
       wd(i+1, j, k, itu1) = wd(i+1, j, k, itu1) + half*nutpd
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + half*nutpd + half*nutmd - &
 &       rsacb2*cb3inv*cnudd
@@ -1962,18 +2228,18 @@ contains
       xmd = xa*ttmd
       ymd = ya*ttmd
       zmd = za*ttmd
-      tempd = half*zad
-      sid(i, j, k, 3) = sid(i, j, k, 3) + voli*tempd
-      sid(i-1, j, k, 3) = sid(i-1, j, k, 3) + voli*tempd
-      volid = (si(i, j, k, 3)+si(i-1, j, k, 3))*tempd
-      tempd = half*yad
-      sid(i, j, k, 2) = sid(i, j, k, 2) + voli*tempd
-      sid(i-1, j, k, 2) = sid(i-1, j, k, 2) + voli*tempd
-      volid = volid + (si(i, j, k, 2)+si(i-1, j, k, 2))*tempd
-      tempd = half*xad
-      sid(i, j, k, 1) = sid(i, j, k, 1) + voli*tempd
-      sid(i-1, j, k, 1) = sid(i-1, j, k, 1) + voli*tempd
-      volid = volid + (si(i, j, k, 1)+si(i-1, j, k, 1))*tempd
+      tempd0 = half*zad
+      sid(i, j, k, 3) = sid(i, j, k, 3) + voli*tempd0
+      sid(i-1, j, k, 3) = sid(i-1, j, k, 3) + voli*tempd0
+      volid = (si(i, j, k, 3)+si(i-1, j, k, 3))*tempd0
+      tempd0 = half*yad
+      sid(i, j, k, 2) = sid(i, j, k, 2) + voli*tempd0
+      sid(i-1, j, k, 2) = sid(i-1, j, k, 2) + voli*tempd0
+      volid = volid + (si(i, j, k, 2)+si(i-1, j, k, 2))*tempd0
+      tempd0 = half*xad
+      sid(i, j, k, 1) = sid(i, j, k, 1) + voli*tempd0
+      sid(i-1, j, k, 1) = sid(i-1, j, k, 1) + voli*tempd0
+      volid = volid + (si(i, j, k, 1)+si(i-1, j, k, 1))*tempd0
       sid(i, j, k, 3) = sid(i, j, k, 3) + volpi*zpd
       volpid = si(i, j, k, 3)*zpd + si(i, j, k, 2)*ypd + si(i, j, k, 1)*&
 &       xpd
@@ -1984,14 +2250,14 @@ contains
 &       k, 1)*xmd
       sid(i-1, j, k, 2) = sid(i-1, j, k, 2) + volmi*ymd
       sid(i-1, j, k, 1) = sid(i-1, j, k, 1) + volmi*xmd
-      temp = vol(i, j, k) + vol(i+1, j, k)
-      tempd = -(two*volpid/temp**2)
-      vold(i, j, k) = vold(i, j, k) + tempd
-      vold(i+1, j, k) = vold(i+1, j, k) + tempd
-      temp = vol(i, j, k) + vol(i-1, j, k)
-      tempd = -(two*volmid/temp**2)
-      vold(i-1, j, k) = vold(i-1, j, k) + tempd
-      vold(i, j, k) = vold(i, j, k) + tempd - one*volid/vol(i, j, k)**2
+      temp2 = vol(i, j, k) + vol(i+1, j, k)
+      tempd0 = -(two*volpid/temp2**2)
+      vold(i, j, k) = vold(i, j, k) + tempd0
+      vold(i+1, j, k) = vold(i+1, j, k) + tempd0
+      temp2 = vol(i, j, k) + vol(i-1, j, k)
+      tempd0 = -(two*volmid/temp2**2)
+      vold(i-1, j, k) = vold(i-1, j, k) + tempd0
+      vold(i, j, k) = vold(i, j, k) + tempd0 - one*volid/vol(i, j, k)**2
     end do
 !$bwd-of ii-loop 
     do ii=0,nx*ny*nz-1
@@ -2041,8 +2307,55 @@ contains
       nu_tp = half*(nut_p+nut)
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (after ricci et al. 2026 eq. 43-44, jst-like
+! face form): nu_art = c |v| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+! dgamma the jump across the face -> nu_art*tt = c |v| |dgamma| sqrt(tt). front width ~ sqrt(c)
+! cells (mesh-relative). code units: |v| h is already a viscosity ("re = 1 implicit", adflow_08).
+      artm = zero
+      artp = zero
+      if (sgammaartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j-1, k, ivx)**2 + w(i, j-1, k, ivy)**2 + w(i, j&
+&         -1, k, ivz)**2)
+        velp = sqrt(w(i, j+1, k, ivx)**2 + w(i, j+1, k, ivy)**2 + w(i, j&
+&         +1, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j-1, k, itu2) .ge. 0.) then
+          abs2 = w(i, j, k, itu2) - w(i, j-1, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs2 = -(w(i, j, k, itu2)-w(i, j-1, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttm .lt. eps) then
+          call pushcontrol1b(0)
+          max3 = eps
+        else
+          max3 = ttm
+          call pushcontrol1b(1)
+        end if
+        artm = sgammaartvisc*half*(velm+vel0)*abs2*sqrt(max3)
+        if (w(i, j, k, itu2) - w(i, j+1, k, itu2) .ge. 0.) then
+          abs3 = w(i, j, k, itu2) - w(i, j+1, k, itu2)
+          call pushcontrol1b(1)
+        else
+          abs3 = -(w(i, j, k, itu2)-w(i, j+1, k, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttp .lt. eps) then
+          call pushcontrol1b(0)
+          max4 = eps
+        else
+          max4 = ttp
+          call pushcontrol1b(1)
+        end if
+        artp = sgammaartvisc*half*(velp+vel0)*abs3*sqrt(max4)
+        call pushcontrol1b(1)
+      else
+        call pushcontrol1b(0)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
       if (cdm + cam .lt. zero) then
         c1m = zero
         call pushcontrol1b(0)
@@ -2121,54 +2434,136 @@ contains
         cdmd = c1md
         camd = c1md
       end if
-      cnudd = ttp*capd + ttm*camd
-      tempd = cb3inv*cdpd
-      nupd = ttp*cdp_gammad + ttp*tempd
+      nupd = ttp*cdp_gammad
       nu_tpd = ttp*cdp_gammad/sigmaf
-      ttpd = (nup+nu_tp/sigmaf)*cdp_gammad + (nup+(one+rsacb2)*nutp)*&
-&       tempd + cnud*capd
+      ttpd = (nup+nu_tp/sigmaf)*cdp_gammad
+      artpd = cdp_gammad
+      numd = ttm*cdm_gammad
       nu_tmd = ttm*cdm_gammad/sigmaf
-      nutpd = (one+rsacb2)*ttp*tempd
-      tempd = cb3inv*cdmd
-      numd = ttm*cdm_gammad + ttm*tempd
-      ttmd = (num+nu_tm/sigmaf)*cdm_gammad + (num+(one+rsacb2)*nutm)*&
-&       tempd + cnud*camd
-      nutmd = (one+rsacb2)*ttm*tempd
+      ttmd = (num+nu_tm/sigmaf)*cdm_gammad
+      artmd = cdm_gammad
+      call popcontrol1b(branch)
+      if (branch .ne. 0) then
+        temp1 = sqrt(max4)
+        tempd0 = sgammaartvisc*half*artpd
+        tempd1 = temp1*tempd0
+        if (max4 .eq. 0.0_8) then
+          max4d = 0.0_8
+        else
+          max4d = (velp+vel0)*abs3*tempd0/(2.0*temp1)
+        end if
+        velpd = abs3*tempd1
+        vel0d = abs3*tempd1
+        abs3d = (velp+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttpd = ttpd + max4d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j+1, k, itu2) = wd(i, j+1, k, itu2) + abs3d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs3d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs3d
+          wd(i, j+1, k, itu2) = wd(i, j+1, k, itu2) - abs3d
+        end if
+        temp1 = sqrt(max3)
+        tempd0 = sgammaartvisc*half*artmd
+        tempd1 = temp1*tempd0
+        if (max3 .eq. 0.0_8) then
+          max3d = 0.0_8
+        else
+          max3d = (velm+vel0)*abs2*tempd0/(2.0*temp1)
+        end if
+        velmd = abs2*tempd1
+        vel0d = vel0d + abs2*tempd1
+        abs2d = (velm+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttmd = ttmd + max3d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j-1, k, itu2) = wd(i, j-1, k, itu2) + abs2d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs2d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs2d
+          wd(i, j-1, k, itu2) = wd(i, j-1, k, itu2) - abs2d
+        end if
+        temp2 = w(i, j+1, k, ivz)
+        temp1 = w(i, j+1, k, ivy)
+        temp0 = w(i, j+1, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velpd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j+1, k, ivx) = wd(i, j+1, k, ivx) + 2*temp0*tempd
+        wd(i, j+1, k, ivy) = wd(i, j+1, k, ivy) + 2*temp1*tempd
+        wd(i, j+1, k, ivz) = wd(i, j+1, k, ivz) + 2*temp2*tempd
+        temp2 = w(i, j-1, k, ivz)
+        temp1 = w(i, j-1, k, ivy)
+        temp0 = w(i, j-1, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velmd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j-1, k, ivx) = wd(i, j-1, k, ivx) + 2*temp0*tempd
+        wd(i, j-1, k, ivy) = wd(i, j-1, k, ivy) + 2*temp1*tempd
+        wd(i, j-1, k, ivz) = wd(i, j-1, k, ivz) + 2*temp2*tempd
+        temp2 = w(i, j, k, ivz)
+        temp1 = w(i, j, k, ivy)
+        temp0 = w(i, j, k, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = vel0d/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp0*tempd
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp1*tempd
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp2*tempd
+      end if
+      cnudd = ttp*capd + ttm*camd
+      tempd0 = cb3inv*cdpd
+      nupd = nupd + ttp*tempd0
+      nutpd = (one+rsacb2)*ttp*tempd0
+      ttpd = ttpd + (nup+(one+rsacb2)*nutp)*tempd0 + cnud*capd
+      tempd0 = cb3inv*cdmd
+      numd = numd + ttm*tempd0
+      nutmd = (one+rsacb2)*ttm*tempd0
+      ttmd = ttmd + (num+(one+rsacb2)*nutm)*tempd0 + cnud*camd
       nut_pd = half*nu_tpd
       nutd = half*nu_tpd + half*nu_tmd
       nut_md = half*nu_tmd
       fv1_pd = nutilde_p*nut_pd
-      tempd = fv1_pd/(cv13+chi3_p)
-      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd
+      tempd0 = fv1_pd/(cv13+chi3_p)
+      chi3_pd = (1.0-chi3_p/(cv13+chi3_p))*tempd0
       chi_pd = 3*chi_p**2*chi3_pd
       nu_pd = half*nupd - nutilde_p*chi_pd/nu_p**2
       nutilde_pd = fv1_p*nut_pd + chi_pd/nu_p
       wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + nutilde_pd
-      temp = w(i, j+1, k, irho)
-      rlvd(i, j+1, k) = rlvd(i, j+1, k) + nu_pd/temp
+      temp2 = w(i, j+1, k, irho)
+      rlvd(i, j+1, k) = rlvd(i, j+1, k) + nu_pd/temp2
       wd(i, j+1, k, irho) = wd(i, j+1, k, irho) - rlv(i, j+1, k)*nu_pd/&
-&       temp**2
+&       temp2**2
       fv1_md = nutilde_m*nut_md
-      tempd = fv1_md/(cv13+chi3_m)
-      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd
+      tempd0 = fv1_md/(cv13+chi3_m)
+      chi3_md = (1.0-chi3_m/(cv13+chi3_m))*tempd0
       chi_md = 3*chi_m**2*chi3_md
       nu_md = half*numd - nutilde_m*chi_md/nu_m**2
       nutilde_md = fv1_m*nut_md + chi_md/nu_m
       wd(i, j-1, k, itu1) = wd(i, j-1, k, itu1) + nutilde_md
-      temp = w(i, j-1, k, irho)
-      rlvd(i, j-1, k) = rlvd(i, j-1, k) + nu_md/temp
+      temp2 = w(i, j-1, k, irho)
+      rlvd(i, j-1, k) = rlvd(i, j-1, k) + nu_md/temp2
       wd(i, j-1, k, irho) = wd(i, j-1, k, irho) - rlv(i, j-1, k)*nu_md/&
-&       temp**2
+&       temp2**2
       fv1d = nutilde*nutd
-      tempd = fv1d/(cv13+chi3)
-      chi3d = (1.0-chi3/(cv13+chi3))*tempd
+      tempd0 = fv1d/(cv13+chi3)
+      chi3d = (1.0-chi3/(cv13+chi3))*tempd0
       chid = 3*chi**2*chi3d
       nud = half*nupd + half*numd - nutilde*chid/nu**2
       nutilded = fv1*nutd + chid/nu
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + nutilded
-      temp = w(i, j, k, irho)
-      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp
-      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp**2
+      temp2 = w(i, j, k, irho)
+      rlvd(i, j, k) = rlvd(i, j, k) + nud/temp2
+      wd(i, j, k, irho) = wd(i, j, k, irho) - rlv(i, j, k)*nud/temp2**2
       wd(i, j+1, k, itu1) = wd(i, j+1, k, itu1) + half*nutpd
       wd(i, j, k, itu1) = wd(i, j, k, itu1) + half*nutpd + half*nutmd - &
 &       rsacb2*cb3inv*cnudd
@@ -2182,18 +2577,18 @@ contains
       xmd = xa*ttmd
       ymd = ya*ttmd
       zmd = za*ttmd
-      tempd = half*zad
-      sjd(i, j, k, 3) = sjd(i, j, k, 3) + voli*tempd
-      sjd(i, j-1, k, 3) = sjd(i, j-1, k, 3) + voli*tempd
-      volid = (sj(i, j, k, 3)+sj(i, j-1, k, 3))*tempd
-      tempd = half*yad
-      sjd(i, j, k, 2) = sjd(i, j, k, 2) + voli*tempd
-      sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) + voli*tempd
-      volid = volid + (sj(i, j, k, 2)+sj(i, j-1, k, 2))*tempd
-      tempd = half*xad
-      sjd(i, j, k, 1) = sjd(i, j, k, 1) + voli*tempd
-      sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) + voli*tempd
-      volid = volid + (sj(i, j, k, 1)+sj(i, j-1, k, 1))*tempd
+      tempd0 = half*zad
+      sjd(i, j, k, 3) = sjd(i, j, k, 3) + voli*tempd0
+      sjd(i, j-1, k, 3) = sjd(i, j-1, k, 3) + voli*tempd0
+      volid = (sj(i, j, k, 3)+sj(i, j-1, k, 3))*tempd0
+      tempd0 = half*yad
+      sjd(i, j, k, 2) = sjd(i, j, k, 2) + voli*tempd0
+      sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) + voli*tempd0
+      volid = volid + (sj(i, j, k, 2)+sj(i, j-1, k, 2))*tempd0
+      tempd0 = half*xad
+      sjd(i, j, k, 1) = sjd(i, j, k, 1) + voli*tempd0
+      sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) + voli*tempd0
+      volid = volid + (sj(i, j, k, 1)+sj(i, j-1, k, 1))*tempd0
       sjd(i, j, k, 3) = sjd(i, j, k, 3) + volpi*zpd
       volpid = sj(i, j, k, 3)*zpd + sj(i, j, k, 2)*ypd + sj(i, j, k, 1)*&
 &       xpd
@@ -2204,14 +2599,14 @@ contains
 &       k, 1)*xmd
       sjd(i, j-1, k, 2) = sjd(i, j-1, k, 2) + volmi*ymd
       sjd(i, j-1, k, 1) = sjd(i, j-1, k, 1) + volmi*xmd
-      temp = vol(i, j, k) + vol(i, j+1, k)
-      tempd = -(two*volpid/temp**2)
-      vold(i, j, k) = vold(i, j, k) + tempd
-      vold(i, j+1, k) = vold(i, j+1, k) + tempd
-      temp = vol(i, j, k) + vol(i, j-1, k)
-      tempd = -(two*volmid/temp**2)
-      vold(i, j-1, k) = vold(i, j-1, k) + tempd
-      vold(i, j, k) = vold(i, j, k) + tempd - one*volid/vol(i, j, k)**2
+      temp2 = vol(i, j, k) + vol(i, j+1, k)
+      tempd0 = -(two*volpid/temp2**2)
+      vold(i, j, k) = vold(i, j, k) + tempd0
+      vold(i, j+1, k) = vold(i, j+1, k) + tempd0
+      temp2 = vol(i, j, k) + vol(i, j-1, k)
+      tempd0 = -(two*volmid/temp2**2)
+      vold(i, j-1, k) = vold(i, j-1, k) + tempd0
+      vold(i, j, k) = vold(i, j, k) + tempd0 - one*volid/vol(i, j, k)**2
     end do
 !$bwd-of ii-loop 
     do ii=0,nx*ny*nz-1
@@ -2261,8 +2656,55 @@ contains
       nu_tp = half*(nut_p+nut)
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (after ricci et al. 2026 eq. 43-44, jst-like
+! face form): nu_art = c |v| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+! dgamma the jump across the face -> nu_art*tt = c |v| |dgamma| sqrt(tt). front width ~ sqrt(c)
+! cells (mesh-relative). code units: |v| h is already a viscosity ("re = 1 implicit", adflow_08).
+      artm = zero
+      artp = zero
+      if (sgammaartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j, k-1, ivx)**2 + w(i, j, k-1, ivy)**2 + w(i, j&
+&         , k-1, ivz)**2)
+        velp = sqrt(w(i, j, k+1, ivx)**2 + w(i, j, k+1, ivy)**2 + w(i, j&
+&         , k+1, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j, k-1, itu2) .ge. 0.) then
+          abs0 = w(i, j, k, itu2) - w(i, j, k-1, itu2)
+          call pushcontrol1b(1)
+        else
+          abs0 = -(w(i, j, k, itu2)-w(i, j, k-1, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttm .lt. eps) then
+          call pushcontrol1b(0)
+          max1 = eps
+        else
+          max1 = ttm
+          call pushcontrol1b(1)
+        end if
+        artm = sgammaartvisc*half*(velm+vel0)*abs0*sqrt(max1)
+        if (w(i, j, k, itu2) - w(i, j, k+1, itu2) .ge. 0.) then
+          abs1 = w(i, j, k, itu2) - w(i, j, k+1, itu2)
+          call pushcontrol1b(1)
+        else
+          abs1 = -(w(i, j, k, itu2)-w(i, j, k+1, itu2))
+          call pushcontrol1b(0)
+        end if
+        if (ttp .lt. eps) then
+          call pushcontrol1b(0)
+          max2 = eps
+        else
+          max2 = ttp
+          call pushcontrol1b(1)
+        end if
+        artp = sgammaartvisc*half*(velp+vel0)*abs1*sqrt(max2)
+        call pushcontrol1b(1)
+      else
+        call pushcontrol1b(0)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
       if (cdm + cam .lt. zero) then
         c1m = zero
         call pushcontrol1b(0)
@@ -2341,19 +2783,101 @@ contains
         cdmd = c1md
         camd = c1md
       end if
+      nupd = ttp*cdp_gammad
+      nu_tpd = ttp*cdp_gammad/sigmaf
+      ttpd = (nup+nu_tp/sigmaf)*cdp_gammad
+      artpd = cdp_gammad
+      numd = ttm*cdm_gammad
+      nu_tmd = ttm*cdm_gammad/sigmaf
+      ttmd = (num+nu_tm/sigmaf)*cdm_gammad
+      artmd = cdm_gammad
+      call popcontrol1b(branch)
+      if (branch .ne. 0) then
+        temp1 = sqrt(max2)
+        tempd0 = sgammaartvisc*half*artpd
+        tempd1 = temp1*tempd0
+        if (max2 .eq. 0.0_8) then
+          max2d = 0.0_8
+        else
+          max2d = (velp+vel0)*abs1*tempd0/(2.0*temp1)
+        end if
+        velpd = abs1*tempd1
+        vel0d = abs1*tempd1
+        abs1d = (velp+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttpd = ttpd + max2d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j, k+1, itu2) = wd(i, j, k+1, itu2) + abs1d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs1d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs1d
+          wd(i, j, k+1, itu2) = wd(i, j, k+1, itu2) - abs1d
+        end if
+        temp1 = sqrt(max1)
+        tempd0 = sgammaartvisc*half*artmd
+        tempd1 = temp1*tempd0
+        if (max1 .eq. 0.0_8) then
+          max1d = 0.0_8
+        else
+          max1d = (velm+vel0)*abs0*tempd0/(2.0*temp1)
+        end if
+        velmd = abs0*tempd1
+        vel0d = vel0d + abs0*tempd1
+        abs0d = (velm+vel0)*tempd1
+        call popcontrol1b(branch)
+        if (branch .ne. 0) ttmd = ttmd + max1d
+        call popcontrol1b(branch)
+        if (branch .eq. 0) then
+          wd(i, j, k-1, itu2) = wd(i, j, k-1, itu2) + abs0d
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) - abs0d
+        else
+          wd(i, j, k, itu2) = wd(i, j, k, itu2) + abs0d
+          wd(i, j, k-1, itu2) = wd(i, j, k-1, itu2) - abs0d
+        end if
+        temp2 = w(i, j, k+1, ivz)
+        temp1 = w(i, j, k+1, ivy)
+        temp0 = w(i, j, k+1, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velpd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k+1, ivx) = wd(i, j, k+1, ivx) + 2*temp0*tempd
+        wd(i, j, k+1, ivy) = wd(i, j, k+1, ivy) + 2*temp1*tempd
+        wd(i, j, k+1, ivz) = wd(i, j, k+1, ivz) + 2*temp2*tempd
+        temp2 = w(i, j, k-1, ivz)
+        temp1 = w(i, j, k-1, ivy)
+        temp0 = w(i, j, k-1, ivx)
+        if (temp0**2 + temp1**2 + temp2**2 .eq. 0.0_8) then
+          tempd = 0.0_8
+        else
+          tempd = velmd/(2.0*sqrt(temp0**2+temp1**2+temp2**2))
+        end if
+        wd(i, j, k-1, ivx) = wd(i, j, k-1, ivx) + 2*temp0*tempd
+        wd(i, j, k-1, ivy) = wd(i, j, k-1, ivy) + 2*temp1*tempd
+        wd(i, j, k-1, ivz) = wd(i, j, k-1, ivz) + 2*temp2*tempd
+        temp = w(i, j, k, ivz)
+        temp0 = w(i, j, k, ivy)
+        temp1 = w(i, j, k, ivx)
+        if (temp1**2 + temp0**2 + temp**2 .eq. 0.0_8) then
+          tempd0 = 0.0_8
+        else
+          tempd0 = vel0d/(2.0*sqrt(temp1**2+temp0**2+temp**2))
+        end if
+        wd(i, j, k, ivx) = wd(i, j, k, ivx) + 2*temp1*tempd0
+        wd(i, j, k, ivy) = wd(i, j, k, ivy) + 2*temp0*tempd0
+        wd(i, j, k, ivz) = wd(i, j, k, ivz) + 2*temp*tempd0
+      end if
       cnudd = ttp*capd + ttm*camd
       tempd = cb3inv*cdpd
-      nupd = ttp*cdp_gammad + ttp*tempd
-      nu_tpd = ttp*cdp_gammad/sigmaf
-      ttpd = (nup+nu_tp/sigmaf)*cdp_gammad + (nup+(one+rsacb2)*nutp)*&
-&       tempd + cnud*capd
-      nu_tmd = ttm*cdm_gammad/sigmaf
+      nupd = nupd + ttp*tempd
       nutpd = (one+rsacb2)*ttp*tempd
+      ttpd = ttpd + (nup+(one+rsacb2)*nutp)*tempd + cnud*capd
       tempd = cb3inv*cdmd
-      numd = ttm*cdm_gammad + ttm*tempd
-      ttmd = (num+nu_tm/sigmaf)*cdm_gammad + (num+(one+rsacb2)*nutm)*&
-&       tempd + cnud*camd
+      numd = numd + ttm*tempd
       nutmd = (one+rsacb2)*ttm*tempd
+      ttmd = ttmd + (num+(one+rsacb2)*nutm)*tempd + cnud*camd
       nut_pd = half*nu_tpd
       nutd = half*nu_tpd + half*nu_tmd
       nut_md = half*nu_tmd
@@ -2443,10 +2967,13 @@ contains
     use constants
     use blockpointers
     use paramturb
+    use inputiteration, only : sgammaartvisc
     implicit none
     integer(kind=inttype) :: i, j, k, ii
     real(kind=realtype) :: nu, nu_m, nu_p, nut, nut_m, nut_p, nu_tm, &
 &   nu_tp
+    real(kind=realtype) :: vel0, velm, velp, artm, artp, c2mi, c2pi, &
+&   c20i
     real(kind=realtype) :: nutilde, nutilde_m, nutilde_p
     real(kind=realtype) :: chi, chi3, chi_m, chi3_m, chi_p, chi3_p, fv1&
 &   , fv1_m, fv1_p
@@ -2458,7 +2985,21 @@ contains
     real(kind=realtype) :: b1, c1, d1, b2, c2, d2
     real(kind=realtype) :: cb3inv, cv13
     intrinsic mod
+    intrinsic sqrt
+    intrinsic abs
     intrinsic max
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max6
     cb3inv = one/rsacb3
     cv13 = rsacv1**3
 !$ad ii-loop
@@ -2510,8 +3051,44 @@ contains
       nu_tp = half*(nut_p+nut)
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (after ricci et al. 2026 eq. 43-44, jst-like
+! face form): nu_art = c |v| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+! dgamma the jump across the face -> nu_art*tt = c |v| |dgamma| sqrt(tt). front width ~ sqrt(c)
+! cells (mesh-relative). code units: |v| h is already a viscosity ("re = 1 implicit", adflow_08).
+      artm = zero
+      artp = zero
+      if (sgammaartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j, k-1, ivx)**2 + w(i, j, k-1, ivy)**2 + w(i, j&
+&         , k-1, ivz)**2)
+        velp = sqrt(w(i, j, k+1, ivx)**2 + w(i, j, k+1, ivy)**2 + w(i, j&
+&         , k+1, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j, k-1, itu2) .ge. 0.) then
+          abs0 = w(i, j, k, itu2) - w(i, j, k-1, itu2)
+        else
+          abs0 = -(w(i, j, k, itu2)-w(i, j, k-1, itu2))
+        end if
+        if (ttm .lt. eps) then
+          max1 = eps
+        else
+          max1 = ttm
+        end if
+        artm = sgammaartvisc*half*(velm+vel0)*abs0*sqrt(max1)
+        if (w(i, j, k, itu2) - w(i, j, k+1, itu2) .ge. 0.) then
+          abs1 = w(i, j, k, itu2) - w(i, j, k+1, itu2)
+        else
+          abs1 = -(w(i, j, k, itu2)-w(i, j, k+1, itu2))
+        end if
+        if (ttp .lt. eps) then
+          max2 = eps
+        else
+          max2 = ttp
+        end if
+        artp = sgammaartvisc*half*(velp+vel0)*abs1*sqrt(max2)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
       if (cdm + cam .lt. zero) then
         c1m = zero
       else
@@ -2588,8 +3165,44 @@ contains
       nu_tp = half*(nut_p+nut)
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (after ricci et al. 2026 eq. 43-44, jst-like
+! face form): nu_art = c |v| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+! dgamma the jump across the face -> nu_art*tt = c |v| |dgamma| sqrt(tt). front width ~ sqrt(c)
+! cells (mesh-relative). code units: |v| h is already a viscosity ("re = 1 implicit", adflow_08).
+      artm = zero
+      artp = zero
+      if (sgammaartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i, j-1, k, ivx)**2 + w(i, j-1, k, ivy)**2 + w(i, j&
+&         -1, k, ivz)**2)
+        velp = sqrt(w(i, j+1, k, ivx)**2 + w(i, j+1, k, ivy)**2 + w(i, j&
+&         +1, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i, j-1, k, itu2) .ge. 0.) then
+          abs2 = w(i, j, k, itu2) - w(i, j-1, k, itu2)
+        else
+          abs2 = -(w(i, j, k, itu2)-w(i, j-1, k, itu2))
+        end if
+        if (ttm .lt. eps) then
+          max3 = eps
+        else
+          max3 = ttm
+        end if
+        artm = sgammaartvisc*half*(velm+vel0)*abs2*sqrt(max3)
+        if (w(i, j, k, itu2) - w(i, j+1, k, itu2) .ge. 0.) then
+          abs3 = w(i, j, k, itu2) - w(i, j+1, k, itu2)
+        else
+          abs3 = -(w(i, j, k, itu2)-w(i, j+1, k, itu2))
+        end if
+        if (ttp .lt. eps) then
+          max4 = eps
+        else
+          max4 = ttp
+        end if
+        artp = sgammaartvisc*half*(velp+vel0)*abs3*sqrt(max4)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
       if (cdm + cam .lt. zero) then
         c1m = zero
       else
@@ -2666,8 +3279,44 @@ contains
       nu_tp = half*(nut_p+nut)
       cdm = (num+(one+rsacb2)*nutm)*ttm*cb3inv
       cdp = (nup+(one+rsacb2)*nutp)*ttp*cb3inv
-      cdm_gamma = (num+nu_tm/sigmaf)*ttm
-      cdp_gamma = (nup+nu_tp/sigmaf)*ttp
+! gradient-driven artificial viscosity on gamma (after ricci et al. 2026 eq. 43-44, jst-like
+! face form): nu_art = c |v| h |dgamma| with h = 1/sqrt(tt) the face-normal cell length and
+! dgamma the jump across the face -> nu_art*tt = c |v| |dgamma| sqrt(tt). front width ~ sqrt(c)
+! cells (mesh-relative). code units: |v| h is already a viscosity ("re = 1 implicit", adflow_08).
+      artm = zero
+      artp = zero
+      if (sgammaartvisc .gt. zero) then
+        vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i, j, k&
+&         , ivz)**2)
+        velm = sqrt(w(i-1, j, k, ivx)**2 + w(i-1, j, k, ivy)**2 + w(i-1&
+&         , j, k, ivz)**2)
+        velp = sqrt(w(i+1, j, k, ivx)**2 + w(i+1, j, k, ivy)**2 + w(i+1&
+&         , j, k, ivz)**2)
+        if (w(i, j, k, itu2) - w(i-1, j, k, itu2) .ge. 0.) then
+          abs4 = w(i, j, k, itu2) - w(i-1, j, k, itu2)
+        else
+          abs4 = -(w(i, j, k, itu2)-w(i-1, j, k, itu2))
+        end if
+        if (ttm .lt. eps) then
+          max5 = eps
+        else
+          max5 = ttm
+        end if
+        artm = sgammaartvisc*half*(velm+vel0)*abs4*sqrt(max5)
+        if (w(i, j, k, itu2) - w(i+1, j, k, itu2) .ge. 0.) then
+          abs5 = w(i, j, k, itu2) - w(i+1, j, k, itu2)
+        else
+          abs5 = -(w(i, j, k, itu2)-w(i+1, j, k, itu2))
+        end if
+        if (ttp .lt. eps) then
+          max6 = eps
+        else
+          max6 = ttp
+        end if
+        artp = sgammaartvisc*half*(velp+vel0)*abs5*sqrt(max6)
+      end if
+      cdm_gamma = (num+nu_tm/sigmaf)*ttm + artm
+      cdp_gamma = (nup+nu_tp/sigmaf)*ttp + artp
       if (cdm + cam .lt. zero) then
         c1m = zero
       else
@@ -2787,6 +3436,7 @@ contains
     real(kind=realtype) :: cnud, cam, cap, nutm, nutp
     real(kind=realtype) :: c1m, c1p, c2m, c2p
     real(kind=realtype) :: qs, uu, um, up
+    real(kind=realtype) :: vel0, velm, velp, artm, artp
     real(kind=realtype) :: cb3inv, cv13, rblank, factor
     real(kind=realtype) :: gammanew, gammadelta, dampfactor
     integer(kind=inttype) :: ndampcapgamma
@@ -2796,11 +3446,24 @@ contains
     real(kind=realtype), dimension(2, 2, 2:max(il, jl, kl)) :: cc
     logical, save :: printedcoupling=.false.
     intrinsic abs
+    intrinsic sqrt
     intrinsic real
     intrinsic min
     real(kind=realtype) :: x1
     real(kind=realtype) :: x2
     real(kind=realtype) :: x3
+    real(kind=realtype) :: abs0
+    real(kind=realtype) :: abs1
+    real(kind=realtype) :: abs2
+    real(kind=realtype) :: abs3
+    real(kind=realtype) :: abs4
+    real(kind=realtype) :: abs5
+    real(kind=realtype) :: max1
+    real(kind=realtype) :: max2
+    real(kind=realtype) :: max3
+    real(kind=realtype) :: max4
+    real(kind=realtype) :: max5
+    real(kind=realtype) :: max6
     if (resonly) then
       return
     else
@@ -2913,8 +3576,42 @@ contains
             nu_tp = half*(nut_p+nut)
             cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
             cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
-            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
-            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! same gradient-driven artificial viscosity on gamma as in sgviscous (keep the adi operator
+! consistent with the residual; without it the dadi stalls on a false fixed point)
+            artm = zero
+            artp = zero
+            if (sgammaartvisc .gt. zero) then
+              vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i&
+&               , j, k, ivz)**2)
+              velm = sqrt(w(i, j-1, k, ivx)**2 + w(i, j-1, k, ivy)**2 + &
+&               w(i, j-1, k, ivz)**2)
+              velp = sqrt(w(i, j+1, k, ivx)**2 + w(i, j+1, k, ivy)**2 + &
+&               w(i, j+1, k, ivz)**2)
+              if (w(i, j, k, itu2) - w(i, j-1, k, itu2) .ge. 0.) then
+                abs0 = w(i, j, k, itu2) - w(i, j-1, k, itu2)
+              else
+                abs0 = -(w(i, j, k, itu2)-w(i, j-1, k, itu2))
+              end if
+              if (ttm .lt. eps) then
+                max1 = eps
+              else
+                max1 = ttm
+              end if
+              artm = sgammaartvisc*half*(velm+vel0)*abs0*sqrt(max1)
+              if (w(i, j, k, itu2) - w(i, j+1, k, itu2) .ge. 0.) then
+                abs1 = w(i, j, k, itu2) - w(i, j+1, k, itu2)
+              else
+                abs1 = -(w(i, j, k, itu2)-w(i, j+1, k, itu2))
+              end if
+              if (ttp .lt. eps) then
+                max2 = eps
+              else
+                max2 = ttp
+              end if
+              artp = sgammaartvisc*half*(velp+vel0)*abs1*sqrt(max2)
+            end if
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm + artm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp + artp
             if (cdm + cam .lt. zero) then
               c1m = zero
             else
@@ -2925,15 +3622,15 @@ contains
             else
               c1p = cdp + cap
             end if
-            if (cdm_gamma .lt. zero) then
+            if (cdm_gamma + artm .lt. zero) then
               c2m = zero
             else
-              c2m = cdm_gamma
+              c2m = cdm_gamma + artm
             end if
-            if (cdp_gamma .lt. zero) then
+            if (cdp_gamma + artp .lt. zero) then
               c2p = zero
             else
-              c2p = cdp_gamma
+              c2p = cdp_gamma + artp
             end if
             bb(1, j) = -c1m
             dd(1, j) = -c1p
@@ -3017,8 +3714,42 @@ contains
             nu_tp = half*(nut_p+nut)
             cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
             cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
-            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
-            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! same gradient-driven artificial viscosity on gamma as in sgviscous (keep the adi operator
+! consistent with the residual; without it the dadi stalls on a false fixed point)
+            artm = zero
+            artp = zero
+            if (sgammaartvisc .gt. zero) then
+              vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i&
+&               , j, k, ivz)**2)
+              velm = sqrt(w(i-1, j, k, ivx)**2 + w(i-1, j, k, ivy)**2 + &
+&               w(i-1, j, k, ivz)**2)
+              velp = sqrt(w(i+1, j, k, ivx)**2 + w(i+1, j, k, ivy)**2 + &
+&               w(i+1, j, k, ivz)**2)
+              if (w(i, j, k, itu2) - w(i-1, j, k, itu2) .ge. 0.) then
+                abs2 = w(i, j, k, itu2) - w(i-1, j, k, itu2)
+              else
+                abs2 = -(w(i, j, k, itu2)-w(i-1, j, k, itu2))
+              end if
+              if (ttm .lt. eps) then
+                max3 = eps
+              else
+                max3 = ttm
+              end if
+              artm = sgammaartvisc*half*(velm+vel0)*abs2*sqrt(max3)
+              if (w(i, j, k, itu2) - w(i+1, j, k, itu2) .ge. 0.) then
+                abs3 = w(i, j, k, itu2) - w(i+1, j, k, itu2)
+              else
+                abs3 = -(w(i, j, k, itu2)-w(i+1, j, k, itu2))
+              end if
+              if (ttp .lt. eps) then
+                max4 = eps
+              else
+                max4 = ttp
+              end if
+              artp = sgammaartvisc*half*(velp+vel0)*abs3*sqrt(max4)
+            end if
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm + artm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp + artp
             if (cdm + cam .lt. zero) then
               c1m = zero
             else
@@ -3029,15 +3760,15 @@ contains
             else
               c1p = cdp + cap
             end if
-            if (cdm_gamma .lt. zero) then
+            if (cdm_gamma + artm .lt. zero) then
               c2m = zero
             else
-              c2m = cdm_gamma
+              c2m = cdm_gamma + artm
             end if
-            if (cdp_gamma .lt. zero) then
+            if (cdp_gamma + artp .lt. zero) then
               c2p = zero
             else
-              c2p = cdp_gamma
+              c2p = cdp_gamma + artp
             end if
             bb(1, i) = -c1m
             dd(1, i) = -c1p
@@ -3121,8 +3852,42 @@ contains
             nu_tp = half*(nut_p+nut)
             cdm = (num_v+(one+rsacb2)*nutm)*ttm*cb3inv
             cdp = (nup_v+(one+rsacb2)*nutp)*ttp*cb3inv
-            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm
-            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp
+! same gradient-driven artificial viscosity on gamma as in sgviscous (keep the adi operator
+! consistent with the residual; without it the dadi stalls on a false fixed point)
+            artm = zero
+            artp = zero
+            if (sgammaartvisc .gt. zero) then
+              vel0 = sqrt(w(i, j, k, ivx)**2 + w(i, j, k, ivy)**2 + w(i&
+&               , j, k, ivz)**2)
+              velm = sqrt(w(i, j, k-1, ivx)**2 + w(i, j, k-1, ivy)**2 + &
+&               w(i, j, k-1, ivz)**2)
+              velp = sqrt(w(i, j, k+1, ivx)**2 + w(i, j, k+1, ivy)**2 + &
+&               w(i, j, k+1, ivz)**2)
+              if (w(i, j, k, itu2) - w(i, j, k-1, itu2) .ge. 0.) then
+                abs4 = w(i, j, k, itu2) - w(i, j, k-1, itu2)
+              else
+                abs4 = -(w(i, j, k, itu2)-w(i, j, k-1, itu2))
+              end if
+              if (ttm .lt. eps) then
+                max5 = eps
+              else
+                max5 = ttm
+              end if
+              artm = sgammaartvisc*half*(velm+vel0)*abs4*sqrt(max5)
+              if (w(i, j, k, itu2) - w(i, j, k+1, itu2) .ge. 0.) then
+                abs5 = w(i, j, k, itu2) - w(i, j, k+1, itu2)
+              else
+                abs5 = -(w(i, j, k, itu2)-w(i, j, k+1, itu2))
+              end if
+              if (ttp .lt. eps) then
+                max6 = eps
+              else
+                max6 = ttp
+              end if
+              artp = sgammaartvisc*half*(velp+vel0)*abs5*sqrt(max6)
+            end if
+            cdm_gamma = (num_v+nu_tm/sigmaf)*ttm + artm
+            cdp_gamma = (nup_v+nu_tp/sigmaf)*ttp + artp
             if (cdm + cam .lt. zero) then
               c1m = zero
             else
@@ -3133,15 +3898,15 @@ contains
             else
               c1p = cdp + cap
             end if
-            if (cdm_gamma .lt. zero) then
+            if (cdm_gamma + artm .lt. zero) then
               c2m = zero
             else
-              c2m = cdm_gamma
+              c2m = cdm_gamma + artm
             end if
-            if (cdp_gamma .lt. zero) then
+            if (cdp_gamma + artp .lt. zero) then
               c2p = zero
             else
-              c2p = cdp_gamma
+              c2p = cdp_gamma + artp
             end if
             bb(1, k) = -c1m
             dd(1, k) = -c1p
@@ -3241,9 +4006,10 @@ contains
     use flowvarrefstate
     use inputdiscretization, only : approxsa
     use inputiteration, only : transitionuseapproxsa, sgammavortlimiter,&
-&   sgammaonsettanh, sgammafturblee, sgammacoupledestruction, &
-&   sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, sgammatanhk, &
-&   sgammatanhs, sgammatanhamp, sgammatanhrt
+&   sgammaprodvorticity, sgammaonsettanh, sgammafturblee, &
+&   sgammacoupledestruction, sgammafpgsmoothp, sgammactu1, sgammactu2, &
+&   sgammactu3, sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
+&   sgammasmoothclip, sgammalamsmoothp, sgammaonsetsmoothp
     implicit none
     integer(kind=inttype), intent(in) :: i, j, k
     real(kind=realtype), intent(out) :: a(2, 2)
@@ -3284,12 +4050,14 @@ contains
     call cellsources(nutilde, gam, nu, dist2inv, ss, strainmag, vortmag&
 &              , ydist, duds, w(i, j, k, irho), rlv(i, j, k), tupct, &
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
-&              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
-&              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
+&              sgammaprodvorticity, sgammaonsettanh, sgammafturblee, &
+&              sgammacoupledestruction, sgammasmoothclip, &
+&              sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
 &              sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
-&              snu, sgamma, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
-&              , d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, &
-&              d23, d24, d25, d26)
+&              sgammalamsmoothp, sgammaonsetsmoothp, snu, sgamma, d1, d2&
+&              , d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, &
+&              d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
+&              d26)
     if (nutilde .ge. 0.) then
       abs0 = nutilde
     else
@@ -3306,24 +4074,28 @@ contains
     call cellsources(arg1, gam, nu, dist2inv, ss, strainmag, vortmag, &
 &              ydist, duds, w(i, j, k, irho), rlv(i, j, k), tupct, &
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
-&              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
-&              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
+&              sgammaprodvorticity, sgammaonsettanh, sgammafturblee, &
+&              sgammacoupledestruction, sgammasmoothclip, &
+&              sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
 &              sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
-&              snup, sgamp, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
-&              , d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, &
-&              d23, d24, d25, d26)
+&              sgammalamsmoothp, sgammaonsetsmoothp, snup, sgamp, d1, d2&
+&              , d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, &
+&              d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
+&              d26)
     a(1, 1) = (snup-snu)/epsnu
     a(2, 1) = (sgamp-sgamma)/epsnu
     arg1 = gam + epsg
     call cellsources(nutilde, arg1, nu, dist2inv, ss, strainmag, vortmag&
 &              , ydist, duds, w(i, j, k, irho), rlv(i, j, k), tupct, &
 &              vortlim, ft2, approxterm1, sgammavortlimiter, &
-&              sgammaonsettanh, sgammafturblee, sgammacoupledestruction&
-&              , sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
+&              sgammaprodvorticity, sgammaonsettanh, sgammafturblee, &
+&              sgammacoupledestruction, sgammasmoothclip, &
+&              sgammafpgsmoothp, sgammactu1, sgammactu2, sgammactu3, &
 &              sgammatanhk, sgammatanhs, sgammatanhamp, sgammatanhrt, &
-&              snup, sgamp, d1, d2, d3, d4, d5, d6, d7, d8, d9, d10, d11&
-&              , d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d22, &
-&              d23, d24, d25, d26)
+&              sgammalamsmoothp, sgammaonsetsmoothp, snup, sgamp, d1, d2&
+&              , d3, d4, d5, d6, d7, d8, d9, d10, d11, d12, d13, d14, &
+&              d15, d16, d17, d18, d19, d20, d21, d22, d23, d24, d25, &
+&              d26)
     a(1, 2) = (snup-snu)/epsg
     a(2, 2) = (sgamp-sgamma)/epsg
   end subroutine evalsrcjacblocksagamma
