@@ -1873,23 +1873,9 @@ contains
         real(kind=realType), dimension(3, 2:max(il, jl, kl)) :: bb, dd, ff
         real(kind=realType), dimension(3, 3, 2:max(il, jl, kl)) :: cc
 
-        logical, save :: printedCoupling = .false.
 
         if (resOnly) return
 
-        if (.not. printedCoupling) then
-            printedCoupling = .true.
-            select case (TurbDADICoupled)
-            case (0)
-                print *, 'SA-gamma-ReTheta DADI coupling: fully decoupled (diagonal only)'
-            case (1)
-                print *, 'SA-gamma-ReTheta DADI coupling: SA decoupled, gamma-ReTheta coupled'
-            case (2)
-                print *, 'SA-gamma-ReTheta DADI coupling: fully coupled (3x3 block)'
-            case default
-                print *, 'SA-gamma-ReTheta DADI coupling: unknown mode', TurbDADICoupled
-            end select
-        end if
 
         cb3Inv = one / rsaCb3
         cv13 = rsaCv1**3

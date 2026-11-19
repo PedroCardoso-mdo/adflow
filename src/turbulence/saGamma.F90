@@ -1031,18 +1031,9 @@ contains
         real(kind=realType) :: scaleNu, scaleGamma, s12, s21
         real(kind=realType), dimension(2, 2:max(il, jl, kl)) :: bb, dd, ff
         real(kind=realType), dimension(2, 2, 2:max(il, jl, kl)) :: cc
-        logical, save :: printedCoupling = .false.
 
         if (resOnly) return
 
-        if (.not. printedCoupling) then
-            printedCoupling = .true.
-            if (TurbDADICoupled == 0) then
-                print *, 'SA-sgamma DADI coupling: decoupled (diagonal only)'
-            else
-                print *, 'SA-sgamma DADI coupling: fully coupled (2x2 block)'
-            end if
-        end if
 
         cb3Inv = one / rsaCb3
         cv13 = rsaCv1**3
