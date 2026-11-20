@@ -2434,6 +2434,21 @@ module ANKSolver
     real(kind=realType) :: ANK_CFLMin0, ANK_CFLMin, ANK_CFLMinBase, ANK_CFLExponent
     real(kind=realType) :: ANK_stepMin, ANK_StepFactor, ANK_constCFLStep
     real(kind=realType) :: ANK_secondOrdSwitchTol, ANK_coupledSwitchTol
+    ! Stall-triggered phase advance. The phase switches (segregated ->
+    ! coupled -> second-order/exact operator) are thresholds on totalR, a norm
+    ! the mean flow dominates. A limit cycle of the transition equations that
+    ! floors totalR just above a threshold keeps the solver in the weaker
+    ! phase for ever (GR, matrix, Tu 0.03 %: segregated ANK cycling at 1.4e-5
+    ! with the coupling switch at 1e-5). With ANK_stallSwitchIters = N > 0:
+    ! if totalR has not dropped by ANK_stallSwitchFactor within N ANK
+    ! iterations, advance one phase (couple; if already coupled, switch to
+    ! the second-order operator). 0 = off (thresholds only).
+    integer(kind=intType) :: ANK_stallSwitchIters = 0
+    real(kind=realType) :: ANK_stallSwitchFactor = 0.5_realType
+    real(kind=realType) :: stallSwRefR = -1.0_realType
+    integer(kind=intType) :: stallSwCount = 0
+    real(kind=realType) :: stallSwSavedCoupledTol, stallSwSavedSecondOrdTol
+    logical :: stallSwAdvancedCoupled = .false., stallSwAdvancedSecondOrd = .false.
     real(kind=realType) :: ANK_physLSTol, ANK_unstdyLSTol
     real(kind=realType) :: ANK_pcUpdateTol, ANK_pcUpdateTol2
     real(kind=realType) :: ANK_pcUpdateCutoff
@@ -5596,6 +5611,44 @@ contains
         integer(kind=intType) :: lsMaxIterEff
         logical :: correctForK, LSFailed, backtrackTriggeredANK, useSecondOrd
 
+        ! ============== Stall-triggered phase advance ==============
+        ! A new solve starts from the user's thresholds again.
+        if (firstCall) then
+            if (stallSwAdvancedCoupled) ANK_coupledSwitchTol = stallSwSavedCoupledTol
+            if (stallSwAdvancedSecondOrd) ANK_secondOrdSwitchTol = stallSwSavedSecondOrdTol
+            stallSwAdvancedCoupled = .false.
+            stallSwAdvancedSecondOrd = .false.
+            stallSwRefR = -one
+            stallSwCount = 0
+        else if (ANK_stallSwitchIters > 0 .and. equations .eq. RANSEquations) then
+            if (stallSwRefR <= zero .or. totalR < ANK_stallSwitchFactor * stallSwRefR) then
+                stallSwRefR = totalR
+                stallSwCount = 0
+            else
+                stallSwCount = stallSwCount + 1
+            end if
+            if (stallSwCount >= ANK_stallSwitchIters) then
+                ! ANK_coupledSwitchTol below 1e-12 is the "never couple" setting of
+                ! some recipes: respect it and go for the second-order operator.
+                if ((.not. ANK_coupled) .and. (.not. stallSwAdvancedCoupled) .and. &
+                    ANK_coupledSwitchTol > 1e-12_realType) then
+                    stallSwSavedCoupledTol = ANK_coupledSwitchTol
+                    ANK_coupledSwitchTol = 1e30_realType
+                    stallSwAdvancedCoupled = .true.
+                    if (myid == 0) write (*, "(a,i5,a,es9.2,a)") " ANK stall switch: no progress in ", &
+                        ANK_stallSwitchIters, " iterations at rel ", totalR / totalR0, " -> coupled ANK"
+                else if ((.not. stallSwAdvancedSecondOrd) .and. &
+                         totalR > ANK_secondOrdSwitchTol * totalR0) then
+                    stallSwSavedSecondOrdTol = ANK_secondOrdSwitchTol
+                    ANK_secondOrdSwitchTol = 1e30_realType
+                    stallSwAdvancedSecondOrd = .true.
+                    if (myid == 0) write (*, "(a,i5,a,es9.2,a)") " ANK stall switch: no progress in ", &
+                        ANK_stallSwitchIters, " iterations at rel ", totalR / totalR0, " -> second-order ANK"
+                end if
+                stallSwRefR = totalR
+                stallSwCount = 0
+            end if
+        end if
 
         ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
         if (firstCall .or. &

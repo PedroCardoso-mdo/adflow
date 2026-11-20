@@ -497,6 +497,8 @@ python module libadflow
          real(kind=realtype) :: ank_unstdylstol
          real(kind=realtype) :: ank_secondordswitchtol
          real(kind=realtype) :: ank_coupledswitchtol
+         integer(kind=inttype) :: ank_stallswitchiters
+         real(kind=realtype) :: ank_stallswitchfactor
          real(kind=realtype) :: ank_turbcflscale
          logical :: ank_usefullvisc
          real(kind=realtype) :: ank_pcupdatetol
@@ -1174,6 +1176,7 @@ real(kind=realtype) :: sgammaonsetsmoothp
          real(kind=realtype) :: transitionartvisc
          real(kind=realtype) :: transitiongammafloor
          integer(kind=inttype) :: srcdtdeactivateiters
+         real(kind=realtype) :: turbl2convergence
          real(kind=realtype) :: transitiondamptheta
          integer(kind=inttype) :: transitiondampmaxiter
          logical :: solverstalldiag

@@ -400,6 +400,15 @@ module inputIteration
     real(kind=realType) :: transitionGammaFloor = 0.0_realType
     ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)
     integer(kind=intType) :: srcDtDeactivateIters = 5
+    ! turbL2Convergence > 0: per-equation convergence gate. The solve is
+    ! converged only when, besides totalR <= L2Convergence*totalR0, every
+    ! turbulence/transition residual norm is below turbL2Convergence times its
+    ! own peak of this solve. totalR is dominated by the mean flow (its
+    ! reference is the free-stream flow residual and Re_theta enters with a
+    ! weight of 1e-4), so "8 orders" of totalR left Re_theta 4.7 orders below
+    ! its peak. 0 = off (totalR only).
+    real(kind=realType) :: turbL2Convergence = 0.0_realType
+    real(kind=realType), dimension(4) :: turbEqRes = 0.0_realType, turbEqResPeak = 0.0_realType
     integer(kind=intType) :: noBacktrackCount = 0
     ! Damping parameters for γ/Reθt iterative update (P&Z Algorithm 2).
     ! MaxIter is a safety cap on the (unbounded in the paper) back-off loop;

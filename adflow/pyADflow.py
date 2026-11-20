@@ -5924,6 +5924,9 @@ class ADFLOW(AeroSolver):
             "transitionArtVisc": [float, 0.0],
             "transitionGammaFloor": [float, 0.0],
             "srcDtDeactivateIters": [int, 5],
+            # Per-equation convergence gate: each turbulence/transition residual must also drop by this
+            # factor from its own peak (0 = off, totalR only)
+            "turbL2Convergence": [float, 0.0],
             # SA-γ-Reθt damping params (not in canonical ADflow)
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 10000],
@@ -6188,6 +6191,9 @@ class ADFLOW(AeroSolver):
             "ANKUnsteadyLSTol": [float, 1.0],
             "ANKSecondOrdSwitchTol": [float, 1e-16],
             "ANKCoupledSwitchTol": [float, 1e-16],
+            # Stall-triggered phase advance (segregated -> coupled -> second order): 0 = off
+            "ANKStallSwitchIters": [int, 0],
+            "ANKStallSwitchFactor": [float, 0.5],
             "ANKTurbCFLScale": [float, 1.0],
             "ANKUseFullVisc": [bool, True],
             "ANKPCUpdateTol": [float, 0.5],
@@ -6447,6 +6453,7 @@ class ADFLOW(AeroSolver):
             "transitionartvisc": ["iter", "transitionartvisc"],
             "transitiongammafloor": ["iter", "transitiongammafloor"],
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
+            "turbl2convergence": ["iter", "turbl2convergence"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
@@ -6698,6 +6705,8 @@ class ADFLOW(AeroSolver):
             "ankunsteadylstol": ["ank", "ank_unstdylstol"],
             "anksecondordswitchtol": ["ank", "ank_secondordswitchtol"],
             "ankcoupledswitchtol": ["ank", "ank_coupledswitchtol"],
+            "ankstallswitchiters": ["ank", "ank_stallswitchiters"],
+            "ankstallswitchfactor": ["ank", "ank_stallswitchfactor"],
             "ankturbcflscale": ["ank", "ank_turbcflscale"],
             "ankusefullvisc": ["ank", "ank_usefullvisc"],
             "ankpcupdatetol": ["ank", "ank_pcupdatetol"],
