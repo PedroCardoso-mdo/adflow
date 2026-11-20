@@ -2415,6 +2415,18 @@ module ANKSolver
     logical :: ANK_turbDebug
     logical :: ANK_useMatrixFree
     character(len=maxStringLen) :: ANK_charTimeStepType
+    ! Low-Mach controls of the characteristic time step (pseudo-time term
+    ! only: R(w) and the converged solution are untouched).
+    !  ANK_charBlendCFL   > 0: the preconditioning is fully on from this CFL
+    !                     (blend = min(1, CFL/charBlendCFL)) instead of being
+    !                     tied to ANK_CFLLimit. <= 0: Seraj2022c blend.
+    !  ANK_charMachFloor  K in the cut-off M^2 >= K*Minf^2 (Seraj: 1e-4;
+    !                     Turkel's global cut-off: K ~ 1-3).
+    !  ANK_charPresCutoff eps in the Weiss-Smith pressure cut-off
+    !                     U_r >= eps*sqrt(dp/rho) (0 = off).
+    real(kind=realType) :: ANK_charBlendCFL = -1.0_realType
+    real(kind=realType) :: ANK_charMachFloor = 1e-4_realType
+    real(kind=realType) :: ANK_charPresCutoff = 0.0_realType
     integer(kind=intType) :: ANK_nsubIterTurb
 
     ! Misc variables
@@ -3004,6 +3016,8 @@ contains
         real(kind=realType) :: blendFactor, dtInv, rho, velX, velY, velZ
         real(kind=realType) :: speed, speedOfSound, mach, machSqr, machSqrTrunc, alpha, beta, tau, gammaMinusOne
         real(kind=realType) :: speedXY, sinTheta, cosTheta, sinAlpha, cosAlpha
+        real(kind=realType) :: machSqrFloor, machOff, dpMax
+        logical :: lowMachExt
         real(kind=realType), dimension(nState, nState) :: streamToCart, symmToCons, consToSymm, stateToCons
 
         ! Zero the block matrices
@@ -3114,12 +3128,42 @@ contains
             consToSymm(5, iRhoE) = gammaMinusOne
 
             ! Compute the CFL-based blending factor
-            blendFactor = ANK_CFL / ANK_CFLLimit
+            if (ANK_charBlendCFL > zero) then
+                blendFactor = min(one, ANK_CFL / ANK_charBlendCFL)
+            else
+                blendFactor = ANK_CFL / ANK_CFLLimit
+            end if
+
+            ! Cut-off of the local Mach number: global K*Minf^2 plus the
+            ! optional Weiss-Smith pressure cut-off (stagnation, recirculation
+            ! and wall cells, where |u| -> 0 and 1/M^2 would blow up).
+            machSqrFloor = ANK_charMachFloor * machInf**2
+            if (ANK_charPresCutoff > zero) then
+                dpMax = max(abs(p(i + 1, j, k) - p(i, j, k)), abs(p(i - 1, j, k) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j + 1, k) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j - 1, k) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j, k + 1) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j, k - 1) - p(i, j, k)))
+                machSqrFloor = max(machSqrFloor, ANK_charPresCutoff**2 * dpMax / (rho * aa(i, j, k)))
+            end if
+            ! A cut-off is a low-speed device: never let it reach sonic
+            machSqrFloor = min(machSqrFloor, half)
+            ! The extensions are active when any of the three knobs leaves its
+            ! Seraj2022c value; only then the off-diagonal 1/M uses the
+            ! truncated Mach number (keeps the block positive definite at
+            ! blend = 1). Defaults reproduce the upstream block bit for bit.
+            lowMachExt = (ANK_charBlendCFL > zero) .or. (ANK_charPresCutoff > zero) .or. &
+                         (abs(ANK_charMachFloor - 1e-4_realType) > 1e-12_realType)
 
             if (ANK_charTimeStepType == 'VLR') then
 
                 ! Truncate the squared Mach number (Eq. 25)
-                machSqrTrunc = MAX(machSqr, 1e-4 * machInf**2)
+                machSqrTrunc = MAX(machSqr, machSqrFloor)
+                if (lowMachExt) then
+                    machOff = SQRT(machSqrTrunc)
+                else
+                    machOff = mach
+                end if
 
                 ! Define the beta and tau terms in the VLR matrix (Eq. 24)
                 if (mach < one) then
@@ -3133,8 +3177,8 @@ contains
                 ! Define the VLR matrix in Euler symmetrizing variables and in the streamwise coordinate frame
                 ! This is Eq. 23 combined with the blending in Eq. 16
                 timeStepBlock(1, 1) = blendFactor * (beta**2 + tau) / (machSqrTrunc * tau) + (one - blendFactor) * one
-                timeStepBlock(1, 2) = blendFactor * one / mach
-                timeStepBlock(2, 1) = blendFactor * one / mach
+                timeStepBlock(1, 2) = blendFactor * one / machOff
+                timeStepBlock(2, 1) = blendFactor * one / machOff
                 timeStepBlock(2, 2) = one
                 timeStepBlock(3, 3) = blendFactor * one / tau + (one - blendFactor) * one
                 timeStepBlock(4, 4) = blendFactor * one / tau + (one - blendFactor) * one
@@ -3172,7 +3216,7 @@ contains
             else if (ANK_charTimeStepType == 'Turkel') then
 
                 ! Truncate the squared Mach number (Eq. 19)
-                machSqrTrunc = MIN(one, MAX(machSqr, 1e-4 * machInf**2))
+                machSqrTrunc = MIN(one, MAX(machSqr, machSqrFloor))
 
                 ! Set alpha to turn off preconditioning for locally supersonic flow (Eq. 20)
                 alpha = one - machSqrTrunc**10
