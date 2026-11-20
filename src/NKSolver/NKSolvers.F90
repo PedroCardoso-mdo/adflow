@@ -2485,6 +2485,19 @@ module ANKSolver
     real(kind=realType) :: ANK_charBlendCFL = -1.0_realType
     real(kind=realType) :: ANK_charMachFloor = 1e-4_realType
     real(kind=realType) :: ANK_charPresCutoff = 0.0_realType
+    !  ANK_charDtScale    .true.: the pseudo-time step of every row is based on
+    !                     the PRECONDITIONED spectral radius |u'|+c' (Weiss &
+    !                     Smith 1995) instead of |u|+c, i.e. the block is
+    !                     multiplied by r = (|u'|+c')/(|u|+c) ~ 1.6 M. Without
+    !                     it the characteristic time step only ADDS damping on
+    !                     the pressure mode; with it the convective modes and
+    !                     the turbulence/transition rows (pure convection-
+    !                     diffusion-source, no acoustics) march at the
+    !                     convective CFL, which is what makes the iteration
+    !                     count of a preconditioned solver Mach-independent.
+    !                     Use with ANK_charMachFloor ~ 1 (r is evaluated with
+    !                     the truncated Mach number).
+    logical :: ANK_charDtScale = .false.
     integer(kind=intType) :: ANK_nsubIterTurb
 
     ! Misc variables
@@ -3089,12 +3102,13 @@ contains
         real(kind=realType) :: blendFactor, dtInv, rho, velX, velY, velZ
         real(kind=realType) :: speed, speedOfSound, mach, machSqr, machSqrTrunc, alpha, beta, tau, gammaMinusOne
         real(kind=realType) :: speedXY, sinTheta, cosTheta, sinAlpha, cosAlpha
-        real(kind=realType) :: machSqrFloor, machOff, dpMax
+        real(kind=realType) :: machSqrFloor, machOff, dpMax, dtFac, alphaWS
         logical :: lowMachExt
         real(kind=realType), dimension(nState, nState) :: streamToCart, symmToCons, consToSymm, stateToCons
 
         ! Zero the block matrices
         timeStepBlock = zero
+        dtFac = one
         stateToCons = zero
         streamToCart = zero
         symmToCons = zero
@@ -3225,7 +3239,7 @@ contains
             ! Seraj2022c value; only then the off-diagonal 1/M uses the
             ! truncated Mach number (keeps the block positive definite at
             ! blend = 1). Defaults reproduce the upstream block bit for bit.
-            lowMachExt = (ANK_charBlendCFL > zero) .or. (ANK_charPresCutoff > zero) .or. &
+            lowMachExt = (ANK_charBlendCFL > zero) .or. (ANK_charPresCutoff > zero) .or. ANK_charDtScale .or. &
                          (abs(ANK_charMachFloor - 1e-4_realType) > 1e-12_realType)
 
             if (ANK_charTimeStepType == 'VLR') then
@@ -3236,6 +3250,12 @@ contains
                     machOff = SQRT(machSqrTrunc)
                 else
                     machOff = mach
+                end if
+                if (ANK_charDtScale .and. machSqrTrunc < one) then
+                    ! Weiss-Smith preconditioned radius over the acoustic one, both over c
+                    alphaWS = half * (one - machSqrTrunc)
+                    dtFac = (mach * (one - alphaWS) + SQRT(alphaWS**2 * machSqr + machSqrTrunc)) / (mach + one)
+                    dtFac = blendFactor * dtFac + (one - blendFactor)
                 end if
 
                 ! Define the beta and tau terms in the VLR matrix (Eq. 24)
@@ -3284,12 +3304,17 @@ contains
 
                 ! Construct the preconditioned time step matrix
                 timeStepBlock = MATMUL(timeStepBlock, stateToCons)
-                timeStepBlock = timeStepBlock * dtInv
+                timeStepBlock = timeStepBlock * dtInv * dtFac
 
             else if (ANK_charTimeStepType == 'Turkel') then
 
                 ! Truncate the squared Mach number (Eq. 19)
                 machSqrTrunc = MIN(one, MAX(machSqr, machSqrFloor))
+                if (ANK_charDtScale .and. machSqrTrunc < one) then
+                    alphaWS = half * (one - machSqrTrunc)
+                    dtFac = (mach * (one - alphaWS) + SQRT(alphaWS**2 * machSqr + machSqrTrunc)) / (mach + one)
+                    dtFac = blendFactor * dtFac + (one - blendFactor)
+                end if
 
                 ! Set alpha to turn off preconditioning for locally supersonic flow (Eq. 20)
                 alpha = one - machSqrTrunc**10
@@ -3311,7 +3336,7 @@ contains
 
                 ! Construct the preconditioned time step matrix
                 timeStepBlock = MATMUL(timeStepBlock, stateToCons)
-                timeStepBlock = timeStepBlock * dtInv
+                timeStepBlock = timeStepBlock * dtInv * dtFac
 
             end if
 
@@ -3330,7 +3355,7 @@ contains
                 do l = nt1, nt2
                     l1 = l - nt1 + 1
                     dtInvSrc = srcLambda(i, j, k, l1) / transitionSrcDtLimit
-                    timeStepBlock(l, l) = max(dtInv, dtInvSrc) * turbResScale(l1) / ANK_turbCFLScale
+                    timeStepBlock(l, l) = max(dtInv * dtFac, dtInvSrc) * turbResScale(l1) / ANK_turbCFLScale
                 end do
             end if
         end if
