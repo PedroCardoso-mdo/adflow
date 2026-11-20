@@ -5927,6 +5927,8 @@ class ADFLOW(AeroSolver):
             # Per-equation convergence gate: each turbulence/transition residual must also drop by this
             # factor from its own peak (0 = off, totalR only)
             "turbL2Convergence": [float, 0.0],
+            # Same gate for the mean flow: mass, momentum and energy each below L2Convergence x own free-stream value
+            "flowEqL2Convergence": [bool, False],
             # SA-γ-Reθt damping params (not in canonical ADflow)
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 10000],
@@ -6454,6 +6456,7 @@ class ADFLOW(AeroSolver):
             "transitiongammafloor": ["iter", "transitiongammafloor"],
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
             "turbl2convergence": ["iter", "turbl2convergence"],
+            "floweql2convergence": ["iter", "floweql2convergence"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],

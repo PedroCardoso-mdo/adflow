@@ -1252,7 +1252,9 @@ contains
         use communication, only: adflow_comm_world, myid
         use inputIteration, only: printIterations, l2convcoarse, l2conv, l2convrel, &
                                   minIterNum, maxL2DeviationFactor, ncycles, RKReset, &
-                                  turbL2Convergence, turbEqRes, turbEqResPeak
+                                  turbL2Convergence, turbEqRes, turbEqResPeak, &
+                                  flowEqL2Convergence, flowEqRes, flowEqRes0
+        use NKSolver, only: getEqResNorms
         use inputPhysics, only: liftDirection, dragDirection, equationMode, &
                                 lengthRef, machCoef, surfaceRef, equations
         use flowVarRefState, only: pRef, lRef, gammaInf, nt1, nt2
@@ -1763,10 +1765,18 @@ contains
 
                     ! Per-equation gate: totalR is a flow-dominated norm, so also
                     ! ask every turbulence/transition equation for its own drop.
+                    ! Same for the mean flow: at low Mach the density hardly
+                    ! varies, so each of mass, momentum and energy must drop
+                    ! L2Convergence from its own free-stream residual.
+                    if (turbL2Convergence > zero .or. flowEqL2Convergence) call getEqResNorms()
                     if (turbL2Convergence > zero .and. equations == RANSEquations .and. nt2 >= nt1) then
-                        call getTurbEqResiduals()
                         do nn = 1, nt2 - nt1 + 1
                             if (turbEqRes(nn) > turbL2Convergence * turbEqResPeak(nn)) absConv = .False.
+                        end do
+                    end if
+                    if (flowEqL2Convergence) then
+                        do nn = 1, 5
+                            if (flowEqRes(nn) > L2ConvThisLevel * flowEqRes0(nn)) absConv = .False.
                         end do
                     end if
 
@@ -1953,53 +1963,5 @@ contains
         call mpi_bcast(converged, 1, MPI_LOGICAL, 0, ADflow_comm_world, ierr)
 
     end subroutine convergenceInfo
-
-    subroutine getTurbEqResiduals
-        !
-        !       L2 norm of the residual of each turbulence/transition equation
-        !       on the fine level, sqrt(sum((dw/vol)**2)/nCells) -- the same
-        !       norm as the "Res nuturb / Res gamma / Res retheta" monitors --
-        !       stored in turbEqRes, with the running maximum in turbEqResPeak.
-        !       Used by the turbL2Convergence gate. The residual must already
-        !       have been evaluated.
-        !
-        use constants
-        use communication, only: adflow_comm_world
-        use block, only: nCellGlobal
-        use blockPointers, only: nDom, il, jl, kl, dw, vol
-        use flowVarRefState, only: nt1, nt2
-        use inputTimeSpectral, only: nTimeIntervalsSpectral
-        use inputIteration, only: turbEqRes, turbEqResPeak
-        use utils, only: setPointers
-        implicit none
-
-        integer(kind=intType) :: sps, nn, i, j, k, l, m, ierr
-        real(kind=realType), dimension(4) :: locSum, globSum
-
-        locSum = zero
-        do sps = 1, nTimeIntervalsSpectral
-            do nn = 1, nDom
-                call setPointers(nn, 1_intType, sps)
-                do l = nt1, min(nt2, nt1 + 3)
-                    m = l - nt1 + 1
-                    do k = 2, kl
-                        do j = 2, jl
-                            do i = 2, il
-                                locSum(m) = locSum(m) + (dw(i, j, k, l) / vol(i, j, k))**2
-                            end do
-                        end do
-                    end do
-                end do
-            end do
-        end do
-
-        call mpi_allreduce(locSum, globSum, 4, adflow_real, mpi_sum, adflow_comm_world, ierr)
-
-        do m = 1, 4
-            turbEqRes(m) = sqrt(globSum(m) / nCellGlobal(1))
-            turbEqResPeak(m) = max(turbEqResPeak(m), turbEqRes(m))
-        end do
-
-    end subroutine getTurbEqResiduals
 
 end module solvers

@@ -308,6 +308,7 @@ contains
         use blockPointers, only: nDom, ib, jb, kb, w
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use flowVarRefState, only: nw, winf
+        use inputIteration, only: flowEqRes, flowEqRes0
         use utils, only: setPointers
         implicit none
 
@@ -344,6 +345,10 @@ contains
         call computeResidualNK(useUpdateIntermed=.True.)
         call getCurrentResidual(rhoRes, totalRRes)
 
+        ! Per-equation free-stream reference of the flowEqL2Convergence gate
+        call getEqResNorms()
+        flowEqRes0 = flowEqRes
+
         ! Put everything back
         call setInfo(tmp, n)
 
@@ -356,6 +361,59 @@ contains
         call computeResidualNK(useUpdateIntermed=.True.)
 
     end subroutine getFreeStreamResidual
+
+    subroutine getEqResNorms
+        !
+        !       L2 norm of the residual of every equation on the fine level,
+        !       sqrt(sum((dw/vol)**2)/nCells) -- the norm of the "Res rho /
+        !       Res gamma / ..." monitors. Flow equations go to flowEqRes,
+        !       turbulence/transition ones to turbEqRes with their running
+        !       maximum in turbEqResPeak. Used by the per-equation convergence
+        !       gates. The residual must already have been evaluated.
+        !
+        use constants
+        use communication, only: adflow_comm_world
+        use block, only: nCellGlobal
+        use blockPointers, only: nDom, il, jl, kl, dw, vol
+        use flowVarRefState, only: nt1, nt2
+        use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use inputIteration, only: turbEqRes, turbEqResPeak, flowEqRes
+        use utils, only: setPointers
+        implicit none
+
+        integer(kind=intType) :: sps, nn, i, j, k, l, m, ierr
+        real(kind=realType), dimension(9) :: locSum, globSum
+
+        locSum = zero
+        do sps = 1, nTimeIntervalsSpectral
+            do nn = 1, nDom
+                call setPointers(nn, 1_intType, sps)
+                do l = 1, min(nt2, nt1 + 3)
+                    if (l > 5 .and. l < nt1) cycle
+                    m = l
+                    if (l >= nt1) m = 5 + l - nt1 + 1
+                    do k = 2, kl
+                        do j = 2, jl
+                            do i = 2, il
+                                locSum(m) = locSum(m) + (dw(i, j, k, l) / vol(i, j, k))**2
+                            end do
+                        end do
+                    end do
+                end do
+            end do
+        end do
+
+        call mpi_allreduce(locSum, globSum, 9, adflow_real, mpi_sum, adflow_comm_world, ierr)
+
+        do m = 1, 5
+            flowEqRes(m) = sqrt(globSum(m) / nCellGlobal(1))
+        end do
+        do m = 1, 4
+            turbEqRes(m) = sqrt(globSum(5 + m) / nCellGlobal(1))
+            turbEqResPeak(m) = max(turbEqResPeak(m), turbEqRes(m))
+        end do
+
+    end subroutine getEqResNorms
 
     subroutine getCurrentResidual(rhoRes, totalRRes)
 

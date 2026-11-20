@@ -1177,6 +1177,7 @@ real(kind=realtype) :: sgammaonsetsmoothp
          real(kind=realtype) :: transitiongammafloor
          integer(kind=inttype) :: srcdtdeactivateiters
          real(kind=realtype) :: turbl2convergence
+         logical :: floweql2convergence
          real(kind=realtype) :: transitiondamptheta
          integer(kind=inttype) :: transitiondampmaxiter
          logical :: solverstalldiag
