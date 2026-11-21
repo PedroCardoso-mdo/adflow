@@ -1776,8 +1776,19 @@ contains
                     end if
                     if (flowEqL2Convergence) then
                         do nn = 1, 5
-                            if (flowEqRes(nn) > L2ConvThisLevel * flowEqRes0(nn)) absConv = .False.
+                            ! An equation with no free-stream residual to speak of (z-momentum
+                            ! of a 2D case) has no reference: it cannot be asked for a drop.
+                            if (flowEqRes0(nn) > 1e-10_realType * maxval(flowEqRes0) .and. &
+                                flowEqRes(nn) > L2ConvThisLevel * flowEqRes0(nn)) absConv = .False.
                         end do
+                    end if
+                    ! Report the per-equation drop the solve stops with (orders of magnitude)
+                    if (absConv .and. myid == 0 .and. (turbL2Convergence > zero .or. flowEqL2Convergence)) then
+                        write (*, "(a,5f6.1,a,4f6.1)") " EQCONV orders below reference: flow (rho mx my mz E)", &
+                            (-log10(max(flowEqRes(nn), 1e-300_realType) / max(flowEqRes0(nn), 1e-300_realType)), nn=1, 5), &
+                            "  turbulence (vs own peak)", &
+                            (-log10(max(turbEqRes(nn), 1e-300_realType) / max(turbEqResPeak(nn), 1e-300_realType)), &
+                             nn=1, nt2 - nt1 + 1)
                     end if
 
                     ! Relative check only done on finest level
