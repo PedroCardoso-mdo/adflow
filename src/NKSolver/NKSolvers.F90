@@ -2514,6 +2514,18 @@ module ANKSolver
     ! if totalR has not dropped by ANK_stallSwitchFactor within N ANK
     ! iterations, advance one phase (couple; if already coupled, switch to
     ! the second-order operator). 0 = off (thresholds only).
+    ! Exact Jacobian-vector products for the second-order coupled phase.
+    ! PETSc MFFD differences the residual: J*v carries the round-off of two
+    ! residual evaluations divided by a step of ~1e-8, and that noise is what
+    ! stops the linear solve (lin res -> 1) at rel ~1e-10 with gamma ~3e-7 and
+    ! Re_theta ~5e-4 still unconverged ("deep wall"). With ANK_ADMatVec the
+    ! operator of the second-order coupled KSP is a shell that calls the
+    ! forward-mode AD residual (master_d, the routine the adjoint is verified
+    ! against): the same Newton system, exact to round-off. The approximate
+    ! (first-order) phases and the segregated path keep MFFD.
+    logical :: ANK_ADMatVec = .false.
+    Mat dRdwAD
+    logical :: ANK_ADMatCreated = .false., ANK_ADOpActive = .false.
     integer(kind=intType) :: ANK_stallSwitchIters = 0
     real(kind=realType) :: ANK_stallSwitchFactor = 0.5_realType
     real(kind=realType) :: stallSwRefR = -1.0_realType
@@ -2739,6 +2751,19 @@ contains
 
             call MatSetOption(dRdW, MAT_ROW_ORIENTED, PETSC_FALSE, ierr)
             call EChk(ierr, __FILE__, __LINE__)
+
+#ifndef USE_COMPLEX
+            ! Shell operator for exact (forward-AD) products, see ANK_ADMatVec
+            call MatCreateShell(ADFLOW_COMM_WORLD, nDimW, nDimW, PETSC_DETERMINE, PETSC_DETERMINE, &
+                                ctx, dRdwAD, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call MatShellSetOperation(dRdwAD, MATOP_MULT, ANKADMatMult, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            call MatSetup(dRdwAD, ierr)
+            call EChk(ierr, __FILE__, __LINE__)
+            ANK_ADMatCreated = .true.
+#endif
+            ANK_ADOpActive = .false.
 
             if (ANK_precondType == 'mg') then
                 call setupAMG(drdwpre, nDimW / nState, nState, ANK_AMGLevels, ANK_AMGNSmooth)
@@ -3555,6 +3580,89 @@ contains
         end subroutine applyTurbPCColumnScaling
     end subroutine FormJacobianANKTurb
 
+    subroutine ANKADMatMult(A, vecX, vecY, ierr)
+        !
+        !       Shell operator of the second-order coupled ANK system with exact
+        !       products: y = d(rVec)/d(wVec) * x + timeStepMat * x, the
+        !       derivative of what FormFunction_mf evaluates, computed with the
+        !       forward-mode AD residual (master_d) instead of differencing it.
+        !       rVec = dw/vol*turbResScale is exactly what master_d returns
+        !       (resScale_d); wVec is the column-scaled state, w = wVec/fac.
+        !       The state w must be the base state (it is: nothing perturbs it
+        !       during this KSP solve).
+        !
+        use constants
+        use ADjointVars, only: derivVarsAllocated, nNodesLocal
+        use blockPointers, only: nDom
+        use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use surfaceFamilies, only: BCFamGroups
+        use surfaceUtils, only: getSurfaceSize
+        use adjointUtils, only: allocDerivativeValues, zeroADSeeds
+#ifndef USE_COMPLEX
+        use masterRoutines, only: master_d
+#endif
+        use utils, only: EChk
+        implicit none
+
+        ! PETSc Arguments
+        Mat A
+        Vec vecX, vecY
+        integer(kind=intType) :: ierr
+
+        real(kind=realType), pointer :: x_pointer(:), y_pointer(:)
+        real(kind=realType), dimension(:), allocatable :: wd, xvdot
+        real(kind=realType), dimension(:, :, :), allocatable :: fDot
+        real(kind=realType) :: facInv(1:nState)
+        integer(kind=intType) :: nn, sps, ii, l, n, fSize, fSizeCell
+        integer(kind=intType), dimension(:), pointer :: wallFamList
+
+#ifndef USE_COMPLEX
+        call getFullColScale(facInv, 1_intType, nState)
+        facInv = one / facInv
+
+        call VecGetArrayReadF90(vecX, x_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        n = size(x_pointer)
+        allocate (wd(n))
+        do ii = 1, n
+            l = mod(ii - 1, nState) + 1
+            wd(ii) = x_pointer(ii) * facInv(l)
+        end do
+        call VecRestoreArrayReadF90(vecX, x_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        if (.not. derivVarsAllocated) then
+            call allocDerivativeValues(1_intType)
+        end if
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call zeroADSeeds(nn, 1_intType, sps)
+            end do
+        end do
+
+        wallFamList => BCFamGroups(iBCGroupWalls)%famList
+        call getSurfaceSize(fSize, fSizeCell, wallFamList, size(wallFamList), .True.)
+        allocate (xvdot(3 * nNodesLocal(1_intType) * nTimeIntervalsSpectral))
+        allocate (fDot(3, fSize, nTimeIntervalsSpectral))
+        xvdot = zero
+        fDot = zero
+
+        call VecGetArrayF90(vecY, y_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+        call master_d(wd, xvdot, fDot, y_pointer)
+        call VecRestoreArrayF90(vecY, y_pointer, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+
+        deallocate (wd, xvdot, fDot)
+
+        ! pseudo-time term (already column-scaled, like the state)
+        call MatMultAdd(timeStepMat, vecX, vecY, vecY, ierr)
+        call EChk(ierr, __FILE__, __LINE__)
+#endif
+        ierr = 0
+
+    end subroutine ANKADMatMult
+
     subroutine FormFunction_mf(ctx, inVec, rVec, ierr)
 
         ! This is the function used for the matrix-free matrix-vector products
@@ -3938,6 +4046,13 @@ contains
 
             call MatDestroy(dRdw, ierr)
             call EChk(ierr, __FILE__, __LINE__)
+
+            if (ANK_ADMatCreated) then
+                call MatDestroy(dRdwAD, ierr)
+                call EChk(ierr, __FILE__, __LINE__)
+                ANK_ADMatCreated = .false.
+            end if
+            ANK_ADOpActive = .false.
 
             call MatDestroy(dRdwPre, ierr)
             call EChk(ierr, __FILE__, __LINE__)
@@ -6104,6 +6219,23 @@ contains
         call EChk(ierr, __FILE__, __LINE__)
         call MatMFFDSetBase(dRdW, wVec, baseRes, ierr)
         call EChk(ierr, __FILE__, __LINE__)
+
+        ! Operator of this solve: exact AD products in the second-order coupled
+        ! phase (ANK_ADMatVec), finite-difference MFFD otherwise.
+        if (ANK_useMatrixFree .and. ANK_ADMatCreated) then
+            if (ANK_ADMatVec .and. ANK_coupled .and. useSecondOrd .and. nState == nw) then
+                if (.not. ANK_ADOpActive) then
+                    call KSPSetOperators(ANK_KSP, dRdwAD, dRdwPre, ierr)
+                    call EChk(ierr, __FILE__, __LINE__)
+                    ANK_ADOpActive = .true.
+                    if (myid == 0) write (*, "(a)") " ANK: exact AD Jacobian-vector products from here on"
+                end if
+            else if (ANK_ADOpActive) then
+                call KSPSetOperators(ANK_KSP, dRdw, dRdwPre, ierr)
+                call EChk(ierr, __FILE__, __LINE__)
+                ANK_ADOpActive = .false.
+            end if
+        end if
 
         ! Actually do the Linear Krylov Solve
 
