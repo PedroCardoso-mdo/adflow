@@ -5777,7 +5777,8 @@ contains
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
                                   solverStallDiag, solverStallDiagStep, ankCFLMinCap, &
                                   ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted, &
-                                  ankAlgorithm2Damping, ankTransitionGlobalLambda, ankColScaleUnit
+                                  ankAlgorithm2Damping, ankTransitionGlobalLambda, ankColScaleUnit, &
+                                  turbL2Convergence, flowEqL2Convergence
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use saGamma, only: computeSrcLambdaSaGamma
@@ -6205,6 +6206,11 @@ contains
         ! in the real mode, we set the atol slightly lower than the target L2 convergence
         ! the reasoning for this is detailed in the NKStep subroutine
         atol = totalR0 * L2Conv * ANK_atol_buffer
+        ! With a per-equation gate the solve has to go deeper than L2Conv on
+        ! totalR. An absolute tolerance tied to L2Conv then makes the Krylov
+        ! solver return almost at once (lin res 0.4-0.7 at rel ~1e-10, the
+        ! "wall" of 07_deep_convergence): keep the linear solve purely relative.
+        if (turbL2Convergence > zero .or. flowEqL2Convergence) atol = 1e-50_realType
 #else
         ! in complex mode, we want to tightly solve the linear system every time
         ! again, see the NKStep subroutine for the explanation
