@@ -500,6 +500,7 @@ python module libadflow
          integer(kind=inttype) :: ank_stallswitchiters
          logical :: ank_admatvec
          real(kind=realtype) :: ank_stallswitchfactor
+         real(kind=realtype) :: ank_stallswitchtol
          real(kind=realtype) :: ank_turbcflscale
          logical :: ank_usefullvisc
          real(kind=realtype) :: ank_pcupdatetol

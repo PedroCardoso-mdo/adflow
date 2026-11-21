@@ -2526,8 +2526,15 @@ module ANKSolver
     logical :: ANK_ADMatVec = .false.
     Mat dRdwAD
     logical :: ANK_ADMatCreated = .false., ANK_ADOpActive = .false.
+    ! A stall is only counted in the regime the switch is meant for: residual
+    ! already below ANK_stallSwitchTol (relative) and the last step accepted
+    ! with at least half its length. Without this the detector fires in the
+    ! start-up transient, where the step is physicality-limited to ~0.01 and
+    ! the residual is still O(0.1): M 0.2 matrix switched to the second-order
+    ! operator at rel 0.24 and never recovered (job 06_stall_mach, 2026-11-21).
     integer(kind=intType) :: ANK_stallSwitchIters = 0
     real(kind=realType) :: ANK_stallSwitchFactor = 0.5_realType
+    real(kind=realType) :: ANK_stallSwitchTol = 1e-3_realType
     real(kind=realType) :: stallSwRefR = -1.0_realType
     integer(kind=intType) :: stallSwCount = 0
     real(kind=realType) :: stallSwSavedCoupledTol, stallSwSavedSecondOrdTol
@@ -5819,7 +5826,9 @@ contains
             stallSwRefR = -one
             stallSwCount = 0
         else if (ANK_stallSwitchIters > 0 .and. equations .eq. RANSEquations) then
-            if (stallSwRefR <= zero .or. totalR < ANK_stallSwitchFactor * stallSwRefR) then
+            if (stallSwRefR <= zero .or. totalR < ANK_stallSwitchFactor * stallSwRefR .or. &
+                totalR > ANK_stallSwitchTol * totalR0 .or. stepMonitor < half) then
+                ! progress, or not (yet) in the regime where a stall means anything
                 stallSwRefR = totalR
                 stallSwCount = 0
             else
