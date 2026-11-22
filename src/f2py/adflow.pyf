@@ -1050,6 +1050,7 @@ python module libadflow
          use precision
          real(kind=realtype) :: epsacoustic
          real(kind=realtype) :: epsshear
+         real(kind=realtype) :: matdissabssmooth
        end module inputdissipation
 
        module cgnsgrid
