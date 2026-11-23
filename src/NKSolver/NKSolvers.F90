@@ -2539,6 +2539,18 @@ module ANKSolver
     integer(kind=intType) :: stallSwCount = 0
     real(kind=realType) :: stallSwSavedCoupledTol, stallSwSavedSecondOrdTol
     logical :: stallSwAdvancedCoupled = .false., stallSwAdvancedSecondOrd = .false.
+    ! Third stage of the stall switch (ANK_stallSwitchCharOff): a stall in the
+    ! last phase (coupled, second order) with the characteristic time step on
+    ! switches that time step off for the rest of the solve. The VLR/Turkel
+    ! block carries 1/M^2 (cut off at K*Minf^2) on the continuity row, so in
+    ! cells with |u| -> 0 (separation and reattachment points, reversed flow)
+    ! the pseudo-time term does not vanish even at the CFL limit and that row
+    ! is never solved: laminar-bubble cases floor at 7-8 orders with the rho
+    ! residual in a handful of wall cells (29_solver_lowmach, 19_newton_floor).
+    ! The same block makes the start-up transient much easier, hence a switch
+    ! at the stall and not a different default.
+    logical :: ANK_stallSwitchCharOff = .false.
+    logical :: stallSwCharOff = .false., stallSwForcePC = .false.
     real(kind=realType) :: ANK_physLSTol, ANK_unstdyLSTol
     real(kind=realType) :: ANK_pcUpdateTol, ANK_pcUpdateTol2
     real(kind=realType) :: ANK_pcUpdateCutoff
@@ -3179,7 +3191,7 @@ contains
             end do
         end if
 
-        if (ANK_charTimeStepType == 'None') then
+        if (ANK_charTimeStepType == 'None' .or. stallSwCharOff) then
 
             timeStepBlock = stateToCons * dtInv
 
@@ -5824,6 +5836,8 @@ contains
             if (stallSwAdvancedSecondOrd) ANK_secondOrdSwitchTol = stallSwSavedSecondOrdTol
             stallSwAdvancedCoupled = .false.
             stallSwAdvancedSecondOrd = .false.
+            stallSwCharOff = .false.
+            stallSwForcePC = .false.
             stallSwRefR = -one
             stallSwCount = 0
         else if (ANK_stallSwitchIters > 0 .and. equations .eq. RANSEquations) then
@@ -5852,6 +5866,13 @@ contains
                     stallSwAdvancedSecondOrd = .true.
                     if (myid == 0) write (*, "(a,i5,a,es9.2,a)") " ANK stall switch: no progress in ", &
                         ANK_stallSwitchIters, " iterations at rel ", totalR / totalR0, " -> second-order ANK"
+                else if (ANK_stallSwitchCharOff .and. (.not. stallSwCharOff) .and. ANK_coupled .and. &
+                         trim(ANK_charTimeStepType) /= 'None') then
+                    stallSwCharOff = .true.
+                    stallSwForcePC = .true.
+                    if (myid == 0) write (*, "(a,i5,a,es9.2,a)") " ANK stall switch: no progress in ", &
+                        ANK_stallSwitchIters, " iterations at rel ", totalR / totalR0, &
+                        " -> characteristic time step off"
                 end if
                 stallSwRefR = totalR
                 stallSwCount = 0
@@ -6047,7 +6068,9 @@ contains
         end if
 
         ! Determine if if we need to form the Preconditioner
-        if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol) then
+        if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol .or. &
+            stallSwForcePC) then
+            stallSwForcePC = .false.
 
             if (.not. (ANK_pzStepping .or. (ANK_pzEndgame .and. pz_phase2))) then
             ! First of all, update the minimum cfl wrt the overall convergence
