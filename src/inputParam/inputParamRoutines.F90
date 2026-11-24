@@ -4394,7 +4394,6 @@ contains
 
         epsAcoustic = 0.25_realType         ! Swanson-Turkel eigenvalue
         epsShear = 0.025_realType           ! limiter coefficients.
-        matDissAbsSmooth = zero             ! exact |u_n| in the matrix dissipation
 
         dirScaling = .true.                 ! Apply isotropic directional
         adis = two * third              ! scaling in the artificial

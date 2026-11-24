@@ -416,7 +416,7 @@ contains
                                  sFaceI, sfaceJ, sFacek, factFamilyI, factFamilyJ, factFamilyK
         use flowVarRefState, only: pInfCorr
         use inputDiscretization, only: vis2, vis4
-        use inputDissipation, only: epsAcoustic, epsShear, matDissAbsSmooth
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use cgnsGrid, only: massFlowFamilyDiss
@@ -620,11 +620,7 @@ contains
 
                         lam1 = abs(unAvg - sface + aAvg)
                         lam2 = abs(unAvg - sface - aAvg)
-                        if (matDissAbsSmooth > zero) then
-                            lam3 = sqrt((unAvg - sface)**2 + (matDissAbsSmooth * aAvg)**2)
-                        else
-                            lam3 = abs(unAvg - sface)
-                        end if
+                        lam3 = abs(unAvg - sface)
 
                         rrad = lam3 + aAvg
 
@@ -802,11 +798,7 @@ contains
 
                         lam1 = abs(unAvg - sface + aAvg)
                         lam2 = abs(unAvg - sface - aAvg)
-                        if (matDissAbsSmooth > zero) then
-                            lam3 = sqrt((unAvg - sface)**2 + (matDissAbsSmooth * aAvg)**2)
-                        else
-                            lam3 = abs(unAvg - sface)
-                        end if
+                        lam3 = abs(unAvg - sface)
 
                         rrad = lam3 + aAvg
 
@@ -983,11 +975,7 @@ contains
 
                         lam1 = abs(unAvg - sface + aAvg)
                         lam2 = abs(unAvg - sface - aAvg)
-                        if (matDissAbsSmooth > zero) then
-                            lam3 = sqrt((unAvg - sface)**2 + (matDissAbsSmooth * aAvg)**2)
-                        else
-                            lam3 = abs(unAvg - sface)
-                        end if
+                        lam3 = abs(unAvg - sface)
 
                         rrad = lam3 + aAvg
 
@@ -4366,7 +4354,7 @@ contains
         use constants
         use flowVarRefState
         use inputDiscretization
-        use inputDissipation, only: epsAcoustic, epsShear, matDissAbsSmooth
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics
         use iteration
         use utils, only: getCorrectForK
@@ -5227,7 +5215,7 @@ contains
                                  porI, porJ, porK, fw, gamma, si, sj, sk, &
                                  addGridVelocities, sFaceI, sfaceJ, sFacek
         use inputDiscretization, only: vis2Coarse
-        use inputDissipation, only: epsAcoustic, epsShear, matDissAbsSmooth
+        use inputDissipation, only: epsAcoustic, epsShear
         use inputPhysics, only: equations
         use iteration, only: rFil
         use utils, only: getCorrectForK

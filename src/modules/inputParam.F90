@@ -111,21 +111,12 @@ module inputDissipation
     !       epsShear:     Swanson-Turkel eigenvalue limiter coefficient for
     !                     the shear (convective) eigenvalues of the matrix
     !                     dissipation scheme.
-    !       matDissAbsSmooth: > 0 replaces the shear eigenvalue |u_n| of the
-    !                     matrix dissipation (and the |u_n| in its spectral
-    !                     radius) by sqrt(u_n^2 + (c a)^2), c = this value.
-    !                     |u_n| has a corner at u_n = 0 that only reversed
-    !                     flow crosses; a cell sitting on it (separation /
-    !                     reattachment point, u ~ 1e-8) has no Newton
-    !                     direction and holds the residual on a floor.
-    !                     0 (default) = exact |u_n|.
     !
     use precision, only: realType
     implicit none
     save
 
     real(kind=realType) :: epsAcoustic, epsShear
-    real(kind=realType) :: matDissAbsSmooth = 0.0_realType
 end module inputDissipation
 
 
