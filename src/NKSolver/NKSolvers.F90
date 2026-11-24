@@ -2252,6 +2252,14 @@ module ANKSolver
     logical :: ANK_turbDebug
     logical :: ANK_useMatrixFree
     character(len=maxStringLen) :: ANK_charTimeStepType
+    ! Low-Mach controls of the characteristic time step (pseudo-time term
+    ! only: R(w) and the converged solution are untouched).
+    !  ANK_charMachFloor  K in the cut-off M^2 >= K*Minf^2 (Seraj 2023: 1e-4;
+    !                     Turkel's global cut-off: K ~ 1-3).
+    !  ANK_charPresCutoff eps in the Weiss-Smith pressure cut-off
+    !                     U_r >= eps*sqrt(dp/rho) (0 = off).
+    real(kind=realType) :: ANK_charMachFloor = 1e-4_realType
+    real(kind=realType) :: ANK_charPresCutoff = 0.0_realType
     integer(kind=intType) :: ANK_nsubIterTurb
 
     ! Misc variables
@@ -2259,6 +2267,37 @@ module ANKSolver
     real(kind=realType) :: ANK_CFLMin0, ANK_CFLMin, ANK_CFLMinBase, ANK_CFLExponent
     real(kind=realType) :: ANK_stepMin, ANK_StepFactor, ANK_constCFLStep
     real(kind=realType) :: ANK_secondOrdSwitchTol, ANK_coupledSwitchTol
+    ! Stall-triggered phase advance. The phase switches (segregated ->
+    ! coupled -> second order) are thresholds on totalR, a norm the mean flow
+    ! dominates. A limit cycle of the transition equations that floors totalR
+    ! just above a threshold keeps the solver in the weaker phase for ever.
+    ! With ANK_stallSwitchIters = N > 0: if totalR has not dropped by
+    ! ANK_stallSwitchFactor within N ANK iterations, advance one phase
+    ! (couple; if already coupled, switch to the second-order operator).
+    ! 0 = off (thresholds only).
+    ! A stall is only counted below ANK_stallSwitchTol (relative) and after a
+    ! step accepted with at least half its length, so that the detector does
+    ! not fire in the start-up transient, where the step is limited by the
+    ! physicality check and the residual is still large.
+    integer(kind=intType) :: ANK_stallSwitchIters = 0
+    real(kind=realType), parameter :: ANK_stallSwitchFactor = 0.5_realType
+    real(kind=realType), parameter :: ANK_stallSwitchTol = 1e-3_realType
+    real(kind=realType) :: stallSwRefR = -1.0_realType
+    integer(kind=intType) :: stallSwCount = 0
+    real(kind=realType) :: stallSwSavedCoupledTol, stallSwSavedSecondOrdTol
+    logical :: stallSwAdvancedCoupled = .false., stallSwAdvancedSecondOrd = .false.
+    ! Third stage of the stall switch (ANK_stallSwitchCharOff): a stall in the
+    ! last phase (coupled, second order) with the characteristic time step on
+    ! switches that time step off for the rest of the solve. The VLR/Turkel
+    ! block carries 1/M^2 (cut off at K*Minf^2) on the continuity row, so in
+    ! cells with |u| -> 0 (separation and reattachment points, reversed flow)
+    ! the pseudo-time term does not vanish even at the CFL limit and that row
+    ! is never solved: laminar-bubble cases floor at 7-8 orders with the rho
+    ! residual in a handful of wall cells.
+    ! The same block makes the start-up transient much easier, hence a switch
+    ! at the stall and not a different default.
+    logical :: ANK_stallSwitchCharOff = .false.
+    logical :: stallSwCharOff = .false., stallSwForcePC = .false.
     real(kind=realType) :: ANK_physLSTol, ANK_unstdyLSTol
     real(kind=realType) :: ANK_pcUpdateTol, ANK_pcUpdateTol2
     real(kind=realType) :: ANK_pcUpdateCutoff
@@ -2751,6 +2790,8 @@ contains
         real(kind=realType) :: blendFactor, dtInv, rho, velX, velY, velZ
         real(kind=realType) :: speed, speedOfSound, mach, machSqr, machSqrTrunc, alpha, beta, tau, gammaMinusOne
         real(kind=realType) :: speedXY, sinTheta, cosTheta, sinAlpha, cosAlpha
+        real(kind=realType) :: machSqrFloor, machOff, dpMax
+        logical :: lowMachExt
         real(kind=realType), dimension(nState, nState) :: streamToCart, symmToCons, consToSymm, stateToCons
 
         ! Zero the block matrices
@@ -2793,7 +2834,7 @@ contains
             end do
         end if
 
-        if (ANK_charTimeStepType == 'None') then
+        if (ANK_charTimeStepType == 'None' .or. stallSwCharOff) then
 
             timeStepBlock = stateToCons * dtInv
 
@@ -2863,10 +2904,36 @@ contains
             ! Compute the CFL-based blending factor
             blendFactor = ANK_CFL / ANK_CFLLimit
 
+            ! Cut-off of the local Mach number: global K*Minf^2 plus the
+            ! optional Weiss-Smith pressure cut-off (stagnation, recirculation
+            ! and wall cells, where |u| -> 0 and 1/M^2 would blow up).
+            machSqrFloor = ANK_charMachFloor * machInf**2
+            if (ANK_charPresCutoff > zero) then
+                dpMax = max(abs(p(i + 1, j, k) - p(i, j, k)), abs(p(i - 1, j, k) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j + 1, k) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j - 1, k) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j, k + 1) - p(i, j, k)))
+                dpMax = max(dpMax, abs(p(i, j, k - 1) - p(i, j, k)))
+                machSqrFloor = max(machSqrFloor, ANK_charPresCutoff**2 * dpMax / (rho * aa(i, j, k)))
+            end if
+            ! A cut-off is a low-speed device: never let it reach sonic
+            machSqrFloor = min(machSqrFloor, half)
+            ! The extensions are active when one of the two knobs leaves its
+            ! original value; only then the off-diagonal 1/M uses the
+            ! truncated Mach number (keeps the block positive definite at
+            ! blend = 1). Defaults reproduce the upstream block bit for bit.
+            lowMachExt = (ANK_charPresCutoff > zero) .or. &
+                         (abs(ANK_charMachFloor - 1e-4_realType) > 1e-12_realType)
+
             if (ANK_charTimeStepType == 'VLR') then
 
                 ! Truncate the squared Mach number (Eq. 25)
-                machSqrTrunc = MAX(machSqr, 1e-4 * machInf**2)
+                machSqrTrunc = MAX(machSqr, machSqrFloor)
+                if (lowMachExt) then
+                    machOff = SQRT(machSqrTrunc)
+                else
+                    machOff = mach
+                end if
 
                 ! Define the beta and tau terms in the VLR matrix (Eq. 24)
                 if (mach < one) then
@@ -2880,8 +2947,8 @@ contains
                 ! Define the VLR matrix in Euler symmetrizing variables and in the streamwise coordinate frame
                 ! This is Eq. 23 combined with the blending in Eq. 16
                 timeStepBlock(1, 1) = blendFactor * (beta**2 + tau) / (machSqrTrunc * tau) + (one - blendFactor) * one
-                timeStepBlock(1, 2) = blendFactor * one / mach
-                timeStepBlock(2, 1) = blendFactor * one / mach
+                timeStepBlock(1, 2) = blendFactor * one / machOff
+                timeStepBlock(2, 1) = blendFactor * one / machOff
                 timeStepBlock(2, 2) = one
                 timeStepBlock(3, 3) = blendFactor * one / tau + (one - blendFactor) * one
                 timeStepBlock(4, 4) = blendFactor * one / tau + (one - blendFactor) * one
@@ -2919,7 +2986,7 @@ contains
             else if (ANK_charTimeStepType == 'Turkel') then
 
                 ! Truncate the squared Mach number (Eq. 19)
-                machSqrTrunc = MIN(one, MAX(machSqr, 1e-4 * machInf**2))
+                machSqrTrunc = MIN(one, MAX(machSqr, machSqrFloor))
 
                 ! Set alpha to turn off preconditioning for locally supersonic flow (Eq. 20)
                 alpha = one - machSqrTrunc**10
@@ -5090,7 +5157,8 @@ contains
         use inputIteration, only: L2conv, transitionSrcDtRestrict, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
                                   ankCFLMinCap, &
                                   ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted, &
-                                  ankTransitionGlobalLambda, ankColScaleUnit
+                                  ankTransitionGlobalLambda, ankColScaleUnit, &
+                                  turbL2Convergence
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use saGamma, only: computeSrcLambdaSaGamma
@@ -5126,6 +5194,56 @@ contains
         real(kind=alwaysRealType) :: unsteadyNorm, unsteadyNorm_old, rel_pcUpdateTol
         real(kind=alwaysRealType) :: lsTolEff
         logical :: correctForK, LSFailed, backtrackTriggeredANK, useSecondOrd
+
+        ! ============== Stall-triggered phase advance ==============
+        ! A new solve starts from the user's thresholds again.
+        if (firstCall) then
+            if (stallSwAdvancedCoupled) ANK_coupledSwitchTol = stallSwSavedCoupledTol
+            if (stallSwAdvancedSecondOrd) ANK_secondOrdSwitchTol = stallSwSavedSecondOrdTol
+            stallSwAdvancedCoupled = .false.
+            stallSwAdvancedSecondOrd = .false.
+            stallSwCharOff = .false.
+            stallSwForcePC = .false.
+            stallSwRefR = -one
+            stallSwCount = 0
+        else if (ANK_stallSwitchIters > 0 .and. equations .eq. RANSEquations) then
+            if (stallSwRefR <= zero .or. totalR < ANK_stallSwitchFactor * stallSwRefR .or. &
+                totalR > ANK_stallSwitchTol * totalR0 .or. stepMonitor < half) then
+                ! progress, or not (yet) in the regime where a stall means anything
+                stallSwRefR = totalR
+                stallSwCount = 0
+            else
+                stallSwCount = stallSwCount + 1
+            end if
+            if (stallSwCount >= ANK_stallSwitchIters) then
+                ! ANK_coupledSwitchTol below 1e-12 is the "never couple" setting of
+                ! some recipes: respect it and go for the second-order operator.
+                if ((.not. ANK_coupled) .and. (.not. stallSwAdvancedCoupled) .and. &
+                    ANK_coupledSwitchTol > 1e-12_realType) then
+                    stallSwSavedCoupledTol = ANK_coupledSwitchTol
+                    ANK_coupledSwitchTol = 1e30_realType
+                    stallSwAdvancedCoupled = .true.
+                    if (myid == 0) write (*, "(a,i5,a,es9.2,a)") " ANK stall switch: no progress in ", &
+                        ANK_stallSwitchIters, " iterations at rel ", totalR / totalR0, " -> coupled ANK"
+                else if ((.not. stallSwAdvancedSecondOrd) .and. &
+                         totalR > ANK_secondOrdSwitchTol * totalR0) then
+                    stallSwSavedSecondOrdTol = ANK_secondOrdSwitchTol
+                    ANK_secondOrdSwitchTol = 1e30_realType
+                    stallSwAdvancedSecondOrd = .true.
+                    if (myid == 0) write (*, "(a,i5,a,es9.2,a)") " ANK stall switch: no progress in ", &
+                        ANK_stallSwitchIters, " iterations at rel ", totalR / totalR0, " -> second-order ANK"
+                else if (ANK_stallSwitchCharOff .and. (.not. stallSwCharOff) .and. ANK_coupled .and. &
+                         trim(ANK_charTimeStepType) /= 'None') then
+                    stallSwCharOff = .true.
+                    stallSwForcePC = .true.
+                    if (myid == 0) write (*, "(a,i5,a,es9.2,a)") " ANK stall switch: no progress in ", &
+                        ANK_stallSwitchIters, " iterations at rel ", totalR / totalR0, &
+                        " -> characteristic time step off"
+                end if
+                stallSwRefR = totalR
+                stallSwCount = 0
+            end if
+        end if
 
         ! Enter this check if this is the first ANK step OR we are switching to the coupled ANK solver
         if (firstCall .or. &
@@ -5229,7 +5347,9 @@ contains
         useSecondOrd = totalR .le. ANK_secondOrdSwitchTol * totalR0
 
         ! Determine if if we need to form the Preconditioner
-        if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol) then
+        if (mod(ANK_iter, ANK_jacobianLag) == 0 .or. totalR / totalR_pcUpdate < rel_pcUpdateTol .or. &
+            stallSwForcePC) then
+            stallSwForcePC = .false.
 
             ! First of all, update the minimum cfl wrt the overall convergence
             ANK_CFLMin = min(ANK_CFLLimit, ANK_CFLMinBase * (totalR0 / totalR)**ANK_CFLExponent)
@@ -5377,6 +5497,11 @@ contains
         ! in the real mode, we set the atol slightly lower than the target L2 convergence
         ! the reasoning for this is detailed in the NKStep subroutine
         atol = totalR0 * L2Conv * ANK_atol_buffer
+        ! With a per-equation gate the solve has to go deeper than L2Conv on
+        ! totalR. An absolute tolerance tied to L2Conv then makes the Krylov
+        ! solver return almost at once (linear residual 0.4-0.7 at rel ~1e-10):
+        ! keep the linear solve purely relative.
+        if (turbL2Convergence > zero) atol = 1e-50_realType
 #else
         ! in complex mode, we want to tightly solve the linear system every time
         ! again, see the NKStep subroutine for the explanation

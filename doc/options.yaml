@@ -1441,6 +1441,35 @@ ANKColScaleUnit:
     Scale every unknown of the ANK system to unit RMS before the matrix-free product.
     The factors are refreshed when the preconditioner is rebuilt.
 
+turbL2Convergence:
+  desc: >
+    Per-equation convergence gate.
+    If greater than zero, the solve is converged only when, besides :py:data:`L2Convergence` on the total residual, the residual norm of every turbulence and transition equation is below this factor times its own peak of the solve.
+    Zero turns the gate off (upstream behaviour).
+
+ANKStallSwitchIters:
+  desc: >
+    Stall-triggered phase advance of the ANK solver.
+    If the total residual is not halved within this number of ANK iterations, the solver advances one phase without waiting for :py:data:`ANKCoupledSwitchTol` or :py:data:`ANKSecondOrdSwitchTol`: first to the coupled formulation, then to the second-order formulation.
+    A stall is only counted below a relative residual of 1e-3 and after steps of at least half length.
+    Zero turns it off (thresholds only, upstream behaviour).
+
+ANKStallSwitchCharOff:
+  desc: >
+    Third stage of the stall switch (needs :py:data:`ANKStallSwitchIters`).
+    A stall in the second-order coupled phase turns the characteristic time step (:py:data:`ANKCharTimeStepType`) off for the rest of the solve.
+    Removes the convergence floor of low-Mach cases with a laminar separation bubble, where the characteristic time step does not vanish in cells with near-zero velocity.
+
+ANKCharMachFloor:
+  desc: >
+    Factor K of the cut-off of the local Mach number in the characteristic time step, M^2 >= K * Minf^2.
+    The default is the value hard-coded upstream.
+
+ANKCharPresCutoff:
+  desc: >
+    Coefficient eps of a pressure cut-off of the local Mach number in the characteristic time step, M^2 >= eps^2 * dp / (rho * a^2), with dp the largest pressure difference to a neighbouring cell.
+    Zero turns it off (upstream behaviour).
+
 MFFDFunctionError:
   desc: >
     Relative residual-evaluation error handed to PETSc for the matrix-free differencing step of the ANK and NK solvers.

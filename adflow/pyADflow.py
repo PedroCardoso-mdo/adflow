@@ -5799,6 +5799,9 @@ class ADFLOW(AeroSolver):
             "transitionSrcDtLimit": [float, 0.9],
             "transitionArtVisc": [float, 0.0],
             "srcDtDeactivateIters": [int, 5],
+            # Per-equation convergence gate: each turbulence/transition residual must also drop by this
+            # factor from its own peak (0 = off, totalR only)
+            "turbL2Convergence": [float, 0.0],
             # SA-γ-Reθt damping params (not in canonical ADflow)
             "transitionDampTheta": [float, 0.99],
             "transitionDampMaxIter": [int, 10000],
@@ -6034,6 +6037,9 @@ class ADFLOW(AeroSolver):
             "ANKUnsteadyLSTol": [float, 1.0],
             "ANKSecondOrdSwitchTol": [float, 1e-16],
             "ANKCoupledSwitchTol": [float, 1e-16],
+            # Stall-triggered phase advance (segregated -> coupled -> second order): 0 = off
+            "ANKStallSwitchIters": [int, 0],
+            "ANKStallSwitchCharOff": [bool, False],
             "ANKTurbCFLScale": [float, 1.0],
             "ANKUseFullVisc": [bool, True],
             "ANKPCUpdateTol": [float, 0.5],
@@ -6044,6 +6050,9 @@ class ADFLOW(AeroSolver):
             "ANKTurbKSPDebug": [bool, False],
             "ANKUseMatrixFree": [bool, True],
             "ANKCharTimeStepType": [str, ["None", "Turkel", "VLR"]],
+            # Low-Mach controls of the characteristic time step (pseudo-time only)
+            "ANKCharMachFloor": [float, 1e-4],
+            "ANKCharPresCutoff": [float, 0.0],
             # Load Balance/partitioning parameters
             "blockSplitting": [bool, True],
             "loadImbalance": [float, 0.1],
@@ -6284,6 +6293,7 @@ class ADFLOW(AeroSolver):
             "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
             "transitionartvisc": ["iter", "transitionartvisc"],
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
+            "turbl2convergence": ["iter", "turbl2convergence"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
             "transitiondampmaxiter": ["iter", "transitiondampmaxiter"],
             "transitionuseapproxsa": ["iter", "transitionuseapproxsa"],
@@ -6522,6 +6532,8 @@ class ADFLOW(AeroSolver):
             "ankunsteadylstol": ["ank", "ank_unstdylstol"],
             "anksecondordswitchtol": ["ank", "ank_secondordswitchtol"],
             "ankcoupledswitchtol": ["ank", "ank_coupledswitchtol"],
+            "ankstallswitchiters": ["ank", "ank_stallswitchiters"],
+            "ankstallswitchcharoff": ["ank", "ank_stallswitchcharoff"],
             "ankturbcflscale": ["ank", "ank_turbcflscale"],
             "ankusefullvisc": ["ank", "ank_usefullvisc"],
             "ankpcupdatetol": ["ank", "ank_pcupdatetol"],
@@ -6537,6 +6549,8 @@ class ADFLOW(AeroSolver):
                 "vlr": "VLR",
                 "location": ["ank", "ank_chartimesteptype"],
             },
+            "ankcharmachfloor": ["ank", "ank_charmachfloor"],
+            "ankcharprescutoff": ["ank", "ank_charprescutoff"],
             # Load Balance Parameters
             "blocksplitting": ["parallel", "splitblocks"],
             "loadimbalance": ["parallel", "loadimbalance"],

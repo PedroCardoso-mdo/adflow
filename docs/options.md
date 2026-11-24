@@ -2,7 +2,7 @@
 
 Every option below exists in `adflow/pyADflow.py` of this fork and not in upstream ADflow.
 The list is generated from the difference between the two default-option dictionaries
-(`_getDefaultOptions`), so it is complete: **45 new options** (24 model, 18 solver, 3 adjoint),
+(`_getDefaultOptions`), so it is complete: **50 new options** (24 model, 23 solver, 3 adjoint),
 plus three upstream options that gained a choice. Upstream options are documented in
 `doc/options.yaml`, which also carries an entry for every option listed here.
 
@@ -40,7 +40,7 @@ Validated values: [recipes.md](recipes.md). Options that existed during developm
 | `SABCMTanhWidth`             | `0.08`    | SA-BCM           | Width of the tanh intermittency blend. Smooth form only.                                                                                                                                                                                  |
 | `turbIntensityInf`           | `0.001`   | GR, SA-γ, SA-BCM | Free-stream turbulence intensity as a fraction (0.001 = 0.1 %). Input of the onset correlations of all three models; sets R̅eθt∞ for GR.                                                                                                   |
 
-## Solver options (18)
+## Solver options (23)
 
 `epsAcoustic` and `epsShear` are discretisation coefficients; they are listed here because they are
 not tied to a model.
@@ -65,6 +65,11 @@ not tied to a model.
 | `epsShear`                  | `0.025`  | all      | Discretisation: eigenvalue-limiter coefficient of the convective (shear) eigenvalues in the matrix dissipation scheme (V_l). The default is the value hard-coded upstream; the transition validations use 0.        |
 | `NKLSRelax`                 | `False`  | all      | Relaxed NK cubic line search: Armijo constant 1e-3 and turbulence pre-limit factor 3.0 instead of upstream's 1e-2 and 2.0. pyADflow sets it True for the two γ models.                                              |
 | `TurbDADICoupled`           | `"full"` | GR, SA-γ | Coupling of the turbulence DADI solve: `decoupled` (scalar solves), `transition` (ν̃ scalar + γ–R̅eθt block), `full` (3×3 block for GR, 2×2 for SA-γ).                                                                |
+| `turbL2Convergence`         | `0.0`    | all      | Per-equation convergence gate: the solve also requires every turbulence and transition residual to be below this factor times its own peak. 0 = off (total residual only, upstream behaviour).                      |
+| `ANKStallSwitchIters`       | `0`      | all      | Stall-triggered phase advance of ANK: if the residual is not halved within this many iterations (below 1e-3 relative, steps ≥ 0.5), go coupled, then second order, without waiting for the thresholds. 0 = off.     |
+| `ANKStallSwitchCharOff`     | `False`  | all      | Third stage of the stall switch: a stall in second-order coupled ANK turns the characteristic time step off for the rest of the solve (floor of laminar-bubble cases at low Mach).                                  |
+| `ANKCharMachFloor`          | `1e-4`   | all      | K in the cut-off M² ≥ K·M∞² of the local Mach number in the characteristic time step. The default is the value hard-coded upstream.                                                                                 |
+| `ANKCharPresCutoff`         | `0.0`    | all      | ε of a pressure cut-off of the local Mach number in the characteristic time step, M² ≥ ε²·Δp/(ρa²). 0 = off (upstream behaviour).                                                                                   |
 
 ## Adjoint options (3)
 
