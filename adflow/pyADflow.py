@@ -6195,8 +6195,6 @@ class ADFLOW(AeroSolver):
             "ANKStallSwitchIters": [int, 0],
             # Exact (forward-AD) Jacobian-vector products in the second-order coupled ANK phase instead of MFFD
             "ANKADMatVec": [bool, False],
-            "ANKStallSwitchFactor": [float, 0.5],
-            "ANKStallSwitchTol": [float, 1e-3],
             "ANKStallSwitchCharOff": [bool, False],
             "ANKTurbCFLScale": [float, 1.0],
             "ANKUseFullVisc": [bool, True],
@@ -6710,8 +6708,6 @@ class ADFLOW(AeroSolver):
             "ankcoupledswitchtol": ["ank", "ank_coupledswitchtol"],
             "ankstallswitchiters": ["ank", "ank_stallswitchiters"],
             "ankadmatvec": ["ank", "ank_admatvec"],
-            "ankstallswitchfactor": ["ank", "ank_stallswitchfactor"],
-            "ankstallswitchtol": ["ank", "ank_stallswitchtol"],
             "ankstallswitchcharoff": ["ank", "ank_stallswitchcharoff"],
             "ankturbcflscale": ["ank", "ank_turbcflscale"],
             "ankusefullvisc": ["ank", "ank_usefullvisc"],

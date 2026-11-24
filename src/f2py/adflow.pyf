@@ -499,8 +499,6 @@ python module libadflow
          real(kind=realtype) :: ank_coupledswitchtol
          integer(kind=inttype) :: ank_stallswitchiters
          logical :: ank_admatvec
-         real(kind=realtype) :: ank_stallswitchfactor
-         real(kind=realtype) :: ank_stallswitchtol
          logical :: ank_stallswitchcharoff
          real(kind=realtype) :: ank_turbcflscale
          logical :: ank_usefullvisc

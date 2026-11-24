@@ -2458,8 +2458,8 @@ module ANKSolver
     ! the residual is still O(0.1): M 0.2 matrix switched to the second-order
     ! operator at rel 0.24 and never recovered (job 06_stall_mach, 2026-11-21).
     integer(kind=intType) :: ANK_stallSwitchIters = 0
-    real(kind=realType) :: ANK_stallSwitchFactor = 0.5_realType
-    real(kind=realType) :: ANK_stallSwitchTol = 1e-3_realType
+    real(kind=realType), parameter :: ANK_stallSwitchFactor = 0.5_realType
+    real(kind=realType), parameter :: ANK_stallSwitchTol = 1e-3_realType
     real(kind=realType) :: stallSwRefR = -1.0_realType
     integer(kind=intType) :: stallSwCount = 0
     real(kind=realType) :: stallSwSavedCoupledTol, stallSwSavedSecondOrdTol
