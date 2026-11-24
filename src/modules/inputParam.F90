@@ -409,11 +409,6 @@ module inputIteration
     ! its peak. 0 = off (totalR only).
     real(kind=realType) :: turbL2Convergence = 0.0_realType
     real(kind=realType), dimension(4) :: turbEqRes = 0.0_realType, turbEqResPeak = 0.0_realType
-    ! flowEqL2Convergence: the same gate for the mean flow -- each of the five
-    ! flow residuals must be below L2Convergence times its own free-stream
-    ! value (flowEqRes0). At low Mach the density residual alone says little.
-    logical :: flowEqL2Convergence = .false.
-    real(kind=realType), dimension(5) :: flowEqRes = 0.0_realType, flowEqRes0 = 0.0_realType
     integer(kind=intType) :: noBacktrackCount = 0
     ! Damping parameters for γ/Reθt iterative update (P&Z Algorithm 2).
     ! MaxIter is a safety cap on the (unbounded in the paper) back-off loop;
