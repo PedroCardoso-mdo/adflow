@@ -515,7 +515,6 @@ python module libadflow
          real(kind=realtype) :: ank_charblendcfl
          real(kind=realtype) :: ank_charmachfloor
          real(kind=realtype) :: ank_charprescutoff
-         logical :: ank_chardtscale
          subroutine destroyanksolver
          end subroutine destroyanksolver
 

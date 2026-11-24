@@ -6212,7 +6212,6 @@ class ADFLOW(AeroSolver):
             "ANKCharBlendCFL": [float, -1.0],
             "ANKCharMachFloor": [float, 1e-4],
             "ANKCharPresCutoff": [float, 0.0],
-            "ANKCharDtScale": [bool, False],
             # Load Balance/partitioning parameters
             "blockSplitting": [bool, True],
             "loadImbalance": [float, 0.1],
@@ -6733,7 +6732,6 @@ class ADFLOW(AeroSolver):
             "ankcharblendcfl": ["ank", "ank_charblendcfl"],
             "ankcharmachfloor": ["ank", "ank_charmachfloor"],
             "ankcharprescutoff": ["ank", "ank_charprescutoff"],
-            "ankchardtscale": ["ank", "ank_chardtscale"],
             # Load Balance Parameters
             "blocksplitting": ["parallel", "splitblocks"],
             "loadimbalance": ["parallel", "loadimbalance"],
