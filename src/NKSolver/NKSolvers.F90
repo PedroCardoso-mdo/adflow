@@ -2417,14 +2417,10 @@ module ANKSolver
     character(len=maxStringLen) :: ANK_charTimeStepType
     ! Low-Mach controls of the characteristic time step (pseudo-time term
     ! only: R(w) and the converged solution are untouched).
-    !  ANK_charBlendCFL   > 0: the preconditioning is fully on from this CFL
-    !                     (blend = min(1, CFL/charBlendCFL)) instead of being
-    !                     tied to ANK_CFLLimit. <= 0: Seraj2022c blend.
     !  ANK_charMachFloor  K in the cut-off M^2 >= K*Minf^2 (Seraj: 1e-4;
     !                     Turkel's global cut-off: K ~ 1-3).
     !  ANK_charPresCutoff eps in the Weiss-Smith pressure cut-off
     !                     U_r >= eps*sqrt(dp/rho) (0 = off).
-    real(kind=realType) :: ANK_charBlendCFL = -1.0_realType
     real(kind=realType) :: ANK_charMachFloor = 1e-4_realType
     real(kind=realType) :: ANK_charPresCutoff = 0.0_realType
     integer(kind=intType) :: ANK_nsubIterTurb
@@ -3187,11 +3183,7 @@ contains
             consToSymm(5, iRhoE) = gammaMinusOne
 
             ! Compute the CFL-based blending factor
-            if (ANK_charBlendCFL > zero) then
-                blendFactor = min(one, ANK_CFL / ANK_charBlendCFL)
-            else
-                blendFactor = ANK_CFL / ANK_CFLLimit
-            end if
+            blendFactor = ANK_CFL / ANK_CFLLimit
 
             ! Cut-off of the local Mach number: global K*Minf^2 plus the
             ! optional Weiss-Smith pressure cut-off (stagnation, recirculation
@@ -3207,11 +3199,11 @@ contains
             end if
             ! A cut-off is a low-speed device: never let it reach sonic
             machSqrFloor = min(machSqrFloor, half)
-            ! The extensions are active when any of the three knobs leaves its
+            ! The extensions are active when one of the two knobs leaves its
             ! Seraj2022c value; only then the off-diagonal 1/M uses the
             ! truncated Mach number (keeps the block positive definite at
             ! blend = 1). Defaults reproduce the upstream block bit for bit.
-            lowMachExt = (ANK_charBlendCFL > zero) .or. (ANK_charPresCutoff > zero) .or. &
+            lowMachExt = (ANK_charPresCutoff > zero) .or. &
                          (abs(ANK_charMachFloor - 1e-4_realType) > 1e-12_realType)
 
             if (ANK_charTimeStepType == 'VLR') then

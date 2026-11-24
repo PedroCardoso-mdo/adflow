@@ -512,7 +512,6 @@ python module libadflow
          logical :: ank_turbdebug
          logical :: ank_usematrixfree
          character(len=maxstringlen) :: ank_chartimesteptype
-         real(kind=realtype) :: ank_charblendcfl
          real(kind=realtype) :: ank_charmachfloor
          real(kind=realtype) :: ank_charprescutoff
          subroutine destroyanksolver
