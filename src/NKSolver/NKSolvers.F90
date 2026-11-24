@@ -2419,10 +2419,7 @@ module ANKSolver
     ! only: R(w) and the converged solution are untouched).
     !  ANK_charMachFloor  K in the cut-off M^2 >= K*Minf^2 (Seraj: 1e-4;
     !                     Turkel's global cut-off: K ~ 1-3).
-    !  ANK_charPresCutoff eps in the Weiss-Smith pressure cut-off
-    !                     U_r >= eps*sqrt(dp/rho) (0 = off).
     real(kind=realType) :: ANK_charMachFloor = 1e-4_realType
-    real(kind=realType) :: ANK_charPresCutoff = 0.0_realType
     integer(kind=intType) :: ANK_nsubIterTurb
 
     ! Misc variables
@@ -3046,7 +3043,7 @@ contains
         real(kind=realType) :: blendFactor, dtInv, rho, velX, velY, velZ
         real(kind=realType) :: speed, speedOfSound, mach, machSqr, machSqrTrunc, alpha, beta, tau, gammaMinusOne
         real(kind=realType) :: speedXY, sinTheta, cosTheta, sinAlpha, cosAlpha
-        real(kind=realType) :: machSqrFloor, machOff, dpMax
+        real(kind=realType) :: machSqrFloor, machOff
         logical :: lowMachExt
         real(kind=realType), dimension(nState, nState) :: streamToCart, symmToCons, consToSymm, stateToCons
 
@@ -3160,26 +3157,14 @@ contains
             ! Compute the CFL-based blending factor
             blendFactor = ANK_CFL / ANK_CFLLimit
 
-            ! Cut-off of the local Mach number: global K*Minf^2 plus the
-            ! optional Weiss-Smith pressure cut-off (stagnation, recirculation
-            ! and wall cells, where |u| -> 0 and 1/M^2 would blow up).
-            machSqrFloor = ANK_charMachFloor * machInf**2
-            if (ANK_charPresCutoff > zero) then
-                dpMax = max(abs(p(i + 1, j, k) - p(i, j, k)), abs(p(i - 1, j, k) - p(i, j, k)))
-                dpMax = max(dpMax, abs(p(i, j + 1, k) - p(i, j, k)))
-                dpMax = max(dpMax, abs(p(i, j - 1, k) - p(i, j, k)))
-                dpMax = max(dpMax, abs(p(i, j, k + 1) - p(i, j, k)))
-                dpMax = max(dpMax, abs(p(i, j, k - 1) - p(i, j, k)))
-                machSqrFloor = max(machSqrFloor, ANK_charPresCutoff**2 * dpMax / (rho * aa(i, j, k)))
-            end if
-            ! A cut-off is a low-speed device: never let it reach sonic
-            machSqrFloor = min(machSqrFloor, half)
-            ! The extensions are active when one of the two knobs leaves its
-            ! Seraj2022c value; only then the off-diagonal 1/M uses the
-            ! truncated Mach number (keeps the block positive definite at
-            ! blend = 1). Defaults reproduce the upstream block bit for bit.
-            lowMachExt = (ANK_charPresCutoff > zero) .or. &
-                         (abs(ANK_charMachFloor - 1e-4_realType) > 1e-12_realType)
+            ! Global cut-off of the local Mach number, K*Minf^2. A cut-off is
+            ! a low-speed device: never let it reach sonic
+            machSqrFloor = min(ANK_charMachFloor * machInf**2, half)
+            ! Only when the floor leaves its Seraj2022c value the off-diagonal
+            ! 1/M uses the truncated Mach number (keeps the block positive
+            ! definite at blend = 1). The default reproduces the upstream
+            ! block bit for bit.
+            lowMachExt = abs(ANK_charMachFloor - 1e-4_realType) > 1e-12_realType
 
             if (ANK_charTimeStepType == 'VLR') then
 
