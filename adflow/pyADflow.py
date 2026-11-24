@@ -6206,6 +6206,7 @@ class ADFLOW(AeroSolver):
             "ANKCharTimeStepType": [str, ["None", "Turkel", "VLR"]],
             # Low-Mach controls of the characteristic time step (pseudo-time only)
             "ANKCharMachFloor": [float, 1e-4],
+            "ANKCharPresCutoff": [float, 0.0],
             # Load Balance/partitioning parameters
             "blockSplitting": [bool, True],
             "loadImbalance": [float, 0.1],
@@ -6721,6 +6722,7 @@ class ADFLOW(AeroSolver):
                 "location": ["ank", "ank_chartimesteptype"],
             },
             "ankcharmachfloor": ["ank", "ank_charmachfloor"],
+            "ankcharprescutoff": ["ank", "ank_charprescutoff"],
             # Load Balance Parameters
             "blocksplitting": ["parallel", "splitblocks"],
             "loadimbalance": ["parallel", "loadimbalance"],
