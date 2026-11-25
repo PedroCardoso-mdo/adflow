@@ -96,6 +96,39 @@ module NKSolver
 
 contains
 
+    subroutine computeSrcLambdaAllBlocks(mode)
+        ! Source-term eigenvalues of the transition equations (srcLambda, P&Z
+        ! Eq. 59) for EVERY block of this processor. computeSrcLambda works on
+        ! the block the pointers are set to; called without this loop (as the
+        ! NK, turbulence-KSP and coupled-ANK paths did until 2026-11-25) it
+        ! refreshed one block per processor and left the others with the
+        ! values of the last DADI sweep, so the restriction acted on a stale
+        ! state there.
+        use constants
+        use blockPointers, only: nDom
+        use inputPhysics, only: turbModel
+        use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use utils, only: setPointers
+        use saGammaRetheta, only: computeSrcLambda
+        use saGamma, only: computeSrcLambdaSaGamma
+        implicit none
+
+        integer(kind=intType), intent(in) :: mode
+        integer(kind=intType) :: nn, sps
+
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1_intType, sps)
+                if (turbModel == spalartallmarasnoft2gamma) then
+                    call computeSrcLambdaSaGamma(mode)
+                else
+                    call computeSrcLambda(mode)
+                end if
+            end do
+        end do
+
+    end subroutine computeSrcLambdaAllBlocks
+
     subroutine setupNKsolver
 
         ! Setup the PETSc objects for the Newton-Krylov solver.
@@ -468,11 +501,7 @@ contains
             ! ANKStep's timeStepMat (see the comment there) so it is already
             ! consistent with the scaled PC.
             if (transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
-                if (turbModel == spalartallmarasnoft2gamma) then
-                    call computeSrcLambdaSaGamma(srcLambdaModeFull)
-                else
-                    call computeSrcLambda(srcLambdaModeFull)
-                end if
+                call computeSrcLambdaAllBlocks(srcLambdaModeFull)
                 call applyNKSrcDtDiagonal(dRdwPre)
             end if
 
@@ -3030,7 +3059,8 @@ contains
         use blockPointers, only: volRef, w, dtl, gamma, p, aa, srcLambda
         use flowVarRefState, only: viscous, nt1, nt2
         use inputIteration, only: turbResScale, transitionSrcDtRestrict, &
-                                  transitionSrcDtLimit, noBacktrackCount, srcDtDeactivateIters, transitionNK
+                                  transitionSrcDtLimit, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
+                                  transitionSrcDtBoundGamma
         use communication
         implicit none
 
@@ -3279,7 +3309,10 @@ contains
         ! them), so overriding the diagonal after the transforms is exact.
         if (ANK_coupled .and. (turbModel == spalartallmarasnoft2gammaretheta .or. &
              turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
-            if (transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
+            ! After the deactivation, cells with gamma below
+            ! transitionSrcDtBoundGamma keep the restriction (see inputParam).
+            if (transitionSrcDtRestrict .and. ((noBacktrackCount < srcDtDeactivateIters) .or. &
+                                               (w(i, j, k, nt1 + 1) < transitionSrcDtBoundGamma))) then
                 do l = nt1, nt2
                     l1 = l - nt1 + 1
                     dtInvSrc = srcLambda(i, j, k, l1) / transitionSrcDtLimit
@@ -5250,6 +5283,7 @@ contains
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use saGamma, only: computeSrcLambdaSaGamma
+        use NKSolver, only: computeSrcLambdaAllBlocks
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, currentLevel
@@ -5286,11 +5320,7 @@ contains
 
         ! Freeze srcLambda at base state before ANK iterations
         if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-            if (turbModel == spalartallmarasnoft2gamma) then
-                call computeSrcLambdaSaGamma(srcLambdaModeFull)
-            else
-                call computeSrcLambda(srcLambdaModeFull)
-            end if
+            call computeSrcLambdaAllBlocks(srcLambdaModeFull)
         end if
 
         do n = 1, ANK_nsubIterTurb
@@ -5384,11 +5414,7 @@ contains
 
             ! Refresh srcLambda from updated base state before KSPSolve
             if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-                if (turbModel == spalartallmarasnoft2gamma) then
-                    call computeSrcLambdaSaGamma(srcLambdaModeFull)
-                else
-                    call computeSrcLambda(srcLambdaModeFull)
-                end if
+                call computeSrcLambdaAllBlocks(srcLambdaModeFull)
             end if
 
             ! Actually do the Linear Krylov Solve
@@ -5584,10 +5610,11 @@ contains
                                   solverStallDiag, solverStallDiagStep, ankCFLMinCap, &
                                   ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted, &
                                   ankAlgorithm2Damping, ankTransitionGlobalLambda, ankColScaleUnit, &
-                                  turbL2Convergence
+                                  turbL2Convergence, transitionSrcDtBoundGamma
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use saGamma, only: computeSrcLambdaSaGamma
+        use NKSolver, only: computeSrcLambdaAllBlocks
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: lumpedDiss, approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, stepMonitor, linResMonitor, currentLevel, iterType
@@ -5797,12 +5824,9 @@ contains
         ! formed (P&Z Eq. 59; both computeTimeStepMat branches below
         ! consume srcLambda through computeTimeStepBlock).
         if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. &
-            transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
-            if (turbModel == spalartallmarasnoft2gamma) then
-                call computeSrcLambdaSaGamma(srcLambdaModeFull)
-            else
-                call computeSrcLambda(srcLambdaModeFull)
-            end if
+            transitionSrcDtRestrict .and. ((noBacktrackCount < srcDtDeactivateIters) .or. &
+                                           (transitionSrcDtBoundGamma > zero))) then
+            call computeSrcLambdaAllBlocks(srcLambdaModeFull)
         end if
 
         ! ============== PZ reference-CFL law (replaces the ADflow controller) ==============

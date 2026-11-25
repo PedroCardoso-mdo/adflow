@@ -398,6 +398,16 @@ module inputIteration
     ! P - E has a false root at gamma = 0 and a stable one at 1/ce2 = 0.02: a cell clipped to 1e-10 stays pinned there with a
     ! constant Res gamma (NLF0416 L0 matrix a +-2). Keep it below 1/ce2, e.g. 0.01, so that no converged state is touched.
     real(kind=realType) :: transitionGammaFloor = 0.0_realType
+    ! transitionSrcDtBoundGamma > 0: in coupled ANK, cells with gamma below this
+    ! value keep the source time-step restriction (Eq. 59) after it has been
+    ! deactivated for the field (srcDtDeactivateIters). The production term goes
+    ! with sqrt(gamma): near gamma = 0 its Jacobian is unbounded and positive, so
+    ! without the restriction the Newton direction of a cell on the lower bound
+    ! points below the bound and the cell stays there with a constant residual
+    ! (AR3 wing, 530 wake cells, 2026-11-25). A converged state has no cell that
+    ! low (laminar equilibrium 1/ce2 = 0.02), so the end of convergence is not
+    ! touched. 0 = off.
+    real(kind=realType) :: transitionSrcDtBoundGamma = 0.0_realType
     ! srcDtDeactivateIters: deactivate after N clean ANK turb iters (P&Z §IV.B.3)
     integer(kind=intType) :: srcDtDeactivateIters = 5
     ! turbL2Convergence > 0: per-equation convergence gate. The solve is
