@@ -2081,7 +2081,7 @@ contains
                     ! Multiply off-diagonal qq entries and rhs by iblank
                     ! so the update for iblank=0 cells is zero.
 
-                    rblank = real(iblank(i, j, k), realType)
+                    rblank = max(real(iblank(i, j, k), realType), zero)
 
                     cc(1, 1, j) = qq(i, j, k, 1, 1)
                     cc(1, 2, j) = qq(i, j, k, 1, 2) * rblank
@@ -2236,7 +2236,7 @@ contains
 
                     ! Store central jacobian and rhs in cc and ff.
 
-                    rblank = real(iblank(i, j, k), realType)
+                    rblank = max(real(iblank(i, j, k), realType), zero)
 
                     cc(1, 1, i) = qq(i, j, k, 1, 1)
                     cc(1, 2, i) = qq(i, j, k, 1, 2) * rblank
@@ -2391,7 +2391,7 @@ contains
 
                     ! Store central jacobian and rhs in cc and ff.
 
-                    rblank = real(iblank(i, j, k), realType)
+                    rblank = max(real(iblank(i, j, k), realType), zero)
 
                     cc(1, 1, k) = qq(i, j, k, 1, 1)
                     cc(1, 2, k) = qq(i, j, k, 1, 2) * rblank

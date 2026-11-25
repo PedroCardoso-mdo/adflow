@@ -1153,7 +1153,7 @@ contains
                     bb(1, j) = bb(1, j) - up; dd(1, j) = dd(1, j) + um
                     bb(2, j) = bb(2, j) - up; dd(2, j) = dd(2, j) + um
 
-                    rblank = real(iblank(i, j, k), realType)
+                    rblank = max(real(iblank(i, j, k), realType), zero)
                     cc(1, 1, j) = qq(i, j, k, 1, 1)
                     cc(1, 2, j) = qq(i, j, k, 1, 2) * rblank
                     cc(2, 1, j) = qq(i, j, k, 2, 1) * rblank
@@ -1254,7 +1254,7 @@ contains
                     bb(1, i) = bb(1, i) - up; dd(1, i) = dd(1, i) + um
                     bb(2, i) = bb(2, i) - up; dd(2, i) = dd(2, i) + um
 
-                    rblank = real(iblank(i, j, k), realType)
+                    rblank = max(real(iblank(i, j, k), realType), zero)
                     cc(1, 1, i) = qq(i, j, k, 1, 1)
                     cc(1, 2, i) = qq(i, j, k, 1, 2) * rblank
                     cc(2, 1, i) = qq(i, j, k, 2, 1) * rblank
@@ -1355,7 +1355,7 @@ contains
                     bb(1, k) = bb(1, k) - up; dd(1, k) = dd(1, k) + um
                     bb(2, k) = bb(2, k) - up; dd(2, k) = dd(2, k) + um
 
-                    rblank = real(iblank(i, j, k), realType)
+                    rblank = max(real(iblank(i, j, k), realType), zero)
                     cc(1, 1, k) = qq(i, j, k, 1, 1)
                     cc(1, 2, k) = qq(i, j, k, 1, 2) * rblank
                     cc(2, 1, k) = qq(i, j, k, 2, 1) * rblank
