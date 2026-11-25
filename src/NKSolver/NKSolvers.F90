@@ -97,6 +97,37 @@ module NKSolver
 
 contains
 
+    subroutine computeSrcLambdaAllBlocks(mode)
+        ! Source-term eigenvalues of the transition equations (srcLambda, P&Z
+        ! Eq. 59) for every block of this processor. computeSrcLambda works on
+        ! the block the pointers are set to, so it must be called inside a
+        ! block loop: otherwise only one block per processor is refreshed and
+        ! the restriction acts on a stale state on the others.
+        use constants
+        use blockPointers, only: nDom
+        use inputPhysics, only: turbModel
+        use inputTimeSpectral, only: nTimeIntervalsSpectral
+        use utils, only: setPointers
+        use saGammaRetheta, only: computeSrcLambda
+        use saGamma, only: computeSrcLambdaSaGamma
+        implicit none
+
+        integer(kind=intType), intent(in) :: mode
+        integer(kind=intType) :: nn, sps
+
+        do nn = 1, nDom
+            do sps = 1, nTimeIntervalsSpectral
+                call setPointers(nn, 1_intType, sps)
+                if (turbModel == spalartallmarasnoft2gamma) then
+                    call computeSrcLambdaSaGamma(mode)
+                else
+                    call computeSrcLambda(mode)
+                end if
+            end do
+        end do
+
+    end subroutine computeSrcLambdaAllBlocks
+
     subroutine setupNKsolver
 
         ! Setup the PETSc objects for the Newton-Krylov solver.
@@ -460,11 +491,7 @@ contains
             ! ANKStep's timeStepMat (see the comment there) so it is already
             ! consistent with the scaled PC.
             if (transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
-                if (turbModel == spalartallmarasnoft2gamma) then
-                    call computeSrcLambdaSaGamma(srcLambdaModeFull)
-                else
-                    call computeSrcLambda(srcLambdaModeFull)
-                end if
+                call computeSrcLambdaAllBlocks(srcLambdaModeFull)
                 call applyNKSrcDtDiagonal(dRdwPre)
             end if
 
@@ -4824,6 +4851,7 @@ contains
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use saGamma, only: computeSrcLambdaSaGamma
+        use NKSolver, only: computeSrcLambdaAllBlocks
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, currentLevel
@@ -4866,11 +4894,7 @@ contains
 
         ! Freeze srcLambda at base state before ANK iterations
         if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-            if (turbModel == spalartallmarasnoft2gamma) then
-                call computeSrcLambdaSaGamma(srcLambdaModeFull)
-            else
-                call computeSrcLambda(srcLambdaModeFull)
-            end if
+            call computeSrcLambdaAllBlocks(srcLambdaModeFull)
         end if
 
         do n = 1, ANK_nsubIterTurb
@@ -4964,11 +4988,7 @@ contains
 
             ! Refresh srcLambda from updated base state before KSPSolve
             if (transitionSrcDtRestrict .and. srcDtRestrictActive) then
-                if (turbModel == spalartallmarasnoft2gamma) then
-                    call computeSrcLambdaSaGamma(srcLambdaModeFull)
-                else
-                    call computeSrcLambda(srcLambdaModeFull)
-                end if
+                call computeSrcLambdaAllBlocks(srcLambdaModeFull)
             end if
 
             ! Actually do the Linear Krylov Solve
@@ -5168,6 +5188,7 @@ contains
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use saGamma, only: computeSrcLambdaSaGamma
+        use NKSolver, only: computeSrcLambdaAllBlocks
         use inputTimeSpectral, only: nTimeIntervalsSpectral
         use inputDiscretization, only: lumpedDiss, approxSA, orderturb
         use iteration, only: approxTotalIts, totalR0, totalR, stepMonitor, linResMonitor, currentLevel, iterType
@@ -5341,11 +5362,7 @@ contains
         ! consume srcLambda through computeTimeStepBlock).
         if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. &
             transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
-            if (turbModel == spalartallmarasnoft2gamma) then
-                call computeSrcLambdaSaGamma(srcLambdaModeFull)
-            else
-                call computeSrcLambda(srcLambdaModeFull)
-            end if
+            call computeSrcLambdaAllBlocks(srcLambdaModeFull)
         end if
 
         ! Which Jacobian/flux regime is active this iteration (re-evaluated
