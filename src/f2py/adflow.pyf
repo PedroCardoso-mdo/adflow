@@ -1174,7 +1174,6 @@ real(kind=realtype) :: sgammaonsetsmoothp
          real(kind=realtype) :: transitionsrcdtlimit
          real(kind=realtype) :: transitionartvisc
          real(kind=realtype) :: transitiongammafloor
-         real(kind=realtype) :: transitionsrcdtboundgamma
          integer(kind=inttype) :: srcdtdeactivateiters
          real(kind=realtype) :: turbl2convergence
          real(kind=realtype) :: transitiondamptheta

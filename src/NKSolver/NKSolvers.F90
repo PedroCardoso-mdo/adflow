@@ -3059,8 +3059,7 @@ contains
         use blockPointers, only: volRef, w, dtl, gamma, p, aa, srcLambda
         use flowVarRefState, only: viscous, nt1, nt2
         use inputIteration, only: turbResScale, transitionSrcDtRestrict, &
-                                  transitionSrcDtLimit, noBacktrackCount, srcDtDeactivateIters, transitionNK, &
-                                  transitionSrcDtBoundGamma
+                                  transitionSrcDtLimit, noBacktrackCount, srcDtDeactivateIters, transitionNK
         use communication
         implicit none
 
@@ -3309,10 +3308,7 @@ contains
         ! them), so overriding the diagonal after the transforms is exact.
         if (ANK_coupled .and. (turbModel == spalartallmarasnoft2gammaretheta .or. &
              turbModel == spalartallmarasnoft2gamma) .and. transitionNK) then
-            ! After the deactivation, cells with gamma below
-            ! transitionSrcDtBoundGamma keep the restriction (see inputParam).
-            if (transitionSrcDtRestrict .and. ((noBacktrackCount < srcDtDeactivateIters) .or. &
-                                               (w(i, j, k, nt1 + 1) < transitionSrcDtBoundGamma))) then
+            if (transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
                 do l = nt1, nt2
                     l1 = l - nt1 + 1
                     dtInvSrc = srcLambda(i, j, k, l1) / transitionSrcDtLimit
@@ -5610,7 +5606,7 @@ contains
                                   solverStallDiag, solverStallDiagStep, ankCFLMinCap, &
                                   ankUnsteadyLSFactor, ankUnsteadyLSMaxIter, ankRejectOnLSExhausted, &
                                   ankAlgorithm2Damping, ankTransitionGlobalLambda, ankColScaleUnit, &
-                                  turbL2Convergence, transitionSrcDtBoundGamma
+                                  turbL2Convergence
         use paramTurb, only: srcLambdaModeFull
         use saGammaReTheta, only: computeSrcLambda
         use saGamma, only: computeSrcLambdaSaGamma
@@ -5824,8 +5820,7 @@ contains
         ! formed (P&Z Eq. 59; both computeTimeStepMat branches below
         ! consume srcLambda through computeTimeStepBlock).
         if (ANK_coupled .and. turbModel == spalartallmarasnoft2gammaretheta .and. transitionNK .and. &
-            transitionSrcDtRestrict .and. ((noBacktrackCount < srcDtDeactivateIters) .or. &
-                                           (transitionSrcDtBoundGamma > zero))) then
+            transitionSrcDtRestrict .and. (noBacktrackCount < srcDtDeactivateIters)) then
             call computeSrcLambdaAllBlocks(srcLambdaModeFull)
         end if
 

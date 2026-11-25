@@ -5923,7 +5923,6 @@ class ADFLOW(AeroSolver):
             "transitionSrcDtLimit": [float, 0.9],
             "transitionArtVisc": [float, 0.0],
             "transitionGammaFloor": [float, 0.0],
-            "transitionSrcDtBoundGamma": [float, 0.0],
             "srcDtDeactivateIters": [int, 5],
             # Per-equation convergence gate: each turbulence/transition residual must also drop by this
             # factor from its own peak (0 = off, totalR only)
@@ -6452,7 +6451,6 @@ class ADFLOW(AeroSolver):
             "transitionsrcdtlimit": ["iter", "transitionsrcdtlimit"],
             "transitionartvisc": ["iter", "transitionartvisc"],
             "transitiongammafloor": ["iter", "transitiongammafloor"],
-            "transitionsrcdtboundgamma": ["iter", "transitionsrcdtboundgamma"],
             "srcdtdeactivateiters": ["iter", "srcdtdeactivateiters"],
             "turbl2convergence": ["iter", "turbl2convergence"],
             "transitiondamptheta": ["iter", "transitiondamptheta"],
