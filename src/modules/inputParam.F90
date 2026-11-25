@@ -351,6 +351,13 @@ module inputIteration
     ! weight of 1e-4), so "8 orders" of totalR left Re_theta 4.7 orders below
     ! its peak. 0 = off (totalR only).
     real(kind=realType) :: turbL2Convergence = 0.0_realType
+    ! transitionGammaFloor > 0: lower bound of the intermittency in the ANK
+    ! update limiters only (the residual keeps its own bound of 1e-10). The
+    ! production term goes with sqrt(gamma), so its slope is unbounded at
+    ! gamma = 0: a cell that an update has clipped to 1e-10 gets a Newton
+    ! direction that points below the bound and stays there with a constant
+    ! residual. 0 = off (bound 1e-10 everywhere).
+    real(kind=realType) :: transitionGammaFloor = 0.0_realType
     real(kind=realType), dimension(4) :: turbEqRes = 0.0_realType, turbEqResPeak = 0.0_realType
     integer(kind=intType) :: noBacktrackCount = 0
     ! Damping parameters for γ/Reθt iterative update (P&Z Algorithm 2).

@@ -4317,7 +4317,7 @@ contains
         use blockPointers, only: ndom, il, jl, kl
         use flowVarRefState, only: nw, nwf, nt1, nt2
         use inputPhysics, only: turbModel
-        use inputIteration, only: turbResScale, ankTransitionGlobalLambda
+        use inputIteration, only: turbResScale, ankTransitionGlobalLambda, transitionGammaFloor
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputtimespectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers, EChk
@@ -4336,6 +4336,7 @@ contains
         real(kind=alwaysRealType) :: lambdaP_recv ! to receive the global step
         real(kind=alwaysRealType) :: ratio
         real(kind=alwaysRealType) :: wval, dval, ratioBound
+        real(kind=realType) :: gammaLo
 
         ! Determine the maximum step size that would yield
         ! a maximum relative change of ANK_physLSTol in density, and total energy.
@@ -4344,6 +4345,10 @@ contains
 
         ! Initialize the local step size as lambdaP which is an i/o variable
         lambdaL = real(lambdaP)
+
+        ! Lower bound of gamma for this check only (the residual is untouched),
+        ! see transitionGammaFloor.
+        gammaLo = max(rsaGRgammaLo, transitionGammaFloor)
 
         ! First we need to read both the update and the state
         ! from PETSc because the w in ADFlow currently contains
@@ -4503,7 +4508,7 @@ contains
                                             ! gamma lower and upper bounds
                                             if (dval > zero) then
                                                 ratioBound = min(ratioBound, &
-                                                    (wval - rsaGRgammaLo * turbResScale(2)) / (dval + eps))
+                                                    (wval - gammaLo * turbResScale(2)) / (dval + eps))
                                             else if (dval < zero) then
                                                 ratioBound = min(ratioBound, &
                                                     (rsaGRgammaHi * turbResScale(2) - wval) / (-dval + eps))
@@ -4535,8 +4540,8 @@ contains
                                             ! Only a full step that would leave the bounds is clipped;
                                             ! an increase that stays below the upper bound is kept.
                                             if (l == nt1 + 1) then
-                                                if (wval - dval < rsaGRgammaLo * turbResScale(2)) then
-                                                    dvec_pointer(ii) = (wvec_pointer(ii) - rsaGRgammaLo * turbResScale(2)) &
+                                                if (wval - dval < gammaLo * turbResScale(2)) then
+                                                    dvec_pointer(ii) = (wvec_pointer(ii) - gammaLo * turbResScale(2)) &
                                                                        * ANK_physLSTolTurb
                                                 else if (wval - dval > rsaGRgammaHi * turbResScale(2)) then
                                                     dvec_pointer(ii) = (wvec_pointer(ii) - rsaGRgammaHi * turbResScale(2)) &
@@ -4608,6 +4613,7 @@ contains
         use blockPointers, only: ndom, il, jl, kl
         use flowVarRefState, only: nw, nwf, nt1, nt2
         use inputPhysics, only: turbModel
+        use inputIteration, only: transitionGammaFloor
         use paramTurb, only: rsaGRgammaLo, rsaGRgammaHi, rsaGRreThetaLo
         use inputtimespectral, only: nTimeIntervalsSpectral
         use utils, only: setPointers, EChk
@@ -4637,7 +4643,7 @@ contains
         ! but the absolute gamma/retheta bounds must be scaled to match.
         if ((turbModel == spalartallmarasnoft2gammaretheta .or. turbModel == spalartallmarasnoft2gamma)) then
             call getTurbColScale(cs, nt2 - nt1 + 1)
-            gLoS = rsaGRgammaLo * cs(2)
+            gLoS = max(rsaGRgammaLo, transitionGammaFloor) * cs(2)
             gHiS = rsaGRgammaHi * cs(2)
             rLoS = zero
             if (turbModel == spalartallmarasnoft2gammaretheta) rLoS = rsaGRreThetaLo * cs(3)

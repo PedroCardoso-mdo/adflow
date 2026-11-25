@@ -1447,6 +1447,13 @@ turbL2Convergence:
     If greater than zero, the solve is converged only when, besides :py:data:`L2Convergence` on the total residual, the residual norm of every turbulence and transition equation is below this factor times its own peak of the solve.
     Zero turns the gate off (upstream behaviour).
 
+transitionGammaFloor:
+  desc: >
+    Lower bound of the intermittency in the update limiters of the ANK solver (the residual keeps its own bound of 1e-10).
+    The production term of the intermittency equation goes with the square root of the intermittency, so a cell that an update has clipped to 1e-10 gets a Newton direction that points below the bound and stays there with a constant residual.
+    Values of 1e-4 to 1e-2 release such cells; the converged solution is unchanged as long as the intermittency stays above the floor.
+    Zero turns it off.
+
 ANKStallSwitchIters:
   desc: >
     Stall-triggered phase advance of the ANK solver.
